@@ -1,0 +1,85 @@
+repro.swift Swift 5: exit 1, errors 3
+<workspace>/preview-actor-review/repro.swift:11:30: error: main actor-isolated property 'player' can not be referenced from a nonisolated context
+ 6 | }
+ 7 | @MainActor final class Preview {
+ 8 |   @Published private(set) var player: Player?
+   |                               `- note: property declared here
+ 9 |   private var timeObserver: Int?
+10 |   deinit {
+11 |     if let timeObserver, let player { player.removeTimeObserver(timeObserver) }
+   |                              `- error: main actor-isolated property 'player' can not be referenced from a nonisolated context
+12 |     player?.pause(); player?.replaceCurrentItem(with: nil)
+13 |   }
+
+<workspace>/preview-actor-review/repro.swift:12:5: error: main actor-isolated property 'player' can not be referenced from a nonisolated context
+ 6 | }
+ 7 | @MainActor final class Preview {
+ 8 |   @Published private(set) var player: Player?
+   |                               `- note: property declared here
+ 9 |   private var timeObserver: Int?
+10 |   deinit {
+11 |     if let timeObserver, let player { player.removeTimeObserver(timeObserver) }
+12 |     player?.pause(); player?.replaceCurrentItem(with: nil)
+   |     `- error: main actor-isolated property 'player' can not be referenced from a nonisolated context
+13 |   }
+14 | }
+
+<workspace>/preview-actor-review/repro.swift:12:22: error: main actor-isolated property 'player' can not be referenced from a nonisolated context
+ 6 | }
+ 7 | @MainActor final class Preview {
+ 8 |   @Published private(set) var player: Player?
+   |                               `- note: property declared here
+ 9 |   private var timeObserver: Int?
+10 |   deinit {
+11 |     if let timeObserver, let player { player.removeTimeObserver(timeObserver) }
+12 |     player?.pause(); player?.replaceCurrentItem(with: nil)
+   |                      `- error: main actor-isolated property 'player' can not be referenced from a nonisolated context
+13 |   }
+14 | }
+
+repro.swift Swift 6: exit 1, errors 3
+<workspace>/preview-actor-review/repro.swift:11:30: error: main actor-isolated property 'player' can not be referenced from a nonisolated context
+ 6 | }
+ 7 | @MainActor final class Preview {
+ 8 |   @Published private(set) var player: Player?
+   |                               `- note: property declared here
+ 9 |   private var timeObserver: Int?
+10 |   deinit {
+11 |     if let timeObserver, let player { player.removeTimeObserver(timeObserver) }
+   |                              `- error: main actor-isolated property 'player' can not be referenced from a nonisolated context
+12 |     player?.pause(); player?.replaceCurrentItem(with: nil)
+13 |   }
+
+<workspace>/preview-actor-review/repro.swift:12:5: error: main actor-isolated property 'player' can not be referenced from a nonisolated context
+ 6 | }
+ 7 | @MainActor final class Preview {
+ 8 |   @Published private(set) var player: Player?
+   |                               `- note: property declared here
+ 9 |   private var timeObserver: Int?
+10 |   deinit {
+11 |     if let timeObserver, let player { player.removeTimeObserver(timeObserver) }
+12 |     player?.pause(); player?.replaceCurrentItem(with: nil)
+   |     `- error: main actor-isolated property 'player' can not be referenced from a nonisolated context
+13 |   }
+14 | }
+
+<workspace>/preview-actor-review/repro.swift:12:22: error: main actor-isolated property 'player' can not be referenced from a nonisolated context
+ 6 | }
+ 7 | @MainActor final class Preview {
+ 8 |   @Published private(set) var player: Player?
+   |                               `- note: property declared here
+ 9 |   private var timeObserver: Int?
+10 |   deinit {
+11 |     if let timeObserver, let player { player.removeTimeObserver(timeObserver) }
+12 |     player?.pause(); player?.replaceCurrentItem(with: nil)
+   |                      `- error: main actor-isolated property 'player' can not be referenced from a nonisolated context
+13 |   }
+14 | }
+
+fixed.swift Swift 5: exit 0, errors 0
+
+fixed.swift Swift 6: exit 0, errors 0
+
+preview-actor-review/lifetime.swift: PASS explicit stop: one cleanup; off-actor deinit: one MainActor cleanup; restart: each player cleaned exactly once
+
+track-api-check/track-probe.swift: Track selection lifecycle probe passed: stale completion, stale option, current selection, stop cancellation

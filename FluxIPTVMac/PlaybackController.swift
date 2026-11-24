@@ -70,12 +70,55 @@ final class PlaybackController: ObservableObject {
     }
     func audioOptions() -> [AVMediaSelectionOption] { nativeGroup(.audible)?.options ?? [] }
     func subtitleOptions() -> [AVMediaSelectionOption] { nativeGroup(.legible)?.options ?? [] }
+    @Published private var nativeAudioGroup: AVMediaSelectionGroup?
+    @Published private var nativeSubtitleGroup: AVMediaSelectionGroup?
+    private weak var nativeSelectionItem: AVPlayerItem?
+    private var nativeSelectionLoad: Task<Void, Never>?
     private func nativeGroup(_ characteristic: AVMediaCharacteristic) -> AVMediaSelectionGroup? {
-        guard engine == .native else { return nil }
-        return player.currentItem?.asset.mediaSelectionGroup(forMediaCharacteristic: characteristic)
+        guard engine == .native, let media = nativeSelectionItem, player.currentItem === media else { return nil }
+        if characteristic == .audible { return nativeAudioGroup }
+        if characteristic == .legible { return nativeSubtitleGroup }
+        return nil
     }
     func selectTrack(_ option: AVMediaSelectionOption?, characteristic: AVMediaCharacteristic) {
-        if let group = nativeGroup(characteristic) { player.currentItem?.select(option, in: group) }
+        guard let group = nativeGroup(characteristic), let media = nativeSelectionItem else { return }
+        // A settings button from an earlier item must not select its old option
+        // in the current item's group after a rapid channel/episode change.
+        if let option, !group.options.contains(where: { $0 === option }) { return }
+        guard option != nil || group.allowsEmptySelection else { return }
+        media.select(option, in: group)
+    }
+    private func nativeSelectionIsCurrent(_ media: AVPlayerItem, token: UUID) -> Bool {
+        generation == token && engine == .native && nativeSelectionItem === media && player.currentItem === media
+    }
+    private func loadNativeSelection(for media: AVPlayerItem, token: UUID) {
+        nativeSelectionItem = media
+        nativeSelectionLoad = Task { @MainActor [weak self, weak media] in
+            guard let media, !Task.isCancelled else { return }
+            defer {
+                if self?.nativeSelectionIsCurrent(media, token: token) == true { self?.nativeSelectionLoad = nil }
+            }
+            // These calls load metadata asynchronously; settings rendering only
+            // reads the published groups and never starts a network request.
+            let audio = try? await media.asset.loadMediaSelectionGroup(for: .audible)
+            guard !Task.isCancelled, self?.nativeSelectionIsCurrent(media, token: token) == true else { return }
+            self?.nativeAudioGroup = audio
+            let subtitles = try? await media.asset.loadMediaSelectionGroup(for: .legible)
+            guard !Task.isCancelled, self?.nativeSelectionIsCurrent(media, token: token) == true else { return }
+            self?.nativeSubtitleGroup = subtitles
+        }
+    }
+    private func cancelNativeSelection() {
+        if nativeSelectionLoad != nil {
+            nativeSelectionLoad?.cancel()
+            // This helper runs when the old playback attempt is being stopped;
+            // cancelling its asset cannot interrupt the replacement item.
+            nativeSelectionItem?.asset.cancelLoading()
+        }
+        nativeSelectionLoad = nil
+        nativeSelectionItem = nil
+        if nativeAudioGroup != nil { nativeAudioGroup = nil }
+        if nativeSubtitleGroup != nil { nativeSubtitleGroup = nil }
     }
     private var observation: AnyCancellable?
     private var monitor: Task<Void, Never>?
@@ -165,6 +208,7 @@ final class PlaybackController: ObservableObject {
                 }
             }
         player.replaceCurrentItem(with: media)
+        loadNativeSelection(for: media, token: token)
         applyVolume()
         player.play()
     }
@@ -354,6 +398,7 @@ final class PlaybackController: ObservableObject {
         monitor?.cancel(); monitor = nil
         transition?.cancel(); transition = nil
         observation = nil
+        cancelNativeSelection()
         pendingVLCURL = nil
         player.pause(); player.replaceCurrentItem(with: nil)
         #if !os(macOS)

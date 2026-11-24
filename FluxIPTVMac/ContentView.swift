@@ -478,7 +478,7 @@ struct ContentView: View {
                 HStack(spacing: 9) {
                     Image(systemName: "waveform.path").font(.title2.weight(.medium)).foregroundStyle(themeAccent)
                     Text("FLUX").font(.title2.weight(.heavy)).tracking(4)
-                    if !compactChrome {Text("0.8.2").font(.caption2.monospacedDigit()).foregroundStyle(.secondary)}
+                    if !compactChrome {Text("0.8.3").font(.caption2.monospacedDigit()).foregroundStyle(.secondary)}
                 }
                 Spacer(minLength: 0)
                 navButton("Sources", icon: "square.stack", id: "sources", iconOnly: true) { showingSources = true }

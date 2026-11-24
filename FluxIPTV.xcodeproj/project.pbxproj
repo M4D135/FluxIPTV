@@ -113,7 +113,7 @@
 		0E8A3AD980EC179856012B7E /* target */ = {isa = PBXNativeTarget; buildConfigurationList = 976B52545947CA66FD9EF2A4; buildPhases = (F612CD2E22E187AC48B5913C, 69680EDE0CF9B24DB8DBFE04, 86F6FE2DD6E869C1842A14B3,); buildRules = (); dependencies = (); packageProductDependencies = (); name = FluxIPTV; productName = FluxIPTV; productReference = 38A007151ABE87CC01A5B6E9; productType = "com.apple.product-type.application"; };
 		4D8F54E7CBAF670D9F6C230D /* target-Debug */ = {isa = XCBuildConfiguration; buildSettings = {
         CODE_SIGN_STYLE = Automatic;
-        CURRENT_PROJECT_VERSION = 15;
+        CURRENT_PROJECT_VERSION = 16;
         GENERATE_INFOPLIST_FILE = NO;
         INFOPLIST_FILE = FluxIPTVMac/Info.plist;
         SDKROOT = macosx;
@@ -122,7 +122,7 @@
         CODE_SIGN_ENTITLEMENTS = FluxIPTVMac/FluxIPTV.entitlements; ENABLE_APP_SANDBOX = YES;
         LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
         ENABLE_DEBUG_DYLIB = NO;
-        MARKETING_VERSION = 0.8.2;
+        MARKETING_VERSION = 0.8.3;
         PRODUCT_BUNDLE_IDENTIFIER = com.m4d135.FluxIPTV;
         PRODUCT_NAME = "$(TARGET_NAME)";
         SWIFT_VERSION = 5.0;
@@ -132,7 +132,7 @@
         }; name = Debug; };
 		1A6EFC2CD0AF63DD14BE0438 /* target-Release */ = {isa = XCBuildConfiguration; buildSettings = {
         CODE_SIGN_STYLE = Automatic;
-        CURRENT_PROJECT_VERSION = 15;
+        CURRENT_PROJECT_VERSION = 16;
         GENERATE_INFOPLIST_FILE = NO;
         INFOPLIST_FILE = FluxIPTVMac/Info.plist;
         SDKROOT = macosx;
@@ -141,7 +141,7 @@
         CODE_SIGN_ENTITLEMENTS = FluxIPTVMac/FluxIPTV.entitlements; ENABLE_APP_SANDBOX = YES;
         LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
         ENABLE_DEBUG_DYLIB = NO;
-        MARKETING_VERSION = 0.8.2;
+        MARKETING_VERSION = 0.8.3;
         PRODUCT_BUNDLE_IDENTIFIER = com.m4d135.FluxIPTV;
         PRODUCT_NAME = "$(TARGET_NAME)";
         SWIFT_VERSION = 5.0;
@@ -205,7 +205,7 @@
 		AA1BBEB035328A3BC110B813 /* target-ios */ = {isa = PBXNativeTarget; buildConfigurationList = 9F07F9ED32AD2F975CEBC709; buildPhases = (11979CFF081B738F48777A3C, FDC5BB8A5966CE4F0B6CF9F5, 0D957B5BBCE5653AF2CE7F53,); buildRules = (); dependencies = (); packageProductDependencies = (3FD9E5F2D1A73417FDEABD76,); name = FluxIPTViOS; productName = FluxIPTViOS; productReference = 45BC2EF616C3744216202257; productType = "com.apple.product-type.application"; };
 		F0901AEB62460547CC98F589 /* target-Debug-ios */ = {isa = XCBuildConfiguration; buildSettings = {
         CODE_SIGN_STYLE = Automatic;
-        CURRENT_PROJECT_VERSION = 15;
+        CURRENT_PROJECT_VERSION = 16;
         GENERATE_INFOPLIST_FILE = NO;
         INFOPLIST_FILE = FluxIPTVMac/Info-iOS.plist;
         SDKROOT = iphoneos;
@@ -214,7 +214,7 @@
         SUPPORTS_MACCATALYST = NO;
         LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
         
-        MARKETING_VERSION = 0.8.2;
+        MARKETING_VERSION = 0.8.3;
         PRODUCT_BUNDLE_IDENTIFIER = com.m4d135.FluxIPTV.ios;
         PRODUCT_NAME = "$(TARGET_NAME)";
         SWIFT_VERSION = 5.0;
@@ -224,7 +224,7 @@
         }; name = Debug; };
 		AACDA0C13952657CE02C1821 /* target-Release-ios */ = {isa = XCBuildConfiguration; buildSettings = {
         CODE_SIGN_STYLE = Automatic;
-        CURRENT_PROJECT_VERSION = 15;
+        CURRENT_PROJECT_VERSION = 16;
         GENERATE_INFOPLIST_FILE = NO;
         INFOPLIST_FILE = FluxIPTVMac/Info-iOS.plist;
         SDKROOT = iphoneos;
@@ -233,7 +233,7 @@
         SUPPORTS_MACCATALYST = NO;
         LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
         
-        MARKETING_VERSION = 0.8.2;
+        MARKETING_VERSION = 0.8.3;
         PRODUCT_BUNDLE_IDENTIFIER = com.m4d135.FluxIPTV.ios;
         PRODUCT_NAME = "$(TARGET_NAME)";
         SWIFT_VERSION = 5.0;
@@ -297,7 +297,7 @@
 		34C60569D211C4BD688A56D5 /* target-tv */ = {isa = PBXNativeTarget; buildConfigurationList = 0E248EB62620FC60AE33244C; buildPhases = (32BE9FB3579D1DC06702422D, 2FDA18EEA001EF1971430EA0, 45886F944F9835C186DBF83E,); buildRules = (); dependencies = (); packageProductDependencies = (72A03C283374DE0506B2F201,); name = FluxIPTVTV; productName = FluxIPTVTV; productReference = 952A4F8FB81691F9EB3DB324; productType = "com.apple.product-type.application"; };
 		19F77E6636126856E997D07E /* target-Debug-tv */ = {isa = XCBuildConfiguration; buildSettings = {
         CODE_SIGN_STYLE = Automatic;
-        CURRENT_PROJECT_VERSION = 15;
+        CURRENT_PROJECT_VERSION = 16;
         GENERATE_INFOPLIST_FILE = NO;
         INFOPLIST_FILE = FluxIPTVMac/Info-tvOS.plist;
         SDKROOT = appletvos;
@@ -306,7 +306,7 @@
         
         LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
         
-        MARKETING_VERSION = 0.8.2;
+        MARKETING_VERSION = 0.8.3;
         PRODUCT_BUNDLE_IDENTIFIER = com.m4d135.FluxIPTV.tv;
         PRODUCT_NAME = "$(TARGET_NAME)";
         SWIFT_VERSION = 5.0;
@@ -316,7 +316,7 @@
         }; name = Debug; };
 		6685DDB375A03C1CB9440E00 /* target-Release-tv */ = {isa = XCBuildConfiguration; buildSettings = {
         CODE_SIGN_STYLE = Automatic;
-        CURRENT_PROJECT_VERSION = 15;
+        CURRENT_PROJECT_VERSION = 16;
         GENERATE_INFOPLIST_FILE = NO;
         INFOPLIST_FILE = FluxIPTVMac/Info-tvOS.plist;
         SDKROOT = appletvos;
@@ -325,7 +325,7 @@
         
         LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
         
-        MARKETING_VERSION = 0.8.2;
+        MARKETING_VERSION = 0.8.3;
         PRODUCT_BUNDLE_IDENTIFIER = com.m4d135.FluxIPTV.tv;
         PRODUCT_NAME = "$(TARGET_NAME)";
         SWIFT_VERSION = 5.0;

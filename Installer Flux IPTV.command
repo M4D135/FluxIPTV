@@ -68,7 +68,7 @@ if [[ -z "$IDENTITY" ]]; then
   IDENTITY="$(printf '%s\n' "$IDENTITIES" | awk '/"(Apple Development|Developer ID Application):/ {print $2; exit}')"
 fi
 IDENTITY="${IDENTITY:--}"
-printf '\nFLUX IPTV 0.8.2 — installation macOS\n\n'
+printf '\nFLUX IPTV 0.8.3 — installation macOS\n\n'
 if [[ "$IDENTITY" == '-' ]]; then
   printf 'Signature locale ad hoc : stable tant que cette application installée n’est pas remplacée.\nSi vous utilisez le Trousseau, une nouvelle compilation peut nécessiter une autorisation. Le stockage local privé optionnel évite cet accès.\n'
 else
@@ -78,12 +78,12 @@ printf '\nCompilation Debug du lecteur Apple natif (VLC intégré exclu du Mac)�
 xcodebuild \
   -project "$ROOT/FluxIPTV.xcodeproj" -scheme FluxIPTV \
   -configuration Debug -destination 'platform=macOS' \
-  -derivedDataPath "$CACHE/DerivedData-082" \
+  -derivedDataPath "$CACHE/DerivedData-083" \
   -clonedSourcePackagesDirPath "$CACHE/SourcePackages" \
   CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY="$IDENTITY" \
   CODE_SIGNING_ALLOWED=YES CODE_SIGNING_REQUIRED=YES \
   ENABLE_DEBUG_DYLIB=NO ONLY_ACTIVE_ARCH=YES build
-APP="$CACHE/DerivedData-082/Build/Products/Debug/FluxIPTV.app"
+APP="$CACHE/DerivedData-083/Build/Products/Debug/FluxIPTV.app"
 [[ -d "$APP" && -x "$APP/Contents/MacOS/FluxIPTV" ]] || { printf 'Produit .app introuvable.\n'; exit 1; }
 # Never install an incomplete or incorrectly signed bundle.
 codesign --verify --deep --strict --verbose=2 "$APP"

@@ -46,7 +46,9 @@ import Foundation
     private var transportObservation: NSKeyValueObservation?
     private var endObserver: NSObjectProtocol?
     private var failureObserver: NSObjectProtocol?
-    private var timeObserver: Any?
+    // A nonisolated deinit may copy this Sendable action without reading the
+    // actor-isolated @Published player. The action owns only playback resources.
+    private var playerCleanup: (@MainActor @Sendable () -> Void)?
 
     var externalURL: URL? {
         guard case .external(let url) = TrailerPreviewRoute.resolve(configuration?.trailerURL) else { return nil }
@@ -307,13 +309,18 @@ import Foundation
         }
         player = candidate
         candidate.replaceCurrentItem(with: item)
-        timeObserver = candidate.addPeriodicTimeObserver(forInterval: CMTime(seconds: 0.5, preferredTimescale: 600), queue: .main) { [weak self, weak candidate] time in
+        let timeObserver = candidate.addPeriodicTimeObserver(forInterval: CMTime(seconds: 0.5, preferredTimescale: 600), queue: .main) { [weak self, weak candidate] time in
             Task { @MainActor [weak self, weak candidate] in
                 guard let self, let candidate, self.isCurrent(token), self.player === candidate,
                       let duration = candidate.currentItem?.duration.seconds,
                       duration.isFinite, duration > 0, time.seconds.isFinite else { return }
                 self.progress = min(1, max(0, time.seconds / duration))
             }
+        }
+        playerCleanup = { @MainActor [candidate, timeObserver] in
+            candidate.removeTimeObserver(timeObserver)
+            candidate.pause()
+            candidate.replaceCurrentItem(with: nil)
         }
         schedulePlaybackTimeout(token: token)
         candidate.play()
@@ -334,9 +341,9 @@ import Foundation
         transportObservation?.invalidate(); transportObservation = nil
         if let endObserver { NotificationCenter.default.removeObserver(endObserver) }; endObserver = nil
         if let failureObserver { NotificationCenter.default.removeObserver(failureObserver) }; failureObserver = nil
-        if let timeObserver, let player { player.removeTimeObserver(timeObserver) }; timeObserver = nil
-        player?.pause()
-        player?.replaceCurrentItem(with: nil)
+        let cleanup = playerCleanup
+        playerCleanup = nil
+        cleanup?()
         player = nil
         showVideo = false
         progress = 0
@@ -349,7 +356,10 @@ import Foundation
         itemObservation?.invalidate(); transportObservation?.invalidate()
         if let endObserver { NotificationCenter.default.removeObserver(endObserver) }
         if let failureObserver { NotificationCenter.default.removeObserver(failureObserver) }
-        if let timeObserver, let player { player.removeTimeObserver(timeObserver) }
-        player?.pause(); player?.replaceCurrentItem(with: nil)
+        if let cleanup = playerCleanup {
+            // Never capture self after destruction or assume which executor
+            // released its final reference. The player is stopped on MainActor.
+            Task { @MainActor [cleanup] in cleanup() }
+        }
     }
 }

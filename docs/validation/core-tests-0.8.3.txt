@@ -1,0 +1,346 @@
+Building for debugging...
+[0/13] Write sources
+[2/13] Write swift-version--4DAB9BAED5F2C18.txt
+[4/34] Emitting module FluxIPTVCore
+[5/40] Compiling FluxIPTVCore RemoteNavigation.swift
+[6/40] Compiling FluxIPTVCore TrailerPreview.swift
+[7/40] Compiling FluxIPTVCore VideoClubTheme.swift
+[8/40] Compiling FluxIPTVCore ViewingHistory.swift
+[9/40] Compiling FluxIPTVCore XtreamClient.swift
+[10/40] Compiling FluxIPTVCore XtreamLogin.swift
+[11/40] Compiling FluxIPTVCore ArtworkGate.swift
+[12/40] Compiling FluxIPTVCore CaseBackMediaLayout.swift
+[13/40] Compiling FluxIPTVCore CaseCarousel.swift
+[14/40] Compiling FluxIPTVCore CaseDescriptionSource.swift
+[15/40] Compiling FluxIPTVCore CaseFaceLayout.swift
+[16/40] Compiling FluxIPTVCore CaseMetadataDownload.swift
+[17/40] Compiling FluxIPTVCore CasePadRotation.swift
+[18/40] Compiling FluxIPTVCore PlaybackPlan.swift
+[19/40] Compiling FluxIPTVCore PlaybackRecovery.swift
+[20/40] Compiling FluxIPTVCore PlaybackSettings.swift
+[21/40] Compiling FluxIPTVCore PrivateCredentialStore.swift
+[22/40] Compiling FluxIPTVCore ProceduralCase.swift
+[23/40] Compiling FluxIPTVCore ProceduralCinema.swift
+[24/40] Compiling FluxIPTVCore CatalogIndex.swift
+[25/40] Compiling FluxIPTVCore CinemaLinks.swift
+[26/40] Compiling FluxIPTVCore ClubInterfaceProfile.swift
+[27/40] Compiling FluxIPTVCore FavoritePresets.swift
+[28/40] Compiling FluxIPTVCore IPTVModels.swift
+[29/40] Compiling FluxIPTVCore M3UParser.swift
+[30/40] Compiling FluxIPTVCore MediaEnvironment.swift
+[31/41] Wrapping AST for FluxIPTVCore for debugging
+[33/60] Emitting module FluxIPTVCoreTests
+[34/65] Compiling FluxIPTVCoreTests PlaybackSettingsTests.swift
+[35/65] Compiling FluxIPTVCoreTests PrivateCredentialStoreTests.swift
+[36/65] Compiling FluxIPTVCoreTests ProceduralCaseTests.swift
+[37/65] Compiling FluxIPTVCoreTests ProceduralCinemaTests.swift
+[38/65] Compiling FluxIPTVCoreTests RemoteNavigationTests.swift
+[39/65] Compiling FluxIPTVCoreTests SessionCredentialCacheTests.swift
+[40/65] Compiling FluxIPTVCoreTests TrailerPreviewTests.swift
+[41/65] Compiling FluxIPTVCoreTests VideoClubThemeTests.swift
+[42/65] Compiling FluxIPTVCoreTests ViewingHistoryTests.swift
+[43/65] Compiling FluxIPTVCoreTests XtreamClientTests.swift
+[44/65] Compiling FluxIPTVCoreTests XtreamLoginTests.swift
+[45/65] Compiling FluxIPTVCoreTests ArtworkGateTests.swift
+[46/65] Compiling FluxIPTVCoreTests CaseCarouselTests.swift
+[47/65] Compiling FluxIPTVCoreTests CaseDescriptionSourceTests.swift
+[48/65] Compiling FluxIPTVCoreTests CaseFaceLayoutTests.swift
+[49/65] Compiling FluxIPTVCoreTests CasePadRotationTests.swift
+[50/65] Compiling FluxIPTVCoreTests CatalogIndexTests.swift
+[51/65] Compiling FluxIPTVCoreTests CinemaLinksTests.swift
+[52/65] Compiling FluxIPTVCoreTests ClubInterfaceProfileTests.swift
+[53/65] Compiling FluxIPTVCoreTests FavoritePresetsTests.swift
+[54/65] Compiling FluxIPTVCoreTests M3UParserTests.swift
+[55/65] Compiling FluxIPTVCoreTests MediaEnvironmentTests.swift
+[56/65] Compiling FluxIPTVCoreTests PlaybackPlanTests.swift
+[57/66] <project>/.build/x86_64-unknown-linux-gnu/debug/FluxIPTVPackageDiscoveredTests.derived/all-discovered-tests.swift
+[58/66] Write sources
+[59/66] Wrapping AST for FluxIPTVCoreTests for debugging
+[61/69] Compiling FluxIPTVPackageDiscoveredTests FluxIPTVCoreTests.swift
+[62/69] Compiling FluxIPTVPackageDiscoveredTests all-discovered-tests.swift
+[63/69] Emitting module FluxIPTVPackageDiscoveredTests
+[64/70] <project>/.build/x86_64-unknown-linux-gnu/debug/FluxIPTVPackageTests.derived/runner.swift
+[65/70] Write sources
+[66/70] Wrapping AST for FluxIPTVPackageDiscoveredTests for debugging
+[68/72] Compiling FluxIPTVPackageTests runner.swift
+[69/72] Emitting module FluxIPTVPackageTests
+[70/73] Wrapping AST for FluxIPTVPackageTests for debugging
+[71/73] Write Objects.LinkFileList
+[72/73] Linking FluxIPTVPackageTests.xctest
+Build complete! (14.51s)
+Test Suite 'All tests' started at 2026-11-24 22:38:54.325
+Test Suite 'debug.xctest' started at 2026-11-24 22:38:54.340
+Test Suite 'ArtworkGateTests' started at 2026-11-24 22:38:54.340
+Test Case 'ArtworkGateTests.testBudgetAndCancellation' started at 2026-11-24 22:38:54.340
+Test Case 'ArtworkGateTests.testBudgetAndCancellation' passed (0.003 seconds)
+Test Suite 'ArtworkGateTests' passed at 2026-11-24 22:38:54.344
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.003 (0.003) seconds
+Test Suite 'CaseCarouselTests' started at 2026-11-24 22:38:54.344
+Test Case 'CaseCarouselTests.testBackMediaAndDescriptionPanelsDoNotOverlap' started at 2026-11-24 22:38:54.344
+Test Case 'CaseCarouselTests.testBackMediaAndDescriptionPanelsDoNotOverlap' passed (0.001 seconds)
+Test Case 'CaseCarouselTests.testCollectorHasRealDepthAndBoundedTextures' started at 2026-11-24 22:38:54.345
+Test Case 'CaseCarouselTests.testCollectorHasRealDepthAndBoundedTextures' passed (0.003 seconds)
+Test Case 'CaseCarouselTests.testFinalClosedCaseShortcuts' started at 2026-11-24 22:38:54.348
+Test Case 'CaseCarouselTests.testFinalClosedCaseShortcuts' passed (0.0 seconds)
+Test Case 'CaseCarouselTests.testFiveObjectWindowAtCatalogueBoundaries' started at 2026-11-24 22:38:54.348
+Test Case 'CaseCarouselTests.testFiveObjectWindowAtCatalogueBoundaries' passed (0.0 seconds)
+Test Case 'CaseCarouselTests.testResponsiveFramingKeepsLargeCentralPosterAndFourSmallNeighbors' started at 2026-11-24 22:38:54.348
+Test Case 'CaseCarouselTests.testResponsiveFramingKeepsLargeCentralPosterAndFourSmallNeighbors' passed (0.001 seconds)
+Test Suite 'CaseCarouselTests' passed at 2026-11-24 22:38:54.349
+	 Executed 5 tests, with 0 failures (0 unexpected) in 0.005 (0.005) seconds
+Test Suite 'CaseDescriptionSourceTests' started at 2026-11-24 22:38:54.349
+Test Case 'CaseDescriptionSourceTests.testAllocineConflictingEntriesWithTheSameTitleAreAmbiguous' started at 2026-11-24 22:38:54.349
+Test Case 'CaseDescriptionSourceTests.testAllocineConflictingEntriesWithTheSameTitleAreAmbiguous' passed (0.009 seconds)
+Test Case 'CaseDescriptionSourceTests.testAllocineIdentifiersUseTheRightPropertyAndRejectAmbiguousOrInjectedIDs' started at 2026-11-24 22:38:54.359
+Test Case 'CaseDescriptionSourceTests.testAllocineIdentifiersUseTheRightPropertyAndRejectAmbiguousOrInjectedIDs' passed (0.0 seconds)
+Test Case 'CaseDescriptionSourceTests.testAllocineParsesGraphAndArrayTypesButRequiresCorrectKindAndTitle' started at 2026-11-24 22:38:54.359
+Test Case 'CaseDescriptionSourceTests.testAllocineParsesGraphAndArrayTypesButRequiresCorrectKindAndTitle' passed (0.003 seconds)
+Test Case 'CaseDescriptionSourceTests.testIPTVSourceNeverBorrowsExternalDescriptions' started at 2026-11-24 22:38:54.362
+Test Case 'CaseDescriptionSourceTests.testIPTVSourceNeverBorrowsExternalDescriptions' passed (0.001 seconds)
+Test Case 'CaseDescriptionSourceTests.testMediaTypeCannotBeInferredFromAnIncidentalMentionOfAFilmOrSeries' started at 2026-11-24 22:38:54.363
+Test Case 'CaseDescriptionSourceTests.testMediaTypeCannotBeInferredFromAnIncidentalMentionOfAFilmOrSeries' passed (0.105 seconds)
+Test Case 'CaseDescriptionSourceTests.testNumericMovieTitlesAndNumbersBelongingToTheTitleStayDistinct' started at 2026-11-24 22:38:54.468
+Test Case 'CaseDescriptionSourceTests.testNumericMovieTitlesAndNumbersBelongingToTheTitleStayDistinct' passed (0.004 seconds)
+Test Case 'CaseDescriptionSourceTests.testPlainTextDecodesMarkupAndDecimalAndBothHexEntityForms' started at 2026-11-24 22:38:54.472
+Test Case 'CaseDescriptionSourceTests.testPlainTextDecodesMarkupAndDecimalAndBothHexEntityForms' passed (0.001 seconds)
+Test Case 'CaseDescriptionSourceTests.testSourceSelectionCyclesThroughTheThreeNamedSources' started at 2026-11-24 22:38:54.473
+Test Case 'CaseDescriptionSourceTests.testSourceSelectionCyclesThroughTheThreeNamedSources' passed (0.0 seconds)
+Test Case 'CaseDescriptionSourceTests.testTitleNormalizationRemovesProviderLabelsAndExplicitDisambiguators' started at 2026-11-24 22:38:54.473
+Test Case 'CaseDescriptionSourceTests.testTitleNormalizationRemovesProviderLabelsAndExplicitDisambiguators' passed (0.001 seconds)
+Test Case 'CaseDescriptionSourceTests.testWikidataYearsIgnoreDeprecatedClaimsAndDatesLessPreciseThanAYear' started at 2026-11-24 22:38:54.474
+Test Case 'CaseDescriptionSourceTests.testWikidataYearsIgnoreDeprecatedClaimsAndDatesLessPreciseThanAYear' passed (0.002 seconds)
+Test Case 'CaseDescriptionSourceTests.testWikipediaCandidatesRequireExactNormalizedTitleAndApprovedOrigin' started at 2026-11-24 22:38:54.476
+Test Case 'CaseDescriptionSourceTests.testWikipediaCandidatesRequireExactNormalizedTitleAndApprovedOrigin' passed (0.002 seconds)
+Test Case 'CaseDescriptionSourceTests.testWikipediaRejectsMissingPagesAndDisambiguationAndDoesNotTrustInvalidEntityIDs' started at 2026-11-24 22:38:54.478
+Test Case 'CaseDescriptionSourceTests.testWikipediaRejectsMissingPagesAndDisambiguationAndDoesNotTrustInvalidEntityIDs' passed (0.001 seconds)
+Test Case 'CaseDescriptionSourceTests.testYearExtractionAcceptsDatesButNotAnEmbeddedPartOfALongerNumber' started at 2026-11-24 22:38:54.479
+Test Case 'CaseDescriptionSourceTests.testYearExtractionAcceptsDatesButNotAnEmbeddedPartOfALongerNumber' passed (0.0 seconds)
+Test Suite 'CaseDescriptionSourceTests' passed at 2026-11-24 22:38:54.480
+	 Executed 13 tests, with 0 failures (0 unexpected) in 0.13 (0.13) seconds
+Test Suite 'CaseFaceLayoutTests' started at 2026-11-24 22:38:54.480
+Test Case 'CaseFaceLayoutTests.testFaceRegionsDoNotOverlapAndPickCentres' started at 2026-11-24 22:38:54.480
+Test Case 'CaseFaceLayoutTests.testFaceRegionsDoNotOverlapAndPickCentres' passed (0.001 seconds)
+Test Case 'CaseFaceLayoutTests.testPickingEpisodePagesAndMissingTrailer' started at 2026-11-24 22:38:54.480
+Test Case 'CaseFaceLayoutTests.testPickingEpisodePagesAndMissingTrailer' passed (0.0 seconds)
+Test Case 'CaseFaceLayoutTests.testPremiumShellAndProceduralGrain' started at 2026-11-24 22:38:54.481
+Test Case 'CaseFaceLayoutTests.testPremiumShellAndProceduralGrain' passed (0.015 seconds)
+Test Case 'CaseFaceLayoutTests.testRemoteFocusAndFaceOrientation' started at 2026-11-24 22:38:54.495
+Test Case 'CaseFaceLayoutTests.testRemoteFocusAndFaceOrientation' passed (0.0 seconds)
+Test Case 'CaseFaceLayoutTests.testTextureBudgetAndQualityLevels' started at 2026-11-24 22:38:54.496
+Test Case 'CaseFaceLayoutTests.testTextureBudgetAndQualityLevels' passed (0.001 seconds)
+Test Suite 'CaseFaceLayoutTests' passed at 2026-11-24 22:38:54.496
+	 Executed 5 tests, with 0 failures (0 unexpected) in 0.017 (0.017) seconds
+Test Suite 'CasePadRotationTests' started at 2026-11-24 22:38:54.496
+Test Case 'CasePadRotationTests.testIncrementalPreciseScrollingFollowsEachDelta' started at 2026-11-24 22:38:54.496
+Test Case 'CasePadRotationTests.testIncrementalPreciseScrollingFollowsEachDelta' passed (0.0 seconds)
+Test Case 'CasePadRotationTests.testInvalidDeltasDoNotCorruptPose' started at 2026-11-24 22:38:54.497
+Test Case 'CasePadRotationTests.testInvalidDeltasDoNotCorruptPose' passed (0.001 seconds)
+Test Case 'CasePadRotationTests.testNoInertiaWithReducedMotion' started at 2026-11-24 22:38:54.497
+Test Case 'CasePadRotationTests.testNoInertiaWithReducedMotion' passed (0.0 seconds)
+Test Case 'CasePadRotationTests.testReverseFromBackAndKeepFullRotation' started at 2026-11-24 22:38:54.497
+Test Case 'CasePadRotationTests.testReverseFromBackAndKeepFullRotation' passed (0.0 seconds)
+Test Case 'CasePadRotationTests.testSmallAccidentalHorizontalStrokeDoesNotFlip' started at 2026-11-24 22:38:54.498
+Test Case 'CasePadRotationTests.testSmallAccidentalHorizontalStrokeDoesNotFlip' passed (0.0 seconds)
+Test Case 'CasePadRotationTests.testTranslationIsAbsoluteNotRepeated' started at 2026-11-24 22:38:54.498
+Test Case 'CasePadRotationTests.testTranslationIsAbsoluteNotRepeated' passed (0.001 seconds)
+Test Case 'CasePadRotationTests.testVerticalTiltDoesNotChangeFaceAndIsBounded' started at 2026-11-24 22:38:54.499
+Test Case 'CasePadRotationTests.testVerticalTiltDoesNotChangeFaceAndIsBounded' passed (0.0 seconds)
+Test Suite 'CasePadRotationTests' passed at 2026-11-24 22:38:54.499
+	 Executed 7 tests, with 0 failures (0 unexpected) in 0.003 (0.003) seconds
+Test Suite 'CatalogIndexTests' started at 2026-11-24 22:38:54.499
+Test Case 'CatalogIndexTests.testCompleteCatalogScopeNeverMeansHistoryOrPreset' started at 2026-11-24 22:38:54.499
+Test Case 'CatalogIndexTests.testCompleteCatalogScopeNeverMeansHistoryOrPreset' passed (0.001 seconds)
+Test Case 'CatalogIndexTests.testInspectionCrossesGridPagesAndKeepsNeighborsFromSelectedScope' started at 2026-11-24 22:38:54.500
+Test Case 'CatalogIndexTests.testInspectionCrossesGridPagesAndKeepsNeighborsFromSelectedScope' passed (0.001 seconds)
+Test Case 'CatalogIndexTests.testKindGroupSearchAndFavorites' started at 2026-11-24 22:38:54.501
+Test Case 'CatalogIndexTests.testKindGroupSearchAndFavorites' passed (0.002 seconds)
+Test Case 'CatalogIndexTests.testPagingAndHistoryKeepOrder' started at 2026-11-24 22:38:54.503
+Test Case 'CatalogIndexTests.testPagingAndHistoryKeepOrder' passed (0.001 seconds)
+Test Case 'CatalogIndexTests.testSixtyThousandTitlesRemainAddressableAcrossPages' started at 2026-11-24 22:38:54.504
+CATALOG BENCH (Linux XCTest, debug): 60000 titres indexés en 449.82 ms (génération incluse), 59999 déplacements en 91.95 ms
+Test Case 'CatalogIndexTests.testSixtyThousandTitlesRemainAddressableAcrossPages' passed (0.563 seconds)
+Test Case 'CatalogIndexTests.testVirtualGridMatchesOldFocusAlgorithm' started at 2026-11-24 22:38:55.067
+Test Case 'CatalogIndexTests.testVirtualGridMatchesOldFocusAlgorithm' passed (0.006 seconds)
+Test Suite 'CatalogIndexTests' passed at 2026-11-24 22:38:55.073
+	 Executed 6 tests, with 0 failures (0 unexpected) in 0.573 (0.573) seconds
+Test Suite 'CinemaLinksTests' started at 2026-11-24 22:38:55.073
+Test Case 'CinemaLinksTests.testAllocineUsesIndexedFichesAndEncodedTitle' started at 2026-11-24 22:38:55.073
+Test Case 'CinemaLinksTests.testAllocineUsesIndexedFichesAndEncodedTitle' passed (0.003 seconds)
+Test Case 'CinemaLinksTests.testCleanProviderTitles' started at 2026-11-24 22:38:55.075
+Test Case 'CinemaLinksTests.testCleanProviderTitles' passed (0.001 seconds)
+Test Case 'CinemaLinksTests.testWikipediaQuery' started at 2026-11-24 22:38:55.076
+Test Case 'CinemaLinksTests.testWikipediaQuery' passed (0.0 seconds)
+Test Suite 'CinemaLinksTests' passed at 2026-11-24 22:38:55.077
+	 Executed 3 tests, with 0 failures (0 unexpected) in 0.004 (0.004) seconds
+Test Suite 'ClubInterfaceProfileTests' started at 2026-11-24 22:38:55.077
+Test Case 'ClubInterfaceProfileTests.testConceptStageGeometryIsDeterministicDistinctAndBounded' started at 2026-11-24 22:38:55.077
+Test Case 'ClubInterfaceProfileTests.testConceptStageGeometryIsDeterministicDistinctAndBounded' passed (0.041 seconds)
+Test Case 'ClubInterfaceProfileTests.testConceptsAreDistinctAndPersistent' started at 2026-11-24 22:38:55.118
+Test Case 'ClubInterfaceProfileTests.testConceptsAreDistinctAndPersistent' passed (0.001 seconds)
+Test Case 'ClubInterfaceProfileTests.testFullScreenCaseFramingKeepsWholePosterAndNeighbors' started at 2026-11-24 22:38:55.118
+Test Case 'ClubInterfaceProfileTests.testFullScreenCaseFramingKeepsWholePosterAndNeighbors' passed (0.0 seconds)
+Test Case 'ClubInterfaceProfileTests.testNeighborsNeverWrapOrScan' started at 2026-11-24 22:38:55.119
+Test Case 'ClubInterfaceProfileTests.testNeighborsNeverWrapOrScan' passed (0.0 seconds)
+Test Suite 'ClubInterfaceProfileTests' passed at 2026-11-24 22:38:55.119
+	 Executed 4 tests, with 0 failures (0 unexpected) in 0.042 (0.042) seconds
+Test Suite 'FavoritePresetsTests' started at 2026-11-24 22:38:55.119
+Test Case 'FavoritePresetsTests.testConfirmedAssignmentIsAtomicAndPreservesOtherItems' started at 2026-11-24 22:38:55.119
+Test Case 'FavoritePresetsTests.testConfirmedAssignmentIsAtomicAndPreservesOtherItems' passed (0.001 seconds)
+Test Case 'FavoritePresetsTests.testMigrationAndM3UReclassification' started at 2026-11-24 22:38:55.119
+Test Case 'FavoritePresetsTests.testMigrationAndM3UReclassification' passed (0.0 seconds)
+Test Case 'FavoritePresetsTests.testSeparateListsAndRoundTrip' started at 2026-11-24 22:38:55.120
+Test Case 'FavoritePresetsTests.testSeparateListsAndRoundTrip' passed (0.001 seconds)
+Test Suite 'FavoritePresetsTests' passed at 2026-11-24 22:38:55.121
+	 Executed 3 tests, with 0 failures (0 unexpected) in 0.002 (0.002) seconds
+Test Suite 'M3UParserTests' started at 2026-11-24 22:38:55.121
+Test Case 'M3UParserTests.testConservativeMediaClassificationAndStableIDs' started at 2026-11-24 22:38:55.121
+Test Case 'M3UParserTests.testConservativeMediaClassificationAndStableIDs' passed (0.001 seconds)
+Test Case 'M3UParserTests.testHLSManifestIsNotAChannelList' started at 2026-11-24 22:38:55.122
+Test Case 'M3UParserTests.testHLSManifestIsNotAChannelList' passed (0.0 seconds)
+Test Case 'M3UParserTests.testHandlesBOMEXTGRPAndDuplicates' started at 2026-11-24 22:38:55.122
+Test Case 'M3UParserTests.testHandlesBOMEXTGRPAndDuplicates' passed (0.001 seconds)
+Test Case 'M3UParserTests.testParsesCategoriesNamesAndLogos' started at 2026-11-24 22:38:55.122
+Test Case 'M3UParserTests.testParsesCategoriesNamesAndLogos' passed (0.001 seconds)
+Test Case 'M3UParserTests.testRejectsNonHTTPAndInvalidSources' started at 2026-11-24 22:38:55.123
+Test Case 'M3UParserTests.testRejectsNonHTTPAndInvalidSources' passed (0.0 seconds)
+Test Case 'M3UParserTests.testURLValidationAndStableIdentifier' started at 2026-11-24 22:38:55.124
+Test Case 'M3UParserTests.testURLValidationAndStableIdentifier' passed (0.0 seconds)
+Test Suite 'M3UParserTests' passed at 2026-11-24 22:38:55.124
+	 Executed 6 tests, with 0 failures (0 unexpected) in 0.003 (0.003) seconds
+Test Suite 'MediaEnvironmentTests' started at 2026-11-24 22:38:55.124
+Test Case 'MediaEnvironmentTests.testCategorySelectionNeverWritesAnotherCategory' started at 2026-11-24 22:38:55.124
+Test Case 'MediaEnvironmentTests.testCategorySelectionNeverWritesAnotherCategory' passed (0.002 seconds)
+Test Case 'MediaEnvironmentTests.testEveryCategoryKeepsItsOwnPlaceAndResourceNamespace' started at 2026-11-24 22:38:55.125
+Test Case 'MediaEnvironmentTests.testEveryCategoryKeepsItsOwnPlaceAndResourceNamespace' passed (0.0 seconds)
+Test Case 'MediaEnvironmentTests.testLegacyClubThemeMigratesToFilmAndSeriesWhileTVRemainsIndependent' started at 2026-11-24 22:38:55.126
+Test Case 'MediaEnvironmentTests.testLegacyClubThemeMigratesToFilmAndSeriesWhileTVRemainsIndependent' passed (0.001 seconds)
+Test Case 'MediaEnvironmentTests.testMigrationPreservesAnAlreadySelectedThemeAndIsIdempotent' started at 2026-11-24 22:38:55.126
+Test Case 'MediaEnvironmentTests.testMigrationPreservesAnAlreadySelectedThemeAndIsIdempotent' passed (0.001 seconds)
+Test Case 'MediaEnvironmentTests.testReadBeforeMigrationUsesLegacyThemeOnlyForFilmsAndSeries' started at 2026-11-24 22:38:55.127
+Test Case 'MediaEnvironmentTests.testReadBeforeMigrationUsesLegacyThemeOnlyForFilmsAndSeries' passed (0.001 seconds)
+Test Case 'MediaEnvironmentTests.testUnknownValuesFallBackWithoutErasingStoredPreferences' started at 2026-11-24 22:38:55.128
+Test Case 'MediaEnvironmentTests.testUnknownValuesFallBackWithoutErasingStoredPreferences' passed (0.001 seconds)
+Test Suite 'MediaEnvironmentTests' passed at 2026-11-24 22:38:55.128
+	 Executed 6 tests, with 0 failures (0 unexpected) in 0.005 (0.005) seconds
+Test Suite 'PlaybackPlanTests' started at 2026-11-24 22:38:55.128
+Test Case 'PlaybackPlanTests.testDeduplicationAndNoUnsupportedURLs' started at 2026-11-24 22:38:55.129
+Test Case 'PlaybackPlanTests.testDeduplicationAndNoUnsupportedURLs' passed (0.0 seconds)
+Test Case 'PlaybackPlanTests.testHLSAndMKVUseDifferentPreferredEngines' started at 2026-11-24 22:38:55.129
+Test Case 'PlaybackPlanTests.testHLSAndMKVUseDifferentPreferredEngines' passed (0.0 seconds)
+Test Case 'PlaybackPlanTests.testXtreamEpisodeFallbackAndDirectSource' started at 2026-11-24 22:38:55.129
+Test Case 'PlaybackPlanTests.testXtreamEpisodeFallbackAndDirectSource' passed (0.0 seconds)
+Test Suite 'PlaybackPlanTests' passed at 2026-11-24 22:38:55.130
+	 Executed 3 tests, with 0 failures (0 unexpected) in 0.001 (0.001) seconds
+Test Suite 'PlaybackSettingsTests' started at 2026-11-24 22:38:55.130
+Test Case 'PlaybackSettingsTests.testClampingAndPersistence' started at 2026-11-24 22:38:55.130
+Test Case 'PlaybackSettingsTests.testClampingAndPersistence' passed (0.0 seconds)
+Test Case 'PlaybackSettingsTests.testProfilesAndOptions' started at 2026-11-24 22:38:55.130
+Test Case 'PlaybackSettingsTests.testProfilesAndOptions' passed (0.0 seconds)
+Test Case 'PlaybackSettingsTests.testReconnectOnlyLiveAndBounded' started at 2026-11-24 22:38:55.130
+Test Case 'PlaybackSettingsTests.testReconnectOnlyLiveAndBounded' passed (0.0 seconds)
+Test Suite 'PlaybackSettingsTests' passed at 2026-11-24 22:38:55.131
+	 Executed 3 tests, with 0 failures (0 unexpected) in 0.001 (0.001) seconds
+Test Suite 'PrivateCredentialStoreTests' started at 2026-11-24 22:38:55.131
+Test Case 'PrivateCredentialStoreTests.testPersistentStorageAndUpdate' started at 2026-11-24 22:38:55.131
+Test Case 'PrivateCredentialStoreTests.testPersistentStorageAndUpdate' passed (0.001 seconds)
+Test Case 'PrivateCredentialStoreTests.testRejectsSymbolicLink' started at 2026-11-24 22:38:55.132
+Test Case 'PrivateCredentialStoreTests.testRejectsSymbolicLink' passed (0.001 seconds)
+Test Case 'PrivateCredentialStoreTests.testRejectsUnsafeDirectoryAndFile' started at 2026-11-24 22:38:55.133
+Test Case 'PrivateCredentialStoreTests.testRejectsUnsafeDirectoryAndFile' passed (0.001 seconds)
+Test Suite 'PrivateCredentialStoreTests' passed at 2026-11-24 22:38:55.134
+	 Executed 3 tests, with 0 failures (0 unexpected) in 0.003 (0.003) seconds
+Test Suite 'ProceduralCaseTests' started at 2026-11-24 22:38:55.134
+Test Case 'ProceduralCaseTests.testBackTextureReversedHorizontallyForPhysicalTurn' started at 2026-11-24 22:38:55.134
+Test Case 'ProceduralCaseTests.testBackTextureReversedHorizontallyForPhysicalTurn' passed (0.0 seconds)
+Test Case 'ProceduralCaseTests.testBothFacesHaveUprightTextures' started at 2026-11-24 22:38:55.134
+Test Case 'ProceduralCaseTests.testBothFacesHaveUprightTextures' passed (0.0 seconds)
+Test Case 'ProceduralCaseTests.testSolidOutwardFacesAndTextureCoordinates' started at 2026-11-24 22:38:55.134
+Test Case 'ProceduralCaseTests.testSolidOutwardFacesAndTextureCoordinates' passed (0.001 seconds)
+Test Suite 'ProceduralCaseTests' passed at 2026-11-24 22:38:55.135
+	 Executed 3 tests, with 0 failures (0 unexpected) in 0.002 (0.002) seconds
+Test Suite 'ProceduralCinemaTests' started at 2026-11-24 22:38:55.135
+Test Case 'ProceduralCinemaTests.testCrashRecoveryForcesNative' started at 2026-11-24 22:38:55.135
+Test Case 'ProceduralCinemaTests.testCrashRecoveryForcesNative' passed (0.0 seconds)
+Test Case 'ProceduralCinemaTests.testMalformedGeometryIsRejected' started at 2026-11-24 22:38:55.136
+Test Case 'ProceduralCinemaTests.testMalformedGeometryIsRejected' passed (0.001 seconds)
+Test Case 'ProceduralCinemaTests.testRecipesAndProjection' started at 2026-11-24 22:38:55.137
+Test Case 'ProceduralCinemaTests.testRecipesAndProjection' passed (0.056 seconds)
+Test Case 'ProceduralCinemaTests.testStraightFerroSweep' started at 2026-11-24 22:38:55.194
+Test Case 'ProceduralCinemaTests.testStraightFerroSweep' passed (0.001 seconds)
+Test Suite 'ProceduralCinemaTests' passed at 2026-11-24 22:38:55.194
+	 Executed 4 tests, with 0 failures (0 unexpected) in 0.059 (0.059) seconds
+Test Suite 'RemoteNavigationTests' started at 2026-11-24 22:38:55.194
+Test Case 'RemoteNavigationTests.testAluminiumClickpad' started at 2026-11-24 22:38:55.194
+Test Case 'RemoteNavigationTests.testAluminiumClickpad' passed (0.0 seconds)
+Test Case 'RemoteNavigationTests.testDirectionalFocusAndUnequalRows' started at 2026-11-24 22:38:55.195
+Test Case 'RemoteNavigationTests.testDirectionalFocusAndUnequalRows' passed (0.0 seconds)
+Test Case 'RemoteNavigationTests.testTouchDirectionsAndPresses' started at 2026-11-24 22:38:55.195
+Test Case 'RemoteNavigationTests.testTouchDirectionsAndPresses' passed (0.0 seconds)
+Test Case 'RemoteNavigationTests.testTrackpadAccumulatesWithoutClickOrRepeat' started at 2026-11-24 22:38:55.195
+Test Case 'RemoteNavigationTests.testTrackpadAccumulatesWithoutClickOrRepeat' passed (0.0 seconds)
+Test Case 'RemoteNavigationTests.testTrackpadShortStrokesNeverSelectAndInvalidInputIgnored' started at 2026-11-24 22:38:55.195
+Test Case 'RemoteNavigationTests.testTrackpadShortStrokesNeverSelectAndInvalidInputIgnored' passed (0.0 seconds)
+Test Suite 'RemoteNavigationTests' passed at 2026-11-24 22:38:55.195
+	 Executed 5 tests, with 0 failures (0 unexpected) in 0.001 (0.001) seconds
+Test Suite 'SessionCredentialCacheTests' started at 2026-11-24 22:38:55.195
+Test Case 'SessionCredentialCacheTests.testDeniedReadIsNotCached' started at 2026-11-24 22:38:55.195
+Test Case 'SessionCredentialCacheTests.testDeniedReadIsNotCached' passed (0.0 seconds)
+Test Case 'SessionCredentialCacheTests.testRepeatedPlaybackUsesOneReadPerSource' started at 2026-11-24 22:38:55.196
+Test Case 'SessionCredentialCacheTests.testRepeatedPlaybackUsesOneReadPerSource' passed (0.0 seconds)
+Test Case 'SessionCredentialCacheTests.testReplaceAndRemove' started at 2026-11-24 22:38:55.196
+Test Case 'SessionCredentialCacheTests.testReplaceAndRemove' passed (0.0 seconds)
+Test Suite 'SessionCredentialCacheTests' passed at 2026-11-24 22:38:55.196
+	 Executed 3 tests, with 0 failures (0 unexpected) in 0.001 (0.001) seconds
+Test Suite 'TrailerPreviewTests' started at 2026-11-24 22:38:55.196
+Test Case 'TrailerPreviewTests.testDirectNativeTrailersIncludingQueryStringsAndUppercaseExtensions' started at 2026-11-24 22:38:55.196
+Test Case 'TrailerPreviewTests.testDirectNativeTrailersIncludingQueryStringsAndUppercaseExtensions' passed (0.0 seconds)
+Test Case 'TrailerPreviewTests.testMissingAndNonWebTrailerURLsAreUnavailable' started at 2026-11-24 22:38:55.197
+Test Case 'TrailerPreviewTests.testMissingAndNonWebTrailerURLsAreUnavailable' passed (0.0 seconds)
+Test Case 'TrailerPreviewTests.testOnlyTheRequestedDelaysAreAvailableAndPersistable' started at 2026-11-24 22:38:55.197
+Test Case 'TrailerPreviewTests.testOnlyTheRequestedDelaysAreAvailableAndPersistable' passed (0.001 seconds)
+Test Case 'TrailerPreviewTests.testWebPagesStayExternalWithoutScrapingOrHandingHTMLToPlayer' started at 2026-11-24 22:38:55.198
+Test Case 'TrailerPreviewTests.testWebPagesStayExternalWithoutScrapingOrHandingHTMLToPlayer' passed (0.001 seconds)
+Test Suite 'TrailerPreviewTests' passed at 2026-11-24 22:38:55.198
+	 Executed 4 tests, with 0 failures (0 unexpected) in 0.002 (0.002) seconds
+Test Suite 'VideoClubThemeTests' started at 2026-11-24 22:38:55.198
+Test Case 'VideoClubThemeTests.testProviderMetadataAndTrailerWithoutGuessing' started at 2026-11-24 22:38:55.198
+Test Case 'VideoClubThemeTests.testProviderMetadataAndTrailerWithoutGuessing' passed (0.002 seconds)
+Test Case 'VideoClubThemeTests.testSixThemeRecipesAndThreeDifferentWorlds' started at 2026-11-24 22:38:55.200
+Test Case 'VideoClubThemeTests.testSixThemeRecipesAndThreeDifferentWorlds' passed (0.039 seconds)
+Test Suite 'VideoClubThemeTests' passed at 2026-11-24 22:38:55.239
+	 Executed 2 tests, with 0 failures (0 unexpected) in 0.04 (0.04) seconds
+Test Suite 'ViewingHistoryTests' started at 2026-11-24 22:38:55.239
+Test Case 'ViewingHistoryTests.testInvalidAndPersistence' started at 2026-11-24 22:38:55.239
+Test Case 'ViewingHistoryTests.testInvalidAndPersistence' passed (0.001 seconds)
+Test Case 'ViewingHistoryTests.testResumeAndCompletion' started at 2026-11-24 22:38:55.240
+Test Case 'ViewingHistoryTests.testResumeAndCompletion' passed (0.0 seconds)
+Test Suite 'ViewingHistoryTests' passed at 2026-11-24 22:38:55.240
+	 Executed 2 tests, with 0 failures (0 unexpected) in 0.001 (0.001) seconds
+Test Suite 'XtreamClientTests' started at 2026-11-24 22:38:55.240
+Test Case 'XtreamClientTests.testBuildsEncodedPlaybackURL' started at 2026-11-24 22:38:55.240
+Test Case 'XtreamClientTests.testBuildsEncodedPlaybackURL' passed (0.0 seconds)
+Test Case 'XtreamClientTests.testCategoryAndMovieDecoding' started at 2026-11-24 22:38:55.240
+Test Case 'XtreamClientTests.testCategoryAndMovieDecoding' passed (0.0 seconds)
+Test Case 'XtreamClientTests.testSeriesCatalogSeasonsAndPlayback' started at 2026-11-24 22:38:55.240
+Test Case 'XtreamClientTests.testSeriesCatalogSeasonsAndPlayback' passed (0.001 seconds)
+Test Suite 'XtreamClientTests' passed at 2026-11-24 22:38:55.241
+	 Executed 3 tests, with 0 failures (0 unexpected) in 0.001 (0.001) seconds
+Test Suite 'XtreamLoginTests' started at 2026-11-24 22:38:55.241
+Test Case 'XtreamLoginTests.testExplicitCredentialsAndEndpointVariants' started at 2026-11-24 22:38:55.241
+Test Case 'XtreamLoginTests.testExplicitCredentialsAndEndpointVariants' passed (0.001 seconds)
+Test Case 'XtreamLoginTests.testExtractLinkAndStripCredentials' started at 2026-11-24 22:38:55.242
+Test Case 'XtreamLoginTests.testExtractLinkAndStripCredentials' passed (0.0 seconds)
+Test Case 'XtreamLoginTests.testHostPortAndDefaultHTTPS' started at 2026-11-24 22:38:55.242
+Test Case 'XtreamLoginTests.testHostPortAndDefaultHTTPS' passed (0.0 seconds)
+Test Case 'XtreamLoginTests.testRejectIncompleteAndUnsafeInputs' started at 2026-11-24 22:38:55.242
+Test Case 'XtreamLoginTests.testRejectIncompleteAndUnsafeInputs' passed (0.0 seconds)
+Test Suite 'XtreamLoginTests' passed at 2026-11-24 22:38:55.242
+	 Executed 4 tests, with 0 failures (0 unexpected) in 0.001 (0.001) seconds
+Test Suite 'debug.xctest' passed at 2026-11-24 22:38:55.242
+	 Executed 98 tests, with 0 failures (0 unexpected) in 0.899 (0.899) seconds
+Test Suite 'All tests' passed at 2026-11-24 22:38:55.242
+	 Executed 98 tests, with 0 failures (0 unexpected) in 0.899 (0.899) seconds
+◇ Test run started.
+↳ Testing Library Version: 6.2 (3fdabe5392108d8)
+↳ Target Platform: x86_64-unknown-linux-gnu
+✔ Test run with 0 tests in 0 suites passed after 0.001 seconds.
