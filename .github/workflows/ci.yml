@@ -5,23 +5,133 @@ on:
   pull_request:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
 jobs:
   core-tests:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: swift-actions/setup-swift@v2
         with:
           swift-version: '6.2'
-      - run: bash scripts/check-state-declarations.sh
-      - run: swift test
+      - name: Check source declarations and room resources
+        run: |
+          mkdir -p build/logs
+          bash scripts/check-state-declarations.sh 2>&1 | tee build/logs/state-declarations.log
+          python3 scripts/rooms/verify_rooms.py 2>&1 | tee build/logs/room-resources.log
+      - name: Verify the committed Xcode project
+        run: |
+          python3 scripts/generate-xcodeproj.py 2>&1 | tee build/logs/project-generation.log
+          git diff --exit-code -- FluxIPTV.xcodeproj
+      - name: Run core tests
+        run: swift test 2>&1 | tee build/logs/core-tests.log
+      - name: Save core diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: core-diagnostics-${{ github.run_attempt }}
+          path: build/logs/
+          if-no-files-found: warn
+          retention-days: 14
+
   apple-build:
     runs-on: macos-15
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
-        platform: [macOS, iOS, tvOS]
+        include:
+          - platform: macOS
+            app: FluxIPTV
+            products: Debug
+            artifact: macOS-unsigned
+          - platform: iOS
+            app: FluxIPTViOS
+            products: Debug-iphonesimulator
+            artifact: iOS-simulator-unsigned
+          - platform: tvOS
+            app: FluxIPTVTV
+            products: Debug-appletvsimulator
+            artifact: tvOS-simulator-unsigned
     steps:
       - uses: actions/checkout@v4
-      - run: xcodebuild -version && xcodebuild -showsdks
-      - run: bash scripts/build-platforms.sh '${{ matrix.platform }}'
+      - name: Record the Apple toolchain
+        run: |
+          mkdir -p build/logs
+          xcodebuild -version 2>&1 | tee build/logs/xcode-version.log
+          xcodebuild -showsdks 2>&1 | tee build/logs/xcode-sdks.log
+      - name: Build ${{ matrix.platform }}
+        run: bash scripts/build-platforms.sh '${{ matrix.platform }}'
+      - name: Package the unsigned application
+        run: |
+          app='build/${{ matrix.platform }}/Build/Products/${{ matrix.products }}/${{ matrix.app }}.app'
+          test -d "$app"
+          mkdir -p build/artifacts
+          ditto -c -k --sequesterRsrc --keepParent "$app" 'build/artifacts/FluxIPTV-${{ matrix.artifact }}.zip'
+          printf '%s\n' "$GITHUB_SHA" > build/artifacts/COMMIT.txt
+          (
+            cd build/artifacts
+            shasum -a 256 'FluxIPTV-${{ matrix.artifact }}.zip' > 'FluxIPTV-${{ matrix.artifact }}.zip.sha256'
+          )
+      - name: Save the unsigned application
+        uses: actions/upload-artifact@v4
+        with:
+          name: FluxIPTV-${{ matrix.artifact }}-${{ github.run_attempt }}
+          path: build/artifacts/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14
+      - name: Save Apple diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: apple-diagnostics-${{ matrix.platform }}-${{ github.run_attempt }}
+          path: |
+            build/logs/
+            build/results/
+          if-no-files-found: warn
+          include-hidden-files: true
+          retention-days: 14
+
+  source-pack:
+    name: Complete source pack
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Package the exact checked-out commit
+        id: package
+        run: |
+          version=$(sed -n 's/^[[:space:]]*MARKETING_VERSION = \([0-9.]*\);/\1/p' FluxIPTV.xcodeproj/project.pbxproj | sort -u)
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          commit=$(git rev-parse HEAD)
+          test "$commit" = "$GITHUB_SHA"
+          pack_name="FluxIPTV-${version}-Sources.zip"
+          mkdir -p build/source-pack
+          git archive --format=zip --prefix="FluxIPTV-${version}/" --output="build/source-pack/$pack_name" HEAD
+          printf '%s\n' "$commit" > build/source-pack/COMMIT.txt
+          (
+            cd build/source-pack
+            sha256sum "$pack_name" > "$pack_name.sha256"
+            sha256sum --check "$pack_name.sha256"
+          )
+          printf 'version=%s\n' "$version" >> "$GITHUB_OUTPUT"
+      - name: Save complete sources
+        uses: actions/upload-artifact@v4
+        with:
+          name: FluxIPTV-${{ steps.package.outputs.version }}-sources-${{ github.run_attempt }}
+          path: build/source-pack/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14

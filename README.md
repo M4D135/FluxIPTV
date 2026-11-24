@@ -87,6 +87,16 @@ Le Mac garde AVPlayer natif ; le bouton VLC externe reste disponible pour les fo
 
 Le statut précis des vérifications de cette livraison est dans [docs/VALIDATION-0.8.3.md](docs/VALIDATION-0.8.3.md). Les tests unitaires du cœur ne démontrent ni la compilation des frameworks Apple, ni la fluidité réelle, ni la lecture des flux du fournisseur. Aucun EPG n’a été ajouté dans cette version.
 
+## GitHub Actions et pack complet
+
+Le dépôt complet est [M4D135/FluxIPTV](https://github.com/M4D135/FluxIPTV). Le workflow [Swift / Apple platforms](https://github.com/M4D135/FluxIPTV/actions/workflows/ci.yml) se lance à chaque push sur `main`, sur les branches de travail des trois univers, lors des pull requests ou à la demande.
+
+Actions exécute les tests du cœur, vérifie les 18 décors et le projet généré, puis compile séparément macOS, iOS Simulator et tvOS Simulator. Les journaux et les résultats Xcode sont conservés même lorsqu’une compilation échoue. Une compilation réussie fournit une archive de l’application correspondante ; les builds iOS/tvOS sont destinés aux simulateurs et le build Mac n’est ni signé pour distribution ni notarié.
+
+Un job indépendant prépare le **pack complet des sources du commit exécuté**, avec empreinte SHA-256 et identifiant du commit. Il inclut le projet Xcode, l’installateur, les tests, la documentation et tous les décors. La présence de ce pack ne vaut pas validation des compilations : consulter les résultats de chaque job dans la même exécution. Voir [docs/CI.md](docs/CI.md) pour les téléchargements et la relance.
+
+### Vérifications locales
+
 ```bash
 swift test
 bash scripts/check-state-declarations.sh
