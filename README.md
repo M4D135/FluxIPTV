@@ -2,7 +2,7 @@
 
 Version de sources native SwiftUI pour macOS, iOS et tvOS.
 
-**Correctif 0.8.4 :** les indicateurs de progression utilisent leur taille native sur tvOS ; les réglages `controlSize` restent réservés à macOS/iOS. Le job Linux est fixé sur Ubuntu 24.04 pour installer Swift 6.2. GitHub Actions produit les sources complètes, les journaux Xcode et les applications compilées.
+**Correctif 0.8.4 :** les indicateurs de progression utilisent leur taille native sur tvOS et l’appui long utilise l’API de la télécommande ; macOS/iOS conservent leurs réglages de taille et de déplacement du geste. Le job Linux est fixé sur Ubuntu 24.04 pour installer Swift 6.2. GitHub Actions produit les sources complètes, les journaux Xcode et les applications compilées.
 
 **Correctif 0.8.3 :** les trois erreurs Xcode d’accès à `player` depuis le destructeur de l’aperçu sont corrigées. Le nettoyage du lecteur et de son observateur périodique est isolé sur MainActor, sans capturer le contrôleur après sa destruction. Le chargement des groupes audio et sous-titres utilise désormais l’API asynchrone, avec annulation et contrôle de l’item courant.
 

@@ -638,7 +638,11 @@ struct ContentView: View {
                 .background(.white.opacity(focused ? 0.13 : 0.025), in: RoundedRectangle(cornerRadius: 21))
                 .overlay(RoundedRectangle(cornerRadius: 21).strokeBorder(focused ? Color.white.opacity(0.88) : .white.opacity(0.08), lineWidth: focused ? 2 : 1).allowsHitTesting(false))
             }.buttonStyle(.plain).fluxFocus($systemFocus, id: item.id).id(item.id)
+                #if os(tvOS)
+                .simultaneousGesture(LongPressGesture(minimumDuration: 0.65).onEnded { _ in chooseFavorites(item) })
+                #else
                 .simultaneousGesture(LongPressGesture(minimumDuration: 0.65, maximumDistance: 14).onEnded { _ in chooseFavorites(item) })
+                #endif
                 #if os(macOS)
                 .contextMenu {
                     Button("Favoris et listes…") { chooseFavorites(item) }

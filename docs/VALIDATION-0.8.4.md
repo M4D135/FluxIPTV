@@ -18,6 +18,8 @@ Ces compilations macOS/iOS confirment notamment que les corrections MainActor et
 
 Les deux appels `controlSize` de l’application, dans `AddSourceSheet` et `PlayerSurface`, sont maintenant conditionnés à `!os(tvOS)`. macOS et iOS conservent leurs tailles d’indicateur ; tvOS utilise le composant natif à sa taille par défaut. L’analyse syntaxique des deux fichiers corrigés réussit pour les trois triples de compilation Apple.
 
+La première exécution 0.8.4, [45497345108](https://github.com/M4D135/FluxIPTV/actions/runs/45497345108), a ensuite validé les 98 tests du cœur, le pack des sources et les compilations macOS/iOS. tvOS a signalé une autre différence d’API : `LongPressGesture(minimumDuration:maximumDistance:)` n’y est pas disponible. La carte emploie désormais sur tvOS l’initialiseur spécifique `LongPressGesture(minimumDuration:)`. La durée de 0,65 seconde, l’action des favoris et le geste simultané sont conservés ; le seuil de déplacement tactile de 14 points reste utilisé sur macOS/iOS.
+
 Les jobs Linux utilisent explicitement `ubuntu-24.04`. Le système est consigné dans un journal avant l’installation de Swift, pour conserver un diagnostic même en cas d’échec de cette étape. Les trois compilations Apple restent sur `macos-15`.
 
 La version affichée, le projet Xcode, l’agent utilisateur des métadonnées et l’installateur passent à 0.8.4. L’installateur utilise `DerivedData-084`. Les 18 fonds, les réglages et les identifiants d’application sont conservés.
