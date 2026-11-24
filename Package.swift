@@ -3,7 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "FluxIPTV",
-    platforms: [.macOS(.v14), .tvOS(.v17)],
+    platforms: [.macOS(.v14), .iOS(.v17), .tvOS(.v17)],
     products: [
         .library(name: "FluxIPTVCore", targets: ["FluxIPTVCore"])
     ],

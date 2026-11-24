@@ -27,4 +27,24 @@ final class XtreamClientTests: XCTestCase {
             server: server, username: "user name", password: "p/ss", item: item))
         XCTAssertEqual(url.absoluteString, "https://example.org:8080/sub/live/user%20name/p%2Fss/45.m3u8")
     }
+    func testSeriesCatalogSeasonsAndPlayback() throws {
+        let series = try XCTUnwrap(XtreamClient.decodeItems(
+            [["name": "Exemple", "series_id": 99, "category_id": 12]],
+            categories: [["category_id": 12, "category_name": "Séries"]], sourceID: id, kind: .series).first)
+        XCTAssertTrue(series.isSeriesCollection)
+        let server = try XCTUnwrap(URL(string: "https://example.org/sub"))
+        XCTAssertNil(XtreamClient.streamURL(server: server, username: "u", password: "p", item: series))
+        let episodes: [String: Any] = ["episodes": [
+            "2": [["id": "8", "episode_num": 2, "title": "Suite", "container_extension": "mp4"]],
+            "1": [["id": "5", "episode_num": 3], ["id": 4, "episode_num": "1", "container_extension": "mkv"]]
+        ]]
+        let seasons = XtreamClient.decodeSeasons(episodes, series: series)
+        XCTAssertEqual(seasons.map(\.number), [1, 2])
+        XCTAssertEqual(seasons[0].episodes.map(\.xtreamStreamID), ["4", "5"])
+        let episode = seasons[0].episodes[0]
+        XCTAssertFalse(episode.isSeriesCollection)
+        XCTAssertEqual(XtreamClient.streamURL(server: server, username: "u", password: "p", item: episode)?.absoluteString,
+                       "https://example.org/sub/series/u/p/4.mkv")
+    }
+
 }

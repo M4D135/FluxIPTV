@@ -1,0 +1,39 @@
+FLUX IPTV 0.8.1 — GRILLE ET POCHETTES 3D - Installation sur votre Mac
+
+1. Quittez FLUX IPTV et arrêtez le projet s'il tourne dans Xcode.
+2. Décompressez l'archive et double-cliquez sur « Installer Flux IPTV.command ».
+3. L'installateur compile la version Debug autonome, vérifie la signature et l’absence de liaison VLCKit sur Mac, puis la copie
+   dans le dossier Applications de votre compte (~/Applications).
+   Une installation déjà présente dans /Applications sera mise à jour si ce
+   dossier est accessible en écriture. L'application s'ouvre automatiquement.
+   L'installateur contrôle que le processus reste actif et restaure l'ancien
+   bundle en cas d'échec du démarrage. Ce contrôle ne valide pas la lecture.
+4. Ensuite ouvrez uniquement FluxIPTV.app depuis le Finder ou le Dock.
+   Ne relancez pas l'installateur à chaque utilisation. Vérifiez le numéro 0.8.1
+   dans la barre FLUX et les thèmes dans Réglages > Interface.
+
+Sur Mac, VLC intégré est désactivé. En cas de format incompatible, installez le
+lecteur VLC officiel et utilisez le bouton « Ouvrir dans VLC externe ».
+
+Prérequis : macOS 14+, Xcode complet déjà installé, Internet si Xcode résout les dépendances iOS/tvOS du projet partagé. Aucune utilisation de sudo ni suppression
+volontaire des données utilisateur ou des entrées du Trousseau.
+
+Signature : un certificat Apple existant est utilisé si possible. Sans certificat,
+une signature ad hoc locale est utilisée ; elle ne garantit pas la continuité des
+autorisations du Trousseau entre deux builds. Les accès automatiques sont silencieux. Pour autoriser une ancienne entrée,
+utilisez Sources > Modifier > Déverrouiller le Trousseau.
+Un changement de signature ou de sandbox peut nécessiter une autorisation macOS.
+Pour changer explicitement de certificat : FLUX_CODESIGN_IDENTITY=empreinte
+suivi du chemin vers l'installateur dans Terminal.
+
+Si le Finder bloque un script téléchargé, ouvrez Terminal, tapez bash suivi d'un
+espace, glissez le fichier « Installer Flux IPTV.command » dans la fenêtre du
+Terminal puis validez. N'affaiblissez pas les réglages de sécurité de macOS.
+
+Journal : ~/Library/Logs/FluxIPTV/installation-*.log
+La compilation est effectuée sur votre Mac. Cette archive ne contient pas un
+binaire macOS précompilé ; l'installateur n'a pas été exécuté sous macOS ici.
+
+Nouveau : dans Sources > Modifier, vous pouvez choisir « Sur ce Mac, sans Trousseau » puis vérifier et enregistrer vos accès. Cette option conserve les identifiants dans un fichier privé non chiffré (permissions 600), le Trousseau demeure plus sûr. Les listes de favoris sont conservées. Réglages > Interface : choisir la qualité des pochettes 3D.
+
+Pochette ouverte : glisser deux doigts sur le trackpad, sans clic. Horizontal = tourner, vertical = incliner. Clics sur les boutons imprimés et flèches clavier conservés.

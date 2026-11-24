@@ -41,4 +41,23 @@ final class M3UParserTests: XCTestCase {
         XCTAssertEqual(StableID.hash("abc"), StableID.hash("abc"))
         XCTAssertNotEqual(StableID.hash("abc"), StableID.hash("abd"))
     }
+    func testConservativeMediaClassificationAndStableIDs() {
+        let playlist = """
+        #EXTM3U
+        #EXTINF:-1 group-title="Cinéma",TV Cinema
+        https://example.org/live/u/p/1.m3u8
+        #EXTINF:-1,Movie
+        https://example.org/movie/u/p/2.mp4
+        #EXTINF:-1 type="series",Episode
+        https://example.org/content/ep.mp4
+        """
+        let result = M3UParser().parse(playlist, sourceID: id)
+        XCTAssertEqual(result.map(\.kind), [.live, .movie, .series])
+        XCTAssertEqual(result[1].id, "\(id.uuidString):m3u:\(StableID.hash("https://example.org/movie/u/p/2.mp4"))")
+        XCTAssertFalse(result[2].isSeriesCollection)
+    }
+
+    func testHLSManifestIsNotAChannelList() {
+        XCTAssertTrue(M3UParser().parse("#EXTM3U\n#EXT-X-TARGETDURATION:6\n#EXTINF:6,\nhttps://example.org/seg.ts", sourceID: id).isEmpty)
+    }
 }

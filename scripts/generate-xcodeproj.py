@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Regenerate a deterministic, dependency-free Xcode project for the macOS app."""
+"""Regenerate a deterministic, Xcode project with a pinned VideoLAN dependency for the macOS app."""
 from __future__ import annotations
 import hashlib
 from pathlib import Path
@@ -29,71 +29,88 @@ def bfile(p):
 def fref(p):
     return uid('file ' + str(p.relative_to(ROOT)))
 
+# Shared sources, distinct application targets and bundle IDs; the macOS ID is unchanged.
+PLATFORMS = [
+    dict(name='FluxIPTV', suffix='mac', sdk='macosx', supported='macosx', deployment='MACOSX_DEPLOYMENT_TARGET = 14.0;', bundle='com.m4d135.FluxIPTV', plist='Info.plist', family='', extra='CODE_SIGN_ENTITLEMENTS = FluxIPTVMac/FluxIPTV.entitlements; ENABLE_APP_SANDBOX = YES;'),
+    dict(name='FluxIPTViOS', suffix='ios', sdk='iphoneos', supported='"iphoneos iphonesimulator"', deployment='IPHONEOS_DEPLOYMENT_TARGET = 17.0;', bundle='com.m4d135.FluxIPTV.ios', plist='Info-iOS.plist', family='TARGETED_DEVICE_FAMILY = "1,2";', extra='SUPPORTS_MACCATALYST = NO;'),
+    dict(name='FluxIPTVTV', suffix='tv', sdk='appletvos', supported='"appletvos appletvsimulator"', deployment='TVOS_DEPLOYMENT_TARGET = 17.0;', bundle='com.m4d135.FluxIPTV.tv', plist='Info-tvOS.plist', family='TARGETED_DEVICE_FAMILY = 3;', extra=''),
+]
+META = ['Info.plist', 'Info-iOS.plist', 'Info-tvOS.plist', 'FluxIPTV.entitlements']
+
+def k(p, key):
+    # Retain the original Mac target ID / scheme compatibility.
+    return key if p['suffix'] == 'mac' else key + '-' + p['suffix']
+
+def bkey(p, file): return k(p, 'build ' + str(file.relative_to(ROOT)))
+
+def ref_list(ids): return ' '.join(uid(i) + ',' for i in ids)
+
 objects = []
 for file in CORE + MAC:
-    path = str(file.relative_to(ROOT))
-    objects.append(f'\t\t{bfile(file)} /* {file.name} in Sources */ = {{isa = PBXBuildFile; fileRef = {fref(file)} /* {file.name} */; }};')
-
-for file in CORE + MAC:
     objects.append(f'\t\t{fref(file)} /* {file.name} */ = {{isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = {file.name}; sourceTree = "<group>"; }};')
-for name in ['Info.plist', 'FluxIPTV.entitlements']:
+for name in META:
     objects.append(f'\t\t{uid("meta " + name)} /* {name} */ = {{isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = {name}; sourceTree = "<group>"; }};')
-objects.append(f'\t\t{uid("product")} /* FluxIPTV.app */ = {{isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = FluxIPTV.app; sourceTree = BUILT_PRODUCTS_DIR; }};')
+objects.append(item('room-resources', 'PBXFileReference', 'lastKnownFileType = folder; path = RoomBakes; sourceTree = "<group>"'))
+objects.append(item('root', 'PBXGroup', f'children = ({uid("core-parent")}, {uid("mac-parent")}, {uid("products")},); sourceTree = "<group>"'))
+objects.append(item('core-parent', 'PBXGroup', f'children = ({uid("core")},); path = Sources; sourceTree = "<group>"'))
+objects.append(item('core', 'PBXGroup', 'children = (' + ' '.join(f'{fref(p)},' for p in CORE) + '); path = FluxIPTVCore; sourceTree = "<group>"'))
+objects.append(item('mac-parent', 'PBXGroup', 'children = (' + ' '.join(f'{fref(p)},' for p in MAC) + ' ' + ref_list(['meta '+s for s in META] + ['room-resources']) + '); path = FluxIPTVMac; name = FluxIPTVShared; sourceTree = "<group>"'))
+objects.append(item('products', 'PBXGroup', f'children = ({ref_list([k(p, "product") for p in PLATFORMS])}); name = Products; sourceTree = "<group>"'))
+objects.append(item('vlc-package', 'XCRemoteSwiftPackageReference', 'repositoryURL = "https://github.com/videolan/vlckit.git"; requirement = {kind = revision; revision = 7f98c70f9f0c11fbdf828220890bd6280361ae99; }'))
 
-objects.append(item('root', 'PBXGroup', f'''children = (
-    {uid('core-parent')} /* Sources */,
-    {uid('mac-parent')} /* FluxIPTVMac */,
-    {uid('products')} /* Products */,
-); sourceTree = "<group>"'''))
-objects.append(item('core-parent', 'PBXGroup', f'children = ({uid("core")} /* FluxIPTVCore */,); path = Sources; sourceTree = "<group>"'))
-objects.append(item('core', 'PBXGroup', 'children = (' + ' '.join(f'{fref(p)} /* {p.name} */,' for p in CORE) + '); path = FluxIPTVCore; sourceTree = "<group>"'))
-objects.append(item('mac-parent', 'PBXGroup', 'children = (' + ' '.join(f'{fref(p)} /* {p.name} */,' for p in MAC) + ' ' + ' '.join(f'{uid("meta " + s)} /* {s} */,' for s in ['Info.plist', 'FluxIPTV.entitlements']) + '); path = FluxIPTVMac; sourceTree = "<group>"'))
-objects.append(item('products', 'PBXGroup', f'children = ({uid("product")} /* FluxIPTV.app */,); name = Products; sourceTree = "<group>"'))
-
-objects.append(item('sources-phase', 'PBXSourcesBuildPhase', 'buildActionMask = 2147483647; files = (' + ' '.join(f'{bfile(p)} /* {p.name} in Sources */,' for p in MAC + CORE) + '); runOnlyForDeploymentPostprocessing = 0'))
-objects.append(item('frameworks-phase', 'PBXFrameworksBuildPhase', 'buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0'))
-objects.append(item('resources-phase', 'PBXResourcesBuildPhase', 'buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0'))
-objects.append(item('target', 'PBXNativeTarget', f'''buildConfigurationList = {uid('target-configs')} /* Build configuration list for PBXNativeTarget "FluxIPTV" */;
-    buildPhases = ({uid('sources-phase')} /* Sources */, {uid('frameworks-phase')} /* Frameworks */, {uid('resources-phase')} /* Resources */,);
-    buildRules = (); dependencies = (); name = FluxIPTV; productName = FluxIPTV;
-    productReference = {uid('product')} /* FluxIPTV.app */; productType = "com.apple.product-type.application"'''))
-objects.append(item('project', 'PBXProject', f'''attributes = {{BuildIndependentTargetsInParallel = 1; LastUpgradeCheck = 1600; TargetAttributes = {{{uid('target')} = {{CreatedOnToolsVersion = 16.0; }}; }}; }};
-    buildConfigurationList = {uid('project-configs')} /* Build configuration list for PBXProject "FluxIPTV" */;
-    compatibilityVersion = "Xcode 14.0"; developmentRegion = fr; hasScannedForEncodings = 0;
-    knownRegions = (fr, en, Base,); mainGroup = {uid('root')};
-    productRefGroup = {uid('products')} /* Products */; projectDirPath = "";
-    projectRoot = ""; targets = ({uid('target')} /* FluxIPTV */,)'''))
-
-for config in ['Debug', 'Release']:
-    objects.append(item(f'project-{config}', 'XCBuildConfiguration', f'''buildSettings = {{
-        ALWAYS_SEARCH_USER_PATHS = NO;
-        CLANG_ENABLE_MODULES = YES;
-        CLANG_ENABLE_OBJC_ARC = YES;
-        MACOSX_DEPLOYMENT_TARGET = 14.0;
-        SDKROOT = macosx;
-        SWIFT_OPTIMIZATION_LEVEL = {'"-Onone"' if config == 'Debug' else '"-O"'};
-    }}; name = {config}'''))
-    objects.append(item(f'target-{config}', 'XCBuildConfiguration', f'''buildSettings = {{
-        CODE_SIGN_ENTITLEMENTS = FluxIPTVMac/FluxIPTV.entitlements;
+for p in PLATFORMS:
+    n=p['name']; u=lambda key:uid(k(p,key))
+    objects.append(item(k(p,'product'), 'PBXFileReference', f'explicitFileType = wrapper.application; includeInIndex = 0; path = {n}.app; sourceTree = BUILT_PRODUCTS_DIR'))
+    for file in CORE + MAC:
+        objects.append(item(bkey(p,file), 'PBXBuildFile', f'fileRef = {fref(file)}'))
+    objects.append(item(k(p,'sources-phase'), 'PBXSourcesBuildPhase', f'buildActionMask = 2147483647; files = ({ref_list([bkey(p,file) for file in CORE+MAC])}); runOnlyForDeploymentPostprocessing = 0'))
+    use_vlc = p['suffix'] != 'mac'
+    if use_vlc:
+        objects.append(item(k(p,'vlc-product'), 'XCSwiftPackageProductDependency', f'package = {uid("vlc-package")}; productName = VLCKit'))
+        objects.append(item(k(p,'vlc-build'), 'PBXBuildFile', f'productRef = {u("vlc-product")}'))
+    vlc_build_refs = u("vlc-build") + ',' if use_vlc else ''
+    vlc_product_refs = u("vlc-product") + ',' if use_vlc else ''
+    objects.append(item(k(p,'frameworks-phase'), 'PBXFrameworksBuildPhase', f'buildActionMask = 2147483647; files = ({vlc_build_refs}); runOnlyForDeploymentPostprocessing = 0'))
+    objects.append(item(k(p,'room-build'), 'PBXBuildFile', f'fileRef = {uid("room-resources")}'))
+    objects.append(item(k(p,'resources-phase'), 'PBXResourcesBuildPhase', f'buildActionMask = 2147483647; files = ({u("room-build")},); runOnlyForDeploymentPostprocessing = 0'))
+    objects.append(item(k(p,'target'), 'PBXNativeTarget', f'buildConfigurationList = {u("target-configs")}; buildPhases = ({u("sources-phase")}, {u("frameworks-phase")}, {u("resources-phase")},); buildRules = (); dependencies = (); packageProductDependencies = ({vlc_product_refs}); name = {n}; productName = {n}; productReference = {u("product")}; productType = "com.apple.product-type.application"'))
+    for config in ['Debug','Release']:
+        settings = f"""
         CODE_SIGN_STYLE = Automatic;
-        CURRENT_PROJECT_VERSION = 1;
-        ENABLE_APP_SANDBOX = YES;
+        CURRENT_PROJECT_VERSION = 15;
         GENERATE_INFOPLIST_FILE = NO;
-        INFOPLIST_FILE = FluxIPTVMac/Info.plist;
-        MACOSX_DEPLOYMENT_TARGET = 14.0;
-        MARKETING_VERSION = 0.1.0;
-        PRODUCT_BUNDLE_IDENTIFIER = com.m4d135.FluxIPTV;
+        INFOPLIST_FILE = FluxIPTVMac/{p['plist']};
+        SDKROOT = {p['sdk']};
+        {p['deployment']}
+        {p['family']}
+        {p['extra']}
+        LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/{'../Frameworks' if p['suffix'] == 'mac' else 'Frameworks'}";
+        {'ENABLE_DEBUG_DYLIB = NO;' if p['suffix'] == 'mac' else ''}
+        MARKETING_VERSION = 0.8.2;
+        PRODUCT_BUNDLE_IDENTIFIER = {p['bundle']};
         PRODUCT_NAME = "$(TARGET_NAME)";
         SWIFT_VERSION = 5.0;
         SWIFT_STRICT_CONCURRENCY = minimal;
-        SUPPORTED_PLATFORMS = macosx;
+        SUPPORTED_PLATFORMS = {p['supported']};
         {'ONLY_ACTIVE_ARCH = YES; SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;' if config == 'Debug' else ''}
-    }}; name = {config}'''))
+        """
+        objects.append(item(k(p,f'target-{config}'), 'XCBuildConfiguration', f'buildSettings = {{{settings}}}; name = {config}'))
+    objects.append(item(k(p,'target-configs'), 'XCConfigurationList', f'buildConfigurations = ({u("target-Debug")}, {u("target-Release")},); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release'))
 
-objects.append(item('project-configs', 'XCConfigurationList', f'buildConfigurations = ({uid("project-Debug")} /* Debug */, {uid("project-Release")} /* Release */,); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release'))
-objects.append(item('target-configs', 'XCConfigurationList', f'buildConfigurations = ({uid("target-Debug")} /* Debug */, {uid("target-Release")} /* Release */,); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release'))
-
-text = '''// !$*UTF8*$!\n{\n    archiveVersion = 1;\n    classes = {};\n    objectVersion = 56;\n    objects = {\n''' + '\n'.join(objects) + f'''\n    }};\n    rootObject = {uid('project')} /* Project object */;\n}}\n'''
+attrs=' '.join(f'{uid(k(p,"target"))} = {{CreatedOnToolsVersion = 16.0;}};' for p in PLATFORMS)
+objects.append(item('project', 'PBXProject', f'attributes = {{BuildIndependentTargetsInParallel = 1; LastUpgradeCheck = 1600; TargetAttributes = {{{attrs}}}; }}; buildConfigurationList = {uid("project-configs")}; compatibilityVersion = "Xcode 14.0"; developmentRegion = fr; hasScannedForEncodings = 0; knownRegions = (fr, en, Base,); mainGroup = {uid("root")}; productRefGroup = {uid("products")}; projectDirPath = ""; projectRoot = ""; packageReferences = ({uid("vlc-package")},); targets = ({ref_list([k(p,"target") for p in PLATFORMS])})'))
+for config in ['Debug','Release']:
+    opt = '"-Onone"' if config == 'Debug' else '"-O"'
+    objects.append(item(f'project-{config}', 'XCBuildConfiguration', f'buildSettings = {{ALWAYS_SEARCH_USER_PATHS = NO; CLANG_ENABLE_MODULES = YES; CLANG_ENABLE_OBJC_ARC = YES; SWIFT_OPTIMIZATION_LEVEL = {opt}; }}; name = {config}'))
+objects.append(item('project-configs','XCConfigurationList', f'buildConfigurations = ({uid("project-Debug")}, {uid("project-Release")},); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release'))
+text = '// !$*UTF8*$!\n{\n    archiveVersion = 1;\n    classes = {};\n    objectVersion = 56;\n    objects = {\n' + '\n'.join(objects) + f'\n    }};\n    rootObject = {uid("project")};\n}}\n'
 output = ROOT / 'FluxIPTV.xcodeproj' / 'project.pbxproj'
 output.write_text(text)
-print(f'Generated {output} ({len(MAC)+len(CORE)} Swift files)')
+# Shared schemes are generated from the original stable Mac scheme.
+scheme_dir=ROOT/'FluxIPTV.xcodeproj'/'xcshareddata'/'xcschemes'
+base=(scheme_dir/'FluxIPTV.xcscheme').read_text()
+for p in PLATFORMS[1:]:
+    n=p['name']
+    scheme=base.replace(uid('target'),uid(k(p,'target'))).replace('BuildableName="FluxIPTV.app"',f'BuildableName="{n}.app"').replace('BlueprintName="FluxIPTV"',f'BlueprintName="{n}"')
+    (scheme_dir/f'{n}.xcscheme').write_text(scheme)
+print(f'Generated {output} ({len(MAC)+len(CORE)} shared Swift files, 3 targets)')

@@ -7,11 +7,12 @@ public struct M3UParser: Sendable {
     /// Does not interpret the HLS segment directives found inside a .m3u8 manifest.
     public func parse(_ input: String, sourceID: UUID) -> [IPTVItem] {
         var items: [IPTVItem] = []
-        var pending: (name: String, group: String, logo: URL?)?
+        var pending: (name: String, group: String, logo: URL?, type: String?)?
         var extensionGroup: String?
         var seen = Set<String>()
 
         let text = input.replacingOccurrences(of: "\u{FEFF}", with: "")
+        if text.contains("#EXT-X-TARGETDURATION:") || text.contains("#EXT-X-STREAM-INF:") { return [] }
         for raw in text.components(separatedBy: .newlines) {
             let line = raw.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !line.isEmpty else { continue }
@@ -24,7 +25,8 @@ public struct M3UParser: Sendable {
                 pending = (
                     name: name,
                     group: attrs["group-title"] ?? extensionGroup ?? "Sans catégorie",
-                    logo: IPTVURL.remoteImage(attrs["tvg-logo"])
+                    logo: IPTVURL.remoteImage(attrs["tvg-logo"]),
+                    type: attrs["type"] ?? attrs["tvg-type"]
                 )
                 extensionGroup = nil
                 continue
@@ -40,19 +42,42 @@ public struct M3UParser: Sendable {
             let id = "\(sourceID.uuidString):m3u:\(StableID.hash(stream.absoluteString))"
             guard seen.insert(id).inserted else { continue }
             let title = pending?.name.isEmpty == false ? pending!.name : stream.lastPathComponent
+            let group = pending?.group ?? extensionGroup ?? "Sans catégorie"
             items.append(IPTVItem(
                 id: id,
                 sourceID: sourceID,
                 name: title.isEmpty ? (stream.host ?? "Flux IPTV") : title,
-                group: pending?.group ?? extensionGroup ?? "Sans catégorie",
+                group: group,
                 logoURL: pending?.logo,
-                kind: .live,
+                kind: Self.mediaKind(for: stream, group: group, explicitType: pending?.type),
                 directURL: stream,
                 xtreamStreamID: nil,
                 fileExtension: nil
             ))
         }
         return items
+    }
+
+    // Explicit metadata or conventional Xtream URL prefixes only. Never guess from a codec
+    // or a broad word such as "cinéma" (which may be a live channel category).
+    static func mediaKind(for url: URL, group: String, explicitType: String?) -> IPTVMediaKind {
+        func classify(_ raw: String) -> IPTVMediaKind? {
+            let value = raw.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: Locale(identifier: "en_US_POSIX"))
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            if ["series", "serie", "tv shows", "tv show", "episodes", "episode"].contains(value) { return .series }
+            if ["movie", "movies", "film", "films", "vod"].contains(value) { return .movie }
+            if ["live", "tv", "direct", "chaines tv"].contains(value) { return .live }
+            return nil
+        }
+        if let explicitType, let kind = classify(explicitType) { return kind }
+        let segments = url.pathComponents.map { $0.lowercased() }
+        // Standard Xtream paths end in /{live,movie,series}/user/password/id.ext.
+        if segments.count >= 5, let kind = classify(segments[segments.count - 4]) { return kind }
+        let normalizedGroup = group.replacingOccurrences(of: " - ", with: "|")
+        for part in normalizedGroup.split(whereSeparator: { "|:/»".contains($0) }) {
+            if let kind = classify(String(part)), kind != .live { return kind }
+        }
+        return .live
     }
 
     private func title(afterAttributes metadata: String) -> String {

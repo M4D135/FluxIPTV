@@ -1,331 +1,1135 @@
 import SwiftUI
 import AVKit
+#if os(macOS)
+import AppKit
+#endif
 
-private enum UIColors {
-    static let background = Color(red: 0.065, green: 0.080, blue: 0.115)
-    static let sidebar = Color(red: 0.085, green: 0.103, blue: 0.143)
-    static let list = Color(red: 0.095, green: 0.115, blue: 0.160)
-    static let accent = Color(red: 0.21, green: 0.78, blue: 0.96)
-    static let selected = Color(red: 0.18, green: 0.31, blue: 0.43)
-}
+private enum FluxPage: Equatable { case catalogue, series, player }
 
+/// One living-room UI for Mac, iPhone, iPad and Apple TV. All actual tvOS navigation
+/// uses the OS focus engine; the Mac simulator and gamepad use the shared focus grid.
 struct ContentView: View {
     @EnvironmentObject private var library: IPTVLibrary
     @EnvironmentObject private var playback: PlaybackController
+    #if os(iOS)
+    @Environment(\.horizontalSizeClass) private var sizeClass
+    #endif
+    @State private var page: FluxPage = .catalogue
+    @State private var group: String? = nil
+    @State private var continueOnly = false
     @State private var addingSource = false
+    @State private var editingSource: IPTVSource?
+    @State private var presetEditor: PresetEditor?
+    @State private var deletingPreset: FavoritePreset?
+    @State private var itemOptions: IPTVItem?
+    @State private var favoriteFeedback: String?
+    @State private var favoriteFeedbackTask: Task<Void, Never>?
+    @State private var entranceItem: IPTVItem?
+    @State private var entranceExpanded = false
+    @State private var entranceTask: Task<Void, Never>?
+    @State private var showingSources = false
+    @State private var showingLists = false
+    @State private var showingSearch = false
+    @State private var showingEngines = false
+    @State private var diagnosticSettings = false
+    @State private var showRemote = false
+    @AppStorage("fluxiptv.remoteAppearance") private var remoteAppearance: RemoteAppearance = .black
+    @AppStorage(FluxAppearance.glassKey) private var richGlass = true
+    @AppStorage(FluxAppearance.densityKey) private var density = "cinema"
+    @AppStorage(ClubInterfaceProfile.storageKey) private var clubProfile: ClubInterfaceProfile = .neoVideoClub
+    @State private var remoteNavigationActive = false
+    @State private var showingGroups = false
+    @State private var groupSearch = ""
+    @State private var series: IPTVItem?
+    @State private var seasons: [IPTVSeason] = []
+    @State private var seasonNumber: Int?
+    @State private var episodesLoading = false
+    @State private var episodesFailed = false
+    @State private var seriesRequest = UUID()
+    @State private var columns = 5
+    @State private var compactChrome = false
+    @State private var focusID: String? = "tab-live"
+    @State private var previewID: String?
+    @State private var previewItem: IPTVItem?
+    @State private var heldItem: IPTVItem?
+    @State private var heldSlice: CatalogSlice?
+    @State private var heldDetails = IPTVDetails()
+    @State private var caseExpanded = false
+    @State private var caseToken = UUID()
+    @State private var caseYaw = 0.0
+    @State private var casePitch = 0.0
+    @State private var caseRemoteEvent: CaseRemoteEvent?
+    @State private var casePadSignal: CasePadSignal?
+    @State private var caseStartEpisodes = false
+    @State private var cardFrames = CaseFrameCache()
+    @State private var catalogPage = 0
+    @State private var resumeSlice = CatalogSlice()
+    @State private var caseDetailTask: Task<Void, Never>?
+    @State private var caseTransitionTask: Task<Void, Never>?
+    @AppStorage(MediaThemePreferences.cinemaKey) private var cinemaTheme: VideoClubTheme = .neo90
+    @AppStorage(MediaThemePreferences.seriesKey) private var seriesTheme: VideoClubTheme = .neo90
+    @AppStorage(MediaThemePreferences.tvKey) private var tvTheme: VideoClubTheme = .neo90
+    private var theme: VideoClubTheme { theme(for: library.contentKind) }
+    private var environment: MediaEnvironment { MediaEnvironment(kind: library.contentKind) }
+    private func theme(for kind: IPTVMediaKind) -> VideoClubTheme {
+        switch kind { case .movie: cinemaTheme; case .series: seriesTheme; case .live: tvTheme }
+    }
+    private var themeAccent:Color {let p=theme.palette.accent;return Color(red:p.x,green:p.y,blue:p.z)}
+    @State private var zapBanner = false
+    @State private var zapToken = UUID()
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @FocusState private var systemFocus: String?
+    @FocusState private var searchFocus: Bool
+    @State private var cinema = false
+    @State private var cinemaControls = false
+    @State private var wasFullscreen = false
+    @State private var cinemaWindowNumber: Int?
+    @StateObject private var remoteInput = RemoteInputBridge()
+
+    private var selectedSeason: IPTVSeason? { seasons.first { $0.number == seasonNumber } }
+    private var episodes: [IPTVItem] { selectedSeason?.episodes ?? [] }
+    private var visibleSlice: CatalogSlice {
+        continueOnly ? resumeSlice : library.catalogResults.slice(group:group)
+    }
+    private var visible: [IPTVItem] { visibleSlice.items }
+    private var groups: [String] { library.catalogResults.groups }
+    private var catalogPageSize: Int { max(2,columns)*12 }
+    private var catalogPageCount: Int { visibleSlice.pageCount(size:catalogPageSize) }
+    private var displayedItems: ArraySlice<IPTVItem> { visibleSlice.window(page:catalogPage,size:catalogPageSize) }
+    private func revealCatalogItem(_ id: String) {
+        if let p = visibleSlice.page(for:id,size:catalogPageSize), p != catalogPage { catalogPage = p }
+    }
+    private func rebuildResumeSlice() {
+        guard continueOnly else { resumeSlice = CatalogSlice(); return }
+        let ids = Set(playback.history.entries.values.lazy.filter(\.resumable).map(\.id))
+        resumeSlice = library.catalogResults.slice(group:group).retaining(ids:ids)
+    }
+    private func resetCatalogWindow() {
+        rebuildResumeSlice(); catalogPage = 0
+    }
+    private func changeCatalogPage(_ delta: Int) {
+        let target = max(0,min(catalogPageCount-1,catalogPage+delta))
+        guard target != catalogPage else { return }
+        catalogPage = target
+        if let first = displayedItems.first { focusID=first.id; setPreview(first) }
+    }
+    private var modalOpen: Bool {
+        addingSource || editingSource != nil || presetEditor != nil || deletingPreset != nil || itemOptions != nil || showingSources || showingLists || showingEngines || showingGroups || library.alertMessage != nil
+    }
+    private var cardWidth: CGFloat {
+        #if os(tvOS)
+        return density == "compact" ? 185 : (library.contentKind == .live ? 280 : (clubProfile.isEditorial ? 200 : 225))
+        #elseif os(iOS)
+        return sizeClass == .compact ? 124 : (library.contentKind == .live ? 174 : 150)
+        #else
+        return density == "compact" ? (library.contentKind == .live ? 160 : 135) : (library.contentKind == .live ? 250 : (clubProfile.isEditorial ? 185 : 205))
+        #endif
+    }
+    private var currentClubItem: IPTVItem? {
+        visibleSlice.item(id:previewID) ?? visibleSlice.item(id:focusID) ?? visible.first
+    }
+    // A COW snapshot of the selected catalogue order. Filter/history refreshes
+    // must not change the neighbors of a case already in the user's hands.
+    private var inspectionSlice: CatalogSlice { heldSlice ?? visibleSlice }
+    private func clubNeighbors(_ item:IPTVItem)->(IPTVItem?,IPTVItem?) {
+        (inspectionSlice.adjacent(to:item.id,offset:-1),inspectionSlice.adjacent(to:item.id,offset:1))
+    }
+    private var showingAllCatalog: Bool {
+        CatalogScope.isAll(group:group,search:library.search,presetID:library.selectedPresetID,resumeOnly:continueOnly)
+    }
+    private func showAllCatalog() {
+        continueOnly=false;group=nil;library.selectedPresetID=nil;library.search=""
+        clearPreview();resetCatalogWindow();focusID="group-all"
+    }
+    private func toggleResumeFilter() {
+        if !continueOnly {library.selectedPresetID=nil}
+        continueOnly.toggle()
+    }
+    private func toggleQuickFavorites() {
+        continueOnly=false
+        library.selectedPresetID = library.selectedPresetID == FavoritePresets.defaultID(for:library.contentKind) ? nil : FavoritePresets.defaultID(for:library.contentKind)
+    }
+    private var headerSpacing: CGFloat {
+        #if os(tvOS)
+        return 25
+        #else
+        return 12
+        #endif
+    }
 
     var body: some View {
-        HStack(spacing: 0) {
-            sidebar
-                .frame(width: 245)
-                .background(UIColors.sidebar)
-            Rectangle().fill(.white.opacity(0.08)).frame(width: 1)
-            channelColumn
-                .frame(width: 345)
-                .background(UIColors.list)
-            Rectangle().fill(.white.opacity(0.08)).frame(width: 1)
-            playerColumn
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(UIColors.background)
-        }
-        .frame(minWidth: 1020, minHeight: 620)
-        .sheet(isPresented: $addingSource) {
-            AddSourceSheet().environmentObject(library)
-        }
-        .alert("Flux IPTV", isPresented: Binding(
-            get: { library.alertMessage != nil },
-            set: { if !$0 { library.alertMessage = nil } }
-        )) {
-            Button("OK", role: .cancel) { library.alertMessage = nil }
-        } message: {
-            Text(library.alertMessage ?? "")
-        }
-        .onChange(of: library.selectedSourceID) { _, _ in
-            playback.stop()
-        }
-        .onChange(of: library.selectedItemID) { _, _ in
-            guard let item = library.selectedItem else {
-                playback.stop()
-                return
-            }
-            do {
-                let url = try library.playbackURL(for: item)
-                playback.play(item, url: url)
-            } catch {
-                playback.stop()
-                library.alertMessage = error.localizedDescription
-            }
-        }
-    }
-
-    private var sidebar: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            HStack(spacing: 11) {
-                Image(systemName: "waveform.path")
-                    .font(.system(size: 26, weight: .bold))
-                    .foregroundStyle(UIColors.accent)
-                VStack(alignment: .leading, spacing: 1) {
-                    Text("FLUX").font(.system(size: 22, weight: .bold, design: .rounded)).tracking(3)
-                    Text("IPTV POUR MAC").font(.system(size: 9, weight: .semibold))
-                        .tracking(2.2).foregroundStyle(.secondary)
-                }
-            }
-            .padding(.top, 18)
-            .padding(.horizontal, 18)
-
-            VStack(alignment: .leading, spacing: 8) {
-                Text("BIBLIOTHÈQUE")
-                    .font(.system(size: 10, weight: .semibold))
-                    .tracking(1.5).foregroundStyle(.secondary)
-                    .padding(.horizontal, 18)
-
-                ScrollView {
-                    LazyVStack(spacing: 3) {
-                        ForEach(library.sources) { source in
-                            Button {
-                                Task { await library.selectSource(source.id) }
-                            } label: {
-                                HStack(spacing: 11) {
-                                    Image(systemName: source.symbol)
-                                        .frame(width: 20).foregroundStyle(UIColors.accent)
-                                    Text(source.name).lineLimit(1)
-                                    Spacer(minLength: 3)
-                                    if library.selectedSourceID == source.id {
-                                        Image(systemName: "checkmark.circle.fill")
-                                            .foregroundStyle(UIColors.accent)
-                                    }
-                                }
-                                .padding(.horizontal, 13).padding(.vertical, 11)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .background(library.selectedSourceID == source.id
-                                            ? UIColors.selected : .clear, in: RoundedRectangle(cornerRadius: 9))
-                                .contentShape(Rectangle())
-                            }
-                            .buttonStyle(.plain)
-                            .contextMenu {
-                                Button("Supprimer la source", role: .destructive) {
-                                    if library.selectedSourceID == source.id { playback.stop() }
-                                    library.removeSource(source)
-                                }
-                            }
+        GeometryReader { geometry in
+            HStack(spacing: 0) {
+                ScrollViewReader { reader in
+                    VStack(spacing: 0) {
+                        if !cinema { header }
+                        switch page {
+                        case .catalogue: catalogue
+                        case .series: seriesDetail
+                        case .player: playerPage
                         }
-                    }.padding(.horizontal, 9)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .opacity((heldItem != nil && caseExpanded) || entranceItem != nil ? 0 : 1)
+                    .allowsHitTesting(heldItem == nil)
+                    .disabled(heldItem != nil)
+                    .accessibilityHidden(heldItem != nil)
+                    .overlay {
+                        if let heldItem { heldOverlay(heldItem, reader: reader) }
+                    }
+                    .coordinateSpace(name: "club-pane")
+                    .onPreferenceChange(CaseFrameKey.self) { frames in cardFrames.update(frames) }
+                    .onChange(of: heldItem?.id) { _, id in
+                        guard id == nil, page == .catalogue, let target=focusID else{return}
+                        revealCatalogItem(target)
+                        Task { @MainActor in
+                            await Task.yield()
+                            guard heldItem == nil, page == .catalogue else{return}
+                            reader.scrollTo(target,anchor:.center)
+                            systemFocus=target
+                        }
+                    }
+                    .onChange(of: focusID) { _, id in
+                        guard let id, heldItem == nil else { return }
+                        if page == .catalogue, let item = visibleSlice.item(id:id) {
+                            revealCatalogItem(id); setPreview(item)
+                        }
+                        #if os(tvOS)
+                        systemFocus = id
+                        reader.scrollTo(id, anchor: .center)
+                        #else
+                        if remoteNavigationActive && !searchFocus {
+                            systemFocus = id
+                            reader.scrollTo(id, anchor: .center)
+                        }
+                        #endif
+                    }
+                    .onChange(of: catalogPage) { _, _ in
+                        guard page == .catalogue, let id = heldItem?.id ?? focusID, displayedItems.contains(where: { $0.id == id }) else { return }
+                        Task { @MainActor in
+                            await Task.yield()
+                            reader.scrollTo(id,anchor:.center)
+                            if heldItem == nil && remoteNavigationActive { systemFocus=id }
+                        }
+                    }
+                    .onChange(of: systemFocus) { _, id in
+                        if heldItem == nil, let id, focusID != id { focusID = id }
+                    }
+                }
+                #if !os(tvOS)
+                // The simulator is a real side panel, never covers catalogue/video.
+                // On narrow mobile displays it is presented separately.
+                if showRemote && !cinema && geometry.size.width >= 800 {
+                    Divider().overlay(.white.opacity(0.08))
+                    remotePanel.padding(12)
+                }
+                #endif
+            }
+            .background { background }
+            .overlay {
+                if let entranceItem {
+                    PlaybackEntranceView(kind: entranceItem.kind, expanded: entranceExpanded)
                 }
             }
-            .frame(maxHeight: .infinity, alignment: .top)
-
-            VStack(spacing: 10) {
-                Button { addingSource = true } label: {
-                    Label("Ajouter une source", systemImage: "plus.circle.fill")
-                        .frame(maxWidth: .infinity)
+            .overlay(alignment: .top) {
+                if let favoriteFeedback {
+                    Label(favoriteFeedback, systemImage: "checkmark.circle.fill")
+                        .font(.callout.weight(.semibold)).padding(14)
+                        .fluxFrosted(radius: 18).padding(.top, 18)
+                        .allowsHitTesting(false).transition(.opacity)
                 }
-                .keyboardShortcut("n", modifiers: .command)
-                .buttonStyle(.borderedProminent)
-                .tint(UIColors.accent)
-                .foregroundStyle(.black)
-
-                Text("Xtream Codes  ·  M3U")
-                    .font(.system(size: 10, design: .monospaced))
-                    .foregroundStyle(.secondary)
             }
-            .padding(.horizontal, 18)
-            .padding(.bottom, 18)
+            .allowsHitTesting(entranceItem == nil)
+            .onAppear { updateColumns(geometry.size.width) }
+            .onChange(of: geometry.size.width) { _, width in updateColumns(width) }
+            .onChange(of: library.contentKind) { _, _ in continueOnly = false; group = nil; clearPreview(); updateColumns(geometry.size.width) }
+            .onChange(of: showRemote) { _, _ in updateColumns(geometry.size.width) }
+            .onChange(of: density) { _, _ in updateColumns(geometry.size.width) }
+            .onChange(of: clubProfile) { _, _ in updateColumns(geometry.size.width) }
+            #if !os(tvOS)
+            #if os(iOS)
+            .sheet(isPresented: Binding(get: { showRemote && geometry.size.width < 800 }, set: { if !$0 { showRemote = false } })) {
+                remotePanel.padding(18).presentationDetents([.large])
+            }
+            #endif
+            #endif
         }
+        #if os(macOS)
+        .frame(minWidth: cinema ? 320 : 860, minHeight: cinema ? 180 : 540)
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.willExitFullScreenNotification)) { notice in
+            if (notice.object as? NSWindow)?.windowNumber == cinemaWindowNumber { cinema = false; cinemaWindowNumber = nil }
+        }
+        #endif
+        #if os(tvOS)
+        .fluxExit(heldItem != nil || page != .catalogue || showingSearch || group != nil || continueOnly || library.selectedPresetID != nil) { if heldItem != nil { dispatch(.back) } else { back() } }
+        .onPlayPauseCommand { dispatch(.playPause) }
+        #else
+        .onKeyPress(keys: [.upArrow, .downArrow, .leftArrow, .rightArrow, .return, .escape, .space, "f"], phases: [.down, .repeat]) { press in
+            guard !modalOpen else { return .ignored }
+            if searchFocus {
+                if press.key == .escape { showingSearch = false; searchFocus = false; return .handled }
+                return .ignored
+            }
+            if press.key == "f" && press.modifiers.contains([.command, .shift]) { dispatch(.fullscreen) }
+            else if press.key == "f" && press.modifiers.contains(.command) { search() }
+            else if press.key == .upArrow { dispatch(.up) }
+            else if press.key == .downArrow { dispatch(.down) }
+            else if press.key == .leftArrow { dispatch(.left) }
+            else if press.key == .rightArrow { dispatch(.right) }
+            else if press.key == .return { dispatch(.select) }
+            else if press.key == .escape { dispatch(.back) }
+            else if press.key == .space { dispatch(.playPause) }
+            else { return .ignored }
+            return .handled
+        }
+        .onAppear { remoteInput.connect { action in if !modalOpen && !searchFocus { dispatch(action) } } }
+        .onDisappear { remoteInput.disconnect() }
+        #endif
+        .sheet(isPresented: $addingSource) { AddSourceSheet(onSaved: { home() }).environmentObject(library) }
+        .sheet(item: $editingSource) { source in AddSourceSheet(existing: source, onSaved: { home() }).environmentObject(library) }
+        .sheet(item: $presetEditor) { editor in
+            PresetNameSheet(editor: editor) { name in
+                if let existing = editor.existing { return library.renamePreset(existing, name: name) }
+                return library.createPreset(name: name, kind: editor.kind, initialItem: editor.initialItem)
+            }
+        }
+        .sheet(isPresented: $showingSources) { sourcesPanel }
+        .sheet(isPresented: $showingLists) { listsPanel }
+        .sheet(isPresented: $showingGroups) { groupsPanel }
+        .sheet(isPresented: $showingEngines, onDismiss: { diagnosticSettings = false }) { enginesPanel }
+        .sheet(item: $itemOptions) { item in itemPanel(item) }
+        .confirmationDialog("Supprimer la liste ?", isPresented: Binding(get: { deletingPreset != nil }, set: { if !$0 { deletingPreset = nil } }), presenting: deletingPreset) { preset in
+            Button("Supprimer « \(preset.name) »", role: .destructive) { library.deletePreset(preset); deletingPreset = nil; group = nil }
+            Button("Annuler", role: .cancel) { deletingPreset = nil }
+        }
+        .alert("Flux IPTV", isPresented: Binding(get: { library.alertMessage != nil }, set: { if !$0 { library.alertMessage = nil } })) {
+            Button("OK", role: .cancel) { library.alertMessage = nil }
+        } message: { Text(library.alertMessage ?? "") }
+        .onChange(of: library.selectedSourceID) { _, _ in home(); group = nil; clearPreview() }
+        .onChange(of: library.selectedPresetID) { _, id in if id != nil {continueOnly=false};group=nil;clearPreview() }
+        .onChange(of: library.search) { _, _ in group = nil; clearPreview() }
+        .onChange(of: group) { _, _ in clearPreview(); resetCatalogWindow() }
+        .onChange(of: library.catalogResults.revision) { _, _ in resetCatalogWindow() }
+        .onChange(of: continueOnly) { _, _ in resetCatalogWindow(); clearPreview() }
+        .onChange(of: playback.history.entries) { _, _ in
+            if continueOnly { rebuildResumeSlice(); catalogPage=min(catalogPage,catalogPageCount-1) }
+        }
+        .onChange(of: catalogPageSize) { _, _ in
+            if let id=heldItem?.id ?? previewID { revealCatalogItem(id) }
+            else { catalogPage=min(catalogPage,catalogPageCount-1) }
+        }
+        .onDisappear { caseDetailTask?.cancel(); caseTransitionTask?.cancel(); entranceTask?.cancel(); favoriteFeedbackTask?.cancel() }
     }
 
-    private var channelColumn: some View {
-        VStack(spacing: 0) {
-            VStack(alignment: .leading, spacing: 13) {
+    #if !os(tvOS)
+    private var remotePanel: some View {
+        RemotePad(appearance: $remoteAppearance, send: dispatch, caseSwipe: heldItem == nil ? nil : { input in
+            casePadSignal=CasePadSignal(input:input)
+        }, close: {
+            showRemote = false; remoteNavigationActive = false
+        }, volume: playback.localVolume, muted: playback.muted)
+    }
+    #endif
+
+    // Generated stage and artwork exist only in catalogue/series mode.
+    // No decorative render passes or backdrop downloads behind video.
+    private var background: some View {
+        ZStack {
+            if page == .player {
+                Color.black.ignoresSafeArea()
+            } else {
+                FluxBackdrop(theme: theme)
+                ProceduralStage(kind: library.contentKind)
+                    .scaleEffect(entranceExpanded ? 1.85 : 1, anchor: .center)
+                LinearGradient(colors:[.black.opacity(0.12),.black.opacity(heldItem != nil ? 0.22 : 0.52)],startPoint:.top,endPoint:.bottom)
+                    .ignoresSafeArea().allowsHitTesting(false)
+            }
+        }.accessibilityHidden(true)
+    }
+    private func setPreview(_ item: IPTVItem) { if previewID != item.id { previewID=item.id; previewItem=item } }
+    private func clearPreview() { previewID=nil; previewItem=nil }
+    private func selectCard(_ item: IPTVItem) {
+        // A successful long press presents a sheet before release; the same
+        // release must never also fire the short-press playback action.
+        guard !modalOpen, entranceItem == nil else { return }
+        pointerSelect(item.id); setPreview(item); openItem(item)
+    }
+    private func chooseFavorites(_ item: IPTVItem) {
+        pointerSelect(item.id); itemOptions = item
+    }
+    private func favoritesSaved() {
+        favoriteFeedbackTask?.cancel()
+        withAnimation(reduceMotion ? nil : .easeOut(duration: 0.15)) { favoriteFeedback = "Listes enregistrées" }
+        favoriteFeedbackTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
+            guard !Task.isCancelled else { return }
+            withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) { favoriteFeedback = nil }
+        }
+    }
+    private func requestCaseDetails(_ item: IPTVItem, token: UUID) {
+        caseDetailTask?.cancel()
+        caseDetailTask = Task { @MainActor in
+            // Holding next/previous should not queue dozens of API requests.
+            try? await Task.sleep(nanoseconds:160_000_000)
+            guard !Task.isCancelled,caseToken==token else {return}
+            let details=await library.details(for:item)
+            guard !Task.isCancelled,caseToken==token,heldItem?.id==item.id else{return}
+            heldDetails=details
+        }
+    }
+    private func showCase(_ item: IPTVItem, episodes: Bool = false) {
+        caseTransitionTask?.cancel()
+        let token=UUID(); caseToken=token
+        searchFocus=false
+        heldSlice=visibleSlice.inspection(containing:item,fallback:library.catalogResults.all)
+        heldDetails=item.details;caseYaw=episodes ? 180:0;casePitch=0;caseExpanded=false;caseStartEpisodes=episodes;caseRemoteEvent=nil;casePadSignal=nil;heldItem=item
+        caseTransitionTask = Task { @MainActor in
+            await Task.yield()
+            guard !Task.isCancelled,caseToken==token else {return}
+            withAnimation(reduceMotion ? nil : .spring(response:0.38,dampingFraction:0.86)) {caseExpanded=true}
+        }
+        requestCaseDetails(item,token:token)
+    }
+    private func moveCase(_ delta:Int) {
+        guard let current=heldItem, let item=inspectionSlice.adjacent(to:current.id,offset:delta) else{return}
+        let token=UUID();caseToken=token
+        caseTransitionTask?.cancel();caseExpanded=true
+        // Preserve orientation and use the catalogue index, even across pages.
+        heldDetails=item.details;heldItem=item;setPreview(item);focusID=item.id;library.selectedItemID=item.id
+        requestCaseDetails(item,token:token)
+    }
+    private func putCaseBack(reader:ScrollViewProxy?=nil) {
+        guard let item=heldItem else{return}
+        caseDetailTask?.cancel();caseTransitionTask?.cancel()
+        let token=UUID();caseToken=token
+        let destination=visibleSlice.item(id:item.id)?.id ?? visible.first?.id ?? "group-all"
+        revealCatalogItem(destination)
+        caseTransitionTask=Task { @MainActor in
+            // Let the paginated grid lay out the return slot before shrinking.
+            await Task.yield()
+            guard !Task.isCancelled,caseToken==token else{return}
+            reader?.scrollTo(destination,anchor:.center)
+            if !reduceMotion {try? await Task.sleep(nanoseconds:40_000_000)}
+            guard !Task.isCancelled,caseToken==token else{return}
+            withAnimation(reduceMotion ? nil : .easeInOut(duration:0.28)) {caseExpanded=false}
+            if !reduceMotion {try? await Task.sleep(nanoseconds:300_000_000)}
+            guard !Task.isCancelled,caseToken==token else{return};focusID=destination;systemFocus=destination;heldItem=nil;heldSlice=nil
+        }
+    }
+    private func dismissCaseImmediately() {caseDetailTask?.cancel();caseTransitionTask?.cancel();caseToken=UUID();heldItem=nil;heldSlice=nil;caseExpanded=false}
+    private func playHeld() {
+        guard let item=heldItem else{return}
+        guard !item.isSeriesCollection else {return}
+        dismissCaseImmediately(); series=nil;seasons=[];playItem(item)
+    }
+    private func playHeldEpisode(_ episode:IPTVItem, _ allSeasons:[IPTVSeason]) {
+        guard let collection=heldItem,collection.isSeriesCollection else{return}
+        series=collection;seasons=allSeasons;seasonNumber=episode.seasonNumber
+        playItem(episode)
+    }
+    private func heldOverlay(_ item:IPTVItem,reader:ScrollViewProxy)->some View {
+        GeometryReader { geo in
+            let source=cardFrames.frame(for:item.id) ?? CGRect(x:geo.size.width*(clubProfile.isEditorial ? 0.65:0.5)-80,y:geo.size.height*0.62-120,width:160,height:240)
+            let targetWidth=max(1,geo.size.width)
+            let targetHeight=max(1,geo.size.height)
+            let sourceScale=max(0.12,min(0.42,source.height/max(1,targetHeight*0.78)))
+            ZStack {
+                Color.black.opacity(caseExpanded ? 0.12:0).ignoresSafeArea().contentShape(Rectangle())
+                    .onTapGesture {putCaseBack(reader:reader)}
+                CasePresentation(item:item,details:heldDetails,position:inspectionSlice.index(of:item.id) ?? 0,count:inspectionSlice.items.count,yaw:$caseYaw,pitch:$casePitch,previous:{moveCase(-1)},next:{moveCase(1)},close:{putCaseBack(reader:reader)},play:{playHeld()},playEpisode:{playHeldEpisode($0,$1)},favorite:{chooseFavorites(item)},isFavorite:library.isFavorite(item),startEpisodes:caseStartEpisodes,remoteEvent:caseRemoteEvent,padSignal:casePadSignal,previousItem:clubNeighbors(item).0,nextItem:clubNeighbors(item).1,previousFarItem:inspectionSlice.adjacent(to:item.id,offset:-2),nextFarItem:inspectionSlice.adjacent(to:item.id,offset:2),jumpBy:{moveCase($0)},selectedTheme:theme(for:item.kind),concept:clubProfile)
+                    .frame(width:targetWidth,height:targetHeight)
+                    .scaleEffect(caseExpanded ? 1 : sourceScale)
+                    .opacity(caseExpanded ? 1 : 0.68)
+                    .position(x:caseExpanded ? geo.size.width/2 : source.midX,y:caseExpanded ? geo.size.height/2 : source.midY)
+            }.frame(maxWidth:.infinity,maxHeight:.infinity)
+        }
+    }
+    private var previewHero: some View {
+        HStack(alignment:.center,spacing:18) {
+            VStack(alignment:.leading,spacing:9) {
+                if let item=previewItem {
+                    Label(item.kind.frenchTitle.uppercased(),systemImage:mediaIcon(item.kind)).font(.caption.weight(.semibold)).foregroundStyle(themeAccent)
+                    Text(item.name).font(.system(.largeTitle,design:.default).weight(.heavy)).lineLimit(2)
+                    Text(item.group).font(.callout).foregroundStyle(.secondary).lineLimit(1)
+                    HStack(spacing:9) {
+                        navButton(item.kind == .live ? "Regarder" : "Prendre le boîtier",icon:item.kind == .live ? "play.fill":"film.stack",id:"hero-play",active:true) { openItem(item) }
+                        navButton("Favoris et listes",icon:library.isFavorite(item) ? "star.fill" : "star",id:"hero-favorite") { chooseFavorites(item) }
+                    }
+                } else {
+                    Text("VOTRE UNIVERS").font(.caption.weight(.semibold)).tracking(3).foregroundStyle(themeAccent)
+                    Text(library.contentKind.frenchTitle).font(.largeTitle.weight(.heavy))
+                    Text("Sélectionnez un contenu pour le découvrir.").font(.callout).foregroundStyle(.secondary)
+                }
+            }.frame(maxWidth:.infinity,alignment:.leading)
+            if let item=previewItem, !compactChrome {
+                ArtworkView(url:item.logoURL,fit:item.kind == .live) { Image(systemName:mediaIcon(item.kind)).font(.largeTitle).frame(maxWidth:.infinity,maxHeight:.infinity) }
+                    .frame(width:110,height:142).clipped().clipShape(RoundedRectangle(cornerRadius:16))
+                    .overlay(RoundedRectangle(cornerRadius:16).strokeBorder(.white.opacity(0.35),lineWidth:1))
+                    .rotation3DEffect(.degrees(reduceMotion ? 0 : -7),axis:(x:0,y:1,z:0),perspective:0.7)
+                    .accessibilityHidden(true)
+            }
+        }.padding(.horizontal,30).padding(.vertical,compactChrome ? 8 : 16)
+    }
+
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 12) {
+                HStack(spacing: 9) {
+                    Image(systemName: "waveform.path").font(.title2.weight(.medium)).foregroundStyle(themeAccent)
+                    Text("FLUX").font(.title2.weight(.heavy)).tracking(4)
+                    if !compactChrome {Text("0.8.2").font(.caption2.monospacedDigit()).foregroundStyle(.secondary)}
+                }
+                Spacer(minLength: 0)
+                navButton("Sources", icon: "square.stack", id: "sources", iconOnly: true) { showingSources = true }
+                navButton("Recherche", icon: "magnifyingglass", id: "search", iconOnly: true) { search() }
+                #if !os(tvOS)
+                navButton("Télécommande", icon: "appletvremote.gen1", id: "remote", active: showRemote, iconOnly: true) { showRemote.toggle() }
+                #endif
+                navButton("Réglages", icon: "gearshape", id: "settings", iconOnly: true) { showingEngines = true }
+            }
+            HStack(spacing: 6) {
+                ForEach(IPTVMediaKind.allCases, id: \.self) { kind in
+                    navButton(kind.frenchTitle, icon: mediaIcon(kind), id: "tab-\(kind.rawValue)", active: library.contentKind == kind && page == .catalogue) { changeKind(kind) }
+                }
+                Spacer(minLength: 0)
+                navButton("Listes", icon: "star", id: "lists", active: library.selectedPresetID != nil) { showingLists = true }
+            }
+        }
+        .padding(.horizontal, 18).padding(.vertical, 12)
+        .modifier(FluxHeaderChrome(onVideo: page == .player))
+        .padding(.horizontal, 24).padding(.top, 14).padding(.bottom, 18)
+    }
+
+    private func navButton(_ title: String, icon: String, id: String, active: Bool = false, iconOnly: Bool = false, action: @escaping () -> Void) -> some View {
+        Button { pointerSelect(id); action() } label: {
+            HStack(spacing: 6) {
+                Image(systemName: icon)
+                #if os(iOS)
+                if !iconOnly && sizeClass != .compact { Text(title).lineLimit(1) }
+                #elseif os(macOS)
+                if !iconOnly && (!compactChrome || id.hasPrefix("tab-") || id == "categories") { Text(title).lineLimit(1) }
+                #else
+                if !iconOnly { Text(title).lineLimit(1) }
+                #endif
+            }
+            .font(.callout.weight(.semibold)).padding(.vertical, 10).padding(.horizontal, 12)
+            .foregroundStyle(active ? .white : .primary)
+            .background(active ? themeAccent.opacity(0.20) : Color.white.opacity(focusID == id ? 0.13 : 0.035), in: RoundedRectangle(cornerRadius: 16))
+            .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(focusID == id ? Color.white.opacity(0.8) : .white.opacity(active ? 0.18 : 0.04), lineWidth: focusID == id ? 2 : 1).allowsHitTesting(false))
+        }.buttonStyle(.plain).fluxFocus($systemFocus, id: id).id(id).accessibilityLabel(title).fluxHelp(title)
+    }
+
+    private var catalogue: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            if playback.recoveryMode {
+                HStack(spacing: 12) {
+                    Image(systemName: "shield.lefthalf.filled").foregroundStyle(.orange)
+                    Text("Mode de récupération : lecture Apple uniquement après une session VLC non terminée.").font(.callout)
+                    Spacer()
+                    Button("Diagnostic") { diagnosticSettings = true; showingEngines = true }.buttonStyle(.bordered)
+                }.padding(12).fluxFrosted(radius: 14).padding(.horizontal, 28)
+            }
+            if showingSearch {
                 HStack {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(library.selectedSource?.name ?? "Chaînes")
-                            .font(.title3.weight(.semibold)).lineLimit(1)
-                        Text(library.isLoading ? "Chargement du catalogue…" : "\(library.filteredItems.count) éléments")
+                    Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+                    TextField("Rechercher dans \(library.contentKind.frenchTitle.lowercased())", text: $library.search)
+                        .focused($searchFocus).fluxFieldStyle().onSubmit { searchFocus = false; focusFirstItem() }
+                    Button("Effacer") { library.search = "" }
+                    Button("Fermer") { showingSearch = false; searchFocus = false }
+                }.padding(14).fluxGlass().padding(.horizontal, 26)
+            }
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(library.selectedPreset?.name ?? environment.title).font(.system(.largeTitle, design: .default).weight(.bold)).lineLimit(1)
+                    Text("\(library.selectedSource?.name ?? "Bibliothèque")  ·  \(library.isFiltering ? "Recherche…" : "\(visible.count) éléments")").font(.callout).foregroundStyle(.secondary)
+                    if !compactChrome {
+                        Text(library.contentKind == .movie ? "À l’affiche · Choisir un film" : library.contentKind == .series ? "Les coffrets · Saisons et épisodes" : "En direct · Choisir une chaîne")
                             .font(.caption).foregroundStyle(.secondary)
                     }
-                    Spacer()
-                    Button(action: library.reloadSelected) {
-                        Image(systemName: "arrow.clockwise")
+                }
+                Spacer()
+                navButton("Actualiser", icon: "arrow.clockwise", id: "reload") { library.reloadSelected() }.disabled(library.selectedSourceID == nil || library.isLoading)
+            }.padding(.horizontal, 30)
+            HStack(spacing: 10) {
+                navButton("Toutes", icon: "square.grid.2x2", id: "group-all", active: showingAllCatalog) { showAllCatalog() }
+                navButton(group ?? "Catégories", icon: "line.3.horizontal.decrease", id: "categories", active: group != nil) { groupSearch = ""; showingGroups = true }
+                if group != nil { Button { self.group = nil } label: { Image(systemName: "xmark.circle.fill") }.buttonStyle(.plain).accessibilityLabel("Effacer le filtre") }
+                Spacer(minLength: 0)
+                if library.contentKind == .movie { navButton("À reprendre", icon: "clock.arrow.circlepath", id: "continue-only", active: continueOnly) { toggleResumeFilter() } }
+                if !library.sources.isEmpty { navButton("Favoris", icon: "star.fill", id: "favorites-quick", active: library.selectedPresetID == FavoritePresets.defaultID(for: library.contentKind)) { toggleQuickFavorites() } }
+            }.padding(.horizontal, 30).padding(.vertical, 2)
+            if let issue = library.credentialIssue, let source = library.selectedSource, source.kind != .m3uFile {
+                HStack(spacing: 12) {
+                    Image(systemName: "person.crop.circle.badge.exclamationmark").font(.title2).foregroundStyle(.orange)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Reconnecter « \(source.name) »").font(.headline)
+                        Text(issue).font(.caption).foregroundStyle(.secondary)
+                        Text("Vos listes et favoris restent intacts.").font(.caption).foregroundStyle(.secondary)
                     }
-                    .buttonStyle(.plain)
-                    .help("Actualiser la source")
-                    .disabled(library.selectedSourceID == nil || library.isLoading)
-                }
-                TextField("Rechercher une chaîne…", text: $library.search)
-                    .textFieldStyle(.roundedBorder)
-                Picker("Contenu", selection: $library.contentKind) {
-                    ForEach(IPTVMediaKind.allCases, id: \.self) { kind in
-                        Text(kind.frenchTitle).tag(kind)
-                    }
-                }
-                .labelsHidden().pickerStyle(.segmented)
-
-                Toggle(isOn: $library.favoritesOnly) {
-                    Label("Favoris seulement", systemImage: "star.fill")
-                        .font(.caption)
-                }
-                .toggleStyle(.checkbox)
+                    Spacer(minLength: 6)
+                    navButton("Reconnecter", icon: "arrow.clockwise", id: "reconnect-source") { editingSource = source }
+                }.padding(16).fluxFrosted(radius: 16).padding(.horizontal, 30)
             }
-            .padding(16)
-            Divider().overlay(.white.opacity(0.08))
-
-            if library.isLoading {
+            if library.isLoading && visible.isEmpty { Spacer(); ProgressView("Chargement du catalogue…").frame(maxWidth: .infinity); Spacer() }
+            else if library.isFiltering && visible.isEmpty { Spacer(); ProgressView("Recherche…").frame(maxWidth: .infinity); Spacer() }
+            else if visible.isEmpty {
                 Spacer()
-                ProgressView("Chargement du catalogue…")
-                Spacer()
-            } else if library.filteredItems.isEmpty {
-                Spacer()
-                ContentUnavailableView(
-                    library.sources.isEmpty ? "Ajoutez votre première source" : "Aucun élément",
-                    systemImage: library.sources.isEmpty ? "play.rectangle.on.rectangle" : "line.3.horizontal.decrease.circle",
-                    description: Text(library.sources.isEmpty
-                        ? "Importez une playlist M3U ou renseignez un serveur Xtream Codes."
-                        : "Changez de filtre ou actualisez la playlist.")
-                )
+                VStack(spacing: 18) {
+                    Image(systemName: "play.tv").font(.system(size: 54)).foregroundStyle(themeAccent)
+                    Text(library.sources.isEmpty ? "Votre télévision vous attend" : library.credentialIssue != nil ? "Source à reconnecter" : "Aucun contenu").font(.title.weight(.semibold))
+                    if library.sources.isEmpty { navButton("Ajouter une source", icon: "plus", id: "add-source") { addingSource = true } }
+                }.frame(maxWidth: .infinity)
                 Spacer()
             } else {
-                channelRows
+                // Both visual concepts always begin in the complete, paginated grid.
+                if catalogPageCount > 1 { catalogPagination }
+                ScrollView {
+                    VStack(alignment:.leading,spacing:8) {
+                        if library.contentKind == .live {previewHero}
+                        LazyVGrid(columns:Array(repeating:GridItem(.flexible(),spacing:18),count:columns),spacing:clubProfile.isEditorial ? 18:22) {
+                            ForEach(displayedItems) { item in card(item) }
+                        }.padding(.horizontal,30).padding(.vertical,15)
+                    }
+                }
             }
         }
     }
 
-    private var channelRows: some View {
-        let available = library.filteredItems
-        let grouped = Dictionary(grouping: available, by: \.group)
-        let titles = grouped.keys.sorted { $0.localizedStandardCompare($1) == .orderedAscending }
-        return ScrollView {
-            LazyVStack(alignment: .leading, spacing: 5, pinnedViews: [.sectionHeaders]) {
-                ForEach(titles, id: \.self) { title in
-                    Section {
-                        ForEach(grouped[title] ?? []) { item in
-                            channelRow(item)
-                        }
-                    } header: {
-                        HStack {
-                            Text(title.uppercased()).font(.system(size: 10, weight: .semibold))
-                                .tracking(1.2).foregroundStyle(.secondary)
-                            Spacer()
-                            Text("\(grouped[title]?.count ?? 0)").font(.caption2).foregroundStyle(.tertiary)
-                        }
-                        .padding(.horizontal, 16).padding(.vertical, 9)
-                        .background(UIColors.list)
-                    }
-                }
+    private var catalogPagination: some View {
+        HStack(spacing:12) {
+            navButton("Page précédente",icon:"chevron.left",id:"page-prev") { changeCatalogPage(-1) }.disabled(catalogPage==0)
+            Text("Page \(catalogPage+1) / \(catalogPageCount)").font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+            navButton("Page suivante",icon:"chevron.right",id:"page-next") { changeCatalogPage(1) }.disabled(catalogPage+1>=catalogPageCount)
+            Spacer(minLength:0)
+            if let first=displayedItems.first,let last=displayedItems.last,let a=visibleSlice.index(of:first.id),let b=visibleSlice.index(of:last.id) {
+                Text("\(a+1)–\(b+1) / \(visible.count)").font(.caption.monospacedDigit()).foregroundStyle(.secondary)
             }
-            .padding(.vertical, 7)
-        }
+        }.padding(.horizontal,30)
     }
 
-    private func channelRow(_ item: IPTVItem) -> some View {
-        HStack(spacing: 4) {
-            Button { library.selectedItemID = item.id } label: {
-                HStack(spacing: 11) {
-                    ChannelArtwork(url: item.logoURL)
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(item.name).font(.system(size: 13, weight: .medium)).lineLimit(2)
-                        Text(item.kind == .live ? "DIRECT" : "FILM")
-                            .font(.system(size: 9, weight: .medium, design: .monospaced))
-                            .foregroundStyle(.secondary)
-                    }
-                    Spacer(minLength: 0)
-                }
-                .padding(.leading, 10).padding(.vertical, 8)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-
-            Button { library.toggleFavorite(item) } label: {
-                Image(systemName: library.favorites.contains(item.id) ? "star.fill" : "star")
-                    .foregroundStyle(library.favorites.contains(item.id) ? .yellow : .secondary)
-                    .frame(width: 30, height: 36)
-            }
-            .buttonStyle(.plain)
-            .help("Ajouter ou retirer des favoris")
-        }
-        .padding(.trailing, 8)
-        .background(library.selectedItemID == item.id ? UIColors.selected : .clear,
-                    in: RoundedRectangle(cornerRadius: 10))
-        .padding(.horizontal, 8)
-    }
-
-    private var playerColumn: some View {
-        VStack(alignment: .leading, spacing: 25) {
-            HStack {
-                Label("LECTEUR", systemImage: "play.rectangle")
-                    .font(.system(size: 11, weight: .semibold)).tracking(1.5)
-                    .foregroundStyle(.secondary)
-                Spacer()
-                if playback.playingItem != nil {
-                    Button { playback.stop(); library.selectedItemID = nil } label: {
-                        Label("Arrêter", systemImage: "stop.fill")
-                    }
-                    .buttonStyle(.borderless)
-                }
-            }
-
-            if let item = playback.playingItem {
-                VideoPlayer(player: playback.player)
-                    .aspectRatio(16 / 9, contentMode: .fit)
-                    .background(.black, in: RoundedRectangle(cornerRadius: 12))
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
-                    .overlay(RoundedRectangle(cornerRadius: 12).stroke(.white.opacity(0.10)))
-
+    private func card(_ item: IPTVItem) -> some View {
+        let focused = focusID == item.id || previewID == item.id
+        let favorite = library.isFavorite(item)
+        return ZStack(alignment: .topTrailing) {
+            Button { selectCard(item) } label: {
                 VStack(alignment: .leading, spacing: 8) {
-                    HStack(spacing: 9) {
-                        Text(item.kind == .live ? "EN DIRECT" : "VIDÉO À LA DEMANDE")
-                            .font(.system(size: 10, weight: .bold)).tracking(1.3)
-                            .foregroundStyle(UIColors.accent)
-                        Text("·").foregroundStyle(.secondary)
-                        Text(item.group).font(.caption).foregroundStyle(.secondary)
+                    GeometryReader { g in
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 15).fill(Color.white.opacity(0.065))
+                            ArtworkView(url: item.logoURL, fit: item.kind == .live) {
+                                Image(systemName: mediaIcon(item.kind)).font(.largeTitle).foregroundStyle(.secondary).frame(maxWidth: .infinity, maxHeight: .infinity)
+                            }.frame(width: g.size.width, height: g.size.height).clipped()
+                            if item.kind == .live {
+                                VStack { Spacer(); HStack { Text("DIRECT").font(.system(size: 9, weight: .bold)).padding(.horizontal, 6).padding(.vertical, 4).background(.black.opacity(0.78), in: Capsule()); Spacer() } }.padding(8)
+                            }
+                        }.clipShape(RoundedRectangle(cornerRadius: 15))
+                    }.aspectRatio(item.kind == .live ? 16.0/9.0 : 2.0/3.0, contentMode: .fit)
+                    .background { if item.kind != .live { GeometryReader { proxy in Color.clear.preference(key:CaseFrameKey.self,value:[item.id:proxy.frame(in:.named("club-pane"))]) } } }
+                    .opacity(heldItem?.id == item.id && caseExpanded ? 0.18 : 1)
+                    .rotation3DEffect(.degrees(focused && !reduceMotion ? -4 : 0),axis:(x:0,y:1,z:0),perspective:0.6)
+                    Text(item.name).font(.callout.weight(.semibold)).lineLimit(2, reservesSpace: true).frame(maxWidth: .infinity, alignment: .leading)
+                    Text(item.group).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                    if let entry = playback.history.entries[item.id], entry.resumable {
+                        ProgressView(value: entry.fraction).tint(themeAccent)
                     }
-                    Text(item.name).font(.title.weight(.semibold)).lineLimit(2)
-                    if let error = playback.playbackError {
-                        Label(error, systemImage: "exclamationmark.triangle.fill")
-                            .foregroundStyle(.orange).font(.callout)
-                        Text("Essayez le format HLS si le serveur le propose, ou un flux compatible AVPlayer.")
-                            .font(.caption).foregroundStyle(.secondary)
+                }
+                .padding(7)
+                .background(.white.opacity(focused ? 0.13 : 0.025), in: RoundedRectangle(cornerRadius: 21))
+                .overlay(RoundedRectangle(cornerRadius: 21).strokeBorder(focused ? Color.white.opacity(0.88) : .white.opacity(0.08), lineWidth: focused ? 2 : 1).allowsHitTesting(false))
+            }.buttonStyle(.plain).fluxFocus($systemFocus, id: item.id).id(item.id)
+                .simultaneousGesture(LongPressGesture(minimumDuration: 0.65, maximumDistance: 14).onEnded { _ in chooseFavorites(item) })
+                #if os(macOS)
+                .contextMenu {
+                    Button("Favoris et listes…") { chooseFavorites(item) }
+                    if playback.history.entries[item.id] != nil {
+                        Button("Recommencer") {
+                            playback.forgetProgress(item.id)
+                            if item.isSeriesCollection { showCase(item, episodes: true) } else { playItem(item) }
+                        }
+                    }
+                }
+                #endif
+                .accessibilityLabel(item.name)
+                .accessibilityHint("Cliquer pour ouvrir. Maintenir pour choisir les favoris et les listes.")
+            #if os(tvOS)
+            if favorite { Image(systemName: "star.fill").foregroundStyle(.yellow).padding(9).background(.black.opacity(0.75), in: Circle()).padding(13).allowsHitTesting(false) }
+            #else
+            HStack(spacing: 6) {
+                Button { chooseFavorites(item) } label: { Image(systemName: favorite ? "star.fill" : "star").foregroundStyle(favorite ? .yellow : .white).frame(width: 29, height: 29).background(.black.opacity(0.72), in: Circle()) }.buttonStyle(.plain).accessibilityLabel("Choisir les favoris et les listes")
+                Button { chooseFavorites(item) } label: { Image(systemName: "ellipsis").foregroundStyle(.white).frame(width: 29, height: 29).background(.black.opacity(0.72), in: Circle()) }.buttonStyle(.plain).accessibilityLabel("Listes et options")
+            }.padding(13)
+            #endif
+        }
+    }
+
+    private var seriesDetail: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            HStack(alignment: .center, spacing: 24) {
+                if let series {
+                    ArtworkView(url: series.logoURL, fit: true) { Image(systemName: "film.stack").font(.largeTitle) }
+                        .frame(width: 120, height: 165).clipShape(RoundedRectangle(cornerRadius: 16))
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text(series.name).font(.largeTitle.bold()).lineLimit(3)
+                        Text("\(seasons.count) saisons · \(seasons.reduce(0) { $0 + $1.episodes.count }) épisodes").foregroundStyle(.secondary)
+                        navButton("Favoris et listes", icon: "star", id: "series-favorite") { itemOptions = series }
                     }
                 }
                 Spacer(minLength: 0)
-            } else {
-                Spacer()
-                VStack(spacing: 17) {
-                    Image(systemName: "play.tv")
-                        .font(.system(size: 66, weight: .ultraLight))
-                        .foregroundStyle(UIColors.accent.opacity(0.65))
-                    Text("Votre écran vous attend")
-                        .font(.title2.weight(.semibold))
-                    Text("Sélectionnez une chaîne ou un film dans la liste pour lancer la lecture.")
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center)
-                        .frame(maxWidth: 380)
+                navButton("Retour", icon: "chevron.backward", id: "series-back") { back() }
+            }.padding(.horizontal, 30)
+            if episodesLoading { Spacer(); ProgressView("Chargement des épisodes…").frame(maxWidth: .infinity); Spacer() }
+            else if episodesFailed { Spacer(); navButton("Réessayer", icon: "arrow.clockwise", id: "series-retry") { if let series { loadSeries(series) } }.frame(maxWidth: .infinity); Spacer() }
+            else {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack {
+                        ForEach(seasons) { season in
+                            navButton(season.number == 0 ? "Spéciaux" : "Saison \(season.number)", icon: "play.rectangle.on.rectangle", id: "season-\(season.number)", active: seasonNumber == season.number) { seasonNumber = season.number }
+                        }
+                    }.padding(.horizontal, 30).padding(.vertical, 5)
                 }
-                .frame(maxWidth: .infinity)
-                Spacer()
+                ScrollView {
+                    LazyVStack(spacing: 10) {
+                        ForEach(episodes) { episode in
+                            Button { pointerSelect(episode.id); playItem(episode) } label: {
+                                HStack(spacing: 15) {
+                                    ZStack(alignment:.bottomLeading) {
+                                        ArtworkView(url:episode.logoURL ?? episode.backdropURL ?? series?.logoURL,fit:false) { Image(systemName:"play.rectangle").font(.title2).frame(maxWidth:.infinity,maxHeight:.infinity) }.frame(width:148,height:84).clipped()
+                                        Text("S\(String(format:"%02d",episode.seasonNumber ?? seasonNumber ?? 0)) E\(String(format:"%02d",episode.episodeNumber ?? 0))").font(.caption2.bold()).padding(5).background(.black.opacity(0.8),in:RoundedRectangle(cornerRadius:5)).padding(5)
+                                    }.clipShape(RoundedRectangle(cornerRadius:10))
+                                    VStack(alignment: .leading, spacing: 5) {
+                                        Text(episode.name).font(.headline).lineLimit(2)
+                                        if let synopsis=episode.details.synopsis {Text(synopsis).font(.caption).foregroundStyle(.secondary).lineLimit(2)}
+                                        if let entry = playback.history.entries[episode.id], entry.resumable { ProgressView(value: entry.fraction).tint(themeAccent).frame(maxWidth: 180) }
+                                    }
+                                    Spacer(); Image(systemName: "chevron.right")
+                                }.padding(18).background(.white.opacity(focusID == episode.id ? 0.20 : 0.06), in: RoundedRectangle(cornerRadius: 18))
+                                    .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(focusID == episode.id ? .white : .clear, lineWidth: 2))
+                            }.buttonStyle(.plain).fluxFocus($systemFocus, id: episode.id).id(episode.id)
+                                .contextMenu { Button("Recommencer") { playback.forgetProgress(episode.id); playItem(episode) } }
+                        }
+                    }.padding(.horizontal, 30).padding(.vertical, 8)
+                }
             }
-            HStack(spacing: 9) {
-                Image(systemName: "lock.shield")
-                Text("Vos identifiants Xtream sont conservés dans le Trousseau macOS.")
-            }
-            .font(.caption2)
-            .foregroundStyle(.tertiary)
         }
-        .padding(27)
+    }
+
+    private var playerPage: some View {
+        VStack(spacing: cinema ? 0 : 14) {
+            if !cinema {
+                HStack {
+                    VStack(alignment: .leading) {
+                        Text(playback.playingItem?.name ?? "Lecteur").font(.title2.bold()).lineLimit(2)
+                        Text(playback.attemptLabel).font(.caption).foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    navButton("Retour", icon: "chevron.backward", id: "player-back") { back() }
+                    navButton("Plein écran", icon: "arrow.up.left.and.arrow.down.right", id: "player-full") { toggleCinema() }
+                }.padding(.horizontal, 24)
+            }
+            ZStack(alignment: .bottom) {
+                PlayerSurface(playback: playback, showsTransport: transportVisible).frame(maxWidth: .infinity, maxHeight: .infinity)
+                if zapBanner && playback.playingItem?.kind == .live && playback.playbackError == nil {liveBanner.transition(.opacity)}
+                #if !os(tvOS)
+                if cinema {
+                    VStack { HStack { Spacer(); Button { cinemaControls.toggle() } label: { Image(systemName: "ellipsis.circle").font(.title2).padding(10).background(.black.opacity(0.78), in: Circle()) }.buttonStyle(.plain).accessibilityLabel("Commandes")
+                        Button { toggleCinema() } label: { Image(systemName: "arrow.down.right.and.arrow.up.left").font(.title2).padding(10).background(.black.opacity(0.78), in: Circle()) }.buttonStyle(.plain).accessibilityLabel("Quitter le plein écran") }.padding(16); Spacer() }
+                }
+                #endif
+                #if os(tvOS)
+                if cinema && !cinemaControls && playback.isPlaying {
+                    Button {
+                        cinemaControls = true; focusID = "playpause"
+                    } label: {
+                        Label("Commandes", systemImage: "ellipsis.circle").padding(12).background(.black.opacity(0.78), in: Capsule())
+                    }.buttonStyle(.plain).focused($systemFocus, equals: "cinema-controls").id("cinema-controls")
+                    .padding(15).onMoveCommand { direction in
+                        switch direction {
+                        case .left: playback.skip(seconds: -Double(playback.settings.skipSeconds))
+                        case .right: playback.skip(seconds: Double(playback.settings.skipSeconds))
+                        case .up: if playback.playingItem?.kind == .live { adjacent(1) } else { cinemaControls = true; focusID = "playpause" }
+                        case .down: if playback.playingItem?.kind == .live { adjacent(-1) } else { cinemaControls = true; focusID = "playpause" }
+                        @unknown default: break
+                        }
+                    }.contextMenu { Button("Moteur de lecture") { showingEngines = true }; Button("Quitter le plein écran") { toggleCinema() } }
+                }
+                #endif
+            }
+                .clipShape(RoundedRectangle(cornerRadius: cinema ? 0 : 20))
+                .padding(.horizontal, cinema ? 0 : 24)
+            if !cinema || cinemaControls || playback.opening || !playback.isPlaying {
+                ScrollView(.horizontal, showsIndicators: true) {
+                    HStack(spacing: 10) {
+                        navButton("Précédent", icon: "backward.end.fill", id: "previous", iconOnly: compactTransport) { adjacent(-1) }
+                        navButton("− \(playback.settings.skipSeconds) s", icon: "gobackward", id: "rewind", iconOnly: compactTransport) { playback.skip(seconds: -Double(playback.settings.skipSeconds)) }
+                        navButton(playback.isPlaying ? "Pause" : "Lecture", icon: playback.isPlaying ? "pause.fill" : "play.fill", id: "playpause", iconOnly: compactTransport) { playback.togglePause() }
+                        navButton("+ \(playback.settings.skipSeconds) s", icon: "goforward", id: "forward", iconOnly: compactTransport) { playback.skip(seconds: Double(playback.settings.skipSeconds)) }
+                        navButton("Suivant", icon: "forward.end.fill", id: "next", iconOnly: compactTransport) { adjacent(1) }
+                        #if !os(tvOS)
+                        navButton("Volume −", icon: "speaker.minus", id: "volume-down", iconOnly: compactTransport) { playback.adjustVolume(-0.1) }
+                        navButton(playback.muted ? "Son" : "Muet", icon: playback.muted ? "speaker.slash.fill" : "speaker.wave.2", id: "mute", iconOnly: compactTransport) { playback.toggleMute() }
+                        navButton("Volume +", icon: "speaker.plus", id: "volume-up", iconOnly: compactTransport) { playback.adjustVolume(0.1) }
+                        #endif
+                        navButton("Réglages", icon: "gearshape", id: "engine", iconOnly: compactTransport) { showingEngines = true }
+                        navButton("Arrêter", icon: "stop.fill", id: "stop", iconOnly: compactTransport) { stopPlayback() }
+                        if cinema { navButton("Masquer", icon: "eye.slash", id: "hide-controls", iconOnly: compactTransport) { cinemaControls = false; focusID = "cinema-controls" }; navButton("Quitter le plein écran", icon: "arrow.down.right.and.arrow.up.left", id: "exit-full", iconOnly: compactTransport) { toggleCinema() } }
+                    }.padding(.horizontal, 12)
+                }.padding(10).fluxFrosted(radius: 25).padding(.horizontal, 20).padding(.bottom, 12)
+            }
+            if let error = playback.playbackError { Text(error).foregroundStyle(.orange).font(.caption).padding(8) }
+        }
+    }
+
+    private var compactTransport: Bool {
+        #if os(tvOS)
+        return false
+        #else
+        return true
+        #endif
+    }
+
+    private var transportVisible: Bool {
+        #if os(tvOS)
+        return !cinema || cinemaControls || !playback.isPlaying
+        #else
+        return true
+        #endif
+    }
+
+    private var groupsPanel: some View {
+        panel("Catégories · \(library.contentKind.frenchTitle)") {
+            TextField("Filtrer les catégories", text: $groupSearch).fluxFieldStyle()
+            Button("Toutes les catégories") { group = nil; showingGroups = false }
+            LazyVStack(alignment: .leading, spacing: 8) {
+                ForEach(groups.filter { groupSearch.isEmpty || $0.localizedStandardContains(groupSearch) }, id: \.self) { name in
+                    Button { group = name; showingGroups = false } label: { HStack { Text(name).lineLimit(2); Spacer(); if group == name { Image(systemName: "checkmark") } }.padding(10).frame(maxWidth: .infinity, alignment: .leading).background(.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 12)) }.buttonStyle(.plain)
+                }
+            }
+            Button("Fermer") { showingGroups = false }
+        }
+    }
+    private var sourcesPanel: some View {
+        panel("Sources") {
+            ForEach(library.sources) { source in
+                HStack {
+                    Button { showingSources = false; Task { await library.selectSource(source.id) } } label: { Label(source.name, systemImage: source.symbol).frame(maxWidth: .infinity, alignment: .leading) }.buttonStyle(.bordered)
+                    if source.kind != .m3uFile { Button("Modifier") { showingSources = false; DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { editingSource = source } } }
+                    Button(role: .destructive) { library.removeSource(source) } label: { Image(systemName: "trash") }
+                }
+            }
+            Button("Ajouter une source") { showingSources = false; DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { addingSource = true } }.buttonStyle(.borderedProminent)
+            Button("Fermer") { showingSources = false }
+        }
+    }
+    private var listsPanel: some View {
+        panel("Listes · \(library.contentKind.frenchTitle)") {
+            Button("Catalogue complet") { showAllCatalog(); showingLists = false }
+            ForEach(library.currentPresets) { preset in
+                HStack {
+                    Button { continueOnly=false; library.selectedPresetID = preset.id; showingLists = false } label: { Label(preset.name + " (\(preset.itemIDs.count))", systemImage: "star").frame(maxWidth: .infinity, alignment: .leading) }.buttonStyle(.bordered)
+                    if !preset.isDefault {
+                        Button("Renommer") { showingLists = false; DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { presetEditor = PresetEditor(kind: preset.kind, existing: preset) } }
+                        Button(role: .destructive) { showingLists = false; DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { deletingPreset = preset } } label: { Image(systemName: "trash") }
+                    }
+                }
+            }
+            Button("Nouvelle liste") { showingLists = false; DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { presetEditor = PresetEditor(kind: library.contentKind, existing: nil) } }.buttonStyle(.borderedProminent)
+            Button("Fermer") { showingLists = false }
+        }
+    }
+    private func itemPanel(_ item: IPTVItem) -> some View {
+        FavoriteAssignmentSheet(item: item, open: {
+            itemOptions = nil; openItem(item)
+        }, saved: favoritesSaved).environmentObject(library)
+    }
+    private var enginesPanel: some View {
+        PlaybackSettingsView(playback: playback, startAtDiagnostic: diagnosticSettings) { showingEngines = false }
+            .environmentObject(library)
+    }
+    private func panel<V: View>(_ title: String, @ViewBuilder content: () -> V) -> some View {
+        ScrollView { VStack(alignment: .leading, spacing: 18) { Text(title).font(.title.bold()); content() }.padding(28).frame(maxWidth: .infinity, alignment: .leading) }.fluxSheetSize(width: 680, height: 500)
+    }
+    private func mediaIcon(_ kind: IPTVMediaKind) -> String { switch kind { case .live: "tv"; case .movie: "film"; case .series: "rectangle.stack" } }
+    private func updateColumns(_ width: CGFloat) {
+        let usable = width - (showRemote && width >= 800 ? 215 : 0)
+        compactChrome = usable < 900
+        let estimated = (usable - 60) / (cardWidth + 18)
+        columns = estimated.isFinite ? Int(max(2, min(10, estimated))) : 5
+    }
+    private func pointerSelect(_ id: String) {
+        #if !os(tvOS)
+        remoteNavigationActive = false
+        #endif
+        focusID = id
+    }
+    private func changeKind(_ kind: IPTVMediaKind) { home(); library.contentKind = kind; showAllCatalog(); focusID = "tab-\(kind.rawValue)" }
+    private func focusFirstItem() { focusID = visible.first?.id ?? "tab-\(library.contentKind.rawValue)" }
+    private func search() { if page != .catalogue { home() }; showingSearch = true; searchFocus = true }
+    private func openItem(_ item: IPTVItem) {
+        library.selectedItemID = item.id
+        setPreview(item)
+        if item.kind != .live {showCase(item)} else {series=nil;seasons=[];playItem(item)}
+    }
+    private func loadSeries(_ item: IPTVItem) {
+        let token = UUID(); seriesRequest = token; series = item; page = .series; seasons = []; episodesFailed = false; episodesLoading = true; focusID = "series-back"
+        Task { @MainActor in
+            do {
+                let result = try await library.seasons(for: item)
+                guard seriesRequest == token, page == .series else { return }
+                seasons = result; seasonNumber = result.first?.number; episodesLoading = false
+                focusID = result.first?.episodes.first?.id ?? "series-back"
+            } catch { if seriesRequest == token { episodesLoading = false; episodesFailed = true; focusID = "series-retry" } }
+        }
+    }
+    private func playItem(_ item: IPTVItem) {
+        guard !item.isSeriesCollection else { showCase(item, episodes: true); return }
+        cancelEntrance()
+        dismissCaseImmediately()
+        do {
+            let urls = try library.playbackURLs(for: item)
+            let entering = page != .player
+            guard entering && !reduceMotion else {
+                startPlayback(item, urls: urls, entering: entering)
+                return
+            }
+            entranceItem = item; entranceExpanded = false
+            entranceTask = Task { @MainActor in
+                await Task.yield()
+                guard !Task.isCancelled else { return }
+                withAnimation(.easeInOut(duration: 0.42)) { entranceExpanded = true }
+                try? await Task.sleep(nanoseconds: 460_000_000)
+                guard !Task.isCancelled else { return }
+                // The decorative view is removed before the decoder is started.
+                entranceItem = nil; entranceExpanded = false
+                startPlayback(item, urls: urls, entering: true)
+                entranceTask = nil
+            }
+        }
+        catch { library.alertMessage = IPTVLibrary.safeSourceError(error) }
+    }
+    private func startPlayback(_ item: IPTVItem, urls: [URL], entering: Bool) {
+        page = .player; focusID = "playpause"
+        playback.play(item, urls: urls)
+        if entering && !cinema { toggleCinema() }
+        if item.kind == .live { showZapBanner() }
+    }
+    private func cancelEntrance() {
+        entranceTask?.cancel(); entranceTask = nil
+        entranceItem = nil; entranceExpanded = false
+    }
+    private func showZapBanner() {
+        let token=UUID();zapToken=token;withAnimation(.easeInOut(duration:0.18)){zapBanner=true}
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds:3_600_000_000)
+            guard zapToken==token else{return};withAnimation(.easeOut(duration:0.22)){zapBanner=false}
+        }
+    }
+    private var liveBanner:some View {
+        HStack(spacing:14) {
+            if let item=playback.playingItem {
+                ArtworkView(url:item.logoURL,fit:true){Image(systemName:"tv").font(.title2)}.frame(width:64,height:48)
+                VStack(alignment:.leading,spacing:4){Text(item.name).font(.headline).lineLimit(1);Text("DIRECT  ·  \(item.group)").font(.caption).foregroundStyle(.secondary).lineLimit(1)}
+                Spacer(); if let number=visibleSlice.index(of:item.id) {Text(String(format:"%03d",number+1)).font(.title.monospacedDigit().weight(.bold))}
+            }
+        }.padding(15).fluxFrosted(radius:23).padding(20).allowsHitTesting(false)
+    }
+    private func adjacent(_ delta: Int) {
+        guard let item = playback.playingItem else { return }
+        let target: IPTVItem
+        if series != nil {
+            let candidates=seasons.flatMap(\.episodes)
+            guard let i=candidates.firstIndex(where:{$0.id==item.id}),candidates.indices.contains(i+delta) else{return}
+            target=candidates[i+delta]
+            if let season=seasons.first(where:{$0.episodes.contains(where:{$0.id==target.id})}) {seasonNumber=season.number}
+        } else {
+            guard let i=visibleSlice.index(of:item.id),visible.indices.contains(i+delta),!visible[i+delta].isSeriesCollection else{return}
+            target=visible[i+delta]
+        }
+        playItem(target)
+    }
+    private func home() { cancelEntrance(); dismissCaseImmediately(); if cinema { toggleCinema() }; playback.stop(); page = .catalogue; series = nil; seasons = []; seriesRequest = UUID(); focusID = "tab-\(library.contentKind.rawValue)" }
+    private func back() {
+        if entranceItem != nil { cancelEntrance(); return }
+        if heldItem != nil {putCaseBack();return}
+        switch page {
+        case .player: stopPlayback()
+        case .series:
+            let id = series?.id; home(); focusID = id ?? "tab-series"
+        case .catalogue:
+            if showingSearch { showingSearch = false; searchFocus = false; library.search = "" }
+            else if continueOnly || group != nil || library.selectedPresetID != nil || !library.search.isEmpty { showAllCatalog() }
+            else { focusID = "tab-\(library.contentKind.rawValue)" }
+        }
+    }
+    private func stopPlayback() {
+        if cinema { toggleCinema() }
+        let lastItem = playback.playingItem
+        playback.stop(); page = .catalogue
+        if let collection = series { showCase(collection, episodes: true) }
+        else if let item = lastItem, item.kind == .movie { showCase(item) }
+        else { focusID = lastItem?.id ?? "tab-\(library.contentKind.rawValue)" }
+    }
+    private func toggleCinema() {
+        guard page == .player else { return }
+        #if os(macOS)
+        if cinema { if !wasFullscreen, let w = NSApp.windows.first(where: { $0.windowNumber == cinemaWindowNumber }), w.styleMask.contains(.fullScreen) { w.toggleFullScreen(nil) }; cinemaWindowNumber = nil; cinema = false }
+        else if let w = NSApp.keyWindow { wasFullscreen = w.styleMask.contains(.fullScreen); cinemaWindowNumber = w.windowNumber; cinema = true; if !wasFullscreen { w.toggleFullScreen(nil) } }
+        #else
+        cinema.toggle()
+        #endif
+        cinemaControls = false
+        focusID = cinema ? "cinema-controls" : "player-full"
+    }
+    private var focusRows: [[String]] {
+        var rows: [[String]] = []
+        if !cinema {
+            #if os(tvOS)
+            rows.append(["sources", "search", "settings"])
+            #else
+            rows.append(["sources", "search", "remote", "settings"])
+            #endif
+            rows.append(["tab-live", "tab-movie", "tab-series", "lists"])
+        }
+        switch page {
+        case .catalogue:
+            if library.selectedSourceID != nil && !library.isLoading { rows.append(["reload"]) }
+            if library.credentialIssue != nil { rows.append(["reconnect-source"]) }
+            rows.append(["group-all", "categories"] + (library.contentKind == .movie ? ["continue-only"] : []) + (library.sources.isEmpty ? [] : ["favorites-quick"]))
+            if library.sources.isEmpty { rows.append(["add-source"]) }
+            else if !visible.isEmpty {
+                if catalogPageCount>1 {rows.append((catalogPage>0 ? ["page-prev"] : []) + (catalogPage+1<catalogPageCount ? ["page-next"] : []))}
+                if library.contentKind == .live && previewItem != nil {rows.append(["hero-play","hero-favorite"])}
+            }
+        case .series:
+            rows += [["series-favorite", "series-back"]]
+            if episodesFailed { rows.append(["series-retry"]) }
+            else { rows.append(seasons.map { "season-\($0.number)" }); rows += episodes.map { [$0.id] } }
+        case .player:
+            if !cinema { rows.append(["player-back", "player-full"]) }
+            if !cinema || cinemaControls || playback.opening || !playback.isPlaying { rows.append(["previous", "rewind", "playpause", "forward", "next"] + desktopTransportFocus + ["engine", "stop"] + (cinema ? ["hide-controls", "exit-full"] : [])) } else { rows.append(["cinema-controls"]) }
+        }
+        return rows
+    }
+    private var desktopTransportFocus: [String] {
+        #if os(tvOS)
+        return []
+        #else
+        return ["volume-down", "mute", "volume-up"]
+        #endif
+    }
+    private func dispatch(_ action: RemoteAction) {
+        if entranceItem != nil {
+            if action == .back || action == .home { cancelEntrance() }
+            return
+        }
+        guard !modalOpen else { return }
+        #if !os(tvOS)
+        remoteNavigationActive = true
+        #endif
+        if heldItem != nil {
+            caseRemoteEvent=CaseRemoteEvent(action:action)
+            return
+        }
+        switch action {
+        case .up, .down, .left, .right:
+            if page == .player && cinema && playback.isPlaying && !cinemaControls { if action == .left { playback.skip(seconds: -Double(playback.settings.skipSeconds)) } else if action == .right { playback.skip(seconds: Double(playback.settings.skipSeconds)) } else if playback.playingItem?.kind == .live { adjacent(action == .up ? 1 : -1) } else { cinemaControls = true; focusID = "playpause" } }
+            else if page == .catalogue { focusID=visibleSlice.move(from:focusID,action:action,prefix:focusRows,columns:columns) }
+            else { focusID = RemoteNavigation.move(from: focusID, action: action, rows: focusRows) }
+        case .select: if page == .player && cinema && playback.isPlaying && !cinemaControls { cinemaControls = true; focusID = "playpause" } else { activateFocus() }
+        case .back: back()
+        case .home: home()
+        case .search: search()
+        case .playPause: if page == .player { playback.togglePause() } else if let item = visibleSlice.item(id:focusID) { openItem(item) }
+        case .rewind: playback.skip(seconds: -Double(playback.settings.skipSeconds))
+        case .forward: playback.skip(seconds: Double(playback.settings.skipSeconds))
+        case .previous: adjacent(-1)
+        case .next: adjacent(1)
+        case .fullscreen: toggleCinema()
+        case .volumeUp: playback.adjustVolume(0.1)
+        case .volumeDown: playback.adjustVolume(-0.1)
+        case .mute: playback.toggleMute()
+        case .options:
+            if page == .player { showingEngines = true }
+            else if let item = visibleSlice.item(id:focusID) ?? (page == .series ? series : nil) { itemOptions = item }
+            else { showingLists = true }
+        }
+    }
+    private func activateFocus() {
+        guard let id = focusID else { focusID = focusRows.first?.first; return }
+        if page == .catalogue, let item = visibleSlice.item(id:id) { openItem(item); return }
+        if page == .series, let item = episodes.first(where: { $0.id == id }) { playItem(item); return }
+        if id.hasPrefix("tab-"), let kind = IPTVMediaKind(rawValue: String(id.dropFirst(4))) { changeKind(kind); return }
+        if id.hasPrefix("season-"), let n = Int(id.dropFirst(7)) { seasonNumber = n; return }
+        if id == "group-all" { showAllCatalog(); return }
+        if id.hasPrefix("group-") { group = String(id.dropFirst(6)); return }
+        switch id {
+        case "page-prev": changeCatalogPage(-1)
+        case "page-next": changeCatalogPage(1)
+        case "hero-play": if let item=previewItem { openItem(item) }
+        case "hero-favorite": if let item=previewItem { chooseFavorites(item) }
+        case "sources": showingSources = true
+        case "search": search()
+        case "remote": showRemote.toggle()
+        case "lists": showingLists = true
+        case "categories": groupSearch = ""; showingGroups = true
+        case "continue-only": toggleResumeFilter()
+        case "favorites-quick": toggleQuickFavorites()
+        case "volume-down": playback.adjustVolume(-0.1)
+        case "volume-up": playback.adjustVolume(0.1)
+        case "mute": playback.toggleMute()
+        case "reconnect-source": editingSource = library.selectedSource
+        case "reload": library.reloadSelected()
+        case "add-source": addingSource = true
+        case "series-back", "player-back": back()
+        case "stop": stopPlayback()
+        case "cinema-controls": cinemaControls = true; focusID = "playpause"
+        case "hide-controls": cinemaControls = false; focusID = "cinema-controls"
+        case "exit-full": toggleCinema()
+        case "series-favorite": itemOptions = series
+        case "series-retry": if let series { loadSeries(series) }
+        case "player-full": toggleCinema()
+        case "previous": adjacent(-1)
+        case "next": adjacent(1)
+        case "rewind": playback.skip(seconds: -Double(playback.settings.skipSeconds))
+        case "forward": playback.skip(seconds: Double(playback.settings.skipSeconds))
+        case "playpause": playback.togglePause()
+        case "engine", "settings": showingEngines = true
+        default: if cinema { playback.togglePause() }
+        }
     }
 }
 
-private struct ChannelArtwork: View {
-    let url: URL?
+private extension View {
+    @ViewBuilder func fluxFocus(_ binding: FocusState<String?>.Binding, id: String) -> some View {
+        #if os(tvOS)
+        self.focused(binding, equals: id)
+        #else
+        self.focusable().focused(binding, equals: id)
+        #endif
+    }
+}
 
-    var body: some View {
-        AsyncImage(url: url) { image in
-            image.resizable().scaledToFit().padding(5)
-        } placeholder: {
-            Image(systemName: "tv")
-                .font(.system(size: 19, weight: .light))
-                .foregroundStyle(.secondary)
-        }
-        .frame(width: 46, height: 40)
-        .background(.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 7))
+#if os(tvOS)
+private extension View {
+    @ViewBuilder func fluxExit(_ enabled: Bool, action: @escaping () -> Void) -> some View {
+        if enabled { self.onExitCommand(perform: action) } else { self }
+    }
+}
+#endif
+
+private struct FluxHeaderChrome: ViewModifier {
+    let onVideo: Bool
+    @ViewBuilder func body(content: Content) -> some View {
+        if onVideo { content.fluxFrosted(radius: 25) }
+        else { content.fluxGlass(radius: 25) }
+    }
+}
+
+private extension View {
+    @ViewBuilder func fluxHelp(_ title: String) -> some View {
+        #if os(macOS)
+        self.help(title)
+        #else
+        self
+        #endif
     }
 }

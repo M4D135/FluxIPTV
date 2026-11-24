@@ -1,44 +1,25 @@
-# Feuille de route : Flux IPTV
+# Feuille de route FLUX IPTV
 
-## V0.1, MVP macOS
+## Correctif 0.3.1
 
-- [x] SwiftUI + fenêtre native macOS
-- [x] Playlist M3U URL et import local
-- [x] Connexion Xtream / catalogue Live + VOD
-- [x] Lecture AVPlayer, recherche, catégories, favoris
-- [x] Stockage des secrets dans le Trousseau
-- [x] Swift Package Core et tests unitaires de parsing
-- [ ] Validation d'une compilation réelle sur macOS/Xcode
-- [ ] Essais d'intégration avec des sources de test autorisées
+- Accès optionnel au contrôleur audio VLC et réapplication des réglages à la première lecture. Validation Xcode à refaire.
 
-## V0.2, qualité de lecture
+## Candidat 0.3.0
+- [x] Cœur IPTV M3U/Xtream, cache des secrets en mémoire, favoris séparés et listes personnalisées.
+- [x] Catalogue partagé SwiftUI TV/Films/Séries, grandes cartes, focus et style glossy.
+- [x] AVPlayer + plan de secours VLCKit, adaptateurs vidéo Mac/UIKit, URL épisodes et fallback, messages sans identifiants.
+- [x] Pavé tactile virtuel de première génération, clavier, bridge GameController Mac/iOS, focus natif tvOS.
+- [x] Cibles Xcode macOS, iOS, tvOS générées à partir des mêmes fichiers.
+- [x] Tests Foundation (23) + analyse syntaxique, vérification des références des projets.
+- [ ] Résolution SPM et compilation Xcode des trois cibles, sans signature en CI ; signature stable pour essai réel.
+- [ ] Validation sur Mac : TV HLS/TS, VOD MP4/MKV, épisodes, bascule moteurs, plein écran, Trousseau, anciennes listes, fluidité de très gros catalogues.
+- [ ] Validation tvOS simulateur puis Apple TV physique (Siri Remote 1re génération : swipe, press, long press, MENU, play/pause, zapping/seek), focus des modales, mémoire et rendu.
+- [ ] Vérification iPhone/iPad (rotation, taille de grille, clavier, saisie Xtream, lecture).
 
-- [ ] Support fiable des flux TS/MKV/codec audio non natif (analyse d'un backend libmpv / VLC sous licence compatible)
-- [ ] Indicateur de qualité, buffer et erreurs réseau explicites
-- [ ] Reconnexion auto, reprise du direct, parcours télécommande simulé
-- [ ] Mise en cache limitée des catalogues et chargement incrémental pour grosses listes
-- [ ] Édition des sources et choix du format HLS/TS après création
-- [ ] Amélioration des contrôles de sécurité sur les domaines HTTP
+## Prochaines étapes
+- [ ] EPG/XMLTV, programme actuel/suivant, historique/reprise, lecture automatique épisodes, choix audio et sous-titres pour les deux moteurs.
+- [ ] Cache d'affiches et catalogues borné, index de recherche, catégories et navigation rapides sur gros catalogues.
+- [ ] Transfert sécurisé de la configuration entre appareils avec accord de l'utilisateur ; jamais de secrets en clair.
+- [ ] Vérification licences VLC et dépendances, icônes/App Store, réduction des exceptions ATS, politiques confidentialité et tests appareils.
 
-## V0.3, catalogue enrichi
-
-- [ ] Séries Xtream : saisons / épisodes
-- [ ] EPG XMLTV + Xtream `get_short_epg`, programme en cours
-- [ ] Historique et reprise de lecture VOD, options audio / sous-titres
-- [ ] Import M3U étendu (groupes imbriqués, headers spécifiques, autres encodages)
-
-## V1.0, port tvOS
-
-- [ ] Ajouter une cible `FluxIPTVTV` en gardant exactement le même `FluxIPTVCore`
-- [ ] Interface spécifique **focus engine tvOS** et télécommande Siri Remote
-- [ ] Ajouter une source via saisie simplifiée ou appairage depuis Mac/iPhone
-- [ ] Lecture AVPlayer plein écran, navigation rapide des chaînes
-- [ ] Favoris/sources partageables via synchronisation sécurisée facultative
-- [ ] Bench mémoire/CPU sur vraie Apple TV, HLS et sous-titres
-
-## Principes de développement
-
-- Le code réseau et les parseurs ne dépendent pas de SwiftUI / AppKit.
-- Aucun contenu, compte ou fournisseur IPTV n'est intégré.
-- Ne jamais exposer d'identifiants dans les logs, les captures CI ou Git.
-- Tester sur un vrai Mac avant de qualifier une release.
+Ne jamais fournir de contenu ou de comptes, ni journaliser d'identifiants.
