@@ -81,6 +81,7 @@ struct ContentView: View {
     @FocusState private var systemFocus: String?
     @FocusState private var searchFocus: Bool
     @State private var cinema = false
+    @State private var caseTrailerVisible = false
     @State private var cinemaControls = false
     @State private var wasFullscreen = false
     @State private var cinemaWindowNumber: Int?
@@ -184,7 +185,7 @@ struct ContentView: View {
                         revealCatalogItem(target)
                         Task { @MainActor in
                             await Task.yield()
-                            guard heldItem == nil, page == .catalogue else{return}
+                            guard heldItem == nil, page == .catalogue, !searchFocus else{return}
                             reader.scrollTo(target,anchor:.center)
                             systemFocus=target
                         }
@@ -219,7 +220,7 @@ struct ContentView: View {
                 #if !os(tvOS)
                 // The simulator is a real side panel, never covers catalogue/video.
                 // On narrow mobile displays it is presented separately.
-                if showRemote && !cinema && geometry.size.width >= 800 {
+                if showRemote && !cinema && !caseTrailerVisible && geometry.size.width >= 800 {
                     Divider().overlay(.white.opacity(0.08))
                     remotePanel.padding(12)
                 }
@@ -335,7 +336,7 @@ struct ContentView: View {
     // No decorative render passes or backdrop downloads behind video.
     private var background: some View {
         ZStack {
-            if page == .player {
+            if page == .player || caseTrailerVisible {
                 Color.black.ignoresSafeArea()
             } else {
                 FluxBackdrop(theme: theme)
@@ -436,7 +437,7 @@ struct ContentView: View {
             ZStack {
                 Color.black.opacity(caseExpanded ? 0.12:0).ignoresSafeArea().contentShape(Rectangle())
                     .onTapGesture {putCaseBack(reader:reader)}
-                CasePresentation(item:item,details:heldDetails,position:inspectionSlice.index(of:item.id) ?? 0,count:inspectionSlice.items.count,yaw:$caseYaw,pitch:$casePitch,previous:{moveCase(-1)},next:{moveCase(1)},close:{putCaseBack(reader:reader)},play:{playHeld()},playEpisode:{playHeldEpisode($0,$1)},favorite:{chooseFavorites(item)},isFavorite:library.isFavorite(item),startEpisodes:caseStartEpisodes,remoteEvent:caseRemoteEvent,padSignal:casePadSignal,previousItem:clubNeighbors(item).0,nextItem:clubNeighbors(item).1,previousFarItem:inspectionSlice.adjacent(to:item.id,offset:-2),nextFarItem:inspectionSlice.adjacent(to:item.id,offset:2),jumpBy:{moveCase($0)},selectedTheme:theme(for:item.kind),concept:clubProfile)
+                CasePresentation(item:item,details:heldDetails,position:inspectionSlice.index(of:item.id) ?? 0,count:inspectionSlice.items.count,yaw:$caseYaw,pitch:$casePitch,previous:{moveCase(-1)},next:{moveCase(1)},close:{putCaseBack(reader:reader)},play:{playHeld()},playEpisode:{playHeldEpisode($0,$1)},favorite:{chooseFavorites(item)},isFavorite:library.isFavorite(item),startEpisodes:caseStartEpisodes,remoteEvent:caseRemoteEvent,padSignal:casePadSignal,previousItem:clubNeighbors(item).0,nextItem:clubNeighbors(item).1,previousFarItem:inspectionSlice.adjacent(to:item.id,offset:-2),nextFarItem:inspectionSlice.adjacent(to:item.id,offset:2),jumpBy:{moveCase($0)},selectedTheme:theme(for:item.kind),concept:clubProfile,suspended:modalOpen,onTrailerPresentation:{caseTrailerVisible=$0})
                     .frame(width:targetWidth,height:targetHeight)
                     .scaleEffect(caseExpanded ? 1 : sourceScale)
                     .opacity(caseExpanded ? 1 : 0.68)
@@ -863,7 +864,12 @@ struct ContentView: View {
     }
     private func changeKind(_ kind: IPTVMediaKind) { home(); library.contentKind = kind; showAllCatalog(); focusID = "tab-\(kind.rawValue)" }
     private func focusFirstItem() { focusID = visible.first?.id ?? "tab-\(library.contentKind.rawValue)" }
-    private func search() { if page != .catalogue { home() }; showingSearch = true; searchFocus = true }
+    private func search() {
+        guard !modalOpen else { return }
+        cancelEntrance()
+        if page != .catalogue { home() } else { dismissCaseImmediately() }
+        showingSearch = true; searchFocus = true
+    }
     private func openItem(_ item: IPTVItem) {
         library.selectedItemID = item.id
         setPreview(item)

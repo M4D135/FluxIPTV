@@ -1,25 +1,26 @@
 # Feuille de route FLUX IPTV
 
-## Correctif 0.3.1
+## Intégré dans les sources 0.8.2
 
-- Accès optionnel au contrôleur audio VLC et réapplication des réglages à la première lecture. Validation Xcode à refaire.
+- Catalogue complet, cinq boîtiers maximum, coffrets séries articulés.
+- Cinéma / vidéoclub / salon, six thèmes indépendants, fonds précalculés.
+- Aperçu sur le verso, délai 3/5/10 s, plein écran explicite.
+- Navigation contextuelle Haut / Bas / Retour, description à sources identifiées.
+- Favoris avec choix des listes et confirmation d’enregistrement.
 
-## Candidat 0.3.0
-- [x] Cœur IPTV M3U/Xtream, cache des secrets en mémoire, favoris séparés et listes personnalisées.
-- [x] Catalogue partagé SwiftUI TV/Films/Séries, grandes cartes, focus et style glossy.
-- [x] AVPlayer + plan de secours VLCKit, adaptateurs vidéo Mac/UIKit, URL épisodes et fallback, messages sans identifiants.
-- [x] Pavé tactile virtuel de première génération, clavier, bridge GameController Mac/iOS, focus natif tvOS.
-- [x] Cibles Xcode macOS, iOS, tvOS générées à partir des mêmes fichiers.
-- [x] Tests Foundation (23) + analyse syntaxique, vérification des références des projets.
-- [ ] Résolution SPM et compilation Xcode des trois cibles, sans signature en CI ; signature stable pour essai réel.
-- [ ] Validation sur Mac : TV HLS/TS, VOD MP4/MKV, épisodes, bascule moteurs, plein écran, Trousseau, anciennes listes, fluidité de très gros catalogues.
-- [ ] Validation tvOS simulateur puis Apple TV physique (Siri Remote 1re génération : swipe, press, long press, MENU, play/pause, zapping/seek), focus des modales, mémoire et rendu.
-- [ ] Vérification iPhone/iPad (rotation, taille de grille, clavier, saisie Xtream, lecture).
+## Validation restant à faire sur Apple
 
-## Prochaines étapes
-- [ ] EPG/XMLTV, programme actuel/suivant, historique/reprise, lecture automatique épisodes, choix audio et sous-titres pour les deux moteurs.
-- [ ] Cache d'affiches et catalogues borné, index de recherche, catégories et navigation rapides sur gros catalogues.
-- [ ] Transfert sécurisé de la configuration entre appareils avec accord de l'utilisateur ; jamais de secrets en clair.
-- [ ] Vérification licences VLC et dépendances, icônes/App Store, réduction des exceptions ATS, politiques confidentialité et tests appareils.
+- Compilation Xcode des trois cibles et qualification de l’installateur Mac.
+- Siri Remote physique, focus des feuilles et de la barre d’actions.
+- Lecture HLS/MP4 et cas de refus de capture ; arrêt de l’aperçu avant la lecture.
+- Passage souris / clavier / trackpad, catalogue volumineux et mémoire réelle.
+- Identification de fiches externes avec un catalogue réel, réseau lent ou coupé.
 
-Ne jamais fournir de contenu ou de comptes, ni journaliser d'identifiants.
+## Développements ultérieurs
+
+- EPG/XMLTV et programmes présent/suivant.
+- Agrégation de reprise des épisodes dans la carte d’un coffret.
+- Sélection des pistes VLC et qualification des cibles mobiles.
+- Distribution signée, icônes et préparation d’une livraison App Store.
+
+Le détail de validation de chaque version reste dans son rapport ; une tâche implémentée n’est pas assimilée à une qualification sur appareil.

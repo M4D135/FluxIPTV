@@ -43,6 +43,8 @@ struct CasePresentation: View {
     var jumpBy:((Int)->Void)? = nil
     var selectedTheme:VideoClubTheme? = nil
     var concept:ClubInterfaceProfile = .neoVideoClub
+    var suspended = false
+    var onTrailerPresentation: (Bool) -> Void = { _ in }
     @EnvironmentObject private var library:IPTVLibrary
     @EnvironmentObject private var playback:PlaybackController
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -119,7 +121,7 @@ struct CasePresentation: View {
         return manipulating || !collectorOpen
         #endif
     }
-    private var previewVisible:Bool {currentFace == .details && !collectorOpen && !dragging && !manipulating && !startingPlayback && trailer == nil && qrURL == nil && scenePhase == .active}
+    private var previewVisible:Bool {!suspended && currentFace == .details && !collectorOpen && !dragging && !manipulating && !startingPlayback && trailer == nil && qrURL == nil && scenePhase == .active}
     private var previewKey:String {"\(item.id)|\(previewVisible)|\(automaticPreview)|\(previewDelay.rawValue)|\(details.trailerURL?.absoluteString ?? "")|\(item.backdropURL?.absoluteString ?? "")"}
     private func regions(_ face:CaseFaceLayout.Page)->[CaseFaceLayout.Region] {
         CaseFaceLayout.regions(face,series:item.isSeriesCollection,trailer:details.trailerURL != nil,episodeCount:visibleEpisodes.count,retry:seasonError).filter { region in
@@ -149,7 +151,8 @@ struct CasePresentation: View {
             let filmURL:URL? = previewVisible && item.kind == .movie ? (try? library.playbackURLs(for:item))?.first:nil
             mediaPreview.update(item:item,details:details,filmURL:filmURL,backVisible:previewVisible,automatic:automaticPreview,delay:previewDelay)
         }
-        .onDisappear{cancelHandoff();mediaPreview.stop()}
+        .onDisappear{cancelHandoff();mediaPreview.stop();onTrailerPresentation(false)}
+        .onChange(of:trailer != nil){_,visible in onTrailerPresentation(visible)}
         .onChange(of:scenePhase){_,phase in
             if phase != .active {cancelHandoff();padRotation=nil;dragging=false;manipulating=false;mediaPreview.stop()}
         }
@@ -305,7 +308,7 @@ struct CasePresentation: View {
         }.frame(maxWidth:650)
     }
     private var model:some View {
-        Case3DView(item:item,details:details,printData:printData,focused:manipulating || commandsActive ? nil:focused,yaw:yaw,pitch:pitch,motion:!reduceMotion && !dragging,bridge:bridge,padInput:handlePad,padEnabled:acceptsRotation,previousItem:previousItem,nextItem:nextItem,previousFarItem:previousFarItem,nextFarItem:nextFarItem,selectedTheme:selectedTheme,previewStill:mediaPreview.still,previewPlayer:mediaPreview.player,previewPlaying:mediaPreview.showVideo && previewVisible,concept:concept)
+        Case3DView(item:item,details:details,printData:printData,focused:manipulating ? nil:focused,yaw:yaw,pitch:pitch,motion:!reduceMotion && !dragging,bridge:bridge,padInput:handlePad,padEnabled:acceptsRotation,previousItem:previousItem,nextItem:nextItem,previousFarItem:previousFarItem,nextFarItem:nextFarItem,selectedTheme:selectedTheme,previewStill:mediaPreview.still,previewPlayer:mediaPreview.player,previewPlaying:mediaPreview.showVideo && previewVisible,concept:concept)
             .frame(maxWidth:.infinity,maxHeight:.infinity)
     }
     @ViewBuilder private var modelControl:some View {
@@ -343,6 +346,7 @@ struct CasePresentation: View {
                 if surface == .front || surface == .back {
                     let face:CaseFaceLayout.Page=surface == .front ? (collectorOpen ? .episodes:.front):.details
                     if face == .details && !collectorOpen,CaseBackMediaLayout.descriptionFrame.contains(uv) {
+                        activate(.description)
                         if CaseBackMediaLayout.descriptionPrevious.contains(uv) {descriptions.step(-1)}
                         else if CaseBackMediaLayout.descriptionNext.contains(uv) {descriptions.step(1)}
                         else if CaseBackMediaLayout.descriptionLink.contains(uv),descriptionID == descriptionKey,let url=descriptions.sourceURL {showLink(url)}
@@ -623,13 +627,29 @@ private struct CaseTrailerView:View {
     let url:URL;let remoteEvent:CaseRemoteEvent?;let close:()->Void
     @Environment(\.scenePhase) private var scenePhase
     @State private var player=AVPlayer()
+    #if os(macOS)
+    @State private var expandedWindowNumber: Int?
+    #endif
     var body:some View {
         ZStack(alignment:.topTrailing) {
             Color.black.ignoresSafeArea()
             VideoPlayer(player:player).frame(maxWidth:.infinity,maxHeight:.infinity)
             Button {player.pause();player.replaceCurrentItem(with:nil);close()} label:{Label("Revenir à la pochette",systemImage:"xmark.circle.fill").padding(12)}.buttonStyle(.bordered).padding(15)
-        }.onAppear{player.replaceCurrentItem(with:AVPlayerItem(url:url));player.play()}
-         .onDisappear{player.pause();player.replaceCurrentItem(with:nil)}
+        }.onAppear{
+            #if os(macOS)
+            if let window=NSApp.keyWindow,!window.styleMask.contains(.fullScreen) {
+                expandedWindowNumber=window.windowNumber;window.toggleFullScreen(nil)
+            }
+            #endif
+            player.replaceCurrentItem(with:AVPlayerItem(url:url));player.play()
+         }
+         .onDisappear{
+            player.pause();player.replaceCurrentItem(with:nil)
+            #if os(macOS)
+            if let number=expandedWindowNumber,let window=NSApp.windows.first(where:{$0.windowNumber==number}),window.styleMask.contains(.fullScreen) {window.toggleFullScreen(nil)}
+            expandedWindowNumber=nil
+            #endif
+         }
          .onChange(of:scenePhase){_,phase in if phase != .active {player.pause()}}
          .onChange(of:remoteEvent){_,event in
             guard let action=event?.action else{return}

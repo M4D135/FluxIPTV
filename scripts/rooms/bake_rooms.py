@@ -453,10 +453,13 @@ def video_club(m,theme):
         for side in (-1,1):
             line('Suspended neon aisle',[(side*5.6,1,3.6),(side*5.6,11.5,3.6),(side*2.1,11.5,3.6)],.018,m['accent'] if side<0 else m['secondary'])
     elif theme=='vintage70':
-        for y in (4.8,8.1):
-            cylinder('Pendant stem',(0,y,3.64),.025,.8,m['metal'])
-            sphere('Amber globe pendant',(0,y,3.20),(.63,.63,.63),m['warm'])
-            area('Amber pendant',(0,y,3.15),(0,y,0),160,(1,.66,.30),1)
+        # Keep the camera's central line to the shop sign completely clear.
+        # The two globes belong above the lateral display aisles.
+        for x in (-2.8,2.8):
+            y=5.7
+            cylinder('Pendant stem',(x,y,3.64),.025,.8,m['metal'])
+            sphere('Amber globe pendant',(x,y,3.20),(.63,.63,.63),m['warm'])
+            area('Amber pendant',(x,y,3.15),(x,y,0),160,(1,.66,.30),1)
     elif theme=='artDeco':
         for side in (-1,1):
             for j in range(5):
@@ -610,6 +613,8 @@ def main():
     jobs=[(k,t) for k in ('cinema','videoClub','livingRoom') for t in THEMES] if args.all else [(args.kind,args.theme)]
     entries=[render_one(k,t,args) for k,t in jobs]
     manifest=dict(schema=1,generator='Blender procedural geometry and materials',blender=bpy.app.version_string,seed=SEED,width=args.width,height=args.height,samples=args.samples,external_models=False,external_textures=False,image_generation_ai=False,files=entries)
+    manifest['color_management']=dict(view='AgX',look='AgX - Medium High Contrast',exposure=.25)
+    manifest['source_files']={str(path.relative_to(ROOT)):hashlib.sha256(path.read_bytes()).hexdigest() for path in (Path(__file__),Path(__file__).with_name('denoise_linear.py'))}
     name='manifest.json' if args.all else f'{args.kind}-{args.theme}.render.json'
     (OUT/name).write_text(json.dumps(manifest,ensure_ascii=False,indent=2)+'\n')
     if args.all:

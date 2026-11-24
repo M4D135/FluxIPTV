@@ -222,8 +222,8 @@ private enum SleeveTexture {
             text("›",34,CaseBackMediaLayout.descriptionNext,gold,bold:true,center:true)
             let description=data.descriptionText ?? details.synopsis ?? "Aucune description disponible."
             let descriptionBody=description.isEmpty ? (data.descriptionStatus ?? "Description indisponible pour cette source."):description
-            text(String(descriptionBody.prefix(880)),descriptionBody.count>520 ? 22:26,CGRect(x:0.062,y:0.686,width:0.876,height:0.178),white)
-            let sourceLink=data.descriptionSourceURL.map{"Lire sur \($0.host ?? data.descriptionSource)  ↗"} ?? (data.descriptionSource == "IPTV" ? "Description transmise par votre fournisseur":"Sélectionnez une source avec ‹ ou ›")
+            text(String(descriptionBody.prefix(880))+(descriptionBody.count>880 ? "…":""),descriptionBody.count>520 ? 22:26,CGRect(x:0.062,y:0.686,width:0.876,height:0.178),white)
+            let sourceLink=data.descriptionSourceURL.map{data.descriptionSource == "Wikipédia" ? "Wikipédia · CC BY-SA · source et auteurs ↗":"Lire sur \($0.host ?? data.descriptionSource)  ↗"} ?? (data.descriptionSource == "IPTV" ? "Description transmise par votre fournisseur":"Sélectionnez une source avec ‹ ou ›")
             text(sourceLink,18,CaseBackMediaLayout.descriptionLink,muted,center:true)
             if let director=details.director {text("RÉALISATION  /  "+String(director.prefix(130)),20,CGRect(x:0.04,y:0.919,width:0.92,height:0.028),muted)}
             if let cast=details.cast {text("DISTRIBUTION  /  "+String(cast.prefix(180)),20,CGRect(x:0.04,y:0.953,width:0.92,height:0.038),muted)}

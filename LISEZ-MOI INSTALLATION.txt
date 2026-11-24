@@ -1,4 +1,4 @@
-FLUX IPTV 0.8.1 — GRILLE ET POCHETTES 3D - Installation sur votre Mac
+FLUX IPTV 0.8.2 — CINÉMA, VIDÉOCLUB ET SALON TV - Installation sur votre Mac
 
 1. Quittez FLUX IPTV et arrêtez le projet s'il tourne dans Xcode.
 2. Décompressez l'archive et double-cliquez sur « Installer Flux IPTV.command ».
@@ -9,7 +9,7 @@ FLUX IPTV 0.8.1 — GRILLE ET POCHETTES 3D - Installation sur votre Mac
    L'installateur contrôle que le processus reste actif et restaure l'ancien
    bundle en cas d'échec du démarrage. Ce contrôle ne valide pas la lecture.
 4. Ensuite ouvrez uniquement FluxIPTV.app depuis le Finder ou le Dock.
-   Ne relancez pas l'installateur à chaque utilisation. Vérifiez le numéro 0.8.1
+   Ne relancez pas l'installateur à chaque utilisation. Vérifiez le numéro 0.8.2
    dans la barre FLUX et les thèmes dans Réglages > Interface.
 
 Sur Mac, VLC intégré est désactivé. En cas de format incompatible, installez le
@@ -37,3 +37,10 @@ binaire macOS précompilé ; l'installateur n'a pas été exécuté sous macOS i
 Nouveau : dans Sources > Modifier, vous pouvez choisir « Sur ce Mac, sans Trousseau » puis vérifier et enregistrer vos accès. Cette option conserve les identifiants dans un fichier privé non chiffré (permissions 600), le Trousseau demeure plus sûr. Les listes de favoris sont conservées. Réglages > Interface : choisir la qualité des pochettes 3D.
 
 Pochette ouverte : glisser deux doigts sur le trackpad, sans clic. Horizontal = tourner, vertical = incliner. Clics sur les boutons imprimés et flèches clavier conservés.
+
+Nouveautés 0.8.2 : Films = cinéma, Séries = vidéoclub, Direct = salon.
+Réglages > Interface : thème indépendant pour chaque espace, aperçu après 3/5/10 s.
+Boîte : Haut = lire/ouvrir ; Bas = favoris et actions ; Retour = reposer.
+Description sélectionnée : Gauche/Droite = IPTV, Allociné, Wikipédia.
+Un clic sur la miniature ouvre la bande-annonce en plein écran.
+Voir README.md et docs/VALIDATION-0.8.2.md pour le comportement et les limites.

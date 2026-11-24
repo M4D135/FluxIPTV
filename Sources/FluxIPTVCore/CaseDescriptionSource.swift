@@ -160,17 +160,9 @@ public enum CaseDescriptionParser {
 /// Requests contain the public title/year, never IPTV URLs or credentials.
 public actor CaseDescriptionService {
     public static let shared = CaseDescriptionService()
-    private let session: URLSession
     private var cache: [String: CaseDescriptionEntry] = [:]
     private var order: [String] = []
-    public init() {
-        let configuration = URLSessionConfiguration.ephemeral
-        configuration.timeoutIntervalForRequest = 10
-        configuration.timeoutIntervalForResource = 18
-        configuration.httpMaximumConnectionsPerHost = 2
-        configuration.urlCache = nil
-        session = URLSession(configuration: configuration)
-    }
+    public init() {}
 
     public func entry(name: String, year: String?, series: Bool, source: CaseDescriptionSource) async throws -> CaseDescriptionEntry {
         let cleaned = CinemaLinks.title(name), requestedYear = CaseDescriptionParser.year(year)
@@ -185,7 +177,7 @@ public actor CaseDescriptionService {
             .init(name: "generator", value: "search"), .init(name: "gsrlimit", value: "8"),
             .init(name: "gsrsearch", value: String(cleaned.prefix(180)) + (series ? " série télévisée" : " film")),
             .init(name: "prop", value: "extracts|pageprops|info"), .init(name: "exintro", value: "1"),
-            .init(name: "explaintext", value: "1"), .init(name: "exlimit", value: "8"), .init(name: "exchars", value: "4000"),
+            .init(name: "explaintext", value: "1"), .init(name: "exlimit", value: "8"),
             .init(name: "inprop", value: "url")
         ]
         let data = try await fetch(components.url!)
@@ -235,11 +227,11 @@ public actor CaseDescriptionService {
         var request = URLRequest(url: url)
         request.setValue("FluxIPTV/0.8.2 (public movie metadata; https://github.com/M4D135/FluxIPTV)", forHTTPHeaderField: "User-Agent")
         request.setValue("fr-FR,fr;q=0.9", forHTTPHeaderField: "Accept-Language")
-        let (data, response) = try await session.data(for: request)
-        try Task.checkCancellation()
-        guard let response = response as? HTTPURLResponse, (200..<300).contains(response.statusCode),
-              ["fr.wikipedia.org", "www.wikidata.org", "www.allocine.fr"].contains(response.url?.host ?? ""),
-              data.count <= 2 * 1024 * 1024 else { throw URLError(.badServerResponse) }
+        let data = try await CaseMetadataDownload.data(from: request)
+        if ["fr.wikipedia.org", "www.wikidata.org"].contains(url.host ?? "") {
+            guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  root["error"] == nil else { throw URLError(.badServerResponse) }
+        }
         return data
     }
 }
