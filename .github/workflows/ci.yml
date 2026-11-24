@@ -1,0 +1,29 @@
+name: Swift / macOS
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  core-tests:
+    name: Core tests
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Swift package tests
+        run: swift test
+
+  macos-build:
+    name: Build macOS app
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile FluxIPTV.app (unsigned)
+        run: |
+          xcodebuild \
+            -project FluxIPTV.xcodeproj \
+            -scheme FluxIPTV \
+            -configuration Debug \
+            -destination 'platform=macOS' \
+            CODE_SIGNING_ALLOWED=NO \
+            build
