@@ -225,7 +225,7 @@ public actor CaseDescriptionService {
         try Task.checkCancellation()
         guard ["fr.wikipedia.org", "www.wikidata.org", "www.allocine.fr"].contains(url.host ?? ""), url.scheme == "https" else { throw URLError(.unsupportedURL) }
         var request = URLRequest(url: url)
-        request.setValue("FluxIPTV/0.8.3 (public movie metadata; https://github.com/M4D135/FluxIPTV)", forHTTPHeaderField: "User-Agent")
+        request.setValue("FluxIPTV/0.8.4 (public movie metadata; https://github.com/M4D135/FluxIPTV)", forHTTPHeaderField: "User-Agent")
         request.setValue("fr-FR,fr;q=0.9", forHTTPHeaderField: "Accept-Language")
         let data = try await CaseMetadataDownload.data(from: request)
         if ["fr.wikipedia.org", "www.wikidata.org"].contains(url.host ?? "") {

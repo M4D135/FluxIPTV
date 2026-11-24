@@ -33,7 +33,7 @@ struct PlaybackSettingsView: View {
         GeometryReader { geo in
             let wide = geo.size.width >= 740
             VStack(alignment:.leading,spacing:14) {
-                HStack { VStack(alignment:.leading,spacing:4) { Text("Réglages").font(.largeTitle.bold()); Text("FLUX 0.8.3  ·  Centre de contrôle").font(.caption).foregroundStyle(.secondary) }; Spacer(); Button("Fermer",action:close).buttonStyle(.bordered) }
+                HStack { VStack(alignment:.leading,spacing:4) { Text("Réglages").font(.largeTitle.bold()); Text("FLUX 0.8.4  ·  Centre de contrôle").font(.caption).foregroundStyle(.secondary) }; Spacer(); Button("Fermer",action:close).buttonStyle(.bordered) }
                 if wide {
                     HStack(alignment:.top,spacing:22) {
                         VStack(alignment:.leading,spacing:8) { ForEach(Page.allCases) { destination in pageButton(destination) }; Spacer(minLength:0) }.frame(width:230)

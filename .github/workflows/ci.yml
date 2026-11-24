@@ -18,10 +18,14 @@ defaults:
 
 jobs:
   core-tests:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+      - name: Record the Linux environment
+        run: |
+          mkdir -p build/logs
+          cat /etc/os-release | tee build/logs/linux-release.log
       - uses: swift-actions/setup-swift@v2
         with:
           swift-version: '6.2'
@@ -106,7 +110,7 @@ jobs:
 
   source-pack:
     name: Complete source pack
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4

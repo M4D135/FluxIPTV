@@ -74,7 +74,10 @@ struct PlayerSurface: View {
             }
             if playback.opening {
                 VStack(spacing: 10) {
-                    ProgressView().controlSize(.large)
+                    ProgressView()
+                        #if !os(tvOS)
+                        .controlSize(.large)
+                        #endif
                     Text("Ouverture du flux…").font(.headline)
                     Text(playback.attemptLabel).font(.caption).foregroundStyle(.secondary)
                 }

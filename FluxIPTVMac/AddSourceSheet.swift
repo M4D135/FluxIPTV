@@ -176,7 +176,13 @@ struct AddSourceSheet: View {
                     if saving { attempt?.cancel() } else { dismiss() }
                 }.fluxShortcut(cancel: true)
                 Spacer()
-                if saving { ProgressView().controlSize(.small); Text("Vérification…").font(.caption).foregroundStyle(.secondary) }
+                if saving {
+                    ProgressView()
+                        #if !os(tvOS)
+                        .controlSize(.small)
+                        #endif
+                    Text("Vérification…").font(.caption).foregroundStyle(.secondary)
+                }
                 Button(existing == nil ? "Vérifier et ajouter" : "Vérifier et enregistrer", action: submit)
                     .fluxShortcut().buttonStyle(.borderedProminent).disabled(saving || !valid)
             }
