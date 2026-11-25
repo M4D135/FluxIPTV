@@ -128,6 +128,7 @@ struct ContentView: View {
     init(fixtureSelection: IPTVItem? = nil, fixtureSeasons: [IPTVSeason] = [], fixtureOpenSeason: Int? = nil, fixtureEpisodeID: String? = nil, fixtureOpenItem: Bool = false, fixtureSearchSubmission: String? = nil, fixtureSearchObservation: ((CatalogSearchFocusSnapshot) -> Void)? = nil) {
         self.fixtureSearchSubmission = fixtureSearchSubmission
         self.fixtureSearchObservation = fixtureSearchObservation
+        _showingSearch = State(initialValue: fixtureSearchSubmission != nil)
         _previewID = State(initialValue: fixtureSelection?.id)
         _previewItem = State(initialValue: fixtureSelection)
         _focusID = State(initialValue: fixtureSelection?.id ?? "tab-live")
@@ -419,7 +420,7 @@ struct ContentView: View {
     private var commandCatalogue: some View {
         platformCatalogue
         #if os(tvOS)
-        .fluxExit(heldItem != nil || page != .catalogue || showingSearch || group != nil || continueOnly || library.selectedPresetID != nil) { if heldItem != nil { dispatch(.back) } else { back() } }
+        .fluxExit(heldItem != nil || page != .catalogue || showingSearch || !library.search.isEmpty || group != nil || continueOnly || library.selectedPresetID != nil) { if heldItem != nil { dispatch(.back) } else { back() } }
         .onPlayPauseCommand { dispatch(.playPause) }
         #else
         .onKeyPress(keys: [.upArrow, .downArrow, .leftArrow, .rightArrow, .return, .escape, .space, "f"], phases: [.down, .repeat]) { press in
@@ -730,6 +731,9 @@ struct ContentView: View {
                         .strokeBorder(focusID == "add-source" ? .white : .clear, lineWidth: 3))
             }.buttonStyle(FluxBareButtonStyle()).fluxFocus($systemFocus, id: "add-source")
                 .id("add-source").accessibilityIdentifier("welcome-load-source")
+                #if os(tvOS) && FLUX_CATALOG_UI_TESTING
+                .background(TVCatalogControlFrameProbe(identifier: "welcome-load-source").allowsHitTesting(false))
+                #endif
                 .padding(.top, 10)
         }.padding(36).frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -806,6 +810,9 @@ struct ContentView: View {
             .animation(reduceMotion ? nil : .spring(response: 0.25, dampingFraction: 0.88), value: focused)
             .accessibilityLabel(title).accessibilityValue(selected ? "Sélectionné" : "")
             .accessibilityIdentifier("navigation-\(id)")
+            #if os(tvOS) && FLUX_CATALOG_UI_TESTING
+            .background(TVCatalogControlFrameProbe(identifier: "navigation-\(id)").allowsHitTesting(false))
+            #endif
     }
 
     private func navButton(_ title: String, icon: String, id: String, active: Bool = false, iconOnly: Bool = false, action: @escaping () -> Void) -> some View {
@@ -1139,6 +1146,9 @@ struct ContentView: View {
         }.buttonStyle(FluxBareButtonStyle()).fluxFocus($systemFocus, id: item.id).id(item.id)
             .accessibilityLabel(item.name).accessibilityHint(televisionLayout ? "L’aperçu démarre dans cette vignette. Valider pour regarder. Appui long pour les favoris." : "Sélectionner pour afficher l’aperçu. Regarder ouvre la chaîne. Appui long pour les favoris.")
             .accessibilityIdentifier("live-channel-\(item.id)")
+            #if os(tvOS) && FLUX_CATALOG_UI_TESTING
+            .background(TVCatalogControlFrameProbe(identifier: "live-channel-\(item.id)").allowsHitTesting(false))
+            #endif
             .zIndex(focusID == item.id ? 1 : 0)
             .animation(reduceMotion ? nil : .spring(response: 0.28, dampingFraction: 0.84), value: focusID == item.id)
             .contextMenu {
@@ -1261,14 +1271,27 @@ struct ContentView: View {
             } else {
                 // Both visual concepts always begin in the complete, paginated grid.
                 if catalogPageCount > 1 { catalogPagination }
-                ScrollView {
-                    VStack(alignment:.leading,spacing:8) {
-                        if library.contentKind == .live {previewHero}
-                        LazyVGrid(columns:Array(repeating:GridItem(.flexible(),spacing:4),count:columns),spacing:8) {
-                            ForEach(displayedItems) { item in card(item) }
-                        }.padding(.horizontal,16).padding(.vertical,12)
-                    }
+                #if os(tvOS)
+                GeometryReader { viewport in
+                    // Headers, search and pagination have already taken their
+                    // space. Keep one complete row inside the remaining view,
+                    // including the 12-point scroll padding above and below.
+                    mediaCatalogGrid(cardHeight: max(0, viewport.size.height - 24))
                 }
+                #else
+                mediaCatalogGrid()
+                #endif
+            }
+        }
+    }
+
+    private func mediaCatalogGrid(cardHeight: CGFloat? = nil) -> some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 8) {
+                if library.contentKind == .live { previewHero }
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 4), count: columns), spacing: 8) {
+                    ForEach(displayedItems) { item in card(item, height: cardHeight) }
+                }.padding(.horizontal, 16).padding(.vertical, 12)
             }
         }
     }
@@ -1285,7 +1308,7 @@ struct ContentView: View {
         }.padding(.horizontal,30)
     }
 
-    private func card(_ item: IPTVItem) -> some View {
+    private func card(_ item: IPTVItem, height: CGFloat? = nil) -> some View {
         let focused = focusID == item.id
         let favorite = library.isFavorite(item)
         return ZStack(alignment: .topTrailing) {
@@ -1296,7 +1319,13 @@ struct ContentView: View {
                     .rotation3DEffect(.degrees(focused && !reduceMotion ? -4 : 0),axis:(x:0,y:1,z:0),perspective:0.6)
                     .scaleEffect(focused && !reduceMotion ? 1.025 : 1)
                     .offset(y: focused && !reduceMotion ? -3 : 0)
+                    #if os(tvOS)
+                    .frame(maxWidth: .infinity)
+                    #endif
                     Text(item.name).font(.callout.weight(.semibold)).lineLimit(2, reservesSpace: true).frame(maxWidth: .infinity, alignment: .leading)
+                        #if os(tvOS)
+                        .fixedSize(horizontal: false, vertical: true).layoutPriority(1)
+                        #endif
                     HStack(spacing: 5) {
                         Text(CasePackageFormat.resolve(year: item.details.year).title)
                             .font(.system(size: televisionLayout ? 18 : 9, weight: .semibold, design: .rounded))
@@ -1304,15 +1333,30 @@ struct ContentView: View {
                             .background(.white.opacity(0.09), in: RoundedRectangle(cornerRadius: 3))
                         Text(item.group).font(.caption).lineLimit(1)
                     }.foregroundStyle(.secondary)
+                        #if os(tvOS)
+                        .fixedSize(horizontal: false, vertical: true).layoutPriority(1)
+                        #endif
                     if let entry = playback.history.entries[item.id], entry.resumable {
                         ProgressView(value: entry.fraction).tint(themeAccent)
+                            #if os(tvOS)
+                            .layoutPriority(1)
+                            #endif
                     }
                 }
+                #if os(tvOS)
+                // Text keeps its natural size. The flexible 2:3 artwork takes
+                // the height left by the labels and optional progress bar;
+                // reserve the card's own 5-point vertical padding on each side.
+                .frame(height: height.map { max(0, $0 - 10) }, alignment: .top)
+                #endif
                 .padding(.horizontal,2).padding(.vertical,5)
                 .background(.white.opacity(focused ? 0.13 : 0.025), in: RoundedRectangle(cornerRadius: 21))
                 .overlay(RoundedRectangle(cornerRadius: 21).strokeBorder(focused ? Color.white.opacity(0.88) : .white.opacity(0.08), lineWidth: focused ? 2 : 1).allowsHitTesting(false))
             }.buttonStyle(FluxBareButtonStyle()).fluxFocus($systemFocus, id: item.id).id(item.id)
                 .accessibilityIdentifier("catalog-card-\(item.id)")
+                #if os(tvOS) && FLUX_CATALOG_UI_TESTING
+                .background(TVCatalogControlFrameProbe(identifier: "catalog-card-\(item.id)").allowsHitTesting(false))
+                #endif
                 #if os(tvOS)
                 .simultaneousGesture(LongPressGesture(minimumDuration: 0.65).onEnded { _ in chooseFavorites(item) })
                 #else
@@ -1561,7 +1605,7 @@ struct ContentView: View {
                 .overlay(Circle().strokeBorder(playerButtonFocused(id) ? .white.opacity(0.9) : .clear, lineWidth: 1.5))
                 .contentShape(Circle())
         }
-        .buttonStyle(.plain).foregroundStyle(.white)
+        .buttonStyle(FluxBareButtonStyle()).foregroundStyle(.white)
         .fluxFocus($systemFocus, id: id).id(id)
         .accessibilityLabel(label.title).fluxHelp(label.title)
         .disabled((id == "rewind" || id == "forward") && !playback.seekable)
