@@ -1356,11 +1356,13 @@ struct ContentView: View {
                 .padding(.horizontal,2).padding(.vertical,5)
                 .background(.white.opacity(focused ? 0.13 : 0.025), in: RoundedRectangle(cornerRadius: 21))
                 .overlay(RoundedRectangle(cornerRadius: 21).strokeBorder(focused ? Color.white.opacity(0.88) : .white.opacity(0.08), lineWidth: focused ? 2 : 1).allowsHitTesting(false))
+                #if os(tvOS) && FLUX_CATALOG_UI_TESTING
+                // Observe the real Button's native focus environment, not the
+                // application's selected ID or an ancestor outside its label.
+                .background(TVCatalogControlFrameProbe(identifier: "catalog-card-\(item.id)", observesNativeFocus: true).allowsHitTesting(false))
+                #endif
             }.buttonStyle(FluxBareButtonStyle()).fluxFocus($systemFocus, id: item.id).id(item.id)
                 .accessibilityIdentifier("catalog-card-\(item.id)")
-                #if os(tvOS) && FLUX_CATALOG_UI_TESTING
-                .background(TVCatalogControlFrameProbe(identifier: "catalog-card-\(item.id)").allowsHitTesting(false))
-                #endif
                 #if os(tvOS)
                 .simultaneousGesture(LongPressGesture(minimumDuration: 0.65).onEnded { _ in chooseFavorites(item) })
                 #else

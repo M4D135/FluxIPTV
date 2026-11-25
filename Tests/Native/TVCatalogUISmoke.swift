@@ -17,10 +17,19 @@ private enum TVCatalogUIFailure: Error, CustomStringConvertible {
 /// window as the real focused item. It never takes focus or handles input.
 struct TVCatalogControlFrameProbe: UIViewRepresentable {
     let identifier: String
+    let observesNativeFocus: Bool
+    @Environment(\.isFocused) private var nativeFocused
+
+    init(identifier: String, observesNativeFocus: Bool = false) {
+        self.identifier = identifier
+        self.observesNativeFocus = observesNativeFocus
+    }
 
     func makeUIView(context: Context) -> TVCatalogControlProbeView {
         let view = TVCatalogControlProbeView()
         view.controlIdentifier = identifier
+        view.observesNativeFocus = observesNativeFocus
+        view.nativeFocused = observesNativeFocus && nativeFocused
         view.backgroundColor = .clear
         view.isOpaque = false
         view.isUserInteractionEnabled = false
@@ -31,6 +40,13 @@ struct TVCatalogControlFrameProbe: UIViewRepresentable {
 
     func updateUIView(_ view: TVCatalogControlProbeView, context: Context) {
         view.controlIdentifier = identifier
+        view.observesNativeFocus = observesNativeFocus
+        view.nativeFocused = observesNativeFocus && nativeFocused
+    }
+
+    static func dismantleUIView(_ view: TVCatalogControlProbeView, coordinator: ()) {
+        view.nativeFocused = false
+        view.observesNativeFocus = false
     }
 
     func sizeThatFits(_ proposal: ProposedViewSize, uiView: TVCatalogControlProbeView, context: Context) -> CGSize? {
@@ -41,6 +57,8 @@ struct TVCatalogControlFrameProbe: UIViewRepresentable {
 
 final class TVCatalogControlProbeView: UIView {
     var controlIdentifier = ""
+    var observesNativeFocus = false
+    var nativeFocused = false
     override var canBecomeFocused: Bool { false }
 }
 
@@ -310,42 +328,69 @@ final class TVCatalogControlProbeView: UIView {
                     if let focused = UIFocusSystem.focusSystem(for: window)?.focusedItem {
                         let native = nativeFrame(focused, in: window)
                         let frame = native.frame
-                        let measuredProbes = controlProbes(in: window).filter {
-                            $0.controlIdentifier == fixture.expectedInitialControl && $0.window === window
-                        }
+                        let allProbes = controlProbes(in: window).filter { $0.window === window }
+                        let measuredProbes = allProbes.filter { $0.controlIdentifier == fixture.expectedInitialControl }
                         // ViewThatFits may measure a fallback before choosing
                         // its visible child. A zero-sized/offscreen probe is
                         // not a second mounted control; two visible probes
                         // remain ambiguous and must fail.
-                        let probes = measuredProbes.filter {
+                        let visibleProbes = allProbes.filter {
                             let bounds = $0.convert($0.bounds, to: window)
-                            return valid(bounds) && valid(bounds.intersection(window.bounds))
+                            let viewport = visibleViewport(from: $0.superview, in: window)
+                            return valid(bounds) && valid(bounds.intersection(viewport))
                         }
+                        let probes = visibleProbes.filter { $0.controlIdentifier == fixture.expectedInitialControl }
+                        // isFocused is read only inside actual portrait Button
+                        // labels. Count every visible native-focused label, not
+                        // merely the expected ID, to reject ambiguous ancestry.
+                        let focusedLabelProbes = visibleProbes.filter { $0.observesNativeFocus && $0.nativeFocused }
+                        let labelFocusIsExpected = probes.count == 1 && focusedLabelProbes.count == 1 &&
+                            focusedLabelProbes[0] === probes[0]
                         let expectedFrame = probes.count == 1 ? probes[0].convert(probes[0].bounds, to: window) : CGRect.null
                         let viewport = probes.count == 1 ? visibleViewport(from: probes[0].superview, in: window) : CGRect.null
                         let comparison = compareFocus(frame, with: expectedFrame, in: window.bounds)
+                        let dimensionsCompatible = compatibleDimensions(frame, expectedFrame)
+                        // The opaque SwiftUI portrait adapter omits an inset in
+                        // its declared coordinate conversion on tvOS 26.5. Do
+                        // not repair that rectangle using the expected probe.
+                        // Public isFocused inside the Button label independently
+                        // identifies the control; its UIView measures display
+                        // geometry. Real UIView focus keeps strict UIKit proof.
+                        let usesLabelFocusProof = fixture.usesPortraitControl && !(focused is UIView)
+                        let displayedFocusFrame = usesLabelFocusProof ? (labelFocusIsExpected ? expectedFrame : .null) : frame
                         let windowArea = window.bounds.width * window.bounds.height
                         let fraction = area(frame) / windowArea
                         // A portrait catalogue card includes its 2:3 artwork
                         // and labels. Keep the tighter bound for all controls
                         // and landscape tiles in the other scenarios.
                         let maximumHeightFraction: CGFloat = fixture.usesPortraitControl ? 0.60 : 0.45
-                        let bounded = valid(frame) && fraction.isFinite &&
-                            fraction < 0.18 && frame.width < window.bounds.width * 0.75 && frame.height < window.bounds.height * maximumHeightFraction
+                        let bounded = [frame, displayedFocusFrame].allSatisfy {
+                            valid($0) && area($0) / windowArea < 0.18 &&
+                            $0.width < window.bounds.width * 0.75 && $0.height < window.bounds.height * maximumHeightFraction
+                        }
                         let identity = focusIdentity(focused)
                         // An empty accessibility identifier supplies no proof.
-                        // Every pass requires the native focused item's real
-                        // geometry to match one unique measured control.
+                        // Only the portrait adapter uses public label focus;
+                        // the other five scenarios still require both geometric
+                        // overlaps and a matching centre in window coordinates.
                         let identifierConflict = !identity.identifier.isEmpty && identity.identifier != fixture.expectedInitialControl
-                        let expectedFocus = probes.count == 1 && comparison.matches && !identifierConflict
-                        let largeEnough = frame.width >= fixture.minimumFocusSize.width && frame.height >= fixture.minimumFocusSize.height
+                        let expectedFocus = native.reachesActiveWindow && probes.count == 1 && !identifierConflict &&
+                            (usesLabelFocusProof ? labelFocusIsExpected && dimensionsCompatible : comparison.matches) &&
+                            (!fixture.usesPortraitControl || labelFocusIsExpected)
+                        let largeEnough = [frame, displayedFocusFrame].allSatisfy {
+                            $0.width >= fixture.minimumFocusSize.width && $0.height >= fixture.minimumFocusSize.height
+                        }
                         // A small enough card can still extend below its grid.
                         // The actual control probe supplies the clipping chain,
                         // while the native focused item's frame is independently
                         // converted through its verified focus container.
-                        let fullyVisible = valid(frame) && valid(expectedFrame) && valid(viewport) &&
+                        let fullyVisibleUIKitGeometry = valid(frame) && valid(expectedFrame) && valid(viewport) &&
                             viewport.insetBy(dx: -1, dy: -1).contains(frame) &&
                             viewport.insetBy(dx: -1, dy: -1).contains(expectedFrame)
+                        let fullyVisible = usesLabelFocusProof
+                            ? labelFocusIsExpected && valid(displayedFocusFrame) && valid(viewport) &&
+                                viewport.insetBy(dx: -1, dy: -1).contains(displayedFocusFrame)
+                            : fullyVisibleUIKitGeometry
                         let visibilityAccepted = !fixture.usesPortraitControl || fullyVisible
                         let nativeReport: [String: Any] = [
                             "windowPoints": [window.bounds.width, window.bounds.height],
@@ -354,11 +399,14 @@ final class TVCatalogControlProbeView: UIView {
                             "focusedLabel": identity.label,
                             "focusFrame": coordinates(frame),
                             "focusFrameInWindow": coordinates(frame),
+                            "observedFocusedControlFrameInWindow": coordinates(displayedFocusFrame),
                             "focusViewportInWindow": coordinates(viewport),
                             "fullyVisibleNativeFocus": fullyVisible,
+                            "fullyVisibleUIKitGeometry": fullyVisibleUIKitGeometry,
                             "rawFocusFrame": coordinates(focused.frame),
                             "focusFrameConversion": native.method,
                             "focusContainerTrace": native.trace,
+                            "nativeFocusAttachedToActiveWindow": native.reachesActiveWindow,
                             "focusAreaFraction": fraction.isFinite ? Double(fraction) : -1,
                             "boundedNativeFocus": bounded,
                             "largeEnoughNativeControl": largeEnough,
@@ -371,15 +419,23 @@ final class TVCatalogControlProbeView: UIView {
                             "expectedControlFrameObserved": probes.count == 1 && valid(expectedFrame),
                             "expectedControlFrame": coordinates(expectedFrame),
                             "nativeFocusMatchesExpectedControl": expectedFocus,
+                            "nativeProxyGeometryMatchesExpectedControl": comparison.matches,
+                            "nativeFocusDimensionsCompatible": dimensionsCompatible,
+                            "nativeLabelFocusObserved": labelFocusIsExpected,
+                            "nativeLabelFocusedProbeCount": focusedLabelProbes.count,
+                            "nativeLabelFocusedIdentifiers": focusedLabelProbes.map(\.controlIdentifier),
                             "focusCoveredByExpectedControl": comparison.focusCoverage,
                             "expectedControlCoveredByFocus": comparison.controlCoverage,
                             "focusCenterDistance": comparison.centerDistance,
                             "expectedControlVisibleFraction": comparison.visibleFraction,
-                            "focusProof": "UIFocusSystem.focusedItem geometry compared with a noninteractive UIKit probe laid out behind the actual control",
+                            "focusProofMode": usesLabelFocusProof ? "swiftui-label-native-focus" : "uikit-geometry",
+                            "focusProof": usesLabelFocusProof
+                                ? "Unique visible actual Button label reports public EnvironmentValues.isFocused; its noninteractive UIView measures displayed bounds and clipping. UIFocusSystem item ancestry and dimensions independently verified. The opaque UIKit adapter rectangle remains diagnostic and is not asserted equal."
+                                : "UIFocusSystem.focusedItem geometry compared with a noninteractive UIKit probe laid out behind the actual control",
                             "sceneKitViewMounted": false
                         ]
                         lastObservation.merge(nativeReport) { _, new in new }
-                        let key = "\(identity.identifier)|\(frame)|\(expectedFrame)|\(viewport)"
+                        let key = "\(identity.identifier)|\(frame)|\(expectedFrame)|\(viewport)|\(focusedLabelProbes.map(\.controlIdentifier))|\(labelFocusIsExpected)"
                         stableSamples = bounded && expectedFocus && largeEnough && visibilityAccepted && search.passed && key == precedingFocus ? stableSamples + 1 : 0
                         previousFocus = key
                         if stableSamples >= 4 {
@@ -487,12 +543,12 @@ final class TVCatalogControlProbeView: UIView {
     /// https://developer.apple.com/documentation/uikit/uifocusitem/frame
     /// https://developer.apple.com/documentation/uikit/uifocusitemcontainer/coordinatespace
     private static func nativeFrame(_ focused: any UIFocusItem, in window: UIWindow)
-        -> (frame: CGRect, method: String, trace: [String]) {
+        -> (frame: CGRect, method: String, trace: [String], reachesActiveWindow: Bool) {
         if let view = focused as? UIView, view.window === window {
-            return (view.convert(view.bounds, to: window), "UIView.bounds converted to the active UIWindow", [])
+            return (view.convert(view.bounds, to: window), "UIView.bounds converted to the active UIWindow", [], true)
         }
         guard valid(focused.frame), let parent = focused.parentFocusEnvironment else {
-            return (.null, "Native focused item has no valid frame/direct parent; cannot pass", [])
+            return (.null, "Native focused item has no valid frame/direct parent; cannot pass", [], false)
         }
         var environment: (any UIFocusEnvironment)? = parent
         var visited: Set<ObjectIdentifier> = []
@@ -513,10 +569,10 @@ final class TVCatalogControlProbeView: UIView {
             environment = ancestor.parentFocusEnvironment
         }
         guard reachesActiveWindow else {
-            return (.null, "Native focus ancestry does not reach the active UIWindow; cannot pass", trace)
+            return (.null, "Native focus ancestry does not reach the active UIWindow; cannot pass", trace, false)
         }
         guard let container = parent.focusItemContainer else {
-            return (.null, "Immediate native focus parent declares no child-item container; cannot pass", trace)
+            return (.null, "Immediate native focus parent declares no child-item container; cannot pass", trace, true)
         }
         let space = container.coordinateSpace
         let containerBounds = window.convert(space.bounds, from: space)
@@ -524,11 +580,11 @@ final class TVCatalogControlProbeView: UIView {
         trace.append("Immediate parent child container: \(type(of: container))")
         trace.append("Declared coordinate space: \(type(of: space)); bounds in window=\(coordinates(containerBounds))")
         guard valid(containerBounds), valid(converted) else {
-            return (.null, "Declared native coordinate-space conversion is invalid; cannot pass", trace)
+            return (.null, "Declared native coordinate-space conversion is invalid; cannot pass", trace, true)
         }
         return (converted,
                 "Actual focusedItem.parentFocusEnvironment.focusItemContainer.coordinateSpace; native ancestry verified to active UIWindow",
-                trace)
+                trace, true)
     }
 
     private static func valid(_ frame: CGRect) -> Bool {
@@ -540,6 +596,14 @@ final class TVCatalogControlProbeView: UIView {
 
     private static func coordinates(_ frame: CGRect) -> [CGFloat] {
         valid(frame) ? [frame.origin.x, frame.origin.y, frame.width, frame.height] : []
+    }
+
+    private static func compatibleDimensions(_ native: CGRect, _ control: CGRect) -> Bool {
+        guard valid(native), valid(control) else { return false }
+        // This corroborates the independently observed focused label; size
+        // alone can never establish identity or compensate for an inset.
+        return abs(native.width - control.width) <= max(2, control.width * 0.04) &&
+            abs(native.height - control.height) <= max(2, control.height * 0.04)
     }
 
     private static func compareFocus(_ focus: CGRect, with control: CGRect, in window: CGRect)
