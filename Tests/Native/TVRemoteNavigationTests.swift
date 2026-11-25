@@ -50,6 +50,19 @@ final class TVRemoteNavigationTests: XCTestCase {
         assertFocus(countries, logical: "countries", in: app)
         retainScreenshot("country-05-menu-preserved-spain", in: app)
         print("PASS: TV_REMOTE reopened ES, moved to FR, Menu preserved ES and returned focus to Pays")
+
+        // Returning to the top-level tab must preserve the catalogue's view
+        // identity; the next Menu belongs to tvOS when no Back action remains.
+        let liveTab = element("navigation-tab-live", in: app)
+        XCUIRemote.shared.press(.menu)
+        assertFocus(liveTab, logical: "tab-live", in: app)
+        XCUIRemote.shared.press(.menu)
+        // A crash/termination is not evidence that tvOS received Menu.
+        assertCondition(NSPredicate(format: "state == %lu OR state == %lu",
+                                    XCUIApplication.State.runningBackground.rawValue,
+                                    XCUIApplication.State.runningBackgroundSuspended.rawValue),
+                        on: app, in: app)
+        print("PASS: TV_REMOTE Menu returned to TV, then Menu backgrounded the app without terminating it")
     }
 
     @MainActor

@@ -2440,8 +2440,12 @@ private extension View {
 
 #if os(tvOS)
 private extension View {
-    @ViewBuilder func fluxExit(_ enabled: Bool, action: @escaping () -> Void) -> some View {
-        if enabled { self.onExitCommand(perform: action) } else { self }
+    func fluxExit(_ enabled: Bool, action: @escaping () -> Void) -> some View {
+        // Keep the catalogue's structural identity when focus leaves a tab.
+        // A conditional wrapper remounts its controls during restoration and
+        // lets the native engine fall back to Pays. A nil action keeps Menu
+        // available to the system without replacing the catalogue subtree.
+        self.onExitCommand(perform: enabled ? action : nil)
     }
 }
 #endif

@@ -16,6 +16,14 @@ Le scénario de source indisponible commence sur Pays, contrôle choisi par le m
 
 L’exécution initiale [45663229094](https://github.com/M4D135/FluxIPTV/actions/runs/45663229094) a produit onze PNG canoniques, mais seulement neuf rapports `ready` : France et Espagne avaient le statut `failed`. Un des trois tests XCUIRemote avait réussi. La présence d’une image ne vaut donc pas validation de son focus ; la livraison exige les rapports et tests réussis du commit final.
 
+### Identité du catalogue lors de l’activation de Retour
+
+L’exécution [45668822249](https://github.com/M4D135/FluxIPTV/actions/runs/45668822249) a ensuite réussi les trois parcours XCUIRemote, mais les captures France/Espagne restaient sur Pays au lieu de leur chaîne mémorisée. Les préférences étaient correctement restaurées ; le scénario avec recherche visible réussissait aussi ses trois lancements à froid.
+
+Le modificateur `fluxExit` changeait de branche SwiftUI lorsque le focus quittait l’onglet TV, puisque cette transition activait la commande Retour. Cette structure conditionnelle pouvait recréer les contrôles pendant leur remise de focus. Le modificateur reste désormais présent ; seule son action devient `nil` quand le système doit gérer Menu. Les exigences des captures restent identiques. Le parcours pays vérifie également Menu vers l’onglet TV, puis Menu vers l’accueil système, sans assimiler une application arrêtée à une sortie normale.
+
+Référence de l’action optionnelle : https://developer.apple.com/documentation/swiftui/view/onexitcommand(perform:)
+
 ## Finalisation du build 35 : navigation réelle
 
 - La grande boîte, la description et les commandes de lecture du build 34 sont conservées, avec l’absence de lecteur de bande-annonce dans la fiche.
