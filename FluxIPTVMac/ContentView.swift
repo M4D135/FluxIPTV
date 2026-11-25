@@ -1799,6 +1799,10 @@ struct ContentView: View {
         }
         guard !library.isFiltering else { return }
         let target = visible.first?.id ?? "tab-\(library.contentKind.rawValue)"
+        // Publish the destination in the results transaction. In particular,
+        // an empty list must move toward its existing header before the native
+        // engine can fall back to the search field and cancel this handoff.
+        focusID = target
         Task { @MainActor in
             await Task.yield()
             guard pendingCatalogFocus == request else { return }

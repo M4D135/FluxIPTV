@@ -39,6 +39,11 @@
 - Sur tvOS, la marge horizontale existante de 16 points encadre le ScrollView des jaquettes. Le conteneur de défilement reste ainsi dans la zone sûre et son repère de focus coïncide avec la position affichée. La largeur utile et les positions prévues des cartes restent inchangées. Les sept scénarios conservent les mêmes exigences géométriques, sans compensation de coordonnées ni preuve de substitution.
 - Le contrôle du Trousseau iOS/tvOS exige le marqueur de succès et utilise un tableau d’arguments compatible avec le Bash macOS.
 
+## Qualification du build 29
+
+- Recherche sans résultat sur tvOS : la destination logique est fixée dès la fin du filtrage, avant de céder au prochain rendu. Cela empêche le champ de saisie de reprendre le focus pendant la disparition des anciennes cartes ; les deux états de focus sont ensuite réaffirmés et acquittés après montage.
+- Cette correction conserve les sept scénarios et leurs exigences de focus natif. Elle ne modifie pas les décors, la disposition ni les dimensions des vignettes.
+
 ## Garde-fous exécutés par la CI
 
 | Vérification | Ce qu’elle établit |
