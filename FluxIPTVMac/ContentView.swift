@@ -20,6 +20,7 @@ private struct CatalogFocusRequest: Equatable {
 #if FLUX_CATALOG_UI_TESTING
 struct CatalogSearchFocusSnapshot {
     let focusID: String?
+    let nativeFocusID: String?
     let query: String
     let filtering: Bool
     let pending: Bool
@@ -319,6 +320,9 @@ struct ContentView: View {
         }
         .onChange(of: systemFocus) { _, id in
             if heldItem == nil, let id, focusID != id { focusID = id }
+            #if FLUX_CATALOG_UI_TESTING
+            reportSearchFocusFixture()
+            #endif
         }
     }
 
@@ -782,7 +786,7 @@ struct ContentView: View {
                     .strokeBorder(focused ? .white.opacity(0.95) : .clear, lineWidth: televisionLayout ? 3 : 2)
                     .allowsHitTesting(false)
             }
-        }.buttonStyle(.plain).fluxFocus($systemFocus, id: id).id(id)
+        }.buttonStyle(FluxBareButtonStyle()).fluxFocus($systemFocus, id: id).id(id)
             .scaleEffect(focused && !reduceMotion ? 1.045 : 1)
             .animation(reduceMotion ? nil : .spring(response: 0.25, dampingFraction: 0.88), value: focused)
             .accessibilityLabel(title).accessibilityValue(selected ? "Sélectionné" : "")
@@ -806,7 +810,7 @@ struct ContentView: View {
             .foregroundStyle(active ? .white : .primary)
             .background(active ? themeAccent.opacity(0.20) : Color.white.opacity(focusID == id ? 0.13 : 0.035), in: RoundedRectangle(cornerRadius: 16))
             .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(focusID == id ? Color.white.opacity(0.8) : .white.opacity(active ? 0.18 : 0.04), lineWidth: focusID == id ? 2 : 1).allowsHitTesting(false))
-        }.buttonStyle(.plain).fluxFocus($systemFocus, id: id).id(id).accessibilityLabel(title).fluxHelp(title)
+        }.buttonStyle(FluxBareButtonStyle()).fluxFocus($systemFocus, id: id).id(id).accessibilityLabel(title).fluxHelp(title)
     }
 
     private var liveSidebarWidth: CGFloat {
@@ -849,7 +853,7 @@ struct ContentView: View {
         Button { pointerSelect(id); action() } label: {
             LiveTVScopeLabel(title: title, symbol: symbol, count: count,
                              selected: liveScopeID == id, focused: focusID == id, accent: themeAccent)
-        }.buttonStyle(.plain).fluxFocus($systemFocus, id: id).id(id)
+        }.buttonStyle(FluxBareButtonStyle()).fluxFocus($systemFocus, id: id).id(id)
             .accessibilityLabel(title)
             .accessibilityValue(liveScopeID == id ? "Sélectionné" : "")
     }
@@ -909,7 +913,7 @@ struct ContentView: View {
                     Text(group ?? "Catégories").font(.callout.weight(.semibold)).lineLimit(1)
                     Image(systemName: "chevron.down").font(.caption2)
                 }.padding(.horizontal, 13).padding(.vertical, 10)
-            }.buttonStyle(.plain).fluxFocus($systemFocus, id: "categories").id("categories")
+            }.buttonStyle(FluxBareButtonStyle()).fluxFocus($systemFocus, id: "categories").id("categories")
                 .fluxNavigationGlass(selected: group != nil, tint: themeAccent, radius: 17)
             Spacer(minLength: 0)
             navButton("Favoris", icon: "star.fill", id: "favorites-quick", active: library.selectedPresetID == FavoritePresets.defaultID(for: .live), iconOnly: true) {
@@ -1023,7 +1027,7 @@ struct ContentView: View {
                     HStack(spacing: 10) {
                         if browserHeight < 580 && !liveSidebarVisible {
                             Button { groupSearch = ""; showingGroups = true } label: { Image(systemName: "line.3.horizontal.decrease") }
-                                .buttonStyle(.plain).fluxFocus($systemFocus, id: "categories").id("categories")
+                                .buttonStyle(FluxBareButtonStyle()).fluxFocus($systemFocus, id: "categories").id("categories")
                                 .accessibilityLabel("Catégories TV")
                         } else { Image(systemName: "magnifyingglass").foregroundStyle(.secondary) }
                         TextField("Rechercher une chaîne", text: $library.search)
@@ -1117,7 +1121,7 @@ struct ContentView: View {
                                accent: themeAccent,
                                preview: televisionLayout && focusID == item.id ? livePreview : nil,
                                delay: livePreviewDelay, automaticPreview: automaticLivePreview)
-        }.buttonStyle(.plain).fluxFocus($systemFocus, id: item.id).id(item.id)
+        }.buttonStyle(FluxBareButtonStyle()).fluxFocus($systemFocus, id: item.id).id(item.id)
             .accessibilityLabel(item.name).accessibilityHint(televisionLayout ? "L’aperçu démarre dans cette vignette. Valider pour regarder. Appui long pour les favoris." : "Sélectionner pour afficher l’aperçu. Regarder ouvre la chaîne. Appui long pour les favoris.")
             .accessibilityIdentifier("live-channel-\(item.id)")
             .zIndex(focusID == item.id ? 1 : 0)
@@ -1158,7 +1162,7 @@ struct ContentView: View {
                     Label("Regarder", systemImage: "play.fill").font((compactNavigation ? Font.caption : .callout).weight(.semibold))
                         .padding(.horizontal, compactNavigation ? 10 : 15).padding(.vertical, browserHeight < 700 ? 7 : 10)
                         .fluxNavigationGlass(selected: true, tint: themeAccent, radius: 17)
-                }.buttonStyle(.plain).fluxFocus($systemFocus, id: "live-watch").id("live-watch")
+                }.buttonStyle(FluxBareButtonStyle()).fluxFocus($systemFocus, id: "live-watch").id("live-watch")
                 if !compactNavigation && browserHeight >= 580 {
                 navButton("Favoris", icon: library.isFavorite(item) ? "star.fill" : "star", id: "live-favorite", iconOnly: true) { chooseFavorites(item) }
                 }
@@ -1166,7 +1170,7 @@ struct ContentView: View {
                     Button { livePreview.toggleMuted() } label: {
                         Image(systemName: livePreview.isMuted ? "speaker.slash.fill" : "speaker.wave.2.fill")
                             .font(.caption).padding(compactNavigation ? 7 : 10)
-                    }.buttonStyle(.plain).fluxFocus($systemFocus, id: "live-preview-mute").id("live-preview-mute")
+                    }.buttonStyle(FluxBareButtonStyle()).fluxFocus($systemFocus, id: "live-preview-mute").id("live-preview-mute")
                         .accessibilityLabel(livePreview.isMuted ? "Activer le son de l’aperçu" : "Couper le son de l’aperçu")
                 }
             }
@@ -1292,7 +1296,7 @@ struct ContentView: View {
                 .padding(.horizontal,2).padding(.vertical,5)
                 .background(.white.opacity(focused ? 0.13 : 0.025), in: RoundedRectangle(cornerRadius: 21))
                 .overlay(RoundedRectangle(cornerRadius: 21).strokeBorder(focused ? Color.white.opacity(0.88) : .white.opacity(0.08), lineWidth: focused ? 2 : 1).allowsHitTesting(false))
-            }.buttonStyle(.plain).fluxFocus($systemFocus, id: item.id).id(item.id)
+            }.buttonStyle(FluxBareButtonStyle()).fluxFocus($systemFocus, id: item.id).id(item.id)
                 #if os(tvOS)
                 .simultaneousGesture(LongPressGesture(minimumDuration: 0.65).onEnded { _ in chooseFavorites(item) })
                 #else
@@ -1541,7 +1545,7 @@ struct ContentView: View {
                 .overlay(Circle().strokeBorder(playerButtonFocused(id) ? .white.opacity(0.9) : .clear, lineWidth: 1.5))
                 .contentShape(Circle())
         }
-        .buttonStyle(.plain).foregroundStyle(.white)
+        .buttonStyle(FluxBareButtonStyle()).foregroundStyle(.white)
         .fluxFocus($systemFocus, id: id).id(id)
         .accessibilityLabel(label.title).fluxHelp(label.title)
         .disabled((id == "rewind" || id == "forward") && !playback.seekable)
@@ -1720,18 +1724,21 @@ struct ContentView: View {
         guard !library.isFiltering else { return }
         pendingCatalogFocus = nil
         let target = visible.first?.id ?? "tab-\(library.contentKind.rawValue)"
-        focusID = target
         Task { @MainActor in
             await Task.yield()
             guard request == catalogFocusContext, page == .catalogue, heldItem == nil,
-                  !library.isFiltering, focusID == target, !modalOpen,
+                  !library.isFiltering, !modalOpen,
                   !searchFocus, !liveGroupSearchFocus else { return }
+            // Removing the old results can make the OS temporarily focus its
+            // first control. That fallback is not a cancellation of Submit.
+            // Apply both selections after the result-view update has yielded.
+            focusID = target
             systemFocus = target
         }
     }
     #if FLUX_CATALOG_UI_TESTING
     private func reportSearchFocusFixture() {
-        fixtureSearchObservation?(CatalogSearchFocusSnapshot(focusID: focusID, query: library.search,
+        fixtureSearchObservation?(CatalogSearchFocusSnapshot(focusID: focusID, nativeFocusID: systemFocus, query: library.search,
             filtering: library.isFiltering, pending: pendingCatalogFocus != nil, heldItemID: heldItem?.id))
     }
     #endif
@@ -2061,7 +2068,7 @@ struct ContentView: View {
 private extension View {
     @ViewBuilder func fluxFocus(_ binding: FocusState<String?>.Binding, id: String) -> some View {
         #if os(tvOS)
-        self.buttonStyle(FluxBareButtonStyle()).focused(binding, equals: id).focusEffectDisabled()
+        self.focused(binding, equals: id).focusEffectDisabled()
         #else
         self.focusable().focused(binding, equals: id)
         #endif

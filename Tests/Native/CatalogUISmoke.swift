@@ -216,16 +216,25 @@ private enum CatalogUIFailure: Error, CustomStringConvertible {
                         "Search submission did not defer focus while the real filter was running.")
             if let replacement = scenario.replacement { library.search = replacement }
             let finalQuery = scenario.replacement ?? scenario.query
+            var stableSamples = 0
             for _ in 0..<160 {
                 if let last = observations.last, last.query == finalQuery, !last.filtering, !last.pending,
-                   scenario.expected == nil || last.focusID == scenario.expected { break }
+                   scenario.expected == nil || (last.focusID == scenario.expected && last.nativeFocusID == scenario.expected) {
+                    stableSamples += 1
+                    if stableSamples >= 4 { break }
+                } else { stableSamples = 0 }
                 try await Task.sleep(nanoseconds: 25_000_000)
             }
             guard let final = observations.last else { throw CatalogUIFailure.assertion("No search focus observation arrived.") }
-            try require(final.query == finalQuery && !final.filtering && !final.pending,
+            let trace = observations.map {
+                "query=\($0.query), filtering=\($0.filtering), pending=\($0.pending), focus=\($0.focusID ?? "nil"), native=\($0.nativeFocusID ?? "nil")"
+            }.joined(separator: " | ")
+            print("SEARCH_FOCUS_TRACE: \(trace)")
+            try require(final.query == finalQuery && !final.filtering && !final.pending && stableSamples >= 4,
                         "Search focus did not settle or cancel within the bounded deadline.")
             if let expected = scenario.expected {
-                try require(final.focusID == expected, "Submit focused \(final.focusID ?? "nil") instead of the current result \(expected).")
+                try require(final.focusID == expected && final.nativeFocusID == expected,
+                            "Submit focused logical=\(final.focusID ?? "nil"), native=\(final.nativeFocusID ?? "nil") instead of the current result \(expected).")
             } else {
                 try require(library.catalogResults.all.items.map(\.id) == ["fixture-movie-2"],
                             "The replacement query did not supply the current catalogue.")

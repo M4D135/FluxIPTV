@@ -18,6 +18,8 @@
 - Conservation de la sourdine demandée pendant le chargement asynchrone d’une bande-annonce ; retour à la fiche et commande de son partagent le même état que le lecteur.
 - Nouvelle tentative après une erreur de session YouTube depuis le bouton Lire, en conservant la préférence de son.
 - Validation de la recherche après la fin du filtrage, pour éviter de focaliser ou d’ouvrir un ancien résultat.
+- Rétablissement conjoint de la sélection et du focus natif après une recherche vide, même si le système sélectionne brièvement une autre rubrique.
+- Suppression du fond blanc de focus natif sur les commandes personnalisées : un seul style de bouton, contour fin et animation de la vignette conservés.
 
 ## Garde-fous exécutés par la CI
 
