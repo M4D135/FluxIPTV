@@ -75,12 +75,13 @@ final class TVCatalogControlProbeView: UIView {
                 try TVCatalogCapture.require(!library.sources.isEmpty && !library.isLoading &&
                                              !library.browsingCatalogReady && library.credentialIssue != nil,
                                              "The failed-source fixture must have no loaded catalogue and require reconnection.")
-            } else if fixture.restoresBrowsing {
+            } else if fixture.usesPersistedSelection {
                 let restored = try TVCatalogCapture.makeRestoredBrowsingLibrary(fixture: fixture)
                 library = restored.library
                 restoredDefaultsSuite = restored.suiteName
-                // A restored nonempty search genuinely starts asynchronous
-                // filtering. Only this scenario accepts that initial state.
+                // Saved country/search filters run asynchronously. Restore
+                // their selection through production after results mount,
+                // rather than seeding focus before a channel exists.
                 try TVCatalogCapture.require(!library.isLoading &&
                                              library.catalogItem(id: fixture.selection?.id) != nil,
                                              "The restored library did not install its complete local catalogue.")
@@ -104,13 +105,13 @@ final class TVCatalogControlProbeView: UIView {
 
     var body: some Scene {
         WindowGroup {
-            ContentView(fixtureSelection: fixture.restoresBrowsing ? nil : fixture.selection, fixtureSeasons: fixture.seasons,
+            ContentView(fixtureSelection: fixture.usesPersistedSelection ? nil : fixture.selection, fixtureSeasons: fixture.seasons,
                         fixtureOpenSeason: fixture.openSeason, fixtureEpisodeID: fixture.episodeID,
                         fixtureOpenItem: fixture.scenario == "movie",
                         fixtureSearchSubmission: fixture.searchQuery,
                         fixtureSearchObservation: { searchObservations.snapshots.append($0) },
                         fixtureOpenCountries: fixture.opensCountryPicker,
-                        fixtureRestoreBrowsing: fixture.restoresBrowsing || fixture.scenario == "live-error")
+                        fixtureRestoreBrowsing: fixture.usesPersistedSelection || fixture.scenario == "live-error")
                 .environmentObject(library)
                 .environmentObject(playback)
                 .preferredColorScheme(.dark)
@@ -199,6 +200,7 @@ final class TVCatalogControlProbeView: UIView {
 
     var opensCountryPicker: Bool { scenario == "country-picker" }
     var restoresBrowsing: Bool { scenario == "live-restored" }
+    var usesPersistedSelection: Bool { restoresBrowsing || scenario == "live-fr" || scenario == "live-es" }
 
     var expectedCountryResults: [String] {
         if restoresBrowsing { return ["fixture-country-fr-1"] }
@@ -380,6 +382,13 @@ final class TVCatalogControlProbeView: UIView {
     /// its production restore path must recover the intended native focus.
     static func makeRestoredBrowsingLibrary(fixture: TVCatalogFixture) throws
         -> (library: IPTVLibrary, suiteName: String) {
+        guard fixture.usesPersistedSelection, let countryCode = fixture.countryCode,
+              let selectedID = fixture.selection?.id else {
+            throw TVCatalogUIFailure.assertion("The restoration fixture needs its expected country and channel.")
+        }
+        let expectedGroup: String? = fixture.restoresBrowsing ? "[FR] Cinéma" : nil
+        let expectedSearch = fixture.restoresBrowsing ? "Grand écran" : ""
+        let expectedGroupSearch = fixture.restoresBrowsing ? "Cin" : ""
         let suiteName = "\(bundleID).RestoredUI.\(UUID().uuidString)"
         guard let storedDefaults = UserDefaults(suiteName: suiteName) else {
             throw TVCatalogUIFailure.assertion("Cannot create the isolated UI restoration suite.")
@@ -387,18 +396,18 @@ final class TVCatalogControlProbeView: UIView {
         do {
             let original = IPTVLibrary(catalogFixture: fixture.source, items: fixture.items, kind: .live,
                                        browsingDefaults: storedDefaults)
-            original.countryCode = "FR"
-            original.group = "[FR] Cinéma"
-            original.search = "Grand écran"
-            original.groupSearch = "Cin"
-            original.browseItemID = "fixture-country-fr-1"
+            original.countryCode = countryCode
+            original.group = expectedGroup
+            original.search = expectedSearch
+            original.groupSearch = expectedGroupSearch
+            original.browseItemID = selectedID
             original.flushBrowsingPreferences()
             guard let data = storedDefaults.data(forKey: CatalogBrowsingPreferences.storageKey), !data.isEmpty else {
                 throw TVCatalogUIFailure.assertion("UI restoration has no persisted browsing state to read.")
             }
             let saved = CatalogBrowsingPreferences.decoded(data).state(for: fixture.source.id, kind: .live)
-            try require(saved.countryCode == "FR" && saved.group == "[FR] Cinéma" && saved.search == "Grand écran" &&
-                        saved.groupSearch == "Cin" && saved.browseItemID == "fixture-country-fr-1",
+            try require(saved.countryCode == countryCode && saved.group == expectedGroup && saved.search == expectedSearch &&
+                        saved.groupSearch == expectedGroupSearch && saved.browseItemID == selectedID,
                         "The initial library did not persist the exact UI restoration fixture.")
             guard let reopenedDefaults = UserDefaults(suiteName: suiteName) else {
                 throw TVCatalogUIFailure.assertion("Cannot reopen the isolated UI restoration suite.")
@@ -526,7 +535,7 @@ final class TVCatalogControlProbeView: UIView {
                             report["selectedItemID"] = fixture.selection?.id ?? ""
                             report["requestedSeason"] = fixture.openSeason ?? 0
                             report["requestedEpisodeID"] = fixture.episodeID ?? ""
-                            if fixture.restoresBrowsing {
+                            if fixture.usesPersistedSelection {
                                 report["captureMode"] = "native tvOS Simulator; recreated library and production browsing restoration with no initial UI selection fixture"
                             } else {
                                 report["captureMode"] = fixture.searchQuery == nil
@@ -599,9 +608,12 @@ final class TVCatalogControlProbeView: UIView {
         let countryMatches = library.contentKind == .live && library.countryCode == expectedCode
         let resultsMatch = !library.isFiltering && resultIDs == fixture.expectedCountryResults
         let countriesMatch = counts == expectedCounts
-        let restorationMatches = !fixture.restoresBrowsing ||
-            (library.group == "[FR] Cinéma" && library.search == "Grand écran" && library.groupSearch == "Cin" &&
-             library.browseItemID == "fixture-country-fr-1" && library.catalogPage == 0)
+        let expectedGroup: String? = fixture.restoresBrowsing ? "[FR] Cinéma" : nil
+        let expectedSearch = fixture.restoresBrowsing ? "Grand écran" : ""
+        let expectedGroupSearch = fixture.restoresBrowsing ? "Cin" : ""
+        let restorationMatches = !fixture.usesPersistedSelection ||
+            (library.group == expectedGroup && library.search == expectedSearch && library.groupSearch == expectedGroupSearch &&
+             library.browseItemID == fixture.selection?.id && library.catalogPage == 0)
         return (countryMatches && resultsMatch && countriesMatch && restorationMatches, [
             "countryFilterTested": true,
             "countryExpectedCode": expectedCode,
@@ -615,9 +627,9 @@ final class TVCatalogControlProbeView: UIView {
             "countryAvailableCountsMatch": countriesMatch,
             "countryUnclassifiedRetained": counts[LiveCountry.unknownCode] == 2,
             "countryPickerRequested": fixture.opensCountryPicker,
-            "browsingUIRestorationTested": fixture.restoresBrowsing,
-            "browsingUIRestorationMatches": fixture.restoresBrowsing && restorationMatches,
-            "browsingUISelectionSeeded": !fixture.restoresBrowsing && fixture.selection != nil,
+            "browsingUIRestorationTested": fixture.usesPersistedSelection,
+            "browsingUIRestorationMatches": fixture.usesPersistedSelection && restorationMatches,
+            "browsingUISelectionSeeded": !fixture.usesPersistedSelection && fixture.selection != nil,
             "browsingRestoredGroup": library.group ?? "",
             "browsingRestoredSearch": library.search,
             "browsingRestoredGroupSearch": library.groupSearch,
