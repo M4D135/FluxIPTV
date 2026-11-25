@@ -264,6 +264,9 @@ struct CasePresentation: View {
             .background(primary ? Color.white.opacity(0.22):Color.white.opacity(0.055),in:RoundedRectangle(cornerRadius:14))
             .overlay(RoundedRectangle(cornerRadius:14).strokeBorder(commandsActive && focused == action ? Color.cyan:Color.white.opacity(0.11),lineWidth:commandsActive && focused == action ? 2:1))
         }.buttonStyle(.plain).accessibilityLabel(title)
+        #if os(macOS)
+        .focusable(false)
+        #endif
         #if os(tvOS)
         .focusable(!compact)
         .focused($nativeCommandFocus,equals:action)
@@ -356,9 +359,7 @@ struct CasePresentation: View {
             .overlay(RoundedRectangle(cornerRadius:14).strokeBorder(selected ? Color.cyan:Color.clear,lineWidth:1.5))
         }.buttonStyle(.plain).accessibilityLabel(title)
             .accessibilityAddTraits(selected ? .isSelected:[])
-            #if os(tvOS)
             .focusable(false)
-            #endif
     }
     private var navigationHint:String {
         if descriptionActive {return "← → Source · Valider Ouvrir · ↑ Aperçu · Retour Reposer"}
@@ -730,6 +731,11 @@ struct CasePresentation: View {
         }
     }
     private func handle(_ action:RemoteAction) {
+        #if os(tvOS)
+        if ![RemoteAction.left,.right,.up,.down].contains(action) {
+            pendingDirection?.cancel();pendingDirection=nil
+        }
+        #endif
         if padRotation != nil {
             switch action {
             case .left,.right,.up,.down,.select:return

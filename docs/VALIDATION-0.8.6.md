@@ -27,6 +27,7 @@ Le workflow [Swift / Apple platforms](https://github.com/M4D135/FluxIPTV/actions
 - Vraie WKWebView et fournisseur IFrame local : états du lecteur, commandes, orientation et pause/reprise, fin de vidéo, conservation de l’instance entre hôtes, erreurs et libération.
 - Vrai AVPlayer et vidéo locale créée par AVFoundation : délai TV, remplacement et stabilité de la sélection, annulation, sourdine, repli d’URL et libération du lecteur.
 - Vrai renderer SceneKit : recto/verso, projection et UV de l’aperçu, hit test du boîtier de saison, aperçu attaché au couvercle ouvert, captures dans les diagnostics.
+- Vraie vue SwiftUI du catalogue dans une fenêtre macOS : captures de la TV et du rayon DVD/VHS avec jaquettes locales et fonds distribués, pour la revue des espacements et de l’en-tête. Les données de test ne chargent aucun compte.
 - Archives d’applications et pack complet des sources du commit exécuté, avec identifiant de commit et empreinte SHA-256.
 
 Le workflow de préparation [Render 18 original 4K interiors](https://github.com/M4D135/FluxIPTV/actions/workflows/room-bakes.yml) rend les combinaisons univers/thème indépendamment, puis assemble uniquement des résultats dont la version du moteur, les paramètres et les empreintes des générateurs concordent.

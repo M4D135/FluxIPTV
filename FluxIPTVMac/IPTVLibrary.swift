@@ -47,6 +47,24 @@ final class IPTVLibrary: ObservableObject {
         }
     }
 
+    #if FLUX_CATALOG_UI_TESTING
+    /// Isolated local catalogue for the native UI capture harness. This path
+    /// neither loads saved accounts nor starts a source refresh.
+    init(catalogFixture source: IPTVSource, items: [IPTVItem], kind: IPTVMediaKind) {
+        precondition(source.kind == .m3uFile)
+        precondition(items.allSatisfy {
+            $0.sourceID == source.id && $0.directURL == nil && $0.xtreamStreamID == nil
+                && ($0.logoURL == nil || $0.logoURL?.isFileURL == true)
+                && $0.backdropURL == nil && $0.details.trailerURL == nil
+        })
+        sources = [source]
+        selectedSourceID = source.id
+        catalogIndex = CatalogIndex(items)
+        contentKind = kind
+        updateResults(clear: true)
+    }
+    #endif
+
     var selectedItem: IPTVItem? {
         catalogIndex.item(id: selectedItemID)
     }

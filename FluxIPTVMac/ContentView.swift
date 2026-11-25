@@ -101,6 +101,16 @@ struct ContentView: View {
     @State private var cinemaWindowNumber: Int?
     @StateObject private var remoteInput = RemoteInputBridge()
 
+    #if FLUX_CATALOG_UI_TESTING
+    /// Seed only the initial selection; layout, controls and artwork remain the
+    /// same production views used by the application.
+    init(fixtureSelection: IPTVItem? = nil) {
+        _previewID = State(initialValue: fixtureSelection?.id)
+        _previewItem = State(initialValue: fixtureSelection)
+        _focusID = State(initialValue: fixtureSelection?.id ?? "tab-live")
+    }
+    #endif
+
     private var selectedSeason: IPTVSeason? { seasons.first { $0.number == seasonNumber } }
     private var episodes: [IPTVItem] { selectedSeason?.episodes ?? [] }
     private var visibleSlice: CatalogSlice {

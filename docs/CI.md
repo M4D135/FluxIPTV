@@ -20,6 +20,8 @@ Le job macOS exécute aussi `scripts/test-youtube-session.sh` : une vraie fenêt
 
 Deux autres vérifications natives s’exécutent sur macOS : `scripts/test-live-preview.sh` crée une vidéo locale avec AVFoundation et vérifie délai, sélection stable, annulation, repli d’URL, sourdine et nettoyage de l’aperçu TV. `scripts/test-case-scene.sh` utilise le vrai renderer SceneKit pour vérifier le recto/verso, les UV du cadre vidéo, la sélection des saisons et le couvercle ouvert. Les captures sont enregistrées dans les diagnostics du job. Elles ne constituent pas un test de flux distant ni de télécommande physique.
 
+Le catalogue complet est aussi capturé par `scripts/test-catalog-ui.sh` dans une fenêtre SwiftUI native, avec des chaînes et jaquettes locales. Deux captures TV/rayon permettent de vérifier visuellement les espacements, les catégories et l’en-tête. Les quatre vérifications natives restent indépendantes après une compilation Mac réussie : l’échec d’un test ne masque pas les diagnostics des suivants, mais empêche la livraison de l’application comme validée.
+
 Le workflow dispose uniquement de la permission GitHub `contents: read`. Il ne publie pas de release, ne modifie pas le dépôt et n’emploie aucun certificat de signature Apple. Une nouvelle exécution sur la même branche annule celle qui serait encore en cours.
 
 ## Télécharger

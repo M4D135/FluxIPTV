@@ -122,7 +122,7 @@ import SceneKit
             sideCover.name = "rack-side-cover"
             sideCover.geometry?.materials = [cover]
             sideCover.position = SCNVector3(side * (w + 0.002), 0, shellZ)
-            sideCover.eulerAngles.y = side * .pi / 2
+            sideCover.eulerAngles = SCNVector3(0,side * Float.pi / 2,0)
             node.addChildNode(sideCover)
         }
 
