@@ -53,6 +53,9 @@ struct LiveCountryPicker: View {
         }
         .fluxSheetSize(width: 820, height: 650)
         #if os(tvOS)
+        // A sheet's initial native focus is evaluated after onAppear. Declare
+        // the selected country here so that presentation does not choose row 1.
+        .defaultFocus($focusedCountry, selection ?? "all")
         .onExitCommand(perform: close)
         #endif
     }
