@@ -47,6 +47,38 @@ final class XtreamClientTests: XCTestCase {
                        "https://example.org/sub/series/u/p/4.mkv")
     }
 
+    func testEpisodeUsesValidNestedExtensionWhenTopLevelValueIsUnusable() throws {
+        let series = IPTVItem(id: "s", sourceID: id, name: "Série", group: "Test",
+                              logoURL: nil, kind: .series, directURL: nil,
+                              xtreamStreamID: "1", fileExtension: nil, isSeriesCollection: true)
+        let server = try XCTUnwrap(URL(string: "https://example.invalid/sub/"))
+        let invalidValues: [Any] = ["", " \n", NSNull(), 17, ["format": "mkv"], "bad/path"]
+        for invalid in invalidValues {
+            let entry: [String: Any] = ["id": 7, "container_extension": invalid,
+                                       "info": ["container_extension": " MOV \n"]]
+            let episode = try XCTUnwrap(XtreamClient.decodeSeasons(
+                ["episodes": ["1": [entry]]], series: series).first?.episodes.first)
+            XCTAssertEqual(episode.fileExtension, "mov")
+            let urls = PlaybackPlan.urls(server: server, username: "u", password: "p",
+                                         item: episode, liveExtension: "m3u8")
+            XCTAssertEqual(urls.map(\.path), ["/sub/series/u/p/7.mov"])
+        }
+    }
+
+    func testDeclaredEpisodeExtensionKeepsPriorityAfterWhitespaceNormalization() throws {
+        let series = IPTVItem(id: "s", sourceID: id, name: "Série", group: "Test",
+                              logoURL: nil, kind: .series, directURL: nil,
+                              xtreamStreamID: "1", fileExtension: nil, isSeriesCollection: true)
+        let entry: [String: Any] = ["id": 7, "container_extension": " MKV \n",
+                                   "info": ["container_extension": "mp4"]]
+        let episode = try XCTUnwrap(XtreamClient.decodeSeasons(
+            ["episodes": ["1": [entry]]], series: series).first?.episodes.first)
+        XCTAssertEqual(episode.fileExtension, "mkv")
+        let urls = PlaybackPlan.urls(server: URL(string: "https://example.invalid")!,
+                                     username: "u", password: "p", item: episode, liveExtension: "m3u8")
+        XCTAssertEqual(urls.map(\.pathExtension), ["mkv"])
+    }
+
     func testTrailerMetadataNormalizesYouTubeAndTriesTheNextUsableField() {
         let expected = "https://www.youtube.com/watch?v=M7lc1UVf-VE"
         for firstField in ["", "  ", "0", "null", "not a link", "https://youtube.com/watch?v=123", "https://youtube.com/results?search_query=film"] {

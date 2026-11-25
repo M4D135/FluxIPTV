@@ -12,14 +12,47 @@ public struct PlaybackAttempt: Equatable, Sendable {
     public let engine: PlaybackEngine
 }
 
+/// Labels deliberately contain no part of an authenticated address.
+public struct PlaybackVariant: Identifiable, Equatable, Sendable {
+    public let id: Int
+    public let title: String
+}
+
 public enum PlaybackPlan {
+    /// Share one bounded candidate list between playback and an explicit hand-off.
+    public static func candidateURLs(_ urls: [URL]) -> [URL] {
+        var seen = Set<URL>()
+        return Array(urls.filter { url in
+            (try? IPTVURL.validated(url.absoluteString)) != nil && seen.insert(url).inserted
+        }.prefix(3))
+    }
+
+    public static func variants(urls: [URL]) -> [PlaybackVariant] {
+        candidateURLs(urls).enumerated().map { index, url in
+            PlaybackVariant(id: index, title: variantTitle(url: url, index: index))
+        }
+    }
+
+    public static func variantTitle(url: URL, index: Int) -> String {
+        // Never echo arbitrary extensions: a provider can put credentials or
+        // tokens in any URL component, including the last path component.
+        let format: String
+        let fileExtension = url.pathExtension.lowercased()
+        switch fileExtension {
+        case "m3u8": format = "HLS"
+        case "mp4", "m4v", "mov", "mkv", "avi", "ts", "m2ts", "webm",
+             "flv", "wmv", "mpg", "mpeg", "vob", "ac3", "mp3", "aac",
+             "m4a", "ogg", "wav", "flac":
+            format = fileExtension.uppercased()
+        default: format = "format non indiqué"
+        }
+        return "Adresse \(index + 1) · \(format)"
+    }
+
     /// Keep native HLS for live TV; prefer VLC for known non-native containers.
     /// If an engine is requested manually, use that engine for all candidates.
     public static func attempts(urls: [URL], preferred: PlaybackEngine? = nil) -> [PlaybackAttempt] {
-        var seen = Set<URL>()
-        return urls.filter { url in
-            (try? IPTVURL.validated(url.absoluteString)) != nil && seen.insert(url).inserted
-        }.prefix(3).flatMap { url -> [PlaybackAttempt] in
+        candidateURLs(urls).flatMap { url -> [PlaybackAttempt] in
             let ext = url.pathExtension.lowercased()
             let engines: [PlaybackEngine]
             if let preferred { engines = [preferred] }

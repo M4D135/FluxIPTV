@@ -17,7 +17,7 @@ public enum MediaEnvironment: String, CaseIterable, Codable, Identifiable, Senda
     public var subtitle: String {
         switch self {
         case .cinema: "Les films à l’affiche, dans un hall de cinéma."
-        case .videoClub: "Les séries et leurs saisons, parmi les coffrets du vidéoclub."
+        case .videoClub: "Les séries et leurs saisons, dans les rayons du vidéoclub."
         case .livingRoom: "Les chaînes en direct, dans un salon avec grand téléviseur."
         }
     }

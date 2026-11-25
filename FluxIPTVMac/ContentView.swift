@@ -54,6 +54,7 @@ struct ContentView: View {
     @State private var episodesLoading = false
     @State private var episodesFailed = false
     @State private var seriesRequest = UUID()
+    @State private var seriesTask: Task<Void, Never>?
     @State private var columns = 5
     @State private var compactChrome = false
     @State private var focusID: String? = "tab-live"
@@ -68,7 +69,8 @@ struct ContentView: View {
     @State private var casePitch = 0.0
     @State private var caseRemoteEvent: CaseRemoteEvent?
     @State private var casePadSignal: CasePadSignal?
-    @State private var caseStartEpisodes = false
+    @State private var heldSeasonNumber: Int?
+    @State private var heldEpisodeID: String?
     @State private var cardFrames = CaseFrameCache()
     @State private var catalogPage = 0
     @State private var resumeSlice = CatalogSlice()
@@ -104,15 +106,29 @@ struct ContentView: View {
     #if FLUX_CATALOG_UI_TESTING
     /// Seed only the initial selection; layout, controls and artwork remain the
     /// same production views used by the application.
-    init(fixtureSelection: IPTVItem? = nil) {
+    init(fixtureSelection: IPTVItem? = nil, fixtureSeasons: [IPTVSeason] = [], fixtureOpenSeason: Int? = nil, fixtureEpisodeID: String? = nil) {
         _previewID = State(initialValue: fixtureSelection?.id)
         _previewItem = State(initialValue: fixtureSelection)
         _focusID = State(initialValue: fixtureSelection?.id ?? "tab-live")
+        if let fixtureSelection,fixtureSelection.isSeriesCollection,let first=fixtureSeasons.first {
+            _page=State(initialValue:.series)
+            _series=State(initialValue:fixtureSelection)
+            _seasons=State(initialValue:fixtureSeasons)
+            _seasonNumber=State(initialValue:fixtureOpenSeason ?? first.number)
+            _focusID=State(initialValue:"season-\(fixtureOpenSeason ?? first.number)")
+            if let fixtureOpenSeason {
+                _heldItem=State(initialValue:fixtureSelection)
+                _heldDetails=State(initialValue:fixtureSelection.details)
+                _heldSeasonNumber=State(initialValue:fixtureOpenSeason)
+                _heldEpisodeID=State(initialValue:fixtureEpisodeID)
+                _caseExpanded=State(initialValue:true)
+            }
+        }
     }
     #endif
 
-    private var selectedSeason: IPTVSeason? { seasons.first { $0.number == seasonNumber } }
-    private var episodes: [IPTVItem] { selectedSeason?.episodes ?? [] }
+    private var heldSeasonIndex: Int? { heldSeasonNumber.flatMap { number in seasons.firstIndex { $0.number == number } } }
+    private var heldSourceID: String? { heldSeasonNumber.map { "season-\($0)" } ?? heldItem?.id }
     private var visibleSlice: CatalogSlice {
         continueOnly ? resumeSlice : library.catalogResults.slice(group:group)
     }
@@ -164,7 +180,14 @@ struct ContentView: View {
     // must not change the neighbors of a case already in the user's hands.
     private var inspectionSlice: CatalogSlice { heldSlice ?? visibleSlice }
     private func clubNeighbors(_ item:IPTVItem)->(IPTVItem?,IPTVItem?) {
-        (inspectionSlice.adjacent(to:item.id,offset:-1),inspectionSlice.adjacent(to:item.id,offset:1))
+        (caseNeighbor(item,offset:-1),caseNeighbor(item,offset:1))
+    }
+    private func caseNeighbor(_ item:IPTVItem,offset:Int)->IPTVItem? {
+        if let index=heldSeasonIndex {
+            guard seasons.indices.contains(index+offset) else{return nil}
+            return SeriesSeasonShelf.sleeve(series:item,season:seasons[index+offset])
+        }
+        return inspectionSlice.adjacent(to:item.id,offset:offset)
     }
     private var showingAllCatalog: Bool {
         CatalogScope.isAll(group:group,search:library.search,presetID:library.selectedPresetID,resumeOnly:continueOnly)
@@ -214,12 +237,21 @@ struct ContentView: View {
                     }
                     .coordinateSpace(name: "club-pane")
                     .onPreferenceChange(CaseFrameKey.self) { frames in cardFrames.update(frames) }
-                    .onChange(of: heldItem?.id) { _, id in
-                        guard id == nil, page == .catalogue, let target=focusID else{return}
+                    .onChange(of: page) { previous, destination in
+                        guard previous == .series,destination == .catalogue,let target=focusID,visibleSlice.item(id:target) != nil else{return}
                         revealCatalogItem(target)
                         Task { @MainActor in
                             await Task.yield()
-                            guard heldItem == nil, page == .catalogue, !searchFocus else{return}
+                            guard page == .catalogue,heldItem == nil,focusID == target else{return}
+                            reader.scrollTo(target,anchor:.center);systemFocus=target
+                        }
+                    }
+                    .onChange(of: heldItem?.id) { _, id in
+                        guard id == nil, page != .player, let target=focusID else{return}
+                        if page == .catalogue {revealCatalogItem(target)}
+                        Task { @MainActor in
+                            await Task.yield()
+                            guard heldItem == nil, page != .player, !searchFocus else{return}
                             reader.scrollTo(target,anchor:.center)
                             systemFocus=target
                         }
@@ -346,7 +378,6 @@ struct ContentView: View {
         .sheet(item: $itemOptions) { item in itemPanel(item) }
         .confirmationDialog("Navigation", isPresented: $showingNavigationMenu, titleVisibility: .visible) {
             Button("Sources") { showingSources = true }
-            Button("Rechercher") { showingNavigationMenu = false; search() }
             Button("Listes et favoris") { showingLists = true }
             #if !os(tvOS)
             Button(showRemote ? "Masquer la télécommande" : "Télécommande") { showRemote.toggle() }
@@ -381,7 +412,7 @@ struct ContentView: View {
                 livePreview.schedule(id: item.id, urls: urls, delay: livePreviewDelay, enabled: automaticLivePreview)
             } catch { livePreview.markUnavailable() }
         }
-        .onDisappear { caseDetailTask?.cancel(); caseTransitionTask?.cancel(); entranceTask?.cancel(); favoriteFeedbackTask?.cancel(); playerControlsTask?.cancel(); livePreview.stop() }
+        .onDisappear { caseDetailTask?.cancel(); caseTransitionTask?.cancel(); seriesTask?.cancel(); entranceTask?.cancel(); favoriteFeedbackTask?.cancel(); playerControlsTask?.cancel(); livePreview.stop() }
     }
 
     #if !os(tvOS)
@@ -447,12 +478,14 @@ struct ContentView: View {
             heldDetails=details
         }
     }
-    private func showCase(_ item: IPTVItem, episodes: Bool = false) {
+    private func showCase(_ item: IPTVItem, season: Int? = nil, episodeID: String? = nil) {
+        if item.isSeriesCollection && season == nil {loadSeries(item);return}
         caseTransitionTask?.cancel()
         let token=UUID(); caseToken=token
         searchFocus=false
-        heldSlice=visibleSlice.inspection(containing:item,fallback:library.catalogResults.all)
-        heldDetails=item.details;caseYaw=episodes ? 180:0;casePitch=0;caseExpanded=false;caseStartEpisodes=episodes;caseRemoteEvent=nil;casePadSignal=nil;heldItem=item
+        heldSlice=season == nil ? visibleSlice.inspection(containing:item,fallback:library.catalogResults.all):nil
+        heldSeasonNumber=season;heldEpisodeID=episodeID
+        heldDetails=item.details;caseYaw=0;casePitch=0;caseExpanded=false;caseRemoteEvent=nil;casePadSignal=nil;heldItem=item
         caseTransitionTask = Task { @MainActor in
             await Task.yield()
             guard !Task.isCancelled,caseToken==token else {return}
@@ -461,6 +494,12 @@ struct ContentView: View {
         requestCaseDetails(item,token:token)
     }
     private func moveCase(_ delta:Int) {
+        if let index=heldSeasonIndex {
+            guard seasons.indices.contains(index+delta) else{return}
+            let season=seasons[index+delta]
+            heldSeasonNumber=season.number;heldEpisodeID=nil;seasonNumber=season.number;focusID=SeriesSeasonShelf.focusID(season)
+            return
+        }
         guard let current=heldItem, let item=inspectionSlice.adjacent(to:current.id,offset:delta) else{return}
         let token=UUID();caseToken=token
         caseTransitionTask?.cancel();caseExpanded=true
@@ -472,8 +511,8 @@ struct ContentView: View {
         guard let item=heldItem else{return}
         caseDetailTask?.cancel();caseTransitionTask?.cancel()
         let token=UUID();caseToken=token
-        let destination=visibleSlice.item(id:item.id)?.id ?? visible.first?.id ?? "group-all"
-        revealCatalogItem(destination)
+        let destination=heldSeasonNumber.map{"season-\($0)"} ?? visibleSlice.item(id:item.id)?.id ?? visible.first?.id ?? "group-all"
+        if heldSeasonNumber == nil {revealCatalogItem(destination)}
         caseTransitionTask=Task { @MainActor in
             // Let the paginated grid lay out the return slot before shrinking.
             await Task.yield()
@@ -483,10 +522,10 @@ struct ContentView: View {
             guard !Task.isCancelled,caseToken==token else{return}
             withAnimation(reduceMotion ? nil : .easeInOut(duration:0.28)) {caseExpanded=false}
             if !reduceMotion {try? await Task.sleep(nanoseconds:300_000_000)}
-            guard !Task.isCancelled,caseToken==token else{return};focusID=destination;systemFocus=destination;heldItem=nil;heldSlice=nil
+            guard !Task.isCancelled,caseToken==token else{return};focusID=destination;systemFocus=destination;heldItem=nil;heldSlice=nil;heldSeasonNumber=nil;heldEpisodeID=nil
         }
     }
-    private func dismissCaseImmediately() {caseDetailTask?.cancel();caseTransitionTask?.cancel();caseToken=UUID();heldItem=nil;heldSlice=nil;caseExpanded=false}
+    private func dismissCaseImmediately() {caseDetailTask?.cancel();caseTransitionTask?.cancel();caseToken=UUID();heldItem=nil;heldSlice=nil;heldSeasonNumber=nil;heldEpisodeID=nil;caseExpanded=false}
     private func playHeld() {
         guard let item=heldItem else{return}
         guard !item.isSeriesCollection else {return}
@@ -494,19 +533,19 @@ struct ContentView: View {
     }
     private func playHeldEpisode(_ episode:IPTVItem, _ allSeasons:[IPTVSeason]) {
         guard let collection=heldItem,collection.isSeriesCollection else{return}
-        series=collection;seasons=allSeasons;seasonNumber=episode.seasonNumber
+        series=collection;seasons=allSeasons;seasonNumber=episode.seasonNumber ?? heldSeasonNumber
         playItem(episode)
     }
     private func heldOverlay(_ item:IPTVItem,reader:ScrollViewProxy)->some View {
         GeometryReader { geo in
-            let source=cardFrames.frame(for:item.id) ?? CGRect(x:geo.size.width*(clubProfile.isEditorial ? 0.65:0.5)-80,y:geo.size.height*0.62-120,width:160,height:240)
+            let source=cardFrames.frame(for:heldSourceID ?? item.id) ?? CGRect(x:geo.size.width*(clubProfile.isEditorial ? 0.65:0.5)-80,y:geo.size.height*0.62-120,width:160,height:240)
             let targetWidth=max(1,geo.size.width)
             let targetHeight=max(1,geo.size.height)
             let sourceScale=max(0.12,min(0.42,source.height/max(1,targetHeight*0.78)))
             ZStack {
                 Color.black.opacity(caseExpanded ? 0.12:0).ignoresSafeArea().contentShape(Rectangle())
                     .onTapGesture {putCaseBack(reader:reader)}
-                CasePresentation(item:item,details:heldDetails,position:inspectionSlice.index(of:item.id) ?? 0,count:inspectionSlice.items.count,yaw:$caseYaw,pitch:$casePitch,previous:{moveCase(-1)},next:{moveCase(1)},close:{putCaseBack(reader:reader)},play:{playHeld()},playEpisode:{playHeldEpisode($0,$1)},favorite:{chooseFavorites(item)},isFavorite:library.isFavorite(item),startEpisodes:caseStartEpisodes,remoteEvent:caseRemoteEvent,padSignal:casePadSignal,previousItem:clubNeighbors(item).0,nextItem:clubNeighbors(item).1,previousFarItem:inspectionSlice.adjacent(to:item.id,offset:-2),nextFarItem:inspectionSlice.adjacent(to:item.id,offset:2),jumpBy:{moveCase($0)},selectedTheme:theme(for:item.kind),concept:clubProfile,suspended:modalOpen,onTrailerPresentation:{caseTrailerVisible=$0})
+                CasePresentation(item:item,details:heldDetails,position:heldSeasonIndex ?? inspectionSlice.index(of:item.id) ?? 0,count:heldSeasonNumber == nil ? inspectionSlice.items.count:seasons.count,yaw:$caseYaw,pitch:$casePitch,previous:{moveCase(-1)},next:{moveCase(1)},close:{putCaseBack(reader:reader)},play:{playHeld()},playEpisode:{playHeldEpisode($0,$1)},favorite:{chooseFavorites(item)},isFavorite:library.isFavorite(item),startEpisodes:heldSeasonNumber != nil,remoteEvent:caseRemoteEvent,padSignal:casePadSignal,initialSeasons:heldSeasonNumber == nil ? []:seasons,initialSeasonNumber:heldSeasonNumber,initialEpisodeID:heldEpisodeID,previousItem:clubNeighbors(item).0,nextItem:clubNeighbors(item).1,previousFarItem:caseNeighbor(item,offset:-2),nextFarItem:caseNeighbor(item,offset:2),jumpBy:{moveCase($0)},selectedTheme:theme(for:item.kind),concept:clubProfile,suspended:modalOpen,onTrailerPresentation:{caseTrailerVisible=$0})
                     .frame(width:targetWidth,height:targetHeight)
                     .scaleEffect(caseExpanded ? 1 : sourceScale)
                     .opacity(caseExpanded ? 1 : 0.68)
@@ -522,7 +561,7 @@ struct ContentView: View {
                     Text(item.name).font(.system(.largeTitle,design:.default).weight(.heavy)).lineLimit(2)
                     Text(item.group).font(.callout).foregroundStyle(.secondary).lineLimit(1)
                     HStack(spacing:9) {
-                        navButton(item.kind == .live ? "Regarder" : "Prendre le boîtier",icon:item.kind == .live ? "play.fill":"film.stack",id:"hero-play",active:true) { openItem(item) }
+                        navButton(item.kind == .live ? "Regarder" : item.isSeriesCollection ? "Voir les saisons":"Prendre le boîtier",icon:item.kind == .live ? "play.fill":"film.stack",id:"hero-play",active:true) { openItem(item) }
                         navButton("Favoris et listes",icon:library.isFavorite(item) ? "star.fill" : "star",id:"hero-favorite") { chooseFavorites(item) }
                     }
                 } else {
@@ -552,9 +591,8 @@ struct ContentView: View {
     private var header: some View {
         FluxGlassGroup {
             HStack(spacing: compactNavigation ? 8 : 18) {
-                HStack(spacing: 8) {
+                if !compactNavigation { HStack(spacing: 8) {
                     Image(systemName: "waveform.path").font(.title2.weight(.semibold)).foregroundStyle(themeAccent)
-                    if !compactNavigation {
                         VStack(alignment: .leading, spacing: 2) {
                             Text("FLUX").font(.title3.weight(.heavy)).tracking(3)
                             if !compactChrome {
@@ -562,11 +600,11 @@ struct ContentView: View {
                                     .font(.caption2.monospacedDigit()).foregroundStyle(.secondary)
                             }
                         }
-                    }
-                }.accessibilityElement(children: .combine).accessibilityLabel("Flux IPTV")
+                }.accessibilityElement(children: .combine).accessibilityLabel("Flux IPTV") }
                 Spacer(minLength: 0)
-                HStack(spacing: 8) {
+                HStack(spacing: compactNavigation ? 5:8) {
                     ForEach(IPTVMediaKind.allCases, id: \.self) { kind in modeButton(kind) }
+                    headerDestination("Recherche",symbol:"magnifyingglass",id:"search",selected:showingSearch || searchFocus,tint:.cyan) {search()}
                 }
                 Spacer(minLength: 0)
                 if compactNavigation {
@@ -575,7 +613,6 @@ struct ContentView: View {
                 } else {
                     HStack(spacing: 2) {
                         navButton("Sources", icon: "square.stack", id: "sources", iconOnly: true) { showingSources = true }
-                        navButton("Recherche", icon: "magnifyingglass", id: "search", iconOnly: true) { search() }
                         #if !os(tvOS)
                         navButton("Télécommande", icon: "appletvremote.gen1", id: "remote", active: showRemote, iconOnly: true) { showRemote.toggle() }
                         #endif
@@ -590,12 +627,15 @@ struct ContentView: View {
         .padding(.horizontal, compactNavigation ? 12 : 24).padding(.top, 10).padding(.bottom, 12)
     }
     private func modeButton(_ kind: IPTVMediaKind) -> some View {
-        let selected = library.contentKind == kind && page == .catalogue
+        let selected = library.contentKind == kind && page != .player
         let id = "tab-\(kind.rawValue)"
         let symbol: String = kind == .live ? "tv.fill" : kind == .movie ? "film.fill" : "square.stack.3d.up.fill"
         let title: String = kind == .live ? "TV" : kind == .movie ? "Films" : "Séries"
         let tint: Color = kind == .live ? .cyan : kind == .movie ? .orange : .purple
-        return Button { pointerSelect(id); changeKind(kind) } label: {
+        return headerDestination(title,symbol:symbol,id:id,selected:selected,tint:tint) {changeKind(kind)}
+    }
+    private func headerDestination(_ title:String,symbol:String,id:String,selected:Bool,tint:Color,action:@escaping ()->Void)->some View {
+        Button { pointerSelect(id); action() } label: {
             let layout = browserHeight < 580 ? AnyLayout(HStackLayout(spacing: 6)) : AnyLayout(VStackLayout(spacing: 4))
             layout {
                 Image(systemName: symbol).symbolRenderingMode(.hierarchical)
@@ -603,8 +643,8 @@ struct ContentView: View {
                 Text(title).font(.caption.weight(.semibold)).lineLimit(1)
             }
             .foregroundStyle(selected ? tint : .white.opacity(0.92))
-            .frame(minWidth: compactNavigation ? 48 : 72)
-            .padding(.horizontal, 8).padding(.vertical, 9)
+            .frame(minWidth: compactNavigation ? 40 : 72)
+            .padding(.horizontal, compactNavigation ? 6:8).padding(.vertical, 9)
             .fluxNavigationGlass(selected: selected, tint: tint, radius: 21)
             .overlay {
                 RoundedRectangle(cornerRadius: 21)
@@ -943,7 +983,7 @@ struct ContentView: View {
                     Text(library.selectedPreset?.name ?? environment.title).font(.system(.largeTitle, design: .default).weight(.bold)).lineLimit(1)
                     Text("\(library.selectedSource?.name ?? "Bibliothèque")  ·  \(library.isFiltering ? "Recherche…" : "\(visible.count) éléments")").font(.callout).foregroundStyle(.secondary)
                     if !compactChrome {
-                        Text(library.contentKind == .movie ? "À l’affiche · Choisir un film" : library.contentKind == .series ? "Les coffrets · Saisons et épisodes" : "En direct · Choisir une chaîne")
+                        Text(library.contentKind == .movie ? "À l’affiche · Choisir un film" : library.contentKind == .series ? "Les séries · Saisons et épisodes" : "En direct · Choisir une chaîne")
                             .font(.caption).foregroundStyle(.secondary)
                     }
                 }
@@ -1047,7 +1087,7 @@ struct ContentView: View {
                     if playback.history.entries[item.id] != nil {
                         Button("Recommencer") {
                             playback.forgetProgress(item.id)
-                            if item.isSeriesCollection { showCase(item, episodes: true) } else { playItem(item) }
+                            if item.isSeriesCollection { loadSeries(item) } else { playItem(item) }
                         }
                     }
                 }
@@ -1068,54 +1108,40 @@ struct ContentView: View {
     }
 
     private var seriesDetail: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            HStack(alignment: .center, spacing: 24) {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .center, spacing: 18) {
+                navButton("Retour aux séries", icon: "chevron.backward", id: "series-back") { back() }
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(series?.name ?? "Série").font(.title2.bold()).lineLimit(2)
+                    Text(episodesLoading ? "Chargement des saisons…" : "\(seasons.count) saisons · Choisissez un boîtier")
+                        .font(.callout).foregroundStyle(.secondary)
+                }.frame(maxWidth: .infinity, alignment: .leading)
                 if let series {
-                    ArtworkView(url: series.logoURL, fit: true) { Image(systemName: "film.stack").font(.largeTitle) }
-                        .frame(width: 120, height: 165).clipShape(RoundedRectangle(cornerRadius: 16))
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text(series.name).font(.largeTitle.bold()).lineLimit(3)
-                        Text("\(seasons.count) saisons · \(seasons.reduce(0) { $0 + $1.episodes.count }) épisodes").foregroundStyle(.secondary)
-                        navButton("Favoris et listes", icon: "star", id: "series-favorite") { itemOptions = series }
-                    }
+                    navButton("Favoris et listes", icon: "star", id: "series-favorite") { itemOptions = series }
                 }
-                Spacer(minLength: 0)
-                navButton("Retour", icon: "chevron.backward", id: "series-back") { back() }
-            }.padding(.horizontal, 30)
-            if episodesLoading { Spacer(); ProgressView("Chargement des épisodes…").frame(maxWidth: .infinity); Spacer() }
-            else if episodesFailed { Spacer(); navButton("Réessayer", icon: "arrow.clockwise", id: "series-retry") { if let series { loadSeries(series) } }.frame(maxWidth: .infinity); Spacer() }
-            else {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack {
-                        ForEach(seasons) { season in
-                            navButton(season.number == 0 ? "Spéciaux" : "Saison \(season.number)", icon: "play.rectangle.on.rectangle", id: "season-\(season.number)", active: seasonNumber == season.number) { seasonNumber = season.number }
-                        }
-                    }.padding(.horizontal, 30).padding(.vertical, 5)
-                }
-                ScrollView {
-                    LazyVStack(spacing: 10) {
-                        ForEach(episodes) { episode in
-                            Button { pointerSelect(episode.id); playItem(episode) } label: {
-                                HStack(spacing: 15) {
-                                    ZStack(alignment:.bottomLeading) {
-                                        ArtworkView(url:episode.logoURL ?? episode.backdropURL ?? series?.logoURL,fit:false) { Image(systemName:"play.rectangle").font(.title2).frame(maxWidth:.infinity,maxHeight:.infinity) }.frame(width:148,height:84).clipped()
-                                        Text("S\(String(format:"%02d",episode.seasonNumber ?? seasonNumber ?? 0)) E\(String(format:"%02d",episode.episodeNumber ?? 0))").font(.caption2.bold()).padding(5).background(.black.opacity(0.8),in:RoundedRectangle(cornerRadius:5)).padding(5)
-                                    }.clipShape(RoundedRectangle(cornerRadius:10))
-                                    VStack(alignment: .leading, spacing: 5) {
-                                        Text(episode.name).font(.headline).lineLimit(2)
-                                        if let synopsis=episode.details.synopsis {Text(synopsis).font(.caption).foregroundStyle(.secondary).lineLimit(2)}
-                                        if let entry = playback.history.entries[episode.id], entry.resumable { ProgressView(value: entry.fraction).tint(themeAccent).frame(maxWidth: 180) }
-                                    }
-                                    Spacer(); Image(systemName: "chevron.right")
-                                }.padding(18).background(.white.opacity(focusID == episode.id ? 0.20 : 0.06), in: RoundedRectangle(cornerRadius: 18))
-                                    .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(focusID == episode.id ? .white : .clear, lineWidth: 2))
-                            }.buttonStyle(.plain).fluxFocus($systemFocus, id: episode.id).id(episode.id)
-                                .contextMenu { Button("Recommencer") { playback.forgetProgress(episode.id); playItem(episode) } }
-                        }
-                    }.padding(.horizontal, 30).padding(.vertical, 8)
-                }
+            }.padding(.horizontal, 24).padding(.top, 6)
+            if episodesLoading {
+                Spacer(); ProgressView("Chargement des saisons…").frame(maxWidth: .infinity); Spacer()
+            } else if episodesFailed {
+                Spacer()
+                VStack(spacing: 12) {
+                    Text("Les saisons n’ont pas pu être chargées.").foregroundStyle(.secondary)
+                    navButton("Réessayer", icon: "arrow.clockwise", id: "series-retry") { if let series { loadSeries(series) } }
+                }.frame(maxWidth: .infinity)
+                Spacer()
+            } else if seasons.isEmpty {
+                Spacer()
+                Text("Le fournisseur n’a communiqué aucune saison pour cette série.")
+                    .foregroundStyle(.secondary).frame(maxWidth: .infinity).padding(24)
+                Spacer()
+            } else if let series {
+                SeriesSeasonShelf(series: series, seasons: seasons, columns: columns,
+                                  focusedID: focusID, systemFocus: $systemFocus,
+                                  focus: focusSeason, open: {showSeason($0)})
+                Text("Choisissez une saison pour voir ses épisodes · Retour : catalogue des séries")
+                    .font(.caption).foregroundStyle(.secondary).frame(maxWidth: .infinity).padding(.bottom, 10)
             }
-        }
+        }.frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     /// Windowed and fullscreen playback share the same edge-to-edge surface.
@@ -1475,22 +1501,38 @@ struct ContentView: View {
     private func openItem(_ item: IPTVItem) {
         library.selectedItemID = item.id
         setPreview(item)
-        if item.kind != .live {showCase(item)} else {series=nil;seasons=[];playItem(item)}
+        if item.isSeriesCollection {loadSeries(item)}
+        else if item.kind != .live {showCase(item)}
+        else {series=nil;seasons=[];playItem(item)}
     }
     private func loadSeries(_ item: IPTVItem) {
-        let token = UUID(); seriesRequest = token; series = item; page = .series; seasons = []; episodesFailed = false; episodesLoading = true; focusID = "series-back"
-        Task { @MainActor in
+        cancelEntrance();dismissCaseImmediately();livePreview.stop();searchFocus=false
+        seriesTask?.cancel()
+        let token = UUID(); seriesRequest = token; series = item; page = .series; seasons = []; seasonNumber=nil; episodesFailed = false; episodesLoading = true; focusID = "series-back"
+        seriesTask=Task { @MainActor in
             do {
                 let result = try await library.seasons(for: item)
-                guard seriesRequest == token, page == .series else { return }
+                guard !Task.isCancelled,seriesRequest == token, page == .series else { return }
                 seasons = result; seasonNumber = result.first?.number; episodesLoading = false
-                focusID = result.first?.episodes.first?.id ?? "series-back"
-            } catch { if seriesRequest == token { episodesLoading = false; episodesFailed = true; focusID = "series-retry" } }
+                focusID = result.first.map(SeriesSeasonShelf.focusID) ?? "series-back"
+            } catch {
+                guard !Task.isCancelled,seriesRequest == token,page == .series else{return}
+                episodesLoading = false; episodesFailed = true; focusID = "series-retry"
+            }
+            if seriesRequest == token {seriesTask=nil}
         }
+    }
+    private func focusSeason(_ season:IPTVSeason) {
+        seasonNumber=season.number;pointerSelect(SeriesSeasonShelf.focusID(season))
+    }
+    private func showSeason(_ season:IPTVSeason,episodeID:String? = nil) {
+        guard let collection=series,seasons.contains(where:{$0.number == season.number}) else{return}
+        seasonNumber=season.number;focusID=SeriesSeasonShelf.focusID(season)
+        showCase(collection,season:season.number,episodeID:episodeID)
     }
     private func playItem(_ item: IPTVItem) {
         livePreview.stop()
-        guard !item.isSeriesCollection else { showCase(item, episodes: true); return }
+        guard !item.isSeriesCollection else { loadSeries(item); return }
         cancelEntrance()
         dismissCaseImmediately()
         do {
@@ -1556,7 +1598,7 @@ struct ContentView: View {
         }
         playItem(target)
     }
-    private func home() { playerControlsTask?.cancel(); cancelEntrance(); dismissCaseImmediately(); if cinema { toggleCinema(restoringPreviousWindow: true) }; playback.stop(); page = .catalogue; series = nil; seasons = []; seriesRequest = UUID(); focusID = "tab-\(library.contentKind.rawValue)" }
+    private func home() { playerControlsTask?.cancel(); seriesTask?.cancel(); seriesTask=nil; cancelEntrance(); dismissCaseImmediately(); if cinema { toggleCinema(restoringPreviousWindow: true) }; playback.stop(); page = .catalogue; series = nil; seasons = []; seasonNumber=nil; episodesLoading=false; episodesFailed=false; seriesRequest = UUID(); focusID = "tab-\(library.contentKind.rawValue)" }
     private func back() {
         if entranceItem != nil { cancelEntrance(); return }
         if heldItem != nil {putCaseBack();return}
@@ -1575,7 +1617,11 @@ struct ContentView: View {
         if cinema { toggleCinema(restoringPreviousWindow: true) }
         let lastItem = playback.playingItem
         playback.stop(); page = .catalogue
-        if let collection = series { showCase(collection, episodes: true) }
+        if let collection = series {
+            page = .series
+            if let season=seasons.first(where:{$0.number == seasonNumber}) ?? seasons.first {showSeason(season,episodeID:lastItem?.id)}
+            else {loadSeries(collection)}
+        }
         else if let item = lastItem, item.kind == .movie { showCase(item) }
         else { focusID = lastItem?.id ?? "tab-\(library.contentKind.rawValue)" }
     }
@@ -1601,12 +1647,12 @@ struct ContentView: View {
                 rows.append(["navigation-more"])
             } else {
             #if os(tvOS)
-                rows.append(["sources", "search"] + (library.contentKind != .live || (browserHeight < 580 && !liveSidebarVisible) ? ["lists"] : []) + ["settings"])
+                rows.append(["sources"] + (library.contentKind != .live || (browserHeight < 580 && !liveSidebarVisible) ? ["lists"] : []) + ["settings"])
             #else
-                rows.append(["sources", "search", "remote"] + (library.contentKind != .live || (browserHeight < 580 && !liveSidebarVisible) ? ["lists"] : []) + ["settings"])
+                rows.append(["sources", "remote"] + (library.contentKind != .live || (browserHeight < 580 && !liveSidebarVisible) ? ["lists"] : []) + ["settings"])
             #endif
             }
-            rows.append(["tab-live", "tab-movie", "tab-series"])
+            rows.append(["tab-live", "tab-movie", "tab-series", "search"])
         }
         switch page {
         case .catalogue:
@@ -1626,9 +1672,13 @@ struct ContentView: View {
                 if catalogPageCount>1 {rows.append((catalogPage>0 ? ["page-prev"] : []) + (catalogPage+1<catalogPageCount ? ["page-next"] : []))}
             }
         case .series:
-            rows += [["series-favorite", "series-back"]]
+            rows += [["series-back", "series-favorite"]]
             if episodesFailed { rows.append(["series-retry"]) }
-            else { rows.append(seasons.map { "season-\($0.number)" }); rows += episodes.map { [$0.id] } }
+            else {
+                for start in stride(from:0,to:seasons.count,by:max(1,columns)) {
+                    rows.append(seasons[start..<min(seasons.count,start+max(1,columns))].map(SeriesSeasonShelf.focusID))
+                }
+            }
         case .player:
             if playerControlsVisible {
                 #if os(tvOS)
@@ -1681,7 +1731,10 @@ struct ContentView: View {
         case .back: back()
         case .home: home()
         case .search: search()
-        case .playPause: if page == .player { playback.togglePause() } else if let item = visibleSlice.item(id:focusID) { openItem(item) }
+        case .playPause:
+            if page == .player { playback.togglePause() }
+            else if page == .series {activateFocus()}
+            else if let item = visibleSlice.item(id:focusID) { openItem(item) }
         case .rewind: playback.skip(seconds: -Double(playback.settings.skipSeconds))
         case .forward: playback.skip(seconds: Double(playback.settings.skipSeconds))
         case .previous: adjacent(-1)
@@ -1700,9 +1753,8 @@ struct ContentView: View {
     private func activateFocus() {
         guard let id = focusID else { focusID = focusRows.first?.first; return }
         if page == .catalogue, let item = visibleSlice.item(id:id) { openItem(item); return }
-        if page == .series, let item = episodes.first(where: { $0.id == id }) { playItem(item); return }
         if id.hasPrefix("tab-"), let kind = IPTVMediaKind(rawValue: String(id.dropFirst(4))) { changeKind(kind); return }
-        if id.hasPrefix("season-"), let n = Int(id.dropFirst(7)) { seasonNumber = n; return }
+        if page == .series,id.hasPrefix("season-"),let n=Int(id.dropFirst(7)),let season=seasons.first(where:{$0.number == n}) {showSeason(season);return}
         if id.hasPrefix("live-category-") { selectLiveGroup(String(id.dropFirst("live-category-".count))); return }
         if id.hasPrefix("live-preset-") { selectLivePreset(String(id.dropFirst("live-preset-".count))); return }
         if id == "group-all" { showAllCatalog(); return }

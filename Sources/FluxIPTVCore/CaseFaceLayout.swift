@@ -4,7 +4,7 @@ import Foundation
 /// Coordinates are normalized from the top-left, independently of viewport size.
 public enum CaseFaceLayout {
     public enum Action: Hashable, Sendable {
-        case flip, rotate, play, favorite, trailer, wikipedia, allocine, close, previous, next
+        case flip, rotate, play, favorite, trailer, close, previous, next
         case details, description, episodes, previousSeason, nextSeason, previousPage, nextPage, retry, episode(Int)
     }
     public struct Region: Equatable, Sendable {
@@ -24,8 +24,7 @@ public enum CaseFaceLayout {
             return [region(series ? .episodes : .play,0.04,0.79,0.58,0.06),region(.favorite,0.64,0.79,0.32,0.06),region(.flip,0.04,0.86,0.54,0.05),region(.rotate,0.60,0.86,0.36,0.05)] + footer
         case .details:
             var a = [region(series ? .episodes : .play,0.04,0.74,0.58,0.06),region(.favorite,0.64,0.74,0.32,0.06)]
-            if trailer { a.append(region(.trailer,0.04,0.81,0.40,0.05)); a.append(region(.wikipedia,0.46,0.81,0.24,0.05)); a.append(region(.allocine,0.72,0.81,0.24,0.05)) }
-            else { a.append(region(.wikipedia,0.04,0.81,0.44,0.05)); a.append(region(.allocine,0.52,0.81,0.44,0.05)) }
+            if trailer { a.append(region(.trailer,0.04,0.81,0.92,0.05)) }
             return a + [region(.flip,0.04,0.87,0.54,0.04),region(.rotate,0.60,0.87,0.36,0.04)] + footer
         case .episodes:
             var a = [region(.previousSeason,0.04,0.16,0.22,0.05),region(.nextSeason,0.74,0.16,0.22,0.05)]

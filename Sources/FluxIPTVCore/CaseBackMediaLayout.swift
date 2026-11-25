@@ -6,12 +6,9 @@ public enum CaseBackMediaLayout {
     public static let trailer = CGRect(x:0.055,y:0.411,width:0.435,height:0.046)
     public static let film = CGRect(x:0.51,y:0.411,width:0.435,height:0.046)
     public static let descriptionFrame = CGRect(x:0.04,y:0.632,width:0.92,height:0.274)
-    public static let descriptionPrevious = CGRect(x:0.05,y:0.639,width:0.06,height:0.04)
-    public static let descriptionNext = CGRect(x:0.89,y:0.639,width:0.06,height:0.04)
-    public static let descriptionLink = CGRect(x:0.13,y:0.874,width:0.74,height:0.026)
 
-    /// The embedded player keeps its 16:9 viewport even on a narrow season
-    /// rack. Return its letterboxed rectangle in the printed face's UV space;
+    /// The embedded player keeps its 16:9 viewport on every sleeve format.
+    /// Return its letterboxed rectangle in the printed face's UV space;
     /// width and height describe that face's physical dimensions, not pixels.
     public static func videoFrame(width: CGFloat, height: CGFloat) -> CGRect {
         guard width.isFinite, height.isFinite, width > 0, height > 0 else { return frame }

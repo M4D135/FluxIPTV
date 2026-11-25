@@ -40,7 +40,72 @@ public enum CaseCarousel {
     }
 
     public static let collectorHalfDepth = 0.30
-    public static let collectorOpeningAngle = -155.0
+    public static let collectorOpeningAngle = -172.0
+
+    /// Only the held object is fitted to the viewport. The camera and shelf
+    /// retain their reference layout when the user turns or opens a case.
+    public static let heldViewportFill = 0.985
+    public static let maximumHeldScale = 1.25
+    public static let shelfClearance = 0.16
+
+    public struct HeldFit: Equatable, Sendable {
+        public let scale: Double
+        public let x: Double
+        public let y: Double
+    }
+
+    public struct ShelfTransform: Equatable, Sendable {
+        public let scale: Double
+        public let z: Double
+    }
+
+    /// An orientation-independent depth envelope includes the entire season
+    /// lid opening arc. XY centering does not change this bound, and fitting
+    /// caps the scale, so the shelf never needs to move with the selected case.
+    public static let heldHalfDepth: Double = {
+        CasePackageFormat.allCases.map { format in
+            let w=Double(format.halfWidth),h=Double(format.halfHeight)
+            let hinge=hypot(w-Double(format.bevel),Double(format.halfDepth(collector:true))+0.04)
+            let lid=hypot(2*w-Double(format.bevel),0.07*0.45+0.015)
+            let openingRadius=hypot(hinge+lid,h)
+            return openingRadius*maximumHeldScale+0.04
+        }.max() ?? 4.5
+    }()
+
+    /// Move the whole shelf farther down the same camera rays, once per
+    /// viewport/concept change. Its projected size, spacing and perspective
+    /// stay identical, while every mesh is beyond the held rotation envelope.
+    public static func shelfTransform(aspect:Double,editorial:Bool) -> ShelfTransform {
+        let camera=distance(aspect:aspect,editorial:editorial)
+        let maximumWidth=Double(CasePackageFormat.dvd.halfWidth)
+        let maximumDepth=Double(CasePackageFormat.vhs.halfDepth(collector:true))
+        let nearest=placements(aspect:aspect,editorial:editorial).map { placement in
+            let angle=placement.angle * .pi/180
+            return -placement.depth+placement.scale*(maximumWidth*abs(sin(angle))+maximumDepth*abs(cos(angle)))
+        }.max() ?? 0
+        let scale=max(1,(camera+heldHalfDepth+shelfClearance)/(camera-nearest))
+        return ShelfTransform(scale:scale,z:camera*(1-scale))
+    }
+
+    /// Largest centered fit of the actual posed geometry in a fixed perspective
+    /// frustum. This linear bound covers every corner, including unequal depths
+    /// on an open lid; fitting a front/back baseline wastes that useful area.
+    public static func fitHeld(points:[SIMD3<Double>],cameraDistance:Double,aspect rawAspect:Double) -> HeldFit {
+        let points=points.filter{$0.x.isFinite && $0.y.isFinite && $0.z.isFinite}
+        guard !points.isEmpty,cameraDistance.isFinite,cameraDistance>0.1 else{return HeldFit(scale:1,x:0,y:0)}
+        let aspect=rawAspect.isFinite ? max(0.15,rawAspect):16.0/9.0
+        let vertical=heldViewportFill*tan(35 * Double.pi/360),horizontal=vertical*aspect
+        let left=points.map{horizontal*$0.z-$0.x}.max()!
+        let right=points.map{horizontal*$0.z+$0.x}.max()!
+        let bottom=points.map{vertical*$0.z-$0.y}.max()!
+        let top=points.map{vertical*$0.z+$0.y}.max()!
+        var scale=maximumHeldScale
+        if left+right>0 {scale=min(scale,2*horizontal*cameraDistance/(left+right))}
+        if bottom+top>0 {scale=min(scale,2*vertical*cameraDistance/(bottom+top))}
+        if let nearest=points.map(\.z).max(),nearest>0 {scale=min(scale,(cameraDistance-0.1)/nearest)}
+        scale=max(0.0001,scale)
+        return HeldFit(scale:scale,x:scale*(left-right)/2,y:scale*(bottom-top)/2)
+    }
 
     public static func distance(aspect rawAspect: Double, editorial: Bool, collector: Bool = false,
                                 open: Bool = false, format: CasePackageFormat = .dvd) -> Double {
@@ -49,7 +114,7 @@ public enum CaseCarousel {
         let halfWidth = Double(format.halfWidth), halfHeight = Double(format.halfHeight)
         let front = Double(format.halfDepth(collector:collector)) + (collector ? 0.08 : 0)
         // The hinged lid extends towards the eye when the collector is open.
-        let forward = open ? front + 2 * halfWidth * sin(25 * Double.pi / 180) : front
+        let forward = open ? front + 2 * halfWidth * abs(sin(collectorOpeningAngle * .pi / 180)) : front
         // Only the held object controls the zoom. Shelf neighbors may continue
         // beyond the screen edges, like the rest of a physical row of cases.
         let distance = max(halfHeight / ((open ? 0.92 : 0.96) * slope) + forward,

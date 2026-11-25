@@ -25,7 +25,7 @@ private enum CaseSceneFailure: Error, CustomStringConvertible {
                 let output = URL(fileURLWithPath: CommandLine.arguments[1], isDirectory: true)
                 try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
                 try await run(output: output)
-                print("PASS: production SceneKit DVD/rack rendering, back projection and UV hits, season picking, open-lid preview, idle rendering and teardown.")
+                print("PASS: production SceneKit DVD/VHS/season rendering, fixed shelf projection, collision clearance through animation, back projection and UV hits, open-lid preview, idle rendering and teardown.")
                 print("Captured deterministic fixture artwork; no live video or remote catalogue was tested.")
                 exit(0)
             } catch {
@@ -53,7 +53,7 @@ private enum CaseSceneFailure: Error, CustomStringConvertible {
         window.orderFront(nil)
         defer { harness.release(); window.orderOut(nil); window.close() }
         let cover = try fixtureImage(width: 900, height: 1280, title: "LA DERNIÈRE SÉANCE", subtitle: "JAQUETTE TEST • 2011")
-        let seriesCover = try fixtureImage(width: 900, height: 1280, title: "LES SAISONS", subtitle: "COFFRET TEST • 2011")
+        let seriesCover = try fixtureImage(width: 900, height: 1280, title: "LES SAISONS", subtitle: "SAISON 3 • 2011")
         let preview = try fixtureImage(width: 960, height: 540, title: "APERÇU", subtitle: "IMAGE FIXE DE TEST")
         let movie = item(id: "movie", name: "La dernière séance", year: "2011")
         let neighbors = (0..<4).map { item(id: "neighbor-\($0)", name: "Rayon \($0+1)", year: $0 % 2 == 0 ? "1998" : "2011") }
@@ -64,49 +64,87 @@ private enum CaseSceneFailure: Error, CustomStringConvertible {
 
         harness.show(item: movie, data: data, artwork: cover, previewStill: preview, yaw: -12, neighbors: neighbors)
         let front = try await capture(harness)
+        let fixedCamera=harness.cameraDistance,fixedShelf=harness.neighborBounds
+        try verifyGeometry(harness,camera:fixedCamera,shelf:fixedShelf,context:"DVD front",large:true)
         try require(!harness.bridge.previewBackFacing, "A new front-facing scene reported a visible case back.")
         try require(harness.bridge.previewProjection == nil, "A front-facing case produced a usable mirrored back projection.")
 
         harness.show(item: movie, data: data, artwork: cover, previewStill: preview, yaw: 168, focused: .trailer, neighbors: neighbors)
         let back = try await capture(harness)
         try verifyBack(harness, context: "DVD back")
+        try verifyGeometry(harness,camera:fixedCamera,shelf:fixedShelf,context:"DVD back",large:true)
         try writeContactSheet([(front, "DVD — RECTO"), (back, "DVD — VERSO / APERÇU SÉLECTIONNÉ")],
                               to: output.appendingPathComponent("dvd-front-back.png"))
 
-        let series = item(id: "series", name: "Les saisons", year: "2011", collection: true)
-        data.seasonNumbers = [1, 2, 3, 4, 5, 6]
-        data.selectedSeasonIndex = 2
-        data.seasonSelectionVisible = true
-        harness.show(item: series, data: data, artwork: seriesCover, previewStill: preview, yaw: -14, neighbors: neighbors)
-        let rackFront = try await capture(harness)
-        try require(harness.previewOnRack, "The series rack did not retain the real preview nodes.")
-        try require(!harness.bridge.previewBackFacing, "The rack spines reported a visible synopsis side.")
-        guard let spinePoint = harness.seasonPoint(2) else { throw CaseSceneFailure.assertion("The selected production season node is missing.") }
-        try require(harness.hitSeason(spinePoint) == 2, "Picking the selected DVD spine lost its original season index.")
-
-        harness.show(item: series, data: data, artwork: seriesCover, previewStill: preview, yaw: 168, focused: .trailer, neighbors: neighbors)
-        let rackBack = try await capture(harness)
-        try verifyBack(harness, context: "Series rack back")
-        if let projection = harness.bridge.previewProjection {
-            let center = projection.project(CGPoint(x: projection.surfaceSize.width/2, y: projection.surfaceSize.height/2))
-            try require(harness.hitSeason(center) == nil, "A click through the closed rack back selected a hidden season.")
+        // Test interpolation as well as settled poses: the old camera fitted
+        // only destination corners, so a valid endpoint hid mid-turn collisions.
+        var rotationCaptures:[(CGImage,String)]=[]
+        let vhs=item(id:"vhs",name:"Séance VHS",year:"1998")
+        for selected in [movie,vhs] {
+            for (yaw,pitch) in [(0.0,0.0),(90.0,65.0),(180.0,-65.0),(270.0,80.0)] {
+                harness.show(item:selected,data:data,artwork:cover,previewStill:preview,yaw:yaw,pitch:pitch,neighbors:neighbors,motion:true)
+                for _ in 0..<8 {
+                    try await Task.sleep(nanoseconds:35_000_000)
+                    _=harness.view.snapshot()
+                    try verifyGeometry(harness,camera:fixedCamera,shelf:fixedShelf,context:"\(selected.name), animated \(yaw)/\(pitch)")
+                }
+                let image=try await capture(harness)
+                if selected.id == movie.id && yaw != 270 {rotationCaptures.append((image,"DVD — \(Int(yaw))° / \(Int(pitch))°"))}
+                try verifyGeometry(harness,camera:fixedCamera,shelf:fixedShelf,context:"\(selected.name), settled \(yaw)/\(pitch)")
+            }
         }
+        try writeContactSheet(rotationCaptures,to:output.appendingPathComponent("fixed-shelf-rotation.png"))
 
-        data.page = .episodes
+        let series = item(id: "series", name: "Les saisons", year: "2011", collection: true)
         data.season = 3
+        harness.show(item:series,data:data,artwork:seriesCover,previewStill:preview,yaw:-8,neighbors:neighbors)
+        let closed=try await capture(harness)
+        try verifyGeometry(harness,camera:fixedCamera,shelf:fixedShelf,context:"Closed season",large:true)
+        data.page = .episodes
         data.episodes = (1...3).map { item(id: "episode-\($0)", name: "Épisode \($0)", year: "2011") }
-        data.seasonSelectionVisible = false
-        harness.show(item: series, data: data, artwork: seriesCover, previewStill: preview, yaw: -8, focused: .trailer, neighbors: neighbors)
+        harness.show(item: series, data: data, artwork: seriesCover, previewStill: preview, yaw: -8, focused: .trailer, neighbors: neighbors,motion:true)
+        for _ in 0..<10 {
+            try await Task.sleep(nanoseconds:35_000_000)
+            _=harness.view.snapshot()
+            try verifyGeometry(harness,camera:fixedCamera,shelf:fixedShelf,context:"Opening season")
+        }
         let opened = try await capture(harness)
-        try require(harness.previewOnLid, "Opening the selected season left the real preview attached to the hidden body/rack.")
+        try require(harness.previewOnLid, "Opening the selected season left the real preview attached to the body.")
         try verifyBack(harness, context: "Open season lid")
-        try writeContactSheet([(rackFront, "COFFRET — SAISON 3 SORTIE"), (rackBack, "COFFRET — VERSO"), (opened, "SAISON 3 — COUVERCLE OUVERT")],
-                              to: output.appendingPathComponent("series-rack-and-open.png"))
+        try verifyGeometry(harness,camera:fixedCamera,shelf:fixedShelf,context:"Open season",large:true)
+        try writeContactSheet([(closed, "SAISON 3 — BOÎTIER INDIVIDUEL"), (opened, "SAISON 3 — ÉPISODES / APERÇU")],
+                              to: output.appendingPathComponent("series-season-open.png"))
+        for (yaw,pitch) in [(90.0,65.0),(180.0,-65.0),(270.0,80.0)] {
+            harness.show(item:series,data:data,artwork:seriesCover,previewStill:preview,yaw:yaw,pitch:pitch,neighbors:neighbors,motion:true)
+            for _ in 0..<8 {
+                try await Task.sleep(nanoseconds:35_000_000)
+                _=harness.view.snapshot()
+                try verifyGeometry(harness,camera:fixedCamera,shelf:fixedShelf,context:"Open season, animated \(yaw)/\(pitch)")
+            }
+            _=try await capture(harness)
+            try verifyGeometry(harness,camera:fixedCamera,shelf:fixedShelf,context:"Open season, settled \(yaw)/\(pitch)")
+        }
 
         let releasedView = harness.view
         harness.release()
         try require(releasedView.scene == nil && releasedView.pointOfView == nil && !releasedView.isPlaying,
                     "Dismantling the production coordinator retained an active renderer.")
+    }
+
+    @MainActor private static func verifyGeometry(_ harness:CaseSceneSmokeHarness,camera:Double,shelf:[CGRect],context:String,large:Bool=false) throws {
+        try require(abs(harness.cameraDistance-camera)<0.0001,"\(context): camera moved while manipulating the case.")
+        let neighbors=harness.neighborBounds
+        try require(neighbors.count == shelf.count && !neighbors.isEmpty,"\(context): shelf fixtures disappeared.")
+        for (actual,expected) in zip(neighbors,shelf) {
+            try require(abs(actual.minX-expected.minX)<0.15 && abs(actual.minY-expected.minY)<0.15 && abs(actual.width-expected.width)<0.15 && abs(actual.height-expected.height)<0.15,
+                        "\(context): a neighbor moved or changed projected size (\(actual), expected \(expected)).")
+        }
+        try require(harness.depthClearance>=CaseCarousel.shelfClearance-0.02,"\(context): held geometry intersects the shelf depth envelope.")
+        let held=harness.heldBounds,viewport=harness.view.bounds
+        try require(viewport.insetBy(dx:-1,dy:-1).contains(held),"\(context): held geometry was clipped (\(held) in \(viewport)).")
+        if large {
+            try require(max(held.width/viewport.width,held.height/viewport.height)>0.95,"\(context): the held case does not fill the useful viewport.")
+        }
     }
 
     @MainActor private static func capture(_ harness: CaseSceneSmokeHarness) async throws -> CGImage {
@@ -150,8 +188,8 @@ private enum CaseSceneFailure: Error, CustomStringConvertible {
         guard let projection = harness.bridge.previewProjection else { throw CaseSceneFailure.assertion("\(context): missing live preview projection.") }
         let frame = harness.bridge.previewContentUVFrame
         // Projected video points must hit the same production sleeve UVs. This
-        // catches flipped Y, mirrored artwork, the rack plane's UV convention,
-        // and the open lid's distinct coordinate system without golden pixels.
+        // catches flipped Y, mirrored artwork and the open lid's distinct
+        // coordinate system without fragile golden pixels.
         for sample in [CGPoint(x: 0.25, y: 0.25), CGPoint(x: 0.75, y: 0.75)] {
             let screen = projection.project(CGPoint(x: sample.x*projection.surfaceSize.width, y: sample.y*projection.surfaceSize.height))
             guard let (surface, uv) = harness.hit(screen) else { throw CaseSceneFailure.assertion("\(context): projected preview did not hit the physical sleeve.") }

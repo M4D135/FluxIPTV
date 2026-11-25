@@ -194,7 +194,8 @@ public struct XtreamClient: Sendable {
                                 group: series.name + " · Saison \(season)",
                                 logoURL: IPTVURL.remoteImage(info?["movie_image"] as? String) ?? IPTVURL.remoteImage(entry["movie_image"] as? String) ?? IPTVURL.remoteImage(info?["cover"] as? String),
                                 kind: .series, directURL: mediaURL(entry["direct_source"]) ?? mediaURL(info?["direct_source"]), xtreamStreamID: streamID,
-                                fileExtension: sanitizedExtension((entry["container_extension"] ?? info?["container_extension"]) as? String),
+                                fileExtension: sanitizedExtension(entry["container_extension"] as? String)
+                                    ?? sanitizedExtension(info?["container_extension"] as? String),
                                 backdropURL: Self.backdrop(info?["backdrop_path"]), details: Self.details(info ?? [:]).fillingMissing(from: Self.details(entry)), seasonNumber: season, episodeNumber: number > 0 ? number : nil)
             groups[season, default: []].append((number, item))
         }
@@ -240,9 +241,10 @@ public struct XtreamClient: Sendable {
     }
 
     private static func sanitizedExtension(_ raw: String?) -> String? {
-        guard let raw, (2...6).contains(raw.count),
-              raw.unicodeScalars.allSatisfy({ CharacterSet.alphanumerics.contains($0) }) else { return nil }
-        return raw.lowercased()
+        guard let value = raw?.trimmingCharacters(in: .whitespacesAndNewlines),
+              (2...6).contains(value.count),
+              value.unicodeScalars.allSatisfy({ CharacterSet.alphanumerics.contains($0) }) else { return nil }
+        return value.lowercased()
     }
 
     private static func string(_ any: Any?) -> String? {

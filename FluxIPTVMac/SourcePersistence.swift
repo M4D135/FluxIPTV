@@ -1,8 +1,5 @@
 import Foundation
 import Security
-#if os(macOS)
-import Darwin
-#endif
 
 struct IPTVSource: Codable, Identifiable, Hashable, Sendable {
     let id: UUID
@@ -33,22 +30,31 @@ struct IPTVSecret: Codable, Sendable {
     // during our own silent calls, restore the previous process setting afterward.
     private static func withoutPrompt<T>(_ operation: () throws -> T) throws -> T {
         #if os(macOS)
-        var previous = DarwinBoolean(true)
-        let read = SecKeychainGetUserInteractionAllowed(&previous)
+        var previous = true
+        let read = FluxLegacyKeychainGetInteractionAllowed(&previous)
         guard read == errSecSuccess else { throw KeychainError(status: read) }
-        let disabled = SecKeychainSetUserInteractionAllowed(false)
+        let disabled = FluxLegacyKeychainSetInteractionAllowed(false)
         guard disabled == errSecSuccess else { throw KeychainError(status: disabled) }
-        defer { _ = SecKeychainSetUserInteractionAllowed(previous.boolValue) }
+        defer { _ = FluxLegacyKeychainSetInteractionAllowed(previous) }
         #endif
         return try operation()
     }
+    #if FLUX_KEYCHAIN_TESTING && os(macOS)
+    // Exercises only the process guard; the smoke test never accesses an item.
+    static func withSilentInteractionForTesting<T>(_ operation: () throws -> T) throws -> T {
+        try withoutPrompt(operation)
+    }
+    #endif
     private static func query(_ sourceID: UUID, interactive: Bool) -> [String: Any] {
-        var q: [String: Any] = [kSecClass as String: kSecClassGenericPassword,
+        let base: [String: Any] = [kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service, kSecAttrAccount as String: sourceID.uuidString]
-        #if !os(macOS)
+        #if os(macOS)
+        return base
+        #else
+        var q = base
         if !interactive { q[kSecUseAuthenticationUI as String] = kSecUseAuthenticationUIFail }
-        #endif
         return q
+        #endif
     }
 
     private static let service = "com.m4d135.FluxIPTV.sources"

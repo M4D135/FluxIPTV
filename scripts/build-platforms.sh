@@ -2,30 +2,32 @@
 set -euo pipefail
 
 if [[ $# -gt 1 ]]; then
-  printf 'Usage: %s [macOS|iOS|tvOS]\n' "$0" >&2
+  printf 'Usage: %s [macOS|iOS|tvOS|tvOS-device]\n' "$0" >&2
   exit 64
 fi
 if [[ $# -eq 1 ]]; then
   case "$1" in
-    macOS|iOS|tvOS) ;;
-    *) printf 'Plateforme inconnue : %s. Choisir macOS, iOS ou tvOS.\n' "$1" >&2; exit 64;;
+    macOS|iOS|tvOS|tvOS-device) ;;
+    *) printf 'Plateforme inconnue : %s. Choisir macOS, iOS, tvOS ou tvOS-device.\n' "$1" >&2; exit 64;;
   esac
 fi
 
 cd "$(dirname "$0")/.."
 mkdir -p build/logs build/results
 build_id="$(date -u +%Y%m%dT%H%M%SZ)-$$"
-for target in macOS iOS tvOS; do
+for target in macOS iOS tvOS tvOS-device; do
+  project=FluxIPTV.xcodeproj
   case "$target" in
     macOS) scheme=FluxIPTV; destination='platform=macOS';;
     iOS) scheme=FluxIPTViOS; destination='generic/platform=iOS Simulator';;
-    tvOS) scheme=FluxIPTVTV; destination='generic/platform=tvOS Simulator';;
+    tvOS) project=FluxIPTV-AppleTV.xcodeproj; scheme=FluxIPTVTV; destination='generic/platform=tvOS Simulator';;
+    tvOS-device) project=FluxIPTV-AppleTV.xcodeproj; scheme=FluxIPTVTV; destination='generic/platform=tvOS';;
   esac
   if [[ $# -gt 0 && "$1" != "$target" ]]; then continue; fi
   log="$PWD/build/logs/$target-$build_id.log"
   result="$PWD/build/results/$target-$build_id.xcresult"
   if xcodebuild \
-    -project FluxIPTV.xcodeproj \
+    -project "$project" \
     -scheme "$scheme" \
     -configuration Debug \
     -destination "$destination" \

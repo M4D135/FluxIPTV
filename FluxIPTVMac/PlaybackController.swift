@@ -135,7 +135,7 @@ final class PlaybackController: ObservableObject {
     func play(_ item: IPTVItem, urls: [URL]) {
         stop()
         playingItem = item
-        self.urls = urls
+        self.urls = PlaybackPlan.candidateURLs(urls)
         pendingResume = resumeEnabled ? history.resumeSeconds(for: item.id) : nil
         startPlan()
     }
@@ -170,8 +170,15 @@ final class PlaybackController: ObservableObject {
         playbackError = nil
         guard attempts.indices.contains(index) else {
             opening = false
+            #if os(macOS)
+            playbackError = lastDiagnostic.isEmpty
+                ? "Le lecteur Apple ne dispose d’aucune adresse de lecture utilisable."
+                : lastDiagnostic
+            attemptLabel = "Échec avec Apple AVPlayer"
+            #else
             playbackError = "Lecture impossible avec les moteurs disponibles. " + lastDiagnostic
             attemptLabel = "Vérifiez le flux ou réessayez."
+            #endif
             return
         }
         let attempt = attempts[index]
@@ -203,14 +210,30 @@ final class PlaybackController: ObservableObject {
             .sink { [weak self, weak media] status in
                 guard let self, self.generation == token else { return }
                 if status == .failed {
-                    let code = (media?.error as NSError?)?.code
-                    self.fail(token: token, reason: "AVPlayer" + (code.map { " (code \($0))" } ?? ""))
+                    let error = media?.error
+                    let description = PlaybackDiagnostics.native(Self.nativeFailureKind(error), error: error)
+                    let variant = PlaybackPlan.variantTitle(url: url, index: self.urls.firstIndex(of: url) ?? 0)
+                    self.fail(token: token, reason: "\(variant) : \(description)")
                 }
             }
         player.replaceCurrentItem(with: media)
         loadNativeSelection(for: media, token: token)
         applyVolume()
         player.play()
+    }
+
+    private static func nativeFailureKind(_ error: Error?) -> PlaybackDiagnostics.NativeFailure {
+        guard let error = error as NSError? else { return .other }
+        if error.domain == NSURLErrorDomain { return .network }
+        guard error.domain == AVFoundationErrorDomain,
+              let code = AVError.Code(rawValue: error.code) else { return .other }
+        switch code {
+        case .fileFormatNotRecognized: return .unrecognizedFormat
+        case .fileFailedToParse: return .invalidMedia
+        case .decoderNotFound: return .missingDecoder
+        case .decodeFailed, .undecodableMediaData: return .decodingFailed
+        default: return .other
+        }
     }
 
     #if !os(macOS)
@@ -413,19 +436,24 @@ final class PlaybackController: ObservableObject {
     }
 
     #if os(macOS)
+    var externalVLCVariants: [PlaybackVariant] { PlaybackPlan.variants(urls: urls) }
+
     /// Explicit hand-off; never put the authenticated URL in the shell, logs or preferences.
-    func openExternalVLC() {
-        guard let url=urls.first else{return}
+    func openExternalVLC(variantID: Int) {
+        guard urls.indices.contains(variantID) else { return }
+        let url = urls[variantID]
         guard let application=NSWorkspace.shared.urlForApplication(withBundleIdentifier:"org.videolan.vlc") else {
             playbackError="VLC n’est pas installé sur ce Mac. Installez le lecteur officiel VideoLAN pour les formats non pris en charge par Apple."
             return
         }
         saveProgress();cancelEngine()
+        let token = generation
         let config=NSWorkspace.OpenConfiguration();config.activates=true
         NSWorkspace.shared.open([url],withApplicationAt:application,configuration:config) { [weak self] _, error in
             Task { @MainActor in
-                if error != nil {self?.playbackError="Impossible d’ouvrir le flux dans VLC."}
-                else {self?.playbackError=nil;self?.attemptLabel="Lecture confiée à VLC externe"}
+                guard let self, self.generation == token else { return }
+                if error != nil {self.playbackError="Impossible d’ouvrir le flux dans VLC."}
+                else {self.playbackError=nil;self.attemptLabel="Lecture confiée à VLC externe"}
             }
         }
     }

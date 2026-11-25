@@ -31,7 +31,6 @@ xcrun swiftc -parse-as-library -swift-version 5 -D FLUX_CASE_TESTING \
   "$repo_root"/Sources/FluxIPTVCore/*.swift \
   "$repo_root/FluxIPTVMac/ArtworkView.swift" \
   "$repo_root/FluxIPTVMac/GlassStyle.swift" \
-  "$repo_root/FluxIPTVMac/SeriesSeasonRack.swift" \
   "$repo_root/FluxIPTVMac/Case3DView.swift" \
   "$repo_root/Tests/Native/CaseSceneSmoke.swift" \
   -o "$smoke_app/Contents/MacOS/CaseSceneSmoke"

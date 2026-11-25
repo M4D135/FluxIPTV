@@ -1,4 +1,4 @@
-# GitHub Actions — FLUX IPTV 0.8.6
+# GitHub Actions — FLUX IPTV 0.8.7
 
 Le workflow [Swift / Apple platforms](https://github.com/M4D135/FluxIPTV/actions/workflows/ci.yml) vérifie le commit indiqué en tête de chaque exécution. Il fonctionne sur `main`, sur les branches `work/three-rooms-*`, sur les pull requests et par lancement manuel.
 
@@ -6,21 +6,22 @@ Le workflow [Swift / Apple platforms](https://github.com/M4D135/FluxIPTV/actions
 
 | Job | Travail | Fichiers disponibles |
 |---|---|---|
-| Tests du cœur | Swift 6.2 sur Linux, garde des déclarations SwiftUI, intégrité des 18 fonds et cohérence du projet Xcode généré | Journal des tests et vérifications |
+| Tests du cœur | Swift 6.2 sur Linux, garde des déclarations SwiftUI, intégrité des 18 fonds et cohérence des projets Xcode partagé et Apple TV générés | Journal des tests et vérifications |
 | macOS | Compilation Xcode de `FluxIPTV`, signature désactivée | Journal, résultat `.xcresult`, application compressée si la compilation réussit |
 | iOS | Compilation Xcode de `FluxIPTViOS` pour simulateur | Journal, résultat `.xcresult`, application de simulateur compressée si la compilation réussit |
-| tvOS | Compilation Xcode de `FluxIPTVTV` pour simulateur | Journal, résultat `.xcresult`, application de simulateur compressée si la compilation réussit |
+| tvOS | Compilation de `FluxIPTV-AppleTV.xcodeproj`, schéma `FluxIPTVTV`, pour simulateur | Journal, résultat `.xcresult`, application de simulateur compressée si la compilation réussit |
+| tvOS pour appareil | Compilation ARM64 du même projet Apple TV, signature désactivée | Journal, résultat `.xcresult`, application non signée |
 | Pack des sources | Archive de tous les fichiers suivis par Git dans le commit exécuté | ZIP complet, SHA-256 et identifiant du commit |
 
-Les trois compilations Apple sont indépendantes : l’échec de l’une n’annule pas les autres. Le job du pack des sources est lui aussi indépendant. Un pack disponible ne signifie donc pas que tous les tests ou toutes les compilations sont réussis.
+Les quatre compilations Apple sont indépendantes : l’échec de l’une n’annule pas les autres. Le job du pack des sources est lui aussi indépendant. Un pack disponible ne signifie donc pas que tous les tests ou toutes les compilations sont réussis.
 
-Les jobs Apple utilisent l’image `macos-26` et Xcode **26.3** explicitement sélectionné. Une garde refuse un SDK macOS, iOS Simulator ou tvOS Simulator antérieur à 26. Cela empêche une compilation apparemment réussie avec l’ancien Xcode 16 de retirer silencieusement le code Liquid Glass. La version de Swift, de Xcode et des SDK est jointe aux diagnostics.
+Les jobs Apple utilisent l’image `macos-26` et Xcode **26.3** explicitement sélectionné. Une garde refuse un SDK macOS, iOS Simulator, tvOS Simulator ou tvOS pour appareil antérieur à 26. Cela empêche une compilation apparemment réussie avec l’ancien Xcode 16 de retirer silencieusement le code Liquid Glass. La version de Swift, de Xcode et des SDK est jointe aux diagnostics.
 
 Le job macOS exécute aussi `scripts/test-youtube-session.sh` : une vraie fenêtre AppKit et une vraie WKWebView chargent le document du lecteur avec une API IFrame locale contrôlée. Le test couvre les états, la sourdine, le démarrage plein écran avec son, les commandes, les erreurs, la conservation du lecteur entre deux hôtes SwiftUI et sa libération. Il ne contacte pas YouTube et ne prouve pas la lecture d’une vidéo distante.
 
-Deux autres vérifications natives s’exécutent sur macOS : `scripts/test-live-preview.sh` crée une vidéo locale avec AVFoundation et vérifie délai, sélection stable, annulation, repli d’URL, sourdine et nettoyage de l’aperçu TV. `scripts/test-case-scene.sh` utilise le vrai renderer SceneKit pour vérifier le recto/verso, les UV du cadre vidéo, la sélection des saisons et le couvercle ouvert. Les captures sont enregistrées dans les diagnostics du job. Elles ne constituent pas un test de flux distant ni de télécommande physique.
+Deux autres vérifications natives s’exécutent sur macOS : `scripts/test-live-preview.sh` crée une vidéo locale avec AVFoundation et vérifie délai, sélection stable, annulation, repli d’URL, sourdine et nettoyage de l’aperçu TV. `scripts/test-case-scene.sh` utilise le vrai renderer SceneKit pour vérifier le recto/verso, les UV du cadre vidéo, la caméra fixe, la profondeur du rayon et le couvercle d’une saison ouverte pendant une animation. Les captures sont enregistrées dans les diagnostics du job. Elles ne constituent pas un test de flux distant ni de télécommande physique.
 
-Le catalogue complet est aussi capturé par `scripts/test-catalog-ui.sh` dans une fenêtre SwiftUI native, avec des chaînes et jaquettes locales. Deux captures TV/rayon permettent de vérifier visuellement les espacements, les catégories et l’en-tête. Les quatre vérifications natives restent indépendantes après une compilation Mac réussie : l’échec d’un test ne masque pas les diagnostics des suivants, mais empêche la livraison de l’application comme validée.
+Le catalogue complet est aussi capturé par `scripts/test-catalog-ui.sh` dans une fenêtre SwiftUI native, avec des chaînes et jaquettes locales. Deux captures TV/rayon permettent de vérifier visuellement les espacements, les catégories et l’en-tête. Le test `scripts/test-keychain-interaction.sh` compile le pont de compatibilité avec les avertissements traités comme erreurs et vérifie le réglage silencieux, les appels imbriqués et la restauration après succès ou erreur, sans lire ni écrire de secret. Les cinq vérifications natives restent indépendantes après une compilation Mac réussie : l’échec d’un test ne masque pas les diagnostics des suivants, mais empêche la livraison de l’application comme validée.
 
 Le workflow dispose uniquement de la permission GitHub `contents: read`. Il ne publie pas de release, ne modifie pas le dépôt et n’emploie aucun certificat de signature Apple. Une nouvelle exécution sur la même branche annule celle qui serait encore en cours.
 
@@ -31,7 +32,7 @@ Le workflow dispose uniquement de la permission GitHub `contents: read`. Il ne p
 3. Dans **Artifacts**, télécharger le pack des sources ou les fichiers de la plateforme voulue.
 4. Pour le pack des sources, comparer l’empreinte du ZIP au fichier SHA-256 fourni et consulter le fichier indiquant le commit.
 
-Les archives d’applications conservent leur structure et leurs permissions. Le build macOS n’est pas une distribution signée ou notariée. Les builds iOS/tvOS ciblent les simulateurs ; pour un appareil physique, ouvrir le projet dans Xcode et sélectionner une équipe de signature.
+Les archives d’applications conservent leur structure et leurs permissions. Le build macOS n’est pas une distribution signée ou notariée. Les builds iOS et tvOS Simulator ciblent les simulateurs. Le build tvOS pour appareil est non signé ; ouvrir `FluxIPTV-AppleTV.xcodeproj` et sélectionner une équipe de signature pour l’installation sur une vraie Apple TV.
 
 ## Relancer
 
@@ -43,9 +44,10 @@ Pour lancer localement les mêmes compilations Apple depuis un Mac disposant de 
 bash scripts/build-platforms.sh macOS
 bash scripts/build-platforms.sh iOS
 bash scripts/build-platforms.sh tvOS
+bash scripts/build-platforms.sh tvOS-device
 ```
 
-Sans argument, le script compile les trois plateformes. Un argument invalide échoue immédiatement. Les logs et résultats Xcode sont écrits dans le répertoire `build/` du projet ; ce répertoire n’est pas suivi par Git.
+Sans argument, le script compile les quatre destinations. Un argument invalide échoue immédiatement. Les logs et résultats Xcode sont écrits dans le répertoire `build/` du projet ; ce répertoire n’est pas suivi par Git.
 
 ## Lire un échec
 

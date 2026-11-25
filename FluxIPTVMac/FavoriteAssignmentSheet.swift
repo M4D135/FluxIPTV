@@ -55,7 +55,7 @@ struct FavoriteAssignmentSheet: View {
             if let validationError { Text(validationError).font(.callout).foregroundStyle(.orange) }
             Divider()
             HStack(spacing: 12) {
-                Button(item.isSeriesCollection ? "Ouvrir le coffret" : "Lire") {
+                Button(item.isSeriesCollection ? "Voir les saisons" : "Lire") {
                     dismiss(); open()
                 }.buttonStyle(.bordered)
                 Spacer(minLength: 8)

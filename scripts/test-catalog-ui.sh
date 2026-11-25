@@ -53,8 +53,8 @@ version="$(sed -n 's/^[[:space:]]*MARKETING_VERSION = \([0-9.]*\);/\1/p' "$repo_
 [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
 /usr/libexec/PlistBuddy -c "Add :CFBundleShortVersionString string $version" "$smoke_app/Contents/Info.plist"
 
-# Copy only the production room assets actually used by these two captures.
-for room in livingRoom-neo90 cinema-neo90; do
+# Copy only the production room assets used by the catalogue/season captures.
+for room in livingRoom-neo90 cinema-neo90 videoClub-neo90; do
   cp "$repo_root/FluxIPTVMac/RoomBakes/$room.jpg" "$smoke_app/Contents/Resources/RoomBakes/"
 done
 
@@ -65,12 +65,19 @@ for source in "$repo_root"/FluxIPTVMac/*.swift; do
     production_sources+=("$source")
   fi
 done
+sdk_path="$(xcrun --sdk macosx --show-sdk-path)"
+compat_root="$repo_root/FluxIPTVMac/Compatibility"
+xcrun clang -isysroot "$sdk_path" -mmacosx-version-min=14.0 \
+  -Wall -Wextra -Werror -c "$compat_root/LegacyKeychainInteraction.c" \
+  -o "$smoke_root/LegacyKeychainInteraction.o"
 xcrun swiftc -parse-as-library -swift-version 5 -D FLUX_CATALOG_UI_TESTING \
-  -sdk "$(xcrun --sdk macosx --show-sdk-path)" \
+  -sdk "$sdk_path" \
+  -import-objc-header "$compat_root/LegacyKeychainInteraction.h" \
   -target "$(uname -m)-apple-macosx14.0" \
   "$repo_root"/Sources/FluxIPTVCore/*.swift \
   "${production_sources[@]}" \
   "$repo_root/Tests/Native/CatalogUISmoke.swift" \
+  "$smoke_root/LegacyKeychainInteraction.o" \
   -o "$smoke_app/Contents/MacOS/CatalogUISmoke"
 
 # Hosted images explicitly disable graphic effects. SwiftUI's accessibility

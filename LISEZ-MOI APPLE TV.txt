@@ -1,0 +1,53 @@
+FLUX IPTV 0.8.7 — PROJET APPLE TV
+
+1. Décompressez tout le dossier, en conservant Sources et FluxIPTVMac à côté
+   des fichiers .xcodeproj. Les sources et les 18 décors 4K sont partagés.
+2. Ouvrez « FluxIPTV-AppleTV.xcodeproj », ou double-cliquez sur
+   « Ouvrir Flux IPTV Apple TV.command ».
+3. Le seul schéma de ce projet est « FluxIPTVTV ».
+4. Dans la destination, choisissez un simulateur Apple TV 4K ou votre
+   Apple TV jumelée, puis cliquez sur Exécuter (triangle / ⌘R).
+
+LE MESSAGE « MISMATCHED PLATFORM »
+
+Ce message apparaît si le schéma Mac « FluxIPTV » est sélectionné alors
+que vous choisissez une Apple TV comme destination. Le projet dédié ci-dessus
+évite cette confusion. Dans le projet multiplateforme « FluxIPTV.xcodeproj »,
+vous pouvez aussi changer d'abord le SCHÉMA de « FluxIPTV » à « FluxIPTVTV »,
+puis sélectionner votre Apple TV dans le menu des destinations.
+
+SUR UNE VRAIE APPLE TV
+
+Jumelez l'Apple TV au Mac dans la gestion des appareils de Xcode. Dans
+Signing & Capabilities de la cible FluxIPTVTV, choisissez votre équipe Apple
+et conservez la gestion automatique de la signature. Si Xcode vous demande
+un identifiant d'application unique, adaptez le Bundle Identifier pour votre
+équipe. La signature et le profil de votre compte sont requis pour installer
+sur un appareil ; ils ne sont pas inclus dans cette archive.
+
+PRÉREQUIS ET CONTENU
+
+Xcode 26 ou plus récent, avec la prise en charge de tvOS installée.
+Cible minimale : tvOS 17. Liquid Glass est utilisé sur tvOS 26 et plus récent ;
+les systèmes précédents conservent une matière translucide compatible.
+La dépendance VLCKit est fixée à une révision précise et Xcode la résout
+au premier lancement. Un accès Internet est nécessaire pour cette étape.
+
+La télécommande pilote les rayons avec les directions et Valider. Choisir
+une série ouvre son rayon de saisons ; choisir une saison ouvre ses épisodes.
+Sur un boîtier tenu : gauche/droite tournent ; double appui change le titre ;
+haut rejoint l'aperçu ; Valider l'agrandit ; Lecture lit le titre sélectionné.
+Le Dock inférieur garde toutes ses actions visibles. Retour/Menu remonte
+d'un niveau : saison ouverte, rayon de saisons, catalogue des séries.
+
+Les vidéos directes sont intégrées sur tvOS. Les bandes-annonces YouTube
+utilisent une ouverture explicite sur iPhone par QR code : tvOS n'offre pas
+le lecteur WebView employé sur Mac et iPhone.
+
+Les archives CI « tvOS-simulator » sont destinées au simulateur uniquement.
+Le build « tvOS-device-unsigned » vérifie la compilation pour Apple TV ARM64,
+mais doit être signé avec votre propre équipe pour être installé. Le projet
+Xcode ci-dessus est la voie prévue pour installer sur votre appareil.
+
+Documentation Apple :
+https://developer.apple.com/documentation/xcode/running-your-app-on-simulated-or-physical-devices

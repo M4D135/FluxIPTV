@@ -1,4 +1,4 @@
-FLUX IPTV 0.8.6 — CINÉMA, VIDÉOCLUB ET SALON TV - Installation sur votre Mac
+FLUX IPTV 0.8.7 — CINÉMA, VIDÉOCLUB ET SALON TV - Installation sur votre Mac
 
 1. Quittez FLUX IPTV et arrêtez le projet s'il tourne dans Xcode.
 2. Décompressez l'archive et double-cliquez sur « Installer Flux IPTV.command ».
@@ -9,7 +9,7 @@ FLUX IPTV 0.8.6 — CINÉMA, VIDÉOCLUB ET SALON TV - Installation sur votre Mac
    L'installateur contrôle que le processus reste actif et restaure l'ancien
    bundle en cas d'échec du démarrage. Ce contrôle ne valide pas la lecture.
 4. Ensuite ouvrez uniquement FluxIPTV.app depuis le Finder ou le Dock.
-   Ne relancez pas l'installateur à chaque utilisation. Vérifiez le numéro 0.8.6
+   Ne relancez pas l'installateur à chaque utilisation. Vérifiez le numéro 0.8.7
    dans la barre FLUX et les thèmes dans Réglages > Interface.
 
 Sur Mac, VLC intégré est désactivé. En cas de format incompatible, installez le
@@ -38,14 +38,18 @@ Nouveau : dans Sources > Modifier, vous pouvez choisir « Sur ce Mac, sans Trous
 
 Pochette ouverte : glisser deux doigts sur le trackpad, sans clic. Horizontal = tourner, vertical = incliner. Clics sur les boutons imprimés et flèches clavier conservés.
 
-Nouveautés 0.8.6 : rayons rapprochés, prise en main de boîtes plus grandes,
-DVD dès 2000 / VHS avant 2000, coffret avec une boîte par saison.
+Nouveautés 0.8.7 : rayons rapprochés, prise en main de boîtes plus grandes,
+DVD dès 2000 / VHS avant 2000, rayon complet des saisons pour chaque série.
+La caméra et les voisins restent fixes pendant la manipulation de la boîte.
+Le synopsis IPTV est conservé ; Wikipédia et Allociné sont retirés.
 Boîte : Gauche/Droite = tourner ; double appui = titre précédent/suivant.
 Haut sélectionne l’aperçu, Valider l’agrandit ; Haut encore sélectionne Lire.
 Lecture (Espace sur Mac) lance directement le film ou l’épisode.
-Bas = Reposer à gauche / Actions / Favoris à droite. Retour/Menu = reposer.
-Dans un coffret, Valider choisit les saisons ; Gauche/Droite choisit le boîtier,
-puis Valider ouvre les épisodes. Une aide contextuelle reste affichée.
+Bas rejoint le Dock : Reposer à gauche, actions visibles, Favoris à droite.
+Choisir une série entre dans son rayon de saisons. Choisir une saison ouvre
+les épisodes. Retour/Menu remonte au rayon de saisons, puis au catalogue.
+La recherche a sa propre icône loupe à côté de TV, Films et Séries.
+Une aide contextuelle reste affichée.
 La bande-annonce continue en tournant et se met en pause sur le recto.
 
 TV : catégories à gauche, recherche visible, vignette qui se détache lors de
@@ -60,4 +64,7 @@ La navigation générale disparaît pendant la lecture principale. Les commandes
 flottantes et le bandeau utilisent Liquid Glass avec Xcode et systèmes 26.
 Les systèmes précédents conservent un matériau translucide compatible.
 
-Voir README.md et docs/VALIDATION-0.8.6.md pour les comportements et les limites.
+Voir README.md et docs/VALIDATION-0.8.7.md pour les comportements et les limites.
+
+APPLE TV : ouvrez FluxIPTV-AppleTV.xcodeproj (schéma FluxIPTVTV), puis
+choisissez la destination Apple TV. Voir LISEZ-MOI APPLE TV.txt.

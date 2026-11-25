@@ -92,11 +92,21 @@ struct PlayerSurface: View {
                     Image(systemName: "play.slash.fill").font(.largeTitle)
                     Text("Impossible de lire ce flux").font(.headline)
                     Text(error).font(.caption).foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center).lineLimit(4)
+                        .multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
                     Button("Réessayer") { playback.retry(preferred: playback.preferredEngine) }
                         .buttonStyle(.borderedProminent)
                     #if os(macOS)
-                    Button("Ouvrir dans VLC externe") { playback.openExternalVLC() }.buttonStyle(.bordered)
+                    if playback.externalVLCVariants.count > 1 {
+                        Menu("Ouvrir dans VLC externe") {
+                            ForEach(playback.externalVLCVariants) { variant in
+                                Button(variant.title) { playback.openExternalVLC(variantID: variant.id) }
+                            }
+                        }
+                        .buttonStyle(.bordered)
+                    } else if let variant = playback.externalVLCVariants.first {
+                        Button("Ouvrir dans VLC externe") { playback.openExternalVLC(variantID: variant.id) }
+                            .buttonStyle(.bordered)
+                    }
                     #endif
                 }
                 .padding(20).frame(maxWidth: 440).fluxGlass(radius: 22)

@@ -51,23 +51,17 @@ final class CasePackageFormatTests: XCTestCase {
         }
     }
 
-    func testVideoViewportKeepsItsAspectOnCaseAndNarrowSeasonRack() {
+    func testVideoViewportKeepsItsAspectOnDVDAndVHS() {
         for format in CasePackageFormat.allCases {
-            var faces = [(CGFloat(format.faceWidth), CGFloat(format.faceHeight))]
-            for count in [1, 2, 6, 8, 12] {
-                let rack = SeriesSeasonRackLayout(seasonNumbers:Array(1...count),selectedIndex:0,format:format)
-                faces.append((CGFloat(2*(rack.halfWidth-format.bevel)),CGFloat(2*(rack.halfHeight-format.bevel))))
-            }
-            for (width,height) in faces {
-                let video = CaseBackMediaLayout.videoFrame(width:width,height:height)
-                let frame = CaseBackMediaLayout.frame
-                XCTAssertEqual(video.width*width/(video.height*height),16.0/9.0,accuracy:0.00001)
-                XCTAssertEqual(video.midX,frame.midX,accuracy:0.00001)
-                XCTAssertEqual(video.midY,frame.midY,accuracy:0.00001)
-                XCTAssertLessThanOrEqual(video.width,frame.width+0.00001)
-                XCTAssertLessThanOrEqual(video.height,frame.height+0.00001)
-                XCTAssertTrue(abs(video.width-frame.width)<0.00001 || abs(video.height-frame.height)<0.00001)
-            }
+            let width=CGFloat(format.faceWidth),height=CGFloat(format.faceHeight)
+            let video = CaseBackMediaLayout.videoFrame(width:width,height:height)
+            let frame = CaseBackMediaLayout.frame
+            XCTAssertEqual(video.width*width/(video.height*height),16.0/9.0,accuracy:0.00001)
+            XCTAssertEqual(video.midX,frame.midX,accuracy:0.00001)
+            XCTAssertEqual(video.midY,frame.midY,accuracy:0.00001)
+            XCTAssertLessThanOrEqual(video.width,frame.width+0.00001)
+            XCTAssertLessThanOrEqual(video.height,frame.height+0.00001)
+            XCTAssertTrue(abs(video.width-frame.width)<0.00001 || abs(video.height-frame.height)<0.00001)
         }
         XCTAssertEqual(CaseBackMediaLayout.videoFrame(width:0,height:3),CaseBackMediaLayout.frame)
         XCTAssertEqual(CaseBackMediaLayout.videoFrame(width:.nan,height:3),CaseBackMediaLayout.frame)

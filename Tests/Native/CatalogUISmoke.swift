@@ -38,7 +38,7 @@ private enum CatalogUIFailure: Error, CustomStringConvertible {
                                 "The CI process still sees Reduce Transparency; native glass cannot be assessed.")
                 }
                 try await run(output: output)
-                print("PASS: real ContentView TV and DVD/VHS catalogue windows rendered nonempty native captures.")
+                print("PASS: real ContentView TV, DVD/VHS catalogue, twelve-season shelf and open-season Dock rendered nonempty native captures.")
                 print("Fixture artwork and catalogue only; no accounts, streams, remote images or video playback were used.")
                 print("Review the PNGs for spacing, clipping and header appearance; this is not a pixel-perfect visual assertion.")
                 exit(0)
@@ -48,8 +48,8 @@ private enum CatalogUIFailure: Error, CustomStringConvertible {
             }
         }
         Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 45_000_000_000)
-            fputs("FAIL: catalogue UI smoke exceeded its 45-second rendering deadline.\n", stderr)
+            try? await Task.sleep(nanoseconds: 60_000_000_000)
+            fputs("FAIL: catalogue UI smoke exceeded its 60-second rendering deadline.\n", stderr)
             exit(1)
         }
         application.run()
@@ -65,6 +65,7 @@ private enum CatalogUIFailure: Error, CustomStringConvertible {
             FluxAppearance.densityKey: "cinema",
             MediaThemePreferences.tvKey: VideoClubTheme.neo90.rawValue,
             MediaThemePreferences.cinemaKey: VideoClubTheme.neo90.rawValue,
+            MediaThemePreferences.seriesKey: VideoClubTheme.neo90.rawValue,
             ClubInterfaceProfile.storageKey: ClubInterfaceProfile.neoVideoClub.rawValue,
             LiveTVPreviewDelay.automaticKey: false,
             LiveTVPreviewDelay.storageKey: LiveTVPreviewDelay.three.rawValue,
@@ -73,7 +74,7 @@ private enum CatalogUIFailure: Error, CustomStringConvertible {
     }
 
     @MainActor private static func run(output: URL) async throws {
-        for room in ["livingRoom-neo90", "cinema-neo90"] {
+        for room in ["livingRoom-neo90", "cinema-neo90", "videoClub-neo90"] {
             guard let url = Bundle.main.url(forResource: room, withExtension: "jpg", subdirectory: "RoomBakes"),
                   let source = CGImageSourceCreateWithURL(url as CFURL, nil),
                   let metadata = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
@@ -111,15 +112,38 @@ private enum CatalogUIFailure: Error, CustomStringConvertible {
                                   kind: .movie, directURL: nil, xtreamStreamID: nil, fileExtension: nil,
                                   details: IPTVDetails(year: year)))
         }
+        let seriesArtwork = artworkRoot.appendingPathComponent("series.png")
+        cache(try fixtureArtwork(width: 360, height: 540, index: 7, title: "LES SAISONS", subtitle: "JAQUETTE LOCALE · 2014"), at: seriesArtwork)
+        let collection = IPTVItem(id: "fixture-series", sourceID: source.id, name: "Les saisons", group: "Séries · Drame",
+                                  logoURL: seriesArtwork, kind: .series, directURL: nil, xtreamStreamID: nil, fileExtension: nil,
+                                  isSeriesCollection: true,
+                                  details: IPTVDetails(synopsis: "Une description IPTV locale accompagne ce rayon de douze saisons. Chaque boîtier ouvre les épisodes de la saison choisie.", year: "2014", genre: "Drame"))
+        items.append(collection)
+        let seasons = (1...12).map { number in
+            IPTVSeason(number: number, episodes: (1...16).map { episode in
+                IPTVItem(id: "fixture-series-s\(number)-e\(episode)", sourceID: source.id,
+                         name: "Épisode \(episode)", group: collection.group, logoURL: nil,
+                         kind: .series, directURL: nil, xtreamStreamID: nil, fileExtension: nil,
+                         details: IPTVDetails(synopsis: "Épisode de démonstration locale.", year: "2014", duration: "42 min"),
+                         seasonNumber: number, episodeNumber: episode)
+            })
+        }
         let playback = PlaybackController()
         defer { playback.stop(); ArtworkLoader.cache.removeAllObjects() }
-        let kinds: [IPTVMediaKind] = [.live, .movie]
+        let scenarios: [(kind: IPTVMediaKind, filename: String, season: Int?)] = [
+            (.live, "catalog-tv.png", nil),
+            (.movie, "catalog-dvd-vhs.png", nil),
+            (.series, "series-seasons.png", nil),
+            (.series, "series-season-dock.png", 12)
+        ]
         var captureFailures: [String] = []
-        for kind in kinds {
+        for scenario in scenarios {
+            let kind = scenario.kind
             let library = IPTVLibrary(catalogFixture: source, items: items, kind: kind)
             let selected = library.catalogResults.all.items.first
             try require(selected != nil && !library.isLoading && !library.isFiltering, "Fixture catalogue was not installed synchronously.")
-            let root = ContentView(fixtureSelection: selected)
+            let root = ContentView(fixtureSelection: selected, fixtureSeasons: kind == .series ? seasons : [],
+                                   fixtureOpenSeason: scenario.season, fixtureEpisodeID: scenario.season == nil ? nil : "fixture-series-s12-e15")
                 .environmentObject(library).environmentObject(playback)
                 .preferredColorScheme(.dark)
                 .environment(\.scenePhase, .active)
@@ -128,7 +152,7 @@ private enum CatalogUIFailure: Error, CustomStringConvertible {
             let window = NSWindow(contentRect: CGRect(origin: CGPoint(x: 30, y: 30), size: size),
                                   styleMask: [.titled], backing: .buffered, defer: false)
             window.isReleasedWhenClosed = false
-            window.title = kind == .live ? "FluxIPTV — catalogue TV local" : "FluxIPTV — rayon DVD/VHS local"
+            window.title = kind == .live ? "FluxIPTV — catalogue TV local" : kind == .movie ? "FluxIPTV — rayon DVD/VHS local" : scenario.season == nil ? "FluxIPTV — douze saisons" : "FluxIPTV — saison 12, épisode 15 et Dock"
             window.appearance = NSAppearance(named: .darkAqua)
             window.contentView = host
             host.frame = CGRect(origin: .zero, size: size)
@@ -137,12 +161,13 @@ private enum CatalogUIFailure: Error, CustomStringConvertible {
             // Let actual SwiftUI tasks fill artwork and the bundled room image,
             // then let the native compositor settle before caching the view.
             try await Task.sleep(nanoseconds: 1_500_000_000)
+            if scenario.season != nil {try await Task.sleep(nanoseconds: 1_500_000_000)}
             host.layoutSubtreeIfNeeded()
             window.displayIfNeeded()
             CATransaction.flush()
             try await Task.sleep(nanoseconds: 300_000_000)
             try require(playback.playingItem == nil && playback.player.currentItem == nil, "A visual capture unexpectedly started main playback.")
-            let filename = kind == .live ? "catalog-tv.png" : "catalog-dvd-vhs.png"
+            let filename = scenario.filename
             do { try await capture(host, window: window, to: output.appendingPathComponent(filename)) }
             catch { captureFailures.append("\(filename): \(error)") }
             window.orderOut(nil)
