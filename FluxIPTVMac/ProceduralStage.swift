@@ -11,11 +11,12 @@ private final class StageBitmap: NSObject, @unchecked Sendable {
 }
 
 private enum StageRaster {
-    // At most three full 1080p scenes plus small settings thumbnails fit here.
+    // Two 4K scenes fit in this budget. Smaller displays decode smaller images;
+    // settings thumbnails share the cache without retaining every full scene.
     static let cache: NSCache<NSString, StageBitmap> = {
         let result = NSCache<NSString, StageBitmap>()
-        result.countLimit = 6
-        result.totalCostLimit = 32 * 1024 * 1024
+        result.countLimit = 4
+        result.totalCostLimit = 64 * 1024 * 1024
         return result
     }()
 
@@ -29,7 +30,7 @@ private enum StageRaster {
             let options: [CFString: Any] = [
                 kCGImageSourceCreateThumbnailFromImageAlways: true,
                 kCGImageSourceCreateThumbnailWithTransform: true,
-                kCGImageSourceThumbnailMaxPixelSize: max(320, min(1920, maxPixels)),
+                kCGImageSourceThumbnailMaxPixelSize: max(320, min(3840, maxPixels)),
                 kCGImageSourceShouldCacheImmediately: true
             ]
             if let image = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary), !Task.isCancelled {
@@ -108,13 +109,16 @@ struct ProceduralStage: View {
     @AppStorage(MediaThemePreferences.seriesKey) private var seriesTheme: VideoClubTheme = .neo90
     @AppStorage(MediaThemePreferences.tvKey) private var tvTheme: VideoClubTheme = .neo90
     @Environment(\.accessibilityReduceTransparency) private var reduced
+    @Environment(\.displayScale) private var displayScale
     private var theme: VideoClubTheme {
         switch kind { case .movie: cinemaTheme; case .series: seriesTheme; case .live: tvTheme }
     }
     var body: some View {
-        Group {
+        GeometryReader { geometry in
             if !reduced, style != .off {
-                RoomStageImage(environment: MediaEnvironment(kind: kind), theme: theme, maxPixels: 1920, cachedOnly: cachedOnly)
+                let requested=max(geometry.size.width,geometry.size.height)*displayScale
+                let pixels=requested <= 960 ? 960 : requested <= 1920 ? 1920 : requested <= 2560 ? 2560 : 3840
+                RoomStageImage(environment: MediaEnvironment(kind: kind), theme: theme, maxPixels: pixels, cachedOnly: cachedOnly)
             }
         }.ignoresSafeArea().allowsHitTesting(false).accessibilityHidden(true)
     }

@@ -1,0 +1,184 @@
+import SwiftUI
+import AVFoundation
+#if os(macOS)
+import AppKit
+#else
+import UIKit
+#endif
+
+/// Compact channel content. The surrounding button owns selection/focus; the
+/// catalogue creates these only for its bounded, currently displayed page.
+struct LiveTVChannelLabel: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    let item: IPTVItem
+    let number: Int
+    let favorite: Bool
+    let highlighted: Bool
+    let accent: Color
+
+    private var logoSize: CGFloat {
+        #if os(tvOS)
+        72
+        #else
+        52
+        #endif
+    }
+
+    var body: some View {
+        HStack(spacing: 14) {
+            ArtworkView(url: item.logoURL, fit: true) {
+                Image(systemName: "tv").font(.title2).foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+            .padding(7)
+            .frame(width: logoSize, height: logoSize)
+            .background(.white.opacity(0.09), in: RoundedRectangle(cornerRadius: 12))
+            .clipped()
+            VStack(alignment: .leading, spacing: 6) {
+                Text(item.name)
+                    .font(.headline).lineLimit(2)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                Text(item.group).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                HStack(spacing: 5) {
+                    Circle().fill(.red.opacity(0.9)).frame(width: 5, height: 5)
+                    Text("DIRECT").font(.system(size: 9, weight: .semibold)).tracking(1)
+                    Text("· \(number)").font(.caption2.monospacedDigit()).foregroundStyle(.secondary)
+                }
+            }
+            if favorite {
+                Image(systemName: "star.fill").font(.caption).foregroundStyle(.yellow)
+            }
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, minHeight: logoSize + 32, alignment: .leading)
+        .background(highlighted ? accent.opacity(0.20) : .black.opacity(0.25), in: RoundedRectangle(cornerRadius: 19))
+        .overlay {
+            RoundedRectangle(cornerRadius: 19)
+                .strokeBorder(highlighted ? .white.opacity(0.85) : .white.opacity(0.11), lineWidth: highlighted ? 2 : 0.8)
+                .allowsHitTesting(false)
+        }
+        .contentShape(RoundedRectangle(cornerRadius: 19))
+        .scaleEffect(highlighted && !reduceMotion ? 1.018 : 1)
+        .offset(y: highlighted && !reduceMotion ? -2 : 0)
+        .shadow(color: .black.opacity(highlighted ? 0.32 : 0), radius: 12, x: 0, y: 9)
+    }
+}
+
+struct LiveTVPreviewScreen: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @ObservedObject var preview: LiveTVPreviewController
+    let item: IPTVItem
+    let delay: LiveTVPreviewDelay
+    let automatic: Bool
+
+    var body: some View {
+        ZStack {
+            LinearGradient(colors: [Color(red: 0.08, green: 0.12, blue: 0.18), .black.opacity(0.55)], startPoint: .topLeading, endPoint: .bottomTrailing)
+            GeometryReader { geometry in
+                VStack(spacing: geometry.size.height < 100 ? 4 : 10) {
+                    ArtworkView(url: item.logoURL, fit: true) {
+                        Image(systemName: "tv").font(.title2).foregroundStyle(.secondary)
+                    }.frame(width: min(78, geometry.size.width * 0.5), height: min(64, geometry.size.height * 0.5))
+                    if preview.phase == .loading { ProgressView().controlSize(.small) }
+                    else if geometry.size.height >= 100 {
+                        Text(status).font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.center).lineLimit(2)
+                    }
+                }
+                .padding(geometry.size.height < 100 ? 4 : 14)
+                .frame(width: geometry.size.width, height: geometry.size.height)
+            }
+            if let player = preview.player {
+                LiveTVNativePreview(player: player)
+                    .opacity(preview.phase == .playing ? 1 : 0)
+                    .animation(reduceMotion ? nil : .easeOut(duration: 0.25), value: preview.phase == .playing)
+            }
+        }
+        .aspectRatio(16.0 / 9.0, contentMode: .fit)
+        .clipShape(RoundedRectangle(cornerRadius: 20))
+        .overlay {
+            RoundedRectangle(cornerRadius: 20).strokeBorder(.white.opacity(0.30), lineWidth: 1).allowsHitTesting(false)
+        }
+        .shadow(color: .black.opacity(0.45), radius: 20, x: 0, y: 12)
+        .allowsHitTesting(false).accessibilityHidden(true)
+    }
+    private var status: String {
+        if !automatic { return "Aperçu automatique désactivé" }
+        switch preview.phase {
+        case .idle, .waiting: return "Aperçu après \(delay.title)"
+        case .loading: return "Ouverture de la chaîne…"
+        case .playing: return "En direct"
+        case .failed: return "Aperçu indisponible. Vous pouvez ouvrir la chaîne."
+        }
+    }
+}
+
+#if os(macOS)
+@MainActor private final class LiveTVLayerView: NSView {
+    private let videoLayer = AVPlayerLayer()
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        wantsLayer = true
+        videoLayer.videoGravity = .resizeAspect
+        layer?.addSublayer(videoLayer)
+    }
+    required init?(coder: NSCoder) { fatalError("init(coder:) is unavailable") }
+    override func layout() {
+        super.layout()
+        CATransaction.begin(); CATransaction.setDisableActions(true)
+        videoLayer.frame = bounds
+        CATransaction.commit()
+    }
+    func setPlayer(_ player: AVPlayer?) { if videoLayer.player !== player { videoLayer.player = player } }
+}
+private struct LiveTVNativePreview: NSViewRepresentable {
+    let player: AVPlayer
+    func makeNSView(context: Context) -> LiveTVLayerView { let view = LiveTVLayerView(frame: .zero); view.setPlayer(player); return view }
+    func updateNSView(_ view: LiveTVLayerView, context: Context) { view.setPlayer(player) }
+    static func dismantleNSView(_ view: LiveTVLayerView, coordinator: ()) { view.setPlayer(nil) }
+}
+#else
+@MainActor private final class LiveTVLayerView: UIView {
+    override class var layerClass: AnyClass { AVPlayerLayer.self }
+    func setPlayer(_ player: AVPlayer?) {
+        let videoLayer = layer as! AVPlayerLayer
+        videoLayer.videoGravity = .resizeAspect
+        if videoLayer.player !== player { videoLayer.player = player }
+    }
+}
+private struct LiveTVNativePreview: UIViewRepresentable {
+    let player: AVPlayer
+    func makeUIView(context: Context) -> LiveTVLayerView { let view = LiveTVLayerView(frame: .zero); view.setPlayer(player); return view }
+    func updateUIView(_ view: LiveTVLayerView, context: Context) { view.setPlayer(player) }
+    static func dismantleUIView(_ view: LiveTVLayerView, coordinator: ()) { view.setPlayer(nil) }
+}
+#endif
+
+/// Sidebar rows use one enclosing glass surface rather than a glass effect
+/// for every category. Labels remain readable while scrolling a large list.
+struct LiveTVScopeLabel: View {
+    let title: String
+    let symbol: String
+    var count: Int? = nil
+    let selected: Bool
+    let focused: Bool
+    let accent: Color
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: symbol).frame(width: 20)
+                .foregroundStyle(selected ? accent : .secondary)
+            Text(title).font(.callout.weight(selected ? .semibold : .regular))
+                .lineLimit(2).frame(maxWidth: .infinity, alignment: .leading)
+            if let count { Text("\(count)").font(.caption.monospacedDigit()).foregroundStyle(.secondary) }
+            if selected { Image(systemName: "checkmark").font(.caption.weight(.bold)).foregroundStyle(accent) }
+        }
+        .padding(.horizontal, 12).padding(.vertical, 11)
+        .background(selected ? accent.opacity(0.16) : .white.opacity(focused ? 0.09 : 0), in: RoundedRectangle(cornerRadius: 13))
+        .overlay {
+            RoundedRectangle(cornerRadius: 13)
+                .strokeBorder(focused ? .white.opacity(0.75) : .clear, lineWidth: 2)
+                .allowsHitTesting(false)
+        }
+        .contentShape(RoundedRectangle(cornerRadius: 13))
+    }
+}

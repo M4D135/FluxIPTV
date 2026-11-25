@@ -41,19 +41,16 @@ final class ClubInterfaceProfileTests: XCTestCase {
 }
 
 extension ClubInterfaceProfileTests {
-    func testFullScreenCaseFramingKeepsWholePosterAndNeighbors() {
+    func testFullScreenCaseFramingKeepsWholePosterAndLargeShelfNeighbors() {
         let slope=tan(35*Double.pi/360)
         for profile in ClubInterfaceProfile.allCases {
             for aspect in [16.0/9.0,2.0,1.33,1.0,0.66] {
                 let distance=profile.inspectionDistance(aspect:aspect)
-                let fraction=1.5/((distance-0.14)*slope)
-                XCTAssertLessThanOrEqual(fraction,0.9000001)
-                if aspect >= 1.77 {XCTAssertGreaterThan(fraction,0.85)}
-                for neighbor in CaseCarousel.placements(aspect:aspect,editorial:profile.isEditorial) {
-                    let outerX=abs(neighbor.x)+neighbor.scale*1.04
-                    let frontZ = -neighbor.depth+neighbor.scale*0.70
-                    XCTAssertLessThanOrEqual(outerX/((distance-frontZ)*slope*aspect),0.9600001)
-                }
+                let fraction=1.5/((distance-Double(CasePackageFormat.dvd.halfDepth()))*slope)
+                XCTAssertLessThanOrEqual(fraction,0.9600001)
+                if aspect >= 1.77 {XCTAssertGreaterThan(fraction,0.90)}
+                let neighbors=CaseCarousel.placements(aspect:aspect,editorial:profile.isEditorial)
+                XCTAssertTrue(neighbors.allSatisfy{$0.scale>=0.68 && $0.depth>0})
             }
         }
     }

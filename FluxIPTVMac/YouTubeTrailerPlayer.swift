@@ -31,6 +31,8 @@ import UIKit
     private var hasStarted = false
     private var isReady = false
     private var wantsPlayback = false
+    private var backFacing = true
+    private var resumingAfterFacePause = false
     private var isDisposed = false
     private var hasFailed = false
     private var startupTimeout: Task<Void, Never>?
@@ -86,8 +88,8 @@ import UIKit
             fail("L’application ne fournit pas son identifiant à YouTube (153).")
             return
         }
-        transition(to: .loading)
-        armStartupTimeout()
+        transition(to: backFacing ? .loading : .paused)
+        if backFacing { armStartupTimeout() }
         webView.loadHTMLString(playerHTML(origin: identityURL), baseURL: identityURL)
     }
 
@@ -100,18 +102,49 @@ import UIKit
         cancelReadyPlayback()
         if unmute { isMuted = false }
         wantsPlayback = true
+        resumingAfterFacePause = false
+        requestPlayback()
+    }
+
+    private func requestPlayback() {
+        guard backFacing else { transition(to: .paused); return }
+        let replay = state == .ended
         if state != .playing { transition(to: .loading); armStartupTimeout() }
-        if isReady { sendCommand("play(\(isMuted ? "true" : "false"))") }
+        if isReady { sendCommand("play(\(isMuted ? "true" : "false"), \(replay ? "true" : "false"))") }
     }
 
     func pause() {
         guard !isDisposed else { return }
         wantsPlayback = false
+        resumingAfterFacePause = false
+        pauseSurface()
+    }
+
+    private func pauseSurface() {
         cancelReadyPlayback()
         cancelStartupTimeout()
+        guard state != .ended else { return }
         if isReady { sendCommand("pause()") }
         webView?.pauseAllMediaPlayback(completionHandler: nil)
-        if hasStarted, !hasFailed, state != .ended { transition(to: .paused) }
+        if hasStarted, !hasFailed, state != .ended, state != .blocked { transition(to: .paused) }
+    }
+
+    /// Turning the selected case over suspends its existing player, preserving
+    /// both its position and the user's transport intention. A manual pause,
+    /// blocked autoplay or an ended trailer must never restart on return.
+    func setBackFacing(_ visible: Bool) {
+        guard !isDisposed, backFacing != visible else { return }
+        backFacing = visible
+        guard hasStarted, !hasFailed else { return }
+        if !visible {
+            resumingAfterFacePause = false
+            pauseSurface()
+        } else if wantsPlayback, state != .ended, state != .blocked {
+            // A delayed PAUSED event from the hide command may still arrive
+            // after this request. It is not a new pause chosen by the user.
+            resumingAfterFacePause = true
+            requestPlayback()
+        }
     }
 
     func setMuted(_ muted: Bool) {
@@ -121,7 +154,7 @@ import UIKit
     }
 
     func togglePlayback() {
-        if state == .playing || (state == .loading && wantsPlayback) { pause() }
+        if wantsPlayback { pause() }
         else { play() }
     }
 
@@ -136,6 +169,7 @@ import UIKit
         guard !isDisposed else { return }
         isDisposed = true
         wantsPlayback = false
+        resumingAfterFacePause = false
         isReady = false
         cancelReadyPlayback()
         cancelStartupTimeout()
@@ -170,7 +204,7 @@ import UIKit
         cancelStartupTimeout()
         startupTimeout = Task { @MainActor [weak self] in
             do { try await Task.sleep(nanoseconds: 18_000_000_000) } catch { return }
-            guard let self, !self.isDisposed, !self.hasFailed, self.wantsPlayback else { return }
+            guard let self, !self.isDisposed, !self.hasFailed, self.wantsPlayback, self.backFacing else { return }
             self.fail("La bande-annonce ne répond pas. Vérifiez la connexion et réessayez.")
         }
     }
@@ -189,6 +223,7 @@ import UIKit
         guard !isDisposed else { return }
         hasFailed = true
         wantsPlayback = false
+        resumingAfterFacePause = false
         cancelReadyPlayback()
         cancelStartupTimeout()
         webView?.pauseAllMediaPlayback(completionHandler: nil)
@@ -217,36 +252,40 @@ import UIKit
             // until that visible surface has settled before starting autoplay.
             // Queue before the callback so an explicit play/pause/stop inside
             // that callback can cancel the pending automatic request too.
-            if wantsPlayback {
+            if wantsPlayback, backFacing {
                 cancelReadyPlayback()
                 readyPlaybackTask = Task { @MainActor [weak self] in
                     do { try await Task.sleep(nanoseconds: 550_000_000) } catch { return }
-                    guard let self, !self.isDisposed, !self.hasFailed, self.isReady, self.wantsPlayback else { return }
+                    guard let self, !self.isDisposed, !self.hasFailed, self.isReady, self.wantsPlayback, self.backFacing else { return }
                     self.readyPlaybackTask = nil
                     self.sendCommand("play(\(self.isMuted ? "true" : "false"))")
                 }
             }
             onReady?()
             guard !isDisposed, !hasFailed else { return }
-            if !wantsPlayback { sendCommand("pause()") }
+            if !wantsPlayback || !backFacing { sendCommand("pause()") }
         case "state":
             guard let value = body["value"] as? Int else { return }
             switch value {
             case 1:
+                guard backFacing else { pauseSurface(); return }
                 wantsPlayback = true
+                resumingAfterFacePause = false
                 cancelStartupTimeout()
                 transition(to: .playing)
             case 2:
-                wantsPlayback = false
+                if backFacing, resumingAfterFacePause, wantsPlayback { break }
+                if backFacing { wantsPlayback = false }
                 cancelStartupTimeout()
-                if state != .blocked { transition(to: .paused) }
+                if state != .blocked, state != .ended { transition(to: .paused) }
             case 0:
                 wantsPlayback = false
+                resumingAfterFacePause = false
                 cancelStartupTimeout()
                 progress = 1
                 transition(to: .ended)
             case 3:
-                if wantsPlayback { transition(to: .loading); armStartupTimeout() }
+                if wantsPlayback, backFacing { transition(to: .loading); armStartupTimeout() }
             default: break
             }
         case "progress":
@@ -262,6 +301,7 @@ import UIKit
             if readyPlaybackTask == nil, let muted = body["muted"] as? Bool { isMuted = muted }
         case "blocked":
             wantsPlayback = false
+            resumingAfterFacePause = false
             cancelReadyPlayback()
             cancelStartupTimeout()
             transition(to: .blocked)
@@ -338,10 +378,10 @@ import UIKit
               emit('progress', {time, duration, muted: player.isMuted()});
           };
           window.fluxTrailer = {
-            play: (muted) => {
+            play: (muted, replay = false) => {
               if (!ready || disposed) return;
               muted ? player.mute() : player.unMute();
-              if (player.getPlayerState() === 0) player.seekTo(0, true);
+              if (replay || player.getPlayerState() === 0) player.seekTo(0, true);
               player.playVideo();
               snapshot();
             },

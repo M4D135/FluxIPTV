@@ -43,9 +43,16 @@ public enum ProceduralCase {
 
     /// Smooth rounded DVD/VHS shell. Fixed-size geometry, no subdivisions per frame.
     /// A thin inset middle ring simulates the two halves of the plastic shell.
-    public static func premiumMesh(cornerSegments: Int = 4, halfDepth: Float = 0.14) -> [Triangle] {
+    public static func premiumMesh(cornerSegments: Int = 4, halfDepth: Float = 0.14,
+                                   halfWidth: Float = 1, halfHeight: Float = 1.5,
+                                   bevel requestedBevel: Float = 0.047,
+                                   cornerRadius requestedRadius: Float = 0.075) -> [Triangle] {
         let segments = max(1,min(8,cornerSegments))
-        let x: Float=1, y: Float=1.5, z = halfDepth.isFinite ? max(0.07,min(0.40,halfDepth)) : 0.14, bevel: Float=0.047, radius: Float=0.075
+        let x = halfWidth.isFinite ? max(0.5,min(2,halfWidth)) : 1
+        let y = halfHeight.isFinite ? max(0.5,min(2,halfHeight)) : 1.5
+        let z = halfDepth.isFinite ? max(0.07,min(0.40,halfDepth)) : 0.14
+        let bevel = requestedBevel.isFinite ? max(0.012,min(z*0.8,requestedBevel)) : 0.047
+        let radius = requestedRadius.isFinite ? max(bevel+0.012,min(0.2,requestedRadius)) : 0.075
         struct Sample { let p: SIMD3<Float>; let n: SIMD3<Float> }
         let ringCount=4*(segments+1)
         func ring(inset:Float, depth:Float, normalXY:Float, normalZ:Float) -> [Sample] {
@@ -94,6 +101,13 @@ public enum ProceduralCase {
             emit([a,d,c],surface);emit([a,c,b],surface)
         }}
         return out
+    }
+
+    public static func premiumMesh(cornerSegments: Int = 4, format: CasePackageFormat,
+                                   collector: Bool = false, halfDepth: Float? = nil) -> [Triangle] {
+        premiumMesh(cornerSegments: cornerSegments, halfDepth: halfDepth ?? format.halfDepth(collector: collector),
+                    halfWidth: format.halfWidth, halfHeight: format.halfHeight,
+                    bevel: format.bevel, cornerRadius: format.cornerRadius)
     }
 
     /// Seeded grain; tangent-space normal maps are generated locally, never downloaded.

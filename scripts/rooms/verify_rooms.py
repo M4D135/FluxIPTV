@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Validate the 18 distributable room bakes without Blender or image libraries."""
+import argparse
 import hashlib
 import json
 import struct
@@ -30,18 +31,21 @@ def jpeg_size(path):
     raise ValueError('Missing JPEG dimensions: '+path.name)
 
 def main():
-    manifest=json.loads((OUT/'manifest.json').read_text())
+    parser=argparse.ArgumentParser()
+    parser.add_argument('--directory',type=Path,default=OUT)
+    out=parser.parse_args().directory
+    manifest=json.loads((out/'manifest.json').read_text())
     expected={f'{kind}-{theme}.jpg' for kind in KINDS for theme in THEMES}
     entries={x['file']:x for x in manifest['files']}
     if len(manifest['files'])!=18 or set(entries)!=expected:
         raise ValueError('The manifest must contain exactly the 18 room/theme combinations')
-    if (manifest['width'],manifest['height'])!=(1920,1080):
-        raise ValueError('Final bakes must be 1920×1080')
+    if (manifest['width'],manifest['height'])!=(3840,2160):
+        raise ValueError('Final bakes must be 3840×2160')
     total=0
     for name in sorted(expected):
-        path=OUT/name
+        path=out/name
         data=path.read_bytes();entry=entries[name]
-        if jpeg_size(path)!=(1920,1080):raise ValueError('Wrong dimensions: '+name)
+        if jpeg_size(path)!=(3840,2160):raise ValueError('Wrong dimensions: '+name)
         if hashlib.sha256(data).hexdigest()!=entry['sha256']:raise ValueError('Digest mismatch: '+name)
         if len(data)!=entry['bytes']:raise ValueError('Byte count mismatch: '+name)
         if entry['engine']!='CYCLES' or entry['denoising']!='OpenImageDenoise':
@@ -49,6 +53,10 @@ def main():
         total+=len(data)
     if len({x['sha256'] for x in entries.values()})!=18:
         raise ValueError('Duplicate frames across environments/themes')
-    print(f'18 rooms verified: 1920×1080, distinct hashes, Cycles/OIDN, {total:,} bytes')
+    root=ROOT
+    for name,digest in manifest.get('source_files',{}).items():
+        if hashlib.sha256((root/name).read_bytes()).hexdigest()!=digest:
+            raise ValueError('Generator source digest mismatch: '+name)
+    print(f'18 rooms verified: 3840×2160, distinct hashes, Cycles/OIDN, {total:,} bytes')
 
 if __name__=='__main__':main()

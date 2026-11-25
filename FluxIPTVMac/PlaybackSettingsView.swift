@@ -22,6 +22,8 @@ struct PlaybackSettingsView: View {
     @AppStorage("fluxiptv.appearance.caseQuality") private var caseQuality: CaseRenderQuality = .balanced
     @AppStorage(TrailerPreviewDelay.storageKey) private var trailerPreviewDelay: TrailerPreviewDelay = .five
     @AppStorage(TrailerPreviewDelay.automaticKey) private var automaticTrailerPreview = true
+    @AppStorage(LiveTVPreviewDelay.storageKey) private var livePreviewDelay: LiveTVPreviewDelay = .three
+    @AppStorage(LiveTVPreviewDelay.automaticKey) private var automaticLivePreview = true
     @AppStorage(ClubInterfaceProfile.storageKey) private var clubProfile: ClubInterfaceProfile = .neoVideoClub
     @AppStorage(MediaThemePreferences.cinemaKey) private var cinemaTheme: VideoClubTheme = .neo90
     @AppStorage(MediaThemePreferences.seriesKey) private var seriesTheme: VideoClubTheme = .neo90
@@ -33,7 +35,7 @@ struct PlaybackSettingsView: View {
         GeometryReader { geo in
             let wide = geo.size.width >= 740
             VStack(alignment:.leading,spacing:14) {
-                HStack { VStack(alignment:.leading,spacing:4) { Text("Réglages").font(.largeTitle.bold()); Text("FLUX 0.8.5  ·  Centre de contrôle").font(.caption).foregroundStyle(.secondary) }; Spacer(); Button("Fermer",action:close).buttonStyle(.bordered) }
+                HStack { VStack(alignment:.leading,spacing:4) { Text("Réglages").font(.largeTitle.bold()); Text("FLUX 0.8.6  ·  Centre de contrôle").font(.caption).foregroundStyle(.secondary) }; Spacer(); Button("Fermer",action:close).buttonStyle(.bordered) }
                 if wide {
                     HStack(alignment:.top,spacing:22) {
                         VStack(alignment:.leading,spacing:8) { ForEach(Page.allCases) { destination in pageButton(destination) }; Spacer(minLength:0) }.frame(width:230)
@@ -136,6 +138,14 @@ struct PlaybackSettingsView: View {
             environmentSection(.cinema,selection:$cinemaTheme)
             environmentSection(.videoClub,selection:$seriesTheme)
             environmentSection(.livingRoom,selection:$tvTheme)
+            section("Aperçu des chaînes TV", "La chaîne sélectionnée s’anime dans son écran après un délai. Ce réglage est indépendant des films et séries.") {
+                Toggle("Aperçu TV automatique", isOn: $automaticLivePreview)
+                Picker("Délai avant l’aperçu TV", selection: $livePreviewDelay) {
+                    ForEach(LiveTVPreviewDelay.allCases) { delay in Text(delay.title).tag(delay) }
+                }.disabled(!automaticLivePreview)
+                Text("Un seul aperçu à la fois, muet au départ. Le bouton Son active son audio ; Regarder ouvre la chaîne. Changer de chaîne, de catégorie ou d’espace arrête l’aperçu précédent.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
             section("Verso des pochettes","Un cadre montre une image du film ou du fournisseur, puis la bande-annonce disponible.") {
                 Toggle("Bande-annonce automatique dans le cadre",isOn:$automaticTrailerPreview)
                 Picker("Délai avant la bande-annonce",selection:$trailerPreviewDelay) {
@@ -177,6 +187,7 @@ struct PlaybackSettingsView: View {
                     clubProfile = .neoVideoClub;caseQuality = .balanced;stage = .orbit
                     cinemaTheme = .neo90;seriesTheme = .neo90;tvTheme = .neo90
                     trailerPreviewDelay = .five;automaticTrailerPreview = true
+                    livePreviewDelay = .three;automaticLivePreview = true
                 }
             }
         }

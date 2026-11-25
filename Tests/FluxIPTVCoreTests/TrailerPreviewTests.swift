@@ -3,7 +3,7 @@ import XCTest
 
 final class TrailerPreviewTests: XCTestCase {
     func testOnlyTheRequestedDelaysAreAvailableAndPersistable() throws {
-        XCTAssertEqual(TrailerPreviewDelay.allCases.map(\.rawValue), [3, 5, 10])
+        XCTAssertEqual(TrailerPreviewDelay.allCases.map(\.rawValue), [1, 3, 5, 10])
         XCTAssertNil(TrailerPreviewDelay(rawValue: 0))
         XCTAssertNil(TrailerPreviewDelay(rawValue: 7))
         for delay in TrailerPreviewDelay.allCases {

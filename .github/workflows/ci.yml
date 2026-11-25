@@ -29,6 +29,8 @@ jobs:
       - uses: swift-actions/setup-swift@v2
         with:
           swift-version: '6.2'
+      - name: Run core tests
+        run: swift test 2>&1 | tee build/logs/core-tests.log
       - name: Check source declarations and room resources
         run: |
           mkdir -p build/logs
@@ -38,8 +40,6 @@ jobs:
         run: |
           python3 scripts/generate-xcodeproj.py 2>&1 | tee build/logs/project-generation.log
           git diff --exit-code -- FluxIPTV.xcodeproj
-      - name: Run core tests
-        run: swift test 2>&1 | tee build/logs/core-tests.log
       - name: Save core diagnostics
         if: always()
         uses: actions/upload-artifact@v4
@@ -92,6 +92,14 @@ jobs:
         if: matrix.platform == 'macOS'
         timeout-minutes: 5
         run: bash scripts/test-youtube-session.sh 2>&1 | tee build/logs/youtube-native-session.log
+      - name: Exercise the TV preview with a local native video
+        if: matrix.platform == 'macOS'
+        timeout-minutes: 5
+        run: bash scripts/test-live-preview.sh 2>&1 | tee build/logs/live-preview-native.log
+      - name: Render and verify the actual 3D cases
+        if: matrix.platform == 'macOS'
+        timeout-minutes: 5
+        run: bash scripts/test-case-scene.sh 2>&1 | tee build/logs/case-scene-native.log
       - name: Package the unsigned application
         run: |
           app='build/${{ matrix.platform }}/Build/Products/${{ matrix.products }}/${{ matrix.app }}.app'

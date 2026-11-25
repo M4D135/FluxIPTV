@@ -63,6 +63,34 @@ private struct FluxMediaGlass: ViewModifier {
     }
 }
 
+/// Independent navigation capsules reveal the room between controls. Selected
+/// destinations use a tinted native glass; other destinations stay clear.
+private struct FluxNavigationGlass: ViewModifier {
+    @AppStorage(FluxAppearance.glassKey) private var richGlass = true
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    let selected: Bool
+    let tint: Color
+    let radius: CGFloat
+
+    @ViewBuilder func body(content: Content) -> some View {
+        let shape = RoundedRectangle(cornerRadius: radius, style: .continuous)
+        if richGlass && !reduceTransparency {
+            #if compiler(>=6.2)
+            if #available(macOS 26.0, iOS 26.0, tvOS 26.0, *) {
+                if selected {
+                    content.glassEffect(.regular.tint(tint.opacity(0.38)).interactive(), in: shape)
+                } else {
+                    content.glassEffect(.clear.interactive(), in: shape)
+                        .background(.black.opacity(0.16), in: shape)
+                }
+            } else { content.fluxMaterial(radius: radius) }
+            #else
+            content.fluxMaterial(radius: radius)
+            #endif
+        } else { content.fluxFrosted(radius: radius) }
+    }
+}
+
 /// Render nearby glass shapes in one system container. Older systems preserve
 /// the same layout and use real system material through the modifiers above.
 struct FluxGlassGroup<Content: View>: View {
@@ -80,6 +108,10 @@ struct FluxGlassGroup<Content: View>: View {
 }
 
 extension View {
+    func fluxNavigationGlass(selected: Bool = false, tint: Color = .cyan, radius: CGFloat = 22) -> some View {
+        modifier(FluxNavigationGlass(selected: selected, tint: tint, radius: radius))
+    }
+
     func fluxGlass(radius: CGFloat = 20) -> some View {
         modifier(FluxGlassChrome(radius: radius))
     }

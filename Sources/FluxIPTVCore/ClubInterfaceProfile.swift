@@ -23,13 +23,14 @@ public enum ClubInterfaceProfile: String, CaseIterable, Codable, Identifiable, S
     }
     public var arrangement: Arrangement {
         switch self {
-        case .neoVideoClub: Arrangement(neighborScale:0.46,neighborX:1.76,neighborDepth:1.04,neighborAngle:22)
-        case .appleCinema: Arrangement(neighborScale:0.43,neighborX:1.67,neighborDepth:1.18,neighborAngle:16)
+        case .neoVideoClub: Arrangement(neighborScale:0.82,neighborX:1.55,neighborDepth:0.45,neighborAngle:12)
+        case .appleCinema: Arrangement(neighborScale:0.78,neighborX:1.48,neighborDepth:0.50,neighborAngle:10)
         }
     }
-    /// A full-size central sleeve and at most four smaller, recessed neighbors.
-    public func inspectionDistance(aspect: Double, collector: Bool = false, open: Bool = false) -> Double {
-        CaseCarousel.distance(aspect:aspect,editorial:isEditorial,collector:collector,open:open)
+    /// A held central sleeve and up to four large cases continuing the shelf behind it.
+    public func inspectionDistance(aspect: Double, collector: Bool = false, open: Bool = false,
+                                   format: CasePackageFormat = .dvd) -> Double {
+        CaseCarousel.distance(aspect:aspect,editorial:isEditorial,collector:collector,open:open,format:format)
     }
     public static func neighbors(index: Int, count: Int) -> (previous: Int?, next: Int?) {
         guard count>0,index>=0,index<count else {return (nil,nil)}

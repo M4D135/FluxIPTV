@@ -1,4 +1,4 @@
-FLUX IPTV 0.8.5 — CINÉMA, VIDÉOCLUB ET SALON TV - Installation sur votre Mac
+FLUX IPTV 0.8.6 — CINÉMA, VIDÉOCLUB ET SALON TV - Installation sur votre Mac
 
 1. Quittez FLUX IPTV et arrêtez le projet s'il tourne dans Xcode.
 2. Décompressez l'archive et double-cliquez sur « Installer Flux IPTV.command ».
@@ -9,7 +9,7 @@ FLUX IPTV 0.8.5 — CINÉMA, VIDÉOCLUB ET SALON TV - Installation sur votre Mac
    L'installateur contrôle que le processus reste actif et restaure l'ancien
    bundle en cas d'échec du démarrage. Ce contrôle ne valide pas la lecture.
 4. Ensuite ouvrez uniquement FluxIPTV.app depuis le Finder ou le Dock.
-   Ne relancez pas l'installateur à chaque utilisation. Vérifiez le numéro 0.8.5
+   Ne relancez pas l'installateur à chaque utilisation. Vérifiez le numéro 0.8.6
    dans la barre FLUX et les thèmes dans Réglages > Interface.
 
 Sur Mac, VLC intégré est désactivé. En cas de format incompatible, installez le
@@ -38,15 +38,26 @@ Nouveau : dans Sources > Modifier, vous pouvez choisir « Sur ce Mac, sans Trous
 
 Pochette ouverte : glisser deux doigts sur le trackpad, sans clic. Horizontal = tourner, vertical = incliner. Clics sur les boutons imprimés et flèches clavier conservés.
 
-Nouveautés conservées depuis 0.8.2 : Films = cinéma, Séries = vidéoclub, Direct = salon.
-Réglages > Interface : thème indépendant pour chaque espace, aperçu après 3/5/10 s.
-Boîte : Haut = lire/ouvrir ; Bas = favoris et actions ; Retour = reposer.
-Description sélectionnée : Gauche/Droite = IPTV, Allociné, Wikipédia.
-Un clic sur la miniature ouvre la bande-annonce en plein écran.
-Voir README.md et docs/VALIDATION-0.8.5.md pour le comportement et les limites.
+Nouveautés 0.8.6 : rayons rapprochés, prise en main de boîtes plus grandes,
+DVD dès 2000 / VHS avant 2000, coffret avec une boîte par saison.
+Boîte : Gauche/Droite = tourner ; double appui = titre précédent/suivant.
+Haut sélectionne l’aperçu, Valider l’agrandit ; Haut encore sélectionne Lire.
+Lecture (Espace sur Mac) lance directement le film ou l’épisode.
+Bas = Reposer à gauche / Actions / Favoris à droite. Retour/Menu = reposer.
+Dans un coffret, Valider choisit les saisons ; Gauche/Droite choisit le boîtier,
+puis Valider ouvre les épisodes. Une aide contextuelle reste affichée.
+La bande-annonce continue en tournant et se met en pause sur le recto.
 
-Correctif 0.8.3 conservé : nettoyage du lecteur d’aperçu sur MainActor et chargement asynchrone des pistes audio/sous-titres.
+TV : catégories à gauche, recherche visible, vignette qui se détache lors de
+la sélection. Aperçu en sourdine après 3 secondes par défaut ; délai propre
+à la TV 1/3/5/10 s, indépendant des films/séries (5 s par défaut).
+Réglages > Interface permet de changer les délais et chacun des trois thèmes.
+Les 18 décors sont précalculés en 4K avec des structures et meubles distincts.
 
-Correctif 0.8.5 : bandes-annonces YouTube intégrées sur macOS/iOS, lecteur sans bandeau de catalogue, commandes flottantes et Liquid Glass natif sur les systèmes 26 compatibles. Retour depuis la bande-annonce conserve la position et remet l’aperçu en sourdine.
+Bandes-annonces YouTube intégrées sur macOS/iOS ; vidéos directes natives.
+Sur tvOS, YouTube s’ouvre explicitement sur iPhone via un QR code.
+La navigation générale disparaît pendant la lecture principale. Les commandes
+flottantes et le bandeau utilisent Liquid Glass avec Xcode et systèmes 26.
+Les systèmes précédents conservent un matériau translucide compatible.
 
-Correctifs 0.8.4 conservés : indicateurs de progression et appui long compatibles tvOS ; workflow GitHub Actions complet sur Ubuntu 24.04 / macOS.
+Voir README.md et docs/VALIDATION-0.8.6.md pour les comportements et les limites.

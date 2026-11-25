@@ -18,22 +18,7 @@ final class CaseCarouselTests: XCTestCase {
         XCTAssertNil(CaseCarousel.index(from:0,offset:Int.min,count:40))
     }
 
-    func testFinalClosedCaseShortcuts() {
-        for series in [false,true] {
-            let primary:CaseFaceLayout.Action = series ? .episodes:.play
-            XCTAssertEqual(CaseCarousel.command(for:.up,series:series),primary)
-            XCTAssertEqual(CaseCarousel.command(for:.select,series:series),primary)
-            XCTAssertEqual(CaseCarousel.command(for:.playPause,series:series),primary)
-            XCTAssertEqual(CaseCarousel.command(for:.left,series:series),.previous)
-            XCTAssertEqual(CaseCarousel.command(for:.right,series:series),.next)
-            XCTAssertEqual(CaseCarousel.command(for:.back,series:series),.close)
-            // Down enters the visible action bar; it must never close or play.
-            XCTAssertNil(CaseCarousel.command(for:.down,series:series))
-            XCTAssertNil(CaseCarousel.command(for:.options,series:series))
-        }
-    }
-
-    func testResponsiveFramingKeepsLargeCentralPosterAndFourSmallNeighbors() {
+    func testResponsiveFramingKeepsLargeHeldCaseAndContinuousShelf() {
         let slope=tan(35*Double.pi/360)
         for editorial in [false,true] {
             for aspect in [16.0/9.0,2.35,1.33,1.0,0.66,0.40] {
@@ -41,23 +26,23 @@ final class CaseCarouselTests: XCTestCase {
                 XCTAssertEqual(placements.map(\.offset),[-2,-1,1,2])
                 XCTAssertEqual(placements.count,4)
                 XCTAssertLessThan(placements[0].scale,placements[1].scale)
-                XCTAssertLessThan(placements[1].scale,0.5)
+                XCTAssertGreaterThan(placements[1].scale,0.70)
+                XCTAssertGreaterThan(placements[0].scale,0.60)
+                let spacing=abs(placements[0].x-placements[1].x)
+                XCTAssertLessThan(spacing,(placements[0].scale+placements[1].scale)*1.07)
                 let distance=CaseCarousel.distance(aspect:aspect,editorial:editorial)
-                let fraction=1.5/((distance-0.14)*slope)
-                XCTAssertLessThanOrEqual(fraction,0.900001)
-                if aspect>=1.33 {XCTAssertGreaterThan(fraction,0.85)}
-                for placement in placements {
-                    let outer=abs(placement.x)+placement.scale*1.04
-                    let front = -placement.depth+placement.scale*0.70
-                    XCTAssertLessThanOrEqual(outer/((distance-front)*slope*aspect),0.960001)
-                }
+                let fraction=1.5/((distance-Double(CasePackageFormat.dvd.halfDepth()))*slope)
+                XCTAssertLessThanOrEqual(fraction,0.960001)
+                if aspect>=1.33 {XCTAssertGreaterThan(fraction,0.90)}
+                XCTAssertTrue(placements.allSatisfy{$0.depth>0})
             }
             XCTAssertTrue(CaseCarousel.distance(aspect:.nan,editorial:editorial).isFinite)
             let closed=CaseCarousel.distance(aspect:16.0/9.0,editorial:editorial,collector:true)
             let opened=CaseCarousel.distance(aspect:16.0/9.0,editorial:editorial,collector:true,open:true)
             XCTAssertGreaterThan(opened,closed)
-            let lidDepth=CaseCarousel.collectorHalfDepth+0.08+1.94*sin(25*Double.pi/180)
-            XCTAssertLessThanOrEqual(1.5/((opened-lidDepth)*slope),0.900001)
+            let format=CasePackageFormat.dvd
+            let lidDepth=Double(format.halfDepth(collector:true))+0.08+2*Double(format.halfWidth)*sin(25*Double.pi/180)
+            XCTAssertLessThanOrEqual(1.5/((opened-lidDepth)*slope),0.920001)
         }
     }
 

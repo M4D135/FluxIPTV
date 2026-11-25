@@ -1,14 +1,12 @@
-# FLUX IPTV 0.8.5 — Lecture immersive, Liquid Glass et bandes-annonces intégrées
+# FLUX IPTV 0.8.6 — Rayons 3D, coffrets de saisons et télévision en direct
 
 Version native SwiftUI pour macOS, iOS et tvOS.
 
-**Nouveautés 0.8.5 :** la navigation du catalogue disparaît pendant la lecture, y compris en mode fenêtre. Un petit panneau flottant rassemble les commandes et se masque après trois secondes d’inactivité. Les panneaux utilisent le véritable Liquid Glass clair sur les systèmes 26 compatibles, ou un matériau système translucide sur les versions précédentes. Les bandes-annonces YouTube utilisent le lecteur intégré officiel sur Mac, iPhone et iPad ; les vidéos directes restent natives. Le même lecteur est conservé entre miniature et plein écran.
+**Nouveautés 0.8.6 :** catalogue rapproché comme un rayon, boîte choisie qui vient au premier plan, voisins plus grands, DVD pour les titres à partir de 2000 et VHS pour les titres antérieurs. Les séries disposent d’un coffret contenant les saisons physiques, avec un boîtier qui dépasse lorsqu’il est choisi. Les commandes distinguent rotation, sélection d’un bouton et lecture directe.
 
-**Correctif 0.8.4 :** les indicateurs de progression utilisent leur taille native sur tvOS et l’appui long utilise l’API de la télécommande ; macOS/iOS conservent leurs réglages de taille et de déplacement du geste. Le job Linux est fixé sur Ubuntu 24.04 pour installer Swift 6.2. GitHub Actions produit les sources complètes, les journaux Xcode et les applications compilées.
+La TV dispose d’une navigation dédiée : catégories à gauche, recherche et chaînes compactes, aperçu automatique dans une vignette et délai **1 / 3 / 5 / 10 secondes propre à la TV**. Les trois espaces partagent des modules de navigation Liquid Glass sur les systèmes 26 compatibles. Les 18 décors sont reconstruits en **3840 × 2160**, avec des architectures et des meubles distincts selon le thème.
 
-**Correctif 0.8.3 :** les trois erreurs Xcode d’accès à `player` depuis le destructeur de l’aperçu sont corrigées. Le nettoyage du lecteur et de son observateur périodique est isolé sur MainActor, sans capturer le contrôleur après sa destruction. Le chargement des groupes audio et sous-titres utilise désormais l’API asynchrone, avec annulation et contrôle de l’item courant.
-
-Le catalogue reste une grille complète. Sélectionner un film ou une série ouvre sa boîte 3D et les quatre voisins au maximum.
+Les acquis de 0.8.5 sont conservés : lecture sans bandeau de catalogue, commandes flottantes qui se masquent, lecteur officiel YouTube sur macOS/iOS et session unique entre miniature et plein écran.
 
 ## Trois espaces, six thèmes chacun
 
@@ -20,40 +18,47 @@ Le catalogue reste une grille complète. Sélectionner un film ou une série ouv
 
 Les six thèmes restent disponibles : Néo 80–90, Cinéma de minuit, Salon 70, Palace Art déco, Scandinave et Futur néon. Dans **Réglages → Interface**, chacun des trois espaces possède son propre choix. Les anciennes préférences du vidéoclub sont migrées vers Films et Séries sans écraser un réglage déjà choisi.
 
-Les 18 fonds HD sont fabriqués par un script Blender à partir de géométrie et de matériaux procéduraux originaux, puis précalculés en JPEG 1920 × 1080. Le rendu utilise Cycles et le débruitage Intel Open Image Denoise. Il ne s’agit pas du runtime GPU FERRO. Aucun calcul de pièce 3D continu n’est exécuté dans l’application. Les boîtes interactives utilisent SceneKit/Metal.
+Les 18 fonds 4K sont fabriqués par un script Blender à partir de géométrie et de matériaux procéduraux originaux, puis précalculés en JPEG 3840 × 2160. Les salons ont chacun une implantation : loft de briques et métal, penthouse vitré de nuit, salon 70 en U, arches Art déco et laiton, chêne clair et shoji, pavillon futuriste à nervures facettées. Les cinémas et vidéoclubs varient également leurs structures et leurs îlots. Le rendu utilise Cycles et le débruitage Intel Open Image Denoise. Il ne s’agit pas du runtime GPU FERRO. Aucun calcul de pièce 3D continu n’est exécuté dans l’application. Les boîtes interactives utilisent SceneKit/Metal.
 
 Le script reproductible, le manifeste et la planche des décors sont dans `scripts/rooms/`. Les images de cette planche sont les fonds embarqués, pas des captures d’écran de l’application.
 
 ## Piloter une boîte
 
+La grille conserve le catalogue complet, sous forme de rangées rapprochées. Le titre choisi avance hors du rayon et occupe la majeure partie de la hauteur ; jusqu’à quatre voisins restent derrière lui, sans imposer un recul de caméra pour tenir tous dans l’écran. Le format est déterminé par l’année des métadonnées : **VHS avant 2000, DVD dès 2000** ; une année absente utilise un DVD.
+
 | Contexte | Commande | Résultat |
 |---|---|---|
-| Grille | Clic / OK | Prendre la boîte |
+| Grille | Clic / Valider | Prendre la boîte |
 | Grille | Appui long | Choisir les listes de favoris |
-| Boîte sélectionnée | Haut, OK ou Lecture/Pause | Regarder/reprendre le film ; ouvrir le coffret d’une série |
-| Boîte sélectionnée | Gauche / Droite | Boîte précédente / suivante |
-| Boîte sélectionnée | Bas | Sélectionner la barre d’actions, sur Favoris |
-| Boîte sélectionnée | Menu / Retour | Reposer et retrouver la grille |
-| Barre d’actions | Gauche / Droite, puis OK | Choisir puis activer un bouton |
-| Barre d’actions | Haut / Retour | Revenir à la boîte |
-| Description sélectionnée | Gauche / Droite ou Précédent / Suivant | Passer à IPTV, Allociné ou Wikipédia |
-| Description sélectionnée | OK | Ouvrir la source disponible |
-| Miniature de bande-annonce | Clic ou action Bande-annonce | Ouvrir la bande-annonce en plein écran |
-| Bande-annonce plein écran | Retour | Retrouver la boîte |
+| Boîte tenue | Gauche / Droite | Tourner la boîte |
+| Boîte tenue | Deux appuis rapides dans la même direction | Titre précédent / suivant |
+| Boîte tenue | Haut | Sélectionner le widget d’aperçu, en présentant le verso |
+| Aperçu sélectionné | Valider | Bande-annonce en plein écran |
+| Aperçu sélectionné | Haut | Sélectionner le bouton de lecture au-dessus |
+| Bouton de lecture | Valider | Lire/reprendre le film ou l’épisode indiqué |
+| Boîte tenue, quel que soit le bouton sélectionné | Lecture/Pause | Lire directement le film ou l’épisode choisi |
+| Boîte ou aperçu | Bas | Sélectionner Reposer, à gauche dans la barre inférieure |
+| Barre inférieure | Gauche / Droite, puis Valider | Reposer, Actions ou Favoris |
+| Boîte tenue, y compris les actions et saisons | Retour / Menu | Reposer et retrouver le rayon |
+| Coffret fermé, boîte sélectionnée | Valider | Choisir une saison dans le coffret |
+| Choix d’une saison | Gauche / Droite | Faire ressortir le boîtier de la saison choisie |
+| Choix d’une saison | Valider | Ouvrir les épisodes de cette saison |
+| Choix d’un épisode | Gauche / Droite, puis Valider | Choisir puis regarder ; les pages suivent automatiquement |
+| Saison ou épisode | Haut / Bas | Sélectionner l’aperçu / les commandes inférieures |
+| Bande-annonce plein écran | Retour | Retrouver la boîte, à la même position de lecture |
 | Film plein écran | Retour | Arrêter la lecture et retrouver la boîte |
-| Coffret ouvert | Gauche / Droite | Saison précédente / suivante |
-| Coffret ouvert | Haut / Bas | Parcourir les épisodes, puis les pages |
-| Coffret ouvert | Retour | Fermer le coffret |
 
-Sur Mac, le glissement de la souris et le trackpad à deux doigts font tourner la boîte. **Manipuler** donne aussi accès à la rotation par directions. Sur Apple TV, la rotation continue est réservée à ce mode ; les swipes ordinaires servent à la navigation. Les boutons TV/Home, Siri et le volume matériel restent gérés par le système.
+L’aide discrète sous la boîte change avec la sélection. Les flèches latérales restent cliquables pour changer de titre, sans faire partie du parcours normal des boutons inférieurs. Un double appui est reconnu entre 80 et 300 ms ; la répétition automatique des flèches du clavier est ignorée pendant l’inspection.
 
-Sur Mac : **⌘F** ouvre la recherche ; **⌘⇧F** bascule le plein écran natif. Réduction des animations et contrastes système restent pris en compte.
+Sur Mac, glisser la souris ou deux doigts sur le trackpad tourne la boîte. **Actions → Manipuler** ajoute l’inclinaison verticale aux directions ; Valider termine ce mode. Sur Apple TV, les directions ordinaires tournent la boîte, et Manipuler autorise le geste continu sur le pavé tactile. Les contrôles de la vidéo YouTube restent utilisables.
+
+Sur Mac : **Espace** correspond à Lecture/Pause, **Entrée** à Valider, **Échap** à Retour, **⌘F** ouvre la recherche et **⌘⇧F** bascule le plein écran natif. La réduction des animations et les contrastes système sont pris en compte.
 
 ## Verso : image, puis bande-annonce
 
 Le cadre supérieur tente d’extraire une véritable image du film. Si le format ou le serveur le refuse, une image de la bande-annonce native ou le panorama fourni par l’IPTV peut servir de secours. Une miniature YouTube identifiée comme telle complète ces possibilités si aucune image du film ne peut être extraite. La provenance de l’image reste indiquée ; une jaquette n’est pas présentée comme une image extraite du film.
 
-**Réglages → Interface → Aperçu au dos de la boîte** : démarrage automatique activable et délai **3, 5 ou 10 secondes** (5 secondes par défaut). Le délai commence après la préparation de l’image fixe. La vidéo démarre en sourdine et reste dans son cadre, avec un fondu de 0,5 seconde vers le lecteur prêt à démarrer. Elle ne déplace pas la sélection et ne se lance pas en boucle. Une image manquante ne bloque plus une bande-annonce disponible. Sur une petite pochette, YouTube attend une ouverture explicite en grand pour conserver des commandes utilisables.
+**Réglages → Interface → Aperçu au dos de la boîte** : démarrage automatique activable et délai **1, 3, 5 ou 10 secondes** (5 secondes par défaut). Le délai commence après la préparation de l’image fixe. La vidéo démarre en sourdine et reste dans son cadre, avec un fondu de 0,5 seconde vers le lecteur prêt à démarrer. Elle ne déplace pas la sélection et ne se lance pas en boucle. Une image manquante ne bloque plus une bande-annonce disponible. Sur une petite pochette, YouTube attend une ouverture explicite en grand pour conserver des commandes utilisables.
 
 Un clic sur l’image, **Agrandir** ou l’action **Bande-annonce** ouvre le lecteur plein écran avec le son. Les commandes internes de YouTube restent utilisables dans le cadre. Retour retrouve la même boîte et remet l’aperçu en sourdine, en conservant la position du lecteur.
 
@@ -61,7 +66,17 @@ Sur macOS/iOS, les liens et identifiants YouTube valides sont lus avec le lecteu
 
 Les URL vidéo directes MP4, M4V, MOV et HLS restent prises en charge nativement selon leurs codecs. tvOS ne propose pas de WebView : les vidéos directes sont intégrées et YouTube conserve son ouverture explicite sur iPhone par QR code. Vimeo et Dailymotion restent des liens externes.
 
-Extraction, temporisation et lecteur d’aperçu s’arrêtent en quittant le verso, en changeant de titre ou en passant en arrière-plan. Le passage à une vidéo plein écran attend l’annulation de l’extraction. Une seule vidéo d’aperçu est active. Lors de la lecture principale, le décor et la scène des boîtes sont retirés.
+La bande-annonce continue pendant la rotation tant que son verso reste orienté vers le spectateur. Le retour au recto met le lecteur en pause sans le détruire ; revenir au verso reprend la même position si la lecture était active. Une pause manuelle ou une vidéo terminée reste respectée. Le couvercle d’un coffret ouvert conserve lui aussi son aperçu. Extraction, temporisation et lecteur s’arrêtent au changement de titre, à la fermeture de la boîte ou au passage en arrière-plan. Le passage à une vidéo plein écran attend l’annulation de l’extraction. Une seule vidéo d’aperçu est active. Lors de la lecture principale, le décor et la scène des boîtes sont retirés.
+
+## Télévision : catégories et aperçu séparé
+
+Le bandeau propose TV, Films et Séries avec des icônes et des surfaces de verre indépendantes. Les écrans larges affichent catégories, favoris et listes dans une colonne à gauche ; la recherche de catégories reste dans cette colonne. Sur une fenêtre étroite, un sélecteur compact conserve ces accès. La recherche de chaînes reste directement visible au-dessus du catalogue.
+
+La sélection d’une chaîne soulève sa vignette et prépare un seul lecteur partagé par le catalogue. **Réglages → Interface → Aperçu des chaînes TV** permet d’activer l’aperçu et de choisir **1, 3, 5 ou 10 secondes**, avec **3 secondes par défaut**. Ce choix et son activation sont indépendants des bandes-annonces des films et séries, dont le délai par défaut reste 5 secondes.
+
+L’aperçu démarre en sourdine, dans une vignette 16:9 ; une commande permet d’en activer le son. Il attend une sélection stable, annule l’attente quand la chaîne change et libère le lecteur précédent avant d’en créer un nouveau. Changement de catégorie, changement d’espace, arrière-plan, feuille de réglages et lecture principale arrêtent l’aperçu. Un flux incompatible ou inaccessible garde un état lisible et l’action Regarder disponible.
+
+Sur Mac/iOS, un clic sélectionne la chaîne ; Regarder ou Valider lance la lecture principale. Sur Apple TV, le focus sélectionne et OK regarde. Gauche revient vers la colonne de catégories depuis le bord de la grille, et Droite rejoint la chaîne précédemment choisie. La pagination et l’indexation existantes évitent de construire des milliers de vues ou un lecteur par cellule. Aucun programme EPG n’est inventé.
 
 ## Lecture et commandes flottantes
 
@@ -83,7 +98,7 @@ Les homonymes non résolus, sources absentes, réponses bloquées ou pages sans 
 
 L’appui long sur une carte, l’étoile et l’action Favoris ouvrent la même feuille : cocher les listes, créer éventuellement une liste, puis **Enregistrer**. **Annuler** ne modifie rien. Un message confirme l’enregistrement. Les listes Films, Séries et Direct restent séparées.
 
-Le coffret d’une série est plus épais et sa couverture s’ouvre physiquement pour présenter les saisons et épisodes. Les miniatures proviennent du fournisseur ; les positions de reprise existantes sont conservées. Le filtre « À reprendre » du catalogue concerne les films ; il ne prétend pas agréger automatiquement l’historique des épisodes dans un coffret.
+Le coffret d’une série contient des boîtiers côte à côte. La saison choisie dépasse légèrement et s’ouvre pour présenter ses épisodes. Les grandes collections conservent une fenêtre de huit saisons au plus, qui suit la sélection sans changer leurs numéros ; la saison 0 est identifiée comme Spéciaux. Les miniatures proviennent du fournisseur ; les positions de reprise existantes sont conservées. Le filtre « À reprendre » du catalogue concerne les films ; il ne prétend pas agréger automatiquement l’historique des épisodes dans un coffret.
 
 ## Installer
 
@@ -91,7 +106,7 @@ L’archive contient les sources et l’installateur Mac, pas un binaire Apple p
 
 1. Sur Mac, quitter l’ancienne app et arrêter le lancement depuis Xcode.
 2. Décompresser, puis ouvrir **Installer Flux IPTV.command**. L’installateur compile sur ce Mac et vérifie le démarrage ; cette vérification ne remplace pas un essai de lecture.
-3. Vérifier **0.8.5** dans la barre FLUX. Les réglages se trouvent dans Interface.
+3. Vérifier **0.8.6** dans la barre FLUX. Les réglages se trouvent dans Interface.
 
 Prérequis de déploiement : macOS 14, iOS 17 ou tvOS 17. Installer Xcode complet pour compiler ; les API de verre natif utilisent le SDK/OS 26 lorsqu’ils sont disponibles. Sur iPhone/iPad ou Apple TV, ouvrir `FluxIPTV.xcodeproj`, choisir **FluxIPTViOS** ou **FluxIPTVTV**, puis renseigner l’équipe de signature pour un appareil physique.
 
@@ -99,7 +114,7 @@ Le Mac garde AVPlayer natif ; le bouton VLC externe reste disponible pour les fo
 
 ## Validation
 
-Le statut précis des vérifications de cette livraison est dans [docs/VALIDATION-0.8.5.md](docs/VALIDATION-0.8.5.md). Les tests unitaires du cœur ne démontrent ni la compilation des frameworks Apple, ni la fluidité réelle, ni la lecture des flux du fournisseur. Aucun EPG n’a été ajouté dans cette version.
+Le statut précis des vérifications de cette livraison est dans [docs/VALIDATION-0.8.6.md](docs/VALIDATION-0.8.6.md). Les tests unitaires du cœur ne démontrent ni la compilation des frameworks Apple, ni la fluidité réelle, ni la lecture des flux du fournisseur. Aucun EPG n’a été ajouté dans cette version.
 
 ## GitHub Actions et pack complet
 
@@ -115,6 +130,9 @@ Un job indépendant prépare le **pack complet des sources du commit exécuté**
 swift test
 bash scripts/check-state-declarations.sh
 python3 scripts/rooms/verify_rooms.py
+bash scripts/test-live-preview.sh
+bash scripts/test-case-scene.sh
+bash scripts/test-youtube-session.sh
 bash scripts/build-platforms.sh macOS
 bash scripts/build-platforms.sh iOS
 bash scripts/build-platforms.sh tvOS

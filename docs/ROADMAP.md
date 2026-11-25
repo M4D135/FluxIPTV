@@ -1,11 +1,13 @@
 # Feuille de route FLUX IPTV
 
-## Intégré dans les sources 0.8.5
+## Intégré dans les sources 0.8.6
 
-- Catalogue complet, cinq boîtiers maximum, coffrets séries articulés.
-- Cinéma / vidéoclub / salon, six thèmes indépendants, fonds précalculés.
-- Aperçu sur le verso, délai 3/5/10 s, plein écran explicite.
-- Navigation contextuelle Haut / Bas / Retour, description à sources identifiées.
+- Catalogue complet en rayons rapprochés, boîte tenue plus grande, quatre voisins au plus ; DVD dès 2000 et VHS avant 2000.
+- Coffrets de saisons physiques, boîtier choisi qui ressort, puis épisodes dans la saison ouverte.
+- Cinéma / vidéoclub / salon, six architectures et ambiances par espace, 18 fonds précalculés en 4K.
+- Aperçu sur le verso qui continue pendant la rotation, pause au recto, même position à la reprise ; couvercle des séries pris en charge.
+- Navigation contextuelle : directions pour tourner, double appui pour changer, Haut pour sélectionner l’aperçu puis Lire, Lecture directe, barre Reposer/Actions/Favoris et Retour pour reposer.
+- TV avec catégories à gauche, recherche visible, aperçu unique en vignette, délai TV 1/3/5/10 s séparé du délai films/séries.
 - Favoris avec choix des listes et confirmation d’enregistrement.
 - Navigation générale retirée pendant toute lecture ; commandes flottantes compactes avec masquage automatique.
 - Liquid Glass natif clair pour les commandes vidéo, compilation Xcode 26 et contrôle des SDK dans Actions.
@@ -16,6 +18,7 @@
 
 - GitHub Actions compile macOS, iOS Simulator et tvOS Simulator, exécute les tests du cœur et vérifie les 18 fonds et le projet généré.
 - Une vraie WKWebView sur macOS est exercée avec un fournisseur IFrame local pour vérifier le cycle de vie du lecteur et les commandes.
+- Un vrai AVPlayer est exercé avec une vidéo locale pour le délai, l’annulation et le nettoyage de l’aperçu TV ; le vrai renderer SceneKit produit des captures et vérifie projection, orientation et sélection des saisons.
 - Les applications compilées, les sources du commit exact et leurs empreintes sont disponibles dans les artefacts de chaque exécution réussie. Le statut de l’exécution reste la référence pour chaque version.
 
 ## Validation restant à faire sur Apple

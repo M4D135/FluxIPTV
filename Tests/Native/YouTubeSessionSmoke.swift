@@ -111,6 +111,69 @@ private enum SmokeFailure: Error, CustomStringConvertible {
         try await evaluate("window.fixture.state(1)", in: webView)
         try await eventually("Resume did not accept a real PLAYING event.") { session.state == .playing }
 
+        let playsBeforeTurn = try await number("window.fixture.commands.filter(x => x === 'play').length", in: webView)
+        let pausesBeforeTurn = try await number("window.fixture.commands.filter(x => x === 'pause').length", in: webView)
+        let seeksBeforeTurn = try await number("window.fixture.commands.filter(x => x === 'seek').length", in: webView)
+        session.setBackFacing(false)
+        try require(session.state == .paused, "The case front did not suspend the retained player.")
+        try await eventually("Turning to the front did not pause the actual wrapper.") {
+            try await number("window.fixture.commands.filter(x => x === 'pause').length", in: webView) > pausesBeforeTurn
+        }
+        // A late PLAYING notification must not start hidden playback, nor erase
+        // the intention to resume the previously running trailer on the back.
+        try await evaluate("window.fixture.state(1)", in: webView)
+        try await settle()
+        try require(session.state == .paused, "A late PLAYING event resumed a hidden case back.")
+        session.setBackFacing(true)
+        try await eventually("Returning to the back did not resume the existing player.") {
+            try await number("window.fixture.commands.filter(x => x === 'play').length", in: webView) == playsBeforeTurn + 1
+        }
+        try await evaluate("window.fixture.state(2)", in: webView)
+        try await settle()
+        try require(session.state == .loading, "A delayed visibility pause cancelled the pending resume.")
+        try await evaluate("window.fixture.state(1)", in: webView)
+        try await eventually("The retained player did not resume after the turn.") { session.state == .playing }
+        try require(session.fixtureWebView === webView && abs(session.progress - 0.25) < 0.001,
+                    "A front/back turn replaced the player or reset its position.")
+        let seeksAfterTurn = try await number("window.fixture.commands.filter(x => x === 'seek').length", in: webView)
+        let constructionsAfterTurn = try await number("window.fixture.constructions", in: webView)
+        try require(seeksAfterTurn == seeksBeforeTurn && constructionsAfterTurn == 1,
+                    "Resuming after rotation sought to a new position or rebuilt the document.")
+
+        // A user pause is different from a visibility pause and stays paused.
+        session.pause()
+        try await evaluate("window.fixture.state(2)", in: webView)
+        try await settle()
+        let playsBeforeManualTurn = try await number("window.fixture.commands.filter(x => x === 'play').length", in: webView)
+        session.setBackFacing(false)
+        session.setBackFacing(true)
+        try await settle()
+        let playsAfterManualTurn = try await number("window.fixture.commands.filter(x => x === 'play').length", in: webView)
+        try require(session.state == .paused && playsAfterManualTurn == playsBeforeManualTurn,
+                    "Turning the case restarted a trailer paused by the user.")
+        session.play()
+        try await evaluate("window.fixture.state(1)", in: webView)
+        try await eventually("Explicit play after a preserved manual pause failed.") { session.state == .playing }
+
+        try await evaluate("window.fixture.metrics(120, 120); window.fixture.state(0)", in: webView)
+        try await eventually("The completed trailer did not become ended.") { session.state == .ended }
+        let playsBeforeEndedTurn = try await number("window.fixture.commands.filter(x => x === 'play').length", in: webView)
+        session.setBackFacing(false)
+        session.setBackFacing(true)
+        try await evaluate("window.fixture.state(2)", in: webView)
+        try await settle()
+        let playsAfterEndedTurn = try await number("window.fixture.commands.filter(x => x === 'play').length", in: webView)
+        try require(session.state == .ended && session.progress == 1 && playsAfterEndedTurn == playsBeforeEndedTurn,
+                    "Turning the case automatically replayed a finished trailer.")
+        session.play()
+        try await eventually("Explicit replay did not rewind the retained player.") {
+            try await number("window.fixture.player.time", in: webView) == 0
+        }
+        try await evaluate("window.fixture.metrics(30, 120); window.fixture.state(1)", in: webView)
+        try await eventually("Explicit replay did not restore the existing session.") {
+            session.state == .playing && abs(session.progress - 0.25) < 0.001
+        }
+
         try await evaluate("window.fixture.staleMessage()", in: webView)
         try await eventually("Fixture child frame did not finish loading.") {
             try await boolean("window.fixture.childReady()", in: webView)

@@ -31,12 +31,18 @@ struct CasePrintData: Equatable, Sendable {
     var descriptionStatus: String? = nil
     var descriptionSourceURL: URL? = nil
     var previewStatus = ""
+    var seasonNumbers: [Int] = []
+    var selectedSeasonIndex = 0
+    var seasonSelectionVisible = false
 }
 
 @MainActor final class CaseHitBridge: ObservableObject {
     var pick: ((CGPoint) -> (ProceduralCase.Surface, CGPoint)?)?
     var pickNeighbor: ((CGPoint) -> Int?)?
+    var pickSeason: ((CGPoint) -> Int?)?
     @Published var previewProjection: CasePreviewProjection?
+    @Published var previewBackFacing = false
+    @Published var previewContentUVFrame = CaseBackMediaLayout.frame
 }
 
 struct Case3DView: View {
@@ -160,13 +166,17 @@ private enum SleeveTexture {
         c.drawRadialGradient(g,startCenter:CGPoint(x:64,y:64),startRadius:8,endCenter:CGPoint(x:64,y:64),endRadius:64,options:[])
         return c.makeImage()
     }
-    static func render(item:IPTVItem,details:IPTVDetails,page:CaseFaceLayout.Page,data:CasePrintData,artwork:FluxBitmap?,episodeArt:[String:FluxBitmap],theme:VideoClubTheme,quality:CaseRenderQuality)->CGImage? {
-        let width=quality.sleeveWidth,height=quality.sleeveHeight
+    static func render(item:IPTVItem,details:IPTVDetails,page:CaseFaceLayout.Page,data:CasePrintData,artwork:FluxBitmap?,episodeArt:[String:FluxBitmap],theme:VideoClubTheme,quality:CaseRenderQuality,surfaceAspect:Double?=nil)->CGImage? {
+        let format=CasePackageFormat.resolve(year:details.year ?? item.details.year)
+        let aspect=surfaceAspect ?? Double(format.faceWidth/format.faceHeight)
+        // Fit the physical sleeve ratio inside the existing texture budget.
+        // The supplied artwork keeps its proportions on both DVD and VHS.
+        let width=min(quality.sleeveWidth,Int(Double(quality.sleeveHeight)*aspect))
+        let height=min(quality.sleeveHeight,Int(Double(width)/aspect))
         guard let c=context(width,height) else{return nil}
         let w=CGFloat(width),h=CGFloat(height)
-        // Design in a fixed 1024 x 1536 logical canvas, no main-thread UIKit drawing.
-        c.scaleBy(x:w/1024,y:h/1536)
-        let W:CGFloat=1024,H:CGFloat=1536
+        let W:CGFloat=1024,H:CGFloat=1024/CGFloat(aspect)
+        c.scaleBy(x:w/W,y:h/H)
         let accent=theme.palette.accent
         let gold=ink(CGFloat(accent.x),CGFloat(accent.y),CGFloat(accent.z))
         let white=ink(0.95,0.96,0.98),muted=ink(0.72,0.77,0.84)
@@ -198,7 +208,7 @@ private enum SleeveTexture {
         // Printed gold/cyan hairlines and series-specific label. These are ink, not overlays.
         if page != .front {
             fill(CGRect(x:0.025,y:0.018,width:0.95,height:0.002),gold)
-            text(item.isSeriesCollection ? "F L U X   /   C O F F R E T   S É R I E":"F L U X   /   C I N É M A",24,CGRect(x:0.04,y:0.025,width:0.92,height:0.027),gold,bold:true)
+            text((item.isSeriesCollection ? "COFFRET SÉRIE":"CINÉMA")+"  /  "+format.title,24,CGRect(x:0.04,y:0.025,width:0.92,height:0.027),gold,bold:true)
         }
         let metadata=[details.year,details.duration,details.rating,details.genre].compactMap{$0}.filter{ !$0.isEmpty }.joined(separator:"  •  ")
         if page == .front {
@@ -211,7 +221,8 @@ private enum SleeveTexture {
             fill(previewRect,ink(0.008,0.012,0.020))
             text(data.previewStatus.isEmpty ? "APERÇU":data.previewStatus,23,previewRect,muted,center:true)
             c.setStrokeColor(ink(0.47,0.53,0.61,0.7));c.setLineWidth(2);c.stroke(box(previewRect))
-            for (rect,title) in [(CaseBackMediaLayout.trailer,"▶  BANDE-ANNONCE"),(CaseBackMediaLayout.film,item.isSeriesCollection ? "▸  OUVRIR LE COFFRET":"▶  REGARDER LE FILM")] {
+            let filmTitle=item.isSeriesCollection ? (data.page == .episodes ? "▶  LIRE L’ÉPISODE":"▸  OUVRIR LE COFFRET"):"▶  REGARDER LE FILM"
+            for (rect,title) in [(CaseBackMediaLayout.trailer,"↑  BANDE-ANNONCE"),(CaseBackMediaLayout.film,filmTitle)] {
                 c.setFillColor(ink(0.14,0.18,0.24));c.addPath(CGPath(roundedRect:box(rect),cornerWidth:13,cornerHeight:13,transform:nil));c.fillPath()
                 text(title,23,rect,white,bold:true,center:true)
             }
@@ -280,15 +291,19 @@ private enum SleeveTexture {
         }
         return c.makeImage()
     }
-    static func spine(item:IPTVItem,theme:VideoClubTheme)->CGImage? {
+    static func spine(item:IPTVItem,format:CasePackageFormat,theme:VideoClubTheme)->CGImage? {
         guard let c=context(160,1536) else{return nil}
         let color=theme.palette.caseEdge
         c.setFillColor(ink(CGFloat(color.x),CGFloat(color.y),CGFloat(color.z)));c.fill(CGRect(x:0,y:0,width:160,height:1536))
         c.setFillColor(ink(0.75,0.79,0.83,0.45));c.fill(CGRect(x:12,y:22,width:136,height:4));c.fill(CGRect(x:12,y:1510,width:136,height:4))
+        let badgeFont=CTFontCreateWithName("HelveticaNeue-Bold" as CFString,36,nil)
+        let badge=NSAttributedString(string:format.title,attributes:[NSAttributedString.Key(kCTFontAttributeName as String):badgeFont,NSAttributedString.Key(kCTForegroundColorAttributeName as String):ink(0.96,0.97,0.99)])
+        let badgeLine=CTLineCreateWithAttributedString(badge)
+        c.textPosition=CGPoint(x:(160-CGFloat(CTLineGetTypographicBounds(badgeLine,nil,nil,nil)))/2,y:58);CTLineDraw(badgeLine,c)
         c.saveGState();c.translateBy(x:80,y:1490);c.rotate(by:-.pi/2)
         let font=CTFontCreateWithName("HelveticaNeue-Bold" as CFString,48,nil)
         let str=NSAttributedString(string:String(item.name.prefix(80)),attributes:[NSAttributedString.Key(kCTFontAttributeName as String):font,NSAttributedString.Key(kCTForegroundColorAttributeName as String):ink(0.98,0.98,0.98)])
-        let line=CTLineCreateWithAttributedString(str),truncated=CTLineCreateTruncatedLine(line,1400,.end,nil) ?? line
+        let line=CTLineCreateWithAttributedString(str),truncated=CTLineCreateTruncatedLine(line,1320,.end,nil) ?? line
         c.textPosition=CGPoint(x:0,y:-17);CTLineDraw(truncated,c);c.restoreGState()
         return c.makeImage()
     }
@@ -423,16 +438,29 @@ private enum SleeveTexture {
     let highlight = SCNNode(), camera = SCNNode()
     let previewImageNode = SCNNode(), previewVideoNode = SCNNode(), previewBorder = SCNNode()
     private var oldPreviewStill: CGImage?, oldPreviewPlayer: AVPlayer?
+    private var oldPreviewShowing = false
     private var previewVideoActive = false
     let lidHinge = SCNNode(), lid = SCNNode()
+    private let seasonRack = SeriesSeasonRack()
+    private var showingSeasonRack = false
     let leftModel = SCNNode(), rightModel = SCNNode(), farLeftModel = SCNNode(), farRightModel = SCNNode()
     let leftCover = SCNMaterial(), rightCover = SCNMaterial(), farLeftCover = SCNMaterial(), farRightCover = SCNMaterial()
     private var neighborNodes: [SCNNode] { [farLeftModel,leftModel,rightModel,farRightModel] }
     private var neighborCovers: [SCNMaterial] { [farLeftCover,leftCover,rightCover,farRightCover] }
     private var lastNeighbors: [String] = []
+    private var oldNeighborPackages: [String] = []
+    private var neighborQuality: CaseRenderQuality?
     private var oldNeighborArt: [CGImage?] = []
     private var oldConcept: ClubInterfaceProfile?
     private var isCollector = false, collectorOpen = false
+    private var packageFormat: CasePackageFormat = .dvd
+    private var previewFacing = CasePreviewFacing()
+    private var hasPose = false
+    private var caseDepth: Float { packageFormat.halfDepth(collector:isCollector) }
+    private var printedWidth: CGFloat { CGFloat(showingSeasonRack ? 2*(seasonRack.halfWidth-packageFormat.bevel):packageFormat.faceWidth) }
+    private var printedHeight: CGFloat { CGFloat(showingSeasonRack ? 2*(seasonRack.halfHeight-packageFormat.bevel):packageFormat.faceHeight) }
+    private var previewSurface: SCNNode { showingSeasonRack ? seasonRack.previewSurface:(collectorOpen ? lid:body) }
+    private var previewDepth: Float { showingSeasonRack ? seasonRack.halfDepth:(collectorOpen ? 0.07:caseDepth) }
     private var itemID: String?, displayedDetails: IPTVDetails?, displayedPrint: CasePrintData?
     private var oldArtwork: CGImage?, oldEpisodeArt: [String:FluxBitmap] = [:]
     private var oldYaw: Double = 0, oldPitch: Double = 0, oldTheme: VideoClubTheme?, oldQuality: CaseRenderQuality?
@@ -449,6 +477,7 @@ private enum SleeveTexture {
         view.preferredFramesPerSecond = 60; view.antialiasingMode = .multisampling2X
         view.scene = scene; scene.rootNode.addChildNode(model); model.addChildNode(body)
         model.addChildNode(lidHinge); lidHinge.addChildNode(lid); lidHinge.isHidden = true
+        model.addChildNode(seasonRack.node);seasonRack.node.isHidden=true
         lidHinge.position = SCNVector3(-0.953,0,0.34)
         lid.position = SCNVector3(0.953,0,0); lid.scale = SCNVector3(1,1,0.45)
         for node in neighborNodes { node.isHidden = true; scene.rootNode.addChildNode(node) }
@@ -506,15 +535,40 @@ private enum SleeveTexture {
     private func layoutNeighbors(_ size:CGSize) {
         guard size.width > 0, size.height > 0 else { return }
         let placements = CaseCarousel.placements(aspect:Double(size.width/size.height),editorial:oldConcept?.isEditorial ?? false)
+        let rackRecess=showingSeasonRack ? Double(seasonRack.halfDepth)+0.1:0
         for (node,placement) in zip(neighborNodes,placements) {
-            node.position = SCNVector3(Float(placement.x),Float(placement.y),Float(-placement.depth))
+            node.position = SCNVector3(Float(placement.x),Float(placement.y),Float(-placement.depth-rackRecess))
             let scale = Float(placement.scale); node.scale = SCNVector3(scale,scale,scale)
             node.eulerAngles = SCNVector3(0,Float(placement.angle * .pi/180),0)
         }
     }
     private func fitCamera(_ size:CGSize) {
         guard size.width > 0, size.height > 0 else { return }
-        let distance = (oldConcept ?? .neoVideoClub).inspectionDistance(aspect:Double(size.width/size.height),collector:isCollector,open:collectorOpen)
+        var distance = (oldConcept ?? .neoVideoClub).inspectionDistance(aspect:Double(size.width/size.height),collector:isCollector,open:collectorOpen,format:packageFormat)
+        if showingSeasonRack {
+            let slope=tan(35*Double.pi/360),aspect=Double(size.width/size.height)
+            let depth=Double(seasonRack.halfDepth)
+            distance=max(Double(seasonRack.halfHeight)/(0.95*slope)+depth,
+                         Double(seasonRack.halfWidth)/(0.95*aspect*slope)+depth)
+        }
+        // Bound the actual posed object, including the open lid or a thick
+        // season rack. A close framing must not crop its nearer rotated corner.
+        let slope=tan(35*Double.pi/360),aspect=Double(size.width/size.height)
+        func include(_ node:SCNNode,_ minimum:SCNVector3,_ maximum:SCNVector3) {
+            for x in [minimum.x,maximum.x] {for y in [minimum.y,maximum.y] {for z in [minimum.z,maximum.z] {
+                let point=node.convertPosition(SCNVector3(x,y,z),to:nil)
+                distance=max(distance,Double(point.z)+abs(Double(point.y))/(0.96*slope),
+                             Double(point.z)+abs(Double(point.x))/(0.96*aspect*slope))
+            }}}
+        }
+        if showingSeasonRack {
+            let w=seasonRack.halfWidth,h=seasonRack.halfHeight,d=seasonRack.halfDepth
+            include(seasonRack.node,SCNVector3(-w,-h,-d),SCNVector3(w,h,d))
+        } else {
+            for node in isCollector ? [body,lid]:[body] {
+                if let geometry=node.geometry {let bounds=geometry.boundingBox;include(node,bounds.min,bounds.max)}
+            }
+        }
         camera.position = SCNVector3(0,0,Float(distance))
         layoutNeighbors(size); updateSampling(oldQuality ?? .balanced,size:size); pulse()
     }
@@ -547,16 +601,12 @@ private enum SleeveTexture {
         return value
     }
     private func rebuildMesh(_ quality:CaseRenderQuality) {
-        let depth: Float = isCollector ? Float(CaseCarousel.collectorHalfDepth) : 0.14
-        body.geometry = geometry(ProceduralCase.premiumMesh(cornerSegments:quality.cornerSegments,halfDepth:depth),materials:[isCollector ? inside:front,back,edge,spine])
-        lid.geometry = geometry(ProceduralCase.premiumMesh(cornerSegments:quality.cornerSegments,halfDepth:0.07),materials:[front,back,edge,spine])
+        body.geometry = geometry(ProceduralCase.premiumMesh(cornerSegments:quality.cornerSegments,format:packageFormat,collector:isCollector),materials:[isCollector ? inside:front,back,edge,spine])
+        lid.geometry = geometry(ProceduralCase.premiumMesh(cornerSegments:quality.cornerSegments,format:packageFormat,halfDepth:0.07),materials:[front,back,edge,spine])
         lidHinge.isHidden = !isCollector
-        // Four copies reuse one set of immutable geometry sources and elements.
-        let mesh = geometry(ProceduralCase.premiumMesh(cornerSegments:quality.cornerSegments,halfDepth:depth),materials:[front,edge,edge,edge])
-        for (node,cover) in zip(neighborNodes,neighborCovers) {
-            let value = SCNGeometry(sources:mesh.sources,elements:mesh.elements)
-            value.materials = [cover,edge,edge,edge]; node.geometry = value
-        }
+        let hingeX=packageFormat.halfWidth-packageFormat.bevel
+        lidHinge.position=SCNVector3(-hingeX,0,caseDepth+0.04)
+        lid.position=SCNVector3(hingeX,0,0)
     }
     private func pulse() {
         lastRenderPulse = ProcessInfo.processInfo.systemUptime; view.isPlaying = true
@@ -588,20 +638,29 @@ private enum SleeveTexture {
     }
     private func publishPreviewProjection() {
         guard let bridge, view.bounds.width > 0, view.bounds.height > 0 else { return }
-        let rect = CaseBackMediaLayout.frame
-        let depth: Float = isCollector ? Float(CaseCarousel.collectorHalfDepth) : 0.14
+        let rect = CaseBackMediaLayout.videoFrame(width:printedWidth,height:printedHeight)
+        if bridge.previewContentUVFrame != rect {bridge.previewContentUVFrame=rect}
+        let target=previewSurface.presentation, depth=previewDepth
+        let normal=target.convertVector(SCNVector3(0,0,-1),to:nil)
+        let backCenter=target.convertPosition(SCNVector3(0,0,-depth-0.007),to:nil)
+        let eye=camera.presentation.convertPosition(SCNVector3(0,0,0),to:nil)
+        let dx=Double(eye.x-backCenter.x),dy=Double(eye.y-backCenter.y),dz=Double(eye.z-backCenter.z)
+        let nx=Double(normal.x),ny=Double(normal.y),nz=Double(normal.z)
+        let length=sqrt((dx*dx+dy*dy+dz*dz)*(nx*nx+ny*ny+nz*nz))
+        let facing=previewFacing.update(backFacing:length>1e-12 ? (dx*nx+dy*ny+dz*nz)/length:0)
+        if bridge.previewBackFacing != facing {bridge.previewBackFacing=facing}
         // SceneKit's view-coordinate Y convention differs across renderers.
         // Calibrate against the actual camera instead of guessing from the OS.
         let center = view.projectPoint(camera.presentation.convertPosition(SCNVector3(0,0,-2), to:nil))
         let up = view.projectPoint(camera.presentation.convertPosition(SCNVector3(0,0.2,-2), to:nil))
         let downwardsY = up.y < center.y
         func point(_ x: CGFloat, _ y: CGFloat) -> CGPoint {
-            let local = SCNVector3(Float(-(x-0.5)*1.906), Float((0.5-y)*2.906), -depth-0.007)
-            let world = body.presentation.convertPosition(local, to: nil)
+            let local = SCNVector3(Float(-(x-0.5)*printedWidth), Float((0.5-y)*printedHeight), -depth-0.007)
+            let world = target.convertPosition(local, to: nil)
             let screen = view.projectPoint(world)
             return CGPoint(x: CGFloat(screen.x), y: downwardsY ? CGFloat(screen.y) : view.bounds.height-CGFloat(screen.y))
         }
-        let projection = collectorOpen ? nil : CasePreviewProjection(
+        let projection = CasePreviewProjection(
             topLeft: point(rect.minX,rect.minY), topRight: point(rect.maxX,rect.minY),
             bottomRight: point(rect.maxX,rect.maxY), bottomLeft: point(rect.minX,rect.maxY),
             viewport: view.bounds.size)
@@ -614,10 +673,24 @@ private enum SleeveTexture {
         return point
         #endif
     }
+    private func belongsToSeasonRack(_ node:SCNNode)->Bool {
+        var current:SCNNode?=node
+        while let value=current {
+            if value === seasonRack.node {return true}
+            current=value.parent
+        }
+        return false
+    }
     func hit(_ point:CGPoint) -> (ProceduralCase.Surface,CGPoint)? {
         guard view.bounds.width > 0, view.bounds.height > 0 else { return nil }
-        for result in view.hitTest(hitPoint(point),options:[.searchMode:SCNHitTestSearchMode.all.rawValue]) {
+        for result in view.hitTest(hitPoint(point),options:[.searchMode:SCNHitTestSearchMode.all.rawValue,.ignoreHiddenNodes:true]) {
             if neighborNodes.contains(where:{$0 === result.node}) { return nil }
+            if [highlight,previewImageNode,previewVideoNode,previewBorder].contains(where:{$0 === result.node}) {continue}
+            if showingSeasonRack, belongsToSeasonRack(result.node) {
+                let materials=result.node.geometry?.materials ?? []
+                let printedBack = !materials.isEmpty && materials[result.geometryIndex % materials.count] === seasonRack.backMaterial
+                return (printedBack ? .back:.front,result.textureCoordinates(withMappingChannel:0))
+            }
             guard result.node === body || result.node === lid else { continue }
             if let surface = ProceduralCase.Surface(rawValue:result.geometryIndex) {
                 // The opened cover carries the synopsis. Episode hit regions are
@@ -630,43 +703,55 @@ private enum SleeveTexture {
     }
     func hitNeighbor(_ point:CGPoint) -> Int? {
         guard view.bounds.width > 0, view.bounds.height > 0 else { return nil }
-        for result in view.hitTest(hitPoint(point),options:[.searchMode:SCNHitTestSearchMode.all.rawValue]) {
-            if result.node === body || result.node === lid { return nil }
+        for result in view.hitTest(hitPoint(point),options:[.searchMode:SCNHitTestSearchMode.all.rawValue,.ignoreHiddenNodes:true]) {
+            if result.node === body || result.node === lid || (showingSeasonRack && belongsToSeasonRack(result.node)) { return nil }
             if let index = neighborNodes.firstIndex(where:{$0 === result.node}) { return CaseCarousel.offsets[index] }
         }
         return nil
     }
+    func hitSeason(_ point:CGPoint) -> Int? {
+        guard showingSeasonRack,view.bounds.width>0,view.bounds.height>0 else{return nil}
+        guard let result=view.hitTest(hitPoint(point),options:[.searchMode:SCNHitTestSearchMode.closest.rawValue,.ignoreHiddenNodes:true]).first else{return nil}
+        return seasonRack.seasonIndex(for:result.node)
+    }
     func updateNeighbors(previous:IPTVItem?,next:IPTVItem?,previousFar:IPTVItem?,nextFar:IPTVItem?,left:CGImage?,right:CGImage?,farLeft:CGImage?,farRight:CGImage?,concept:ClubInterfaceProfile,motion:Bool) {
         let items = [previousFar,previous,next,nextFar], artwork = [farLeft,left,right,farRight]
         let ids = items.map{$0?.id ?? ""}
+        let packages=items.map{CasePackageFormat.resolve(year:$0?.details.year).rawValue+String($0?.isSeriesCollection ?? false)}
+        let quality=oldQuality ?? .balanced
         let changedArt = artwork.enumerated().contains { index,image in index >= oldNeighborArt.count || oldNeighborArt[index] !== image }
-        guard ids != lastNeighbors || changedArt || oldConcept != concept else { return }
+        let changedShape=packages != oldNeighborPackages || neighborQuality != quality
+        guard ids != lastNeighbors || changedArt || changedShape || oldConcept != concept else { return }
         let conceptChanged = oldConcept != concept
         SCNTransaction.begin(); SCNTransaction.animationDuration = motion && oldConcept != nil ? 0.24 : 0
         oldConcept = concept; layoutNeighbors(view.bounds.size)
         for index in 0..<4 {
             neighborNodes[index].isHidden = items[index] == nil
+            if changedShape {
+                let format=CasePackageFormat.resolve(year:items[index]?.details.year)
+                neighborNodes[index].geometry=geometry(ProceduralCase.premiumMesh(cornerSegments:quality.cornerSegments,format:format,collector:items[index]?.isSeriesCollection ?? false),materials:[neighborCovers[index],edge,edge,edge])
+            }
             if let image=artwork[index] {neighborCovers[index].diffuse.contents=image}
             else {neighborCovers[index].diffuse.contents=CaseColor(white:0.13,alpha:1)}
         }
         SCNTransaction.commit()
-        lastNeighbors = ids; oldNeighborArt = artwork
+        lastNeighbors = ids; oldNeighborArt = artwork;oldNeighborPackages=packages;neighborQuality=quality
         if conceptChanged { fitCamera(view.bounds.size) }
         pulse()
     }
     private func updateFocus(_ focus:CaseFaceLayout.Action?,page:CaseFaceLayout.Page?,data:CasePrintData,item:IPTVItem) {
         highlight.isHidden=true;previewBorder.isHidden=true
         guard let focus,let page else{return}
-        if page == .details && (focus == .trailer || focus == .play || focus == .description) {
-            let rect=focus == .description ? CaseBackMediaLayout.descriptionFrame:(focus == .trailer ? CaseBackMediaLayout.trailer:CaseBackMediaLayout.film)
+        if (page == .details || collectorOpen) && (focus == .trailer || focus == .play || focus == .description) {
+            if highlight.parent !== previewSurface {highlight.removeFromParentNode();previewSurface.addChildNode(highlight)}
+            let rect=focus == .description ? CaseBackMediaLayout.descriptionFrame:(focus == .trailer ? CaseBackMediaLayout.frame:CaseBackMediaLayout.film)
             if let plane=highlight.geometry as? SCNPlane {
-                plane.width=rect.width*1.906;plane.height=rect.height*2.906
-                let depth:Float=isCollector ? Float(CaseCarousel.collectorHalfDepth):0.14
-                highlight.position=SCNVector3(Float(-(rect.midX-0.5)*1.906),Float((0.5-rect.midY)*2.906),-depth-0.009)
+                plane.width=rect.width*printedWidth;plane.height=rect.height*printedHeight
+                highlight.position=SCNVector3(Float(-(rect.midX-0.5)*printedWidth),Float((0.5-rect.midY)*printedHeight),-previewDepth-0.009)
                 highlight.eulerAngles=SCNVector3(0,Float.pi,0);highlight.isHidden=false
                 let frame=CaseBackMediaLayout.frame
-                if let border=previewBorder.geometry as? SCNPlane {border.width=frame.width*1.906;border.height=frame.height*2.906}
-                previewBorder.position=SCNVector3(Float(-(frame.midX-0.5)*1.906),Float((0.5-frame.midY)*2.906),-depth-0.009)
+                if let border=previewBorder.geometry as? SCNPlane {border.width=frame.width*printedWidth;border.height=frame.height*printedHeight}
+                previewBorder.position=SCNVector3(Float(-(frame.midX-0.5)*printedWidth),Float((0.5-frame.midY)*printedHeight),-previewDepth-0.009)
                 previewBorder.isHidden=focus == .description
             }
             return
@@ -674,22 +759,28 @@ private enum SleeveTexture {
         guard case .episode=focus,
               let rect=CaseFaceLayout.regions(page,series:item.isSeriesCollection,trailer:data.trailerAvailable,episodeCount:data.episodes.count,retry:data.retry).first(where:{$0.action==focus})?.rect,
               let plane=highlight.geometry as? SCNPlane else{return}
-        plane.width=rect.width*1.906;plane.height=rect.height*2.906
-        let isBack=page != .front && !collectorOpen,x=(rect.midX-0.5)*1.906
-        let z:Float=isCollector ? Float(CaseCarousel.collectorHalfDepth)+0.004:0.143
-        highlight.position=SCNVector3(Float(isBack ? -x:x),Float((0.5-rect.midY)*2.906),isBack ? -z:z)
+        if highlight.parent !== body {highlight.removeFromParentNode();body.addChildNode(highlight)}
+        plane.width=rect.width*printedWidth;plane.height=rect.height*printedHeight
+        let isBack=page != .front && !collectorOpen,x=(rect.midX-0.5)*printedWidth
+        let z:Float=caseDepth+0.004
+        highlight.position=SCNVector3(Float(isBack ? -x:x),Float((0.5-rect.midY)*printedHeight),isBack ? -z:z)
         highlight.eulerAngles=SCNVector3(0,isBack ? Float.pi:0,0);highlight.isHidden=false
     }
     func updatePreview(still:CGImage?,player:AVPlayer?,playing:Bool,motion:Bool) {
-        let changed=oldPreviewStill !== still || oldPreviewPlayer !== player || previewVideoActive != (playing && player != nil)
+        let showing=playing && player != nil
+        let active=showing && player?.timeControlStatus == .playing
+        let changed=oldPreviewStill !== still || oldPreviewPlayer !== player || oldPreviewShowing != showing || previewVideoActive != active
         let rect=CaseBackMediaLayout.frame
-        let width=rect.width*1.906,height=rect.height*2.906
-        let depth:Float=isCollector ? Float(CaseCarousel.collectorHalfDepth):0.14
+        let width=rect.width*printedWidth,height=rect.height*printedHeight
+        let depth=previewDepth
+        for node in [previewImageNode,previewVideoNode,previewBorder] where node.parent !== previewSurface {
+            node.removeFromParentNode();previewSurface.addChildNode(node)
+        }
         func place(_ node:SCNNode,_ aspect:CGFloat,_ z:Float) {
             if let plane=node.geometry as? SCNPlane {
                 plane.width=min(width,height*aspect);plane.height=min(height,width/max(0.1,aspect))
             }
-            node.position=SCNVector3(Float(-(rect.midX-0.5)*1.906),Float((0.5-rect.midY)*2.906),z)
+            node.position=SCNVector3(Float(-(rect.midX-0.5)*printedWidth),Float((0.5-rect.midY)*printedHeight),z)
         }
         if oldPreviewStill !== still {previewImageNode.geometry?.firstMaterial?.diffuse.contents=still;oldPreviewStill=still}
         previewImageNode.isHidden=still == nil
@@ -698,20 +789,31 @@ private enum SleeveTexture {
         let size=player?.currentItem?.presentationSize ?? .zero
         place(previewVideoNode,size.width>0 && size.height>0 ? size.width/size.height:16/9,-depth-0.006)
         previewVideoNode.isHidden=player == nil
-        let active=playing && player != nil
         if changed {
-            SCNTransaction.begin();SCNTransaction.animationDuration=motion && active ? 0.5:0
-            previewVideoNode.opacity=active ? 1:0;SCNTransaction.commit()
-            previewVideoActive=active;pulse()
+            SCNTransaction.begin();SCNTransaction.animationDuration=motion && showing && !oldPreviewShowing ? 0.5:0
+            // Keep the last frame on a paused case, without running SceneKit
+            // continuously while AVPlayer has no changing image to deliver.
+            previewVideoNode.opacity=showing ? 1:0;SCNTransaction.commit()
+            oldPreviewShowing=showing;previewVideoActive=active;pulse()
         }
         if active {view.isPlaying=true}
     }
     func update(item:IPTVItem,details:IPTVDetails,data:CasePrintData,artwork:CGImage?,episodeArt:[String:FluxBitmap],focused:CaseFaceLayout.Action?,yaw:Double,pitch:Double,motion:Bool,theme:VideoClubTheme,quality:CaseRenderQuality) {
         let themeChanged = oldTheme != theme, qualityChanged = oldQuality != quality
-        let shapeChanged = isCollector != item.isSeriesCollection
+        let format=CasePackageFormat.resolve(year:details.year ?? item.details.year)
+        let shapeChanged = isCollector != item.isSeriesCollection || packageFormat != format
         let opened = item.isSeriesCollection && data.page == .episodes
         let openingChanged = collectorOpen != opened
-        isCollector = item.isSeriesCollection; collectorOpen = opened
+        let showRack=item.isSeriesCollection && data.seasonSelectionVisible && !opened && !data.seasonNumbers.isEmpty
+        let rackChanged=showingSeasonRack != showRack || displayedPrint?.seasonNumbers != data.seasonNumbers
+        let firstPose = !hasPose
+        isCollector = item.isSeriesCollection; collectorOpen = opened;packageFormat=format;showingSeasonRack=showRack
+        if showRack {
+            seasonRack.update(seasonNumbers:data.seasonNumbers,selectedIndex:data.selectedSeasonIndex,format:format,artwork:artwork,motion:motion && !firstPose,theme:theme,quality:quality)
+        }
+        seasonRack.node.isHidden = !showRack
+        body.isHidden=showRack
+        lidHinge.isHidden = !isCollector || showRack
         if themeChanged {
             let tint = theme.palette.caseEdge
             edge.diffuse.contents = CaseColor(red:CGFloat(tint.x),green:CGFloat(tint.y),blue:CGFloat(tint.z),alpha:1)
@@ -720,26 +822,27 @@ private enum SleeveTexture {
         }
         if qualityChanged || shapeChanged {
             rebuildMesh(quality); view.preferredFramesPerSecond = quality.fps; updateSampling(quality,size:view.bounds.size)
+            lidHinge.isHidden = !isCollector || showRack
             for material in [front,back] {
                 material.clearCoat.contents = quality == .economy ? 0.0 : quality == .cinema ? 0.40 : 0.24
                 material.clearCoatRoughness.contents = 0.29
             }
             oldQuality = quality; pulse()
         }
-        if openingChanged || shapeChanged {
-            SCNTransaction.begin(); SCNTransaction.animationDuration = motion ? 0.32 : 0
+        if openingChanged || shapeChanged || rackChanged || firstPose {
+            SCNTransaction.begin(); SCNTransaction.animationDuration = motion && !firstPose ? 0.32 : 0
             lidHinge.eulerAngles = SCNVector3(0,opened ? Float(CaseCarousel.collectorOpeningAngle * .pi/180):0,0)
-            model.position = SCNVector3(opened ? 0.75:0,0,0)
+            model.position = SCNVector3(opened ? 0.75*format.halfWidth:0,0,0)
             fitCamera(view.bounds.size); SCNTransaction.commit()
         }
         let changedItem = itemID != item.id, changedDetails = displayedDetails != details, changedPrint = displayedPrint != data
         let changedCover = oldArtwork !== artwork
         let changedEpisodeArt = oldEpisodeArt.count != episodeArt.count || episodeArt.contains{oldEpisodeArt[$0.key] !== $0.value}
-        dirtyFront = dirtyFront || changedItem || changedCover || themeChanged || qualityChanged
-        dirtyBack = dirtyBack || changedItem || changedDetails || changedCover || themeChanged || qualityChanged || displayedPrint?.descriptionText != data.descriptionText || displayedPrint?.descriptionSource != data.descriptionSource || displayedPrint?.descriptionStatus != data.descriptionStatus || displayedPrint?.descriptionSourceURL != data.descriptionSourceURL || displayedPrint?.previewStatus != data.previewStatus
-        dirtyInside = dirtyInside || changedItem || changedPrint || changedEpisodeArt || changedCover || themeChanged || qualityChanged
-        dirtySpine = dirtySpine || changedItem || themeChanged || qualityChanged
-        if changedItem || changedDetails || changedPrint || changedCover || changedEpisodeArt || themeChanged || qualityChanged {
+        dirtyFront = dirtyFront || changedItem || changedCover || themeChanged || qualityChanged || shapeChanged
+        dirtyBack = dirtyBack || changedItem || changedDetails || changedCover || themeChanged || qualityChanged || shapeChanged || rackChanged || displayedPrint?.page != data.page || displayedPrint?.descriptionText != data.descriptionText || displayedPrint?.descriptionSource != data.descriptionSource || displayedPrint?.descriptionStatus != data.descriptionStatus || displayedPrint?.descriptionSourceURL != data.descriptionSourceURL || displayedPrint?.previewStatus != data.previewStatus
+        dirtyInside = dirtyInside || changedItem || changedPrint || changedEpisodeArt || changedCover || themeChanged || qualityChanged || shapeChanged
+        dirtySpine = dirtySpine || changedItem || themeChanged || qualityChanged || shapeChanged
+        if changedItem || changedDetails || changedPrint || changedCover || changedEpisodeArt || themeChanged || qualityChanged || shapeChanged {
             textureTask?.cancel(); textureToken = UUID(); let token = textureToken
             oldArtwork = artwork; oldEpisodeArt = episodeArt; displayedDetails = details; displayedPrint = data; itemID = item.id
             if changedItem {
@@ -748,35 +851,39 @@ private enum SleeveTexture {
                 spine.diffuse.contents = edge.diffuse.contents; pulse()
             }
             let art = artwork.map(FluxBitmap.init)
+            let backAspect=Double(printedWidth/printedHeight)
             let renderFront = dirtyFront, renderBack = dirtyBack, renderInside = dirtyInside && opened, renderSpine = dirtySpine
             textureTask = Task { @MainActor [weak self] in
                 let worker = Task.detached(priority:.utility) { () -> (FluxBitmap?,FluxBitmap?,FluxBitmap?,FluxBitmap?) in
                     guard !Task.isCancelled else { return (nil,nil,nil,nil) }
                     let f = renderFront ? SleeveTexture.render(item:item,details:details,page:.front,data:data,artwork:art,episodeArt:[:],theme:theme,quality:quality).map(FluxBitmap.init) : nil
                     guard !Task.isCancelled else { return (nil,nil,nil,nil) }
-                    let b = renderBack ? SleeveTexture.render(item:item,details:details,page:.details,data:data,artwork:art,episodeArt:[:],theme:theme,quality:quality).map(FluxBitmap.init) : nil
+                    let b = renderBack ? SleeveTexture.render(item:item,details:details,page:.details,data:data,artwork:art,episodeArt:[:],theme:theme,quality:quality,surfaceAspect:backAspect).map(FluxBitmap.init) : nil
                     guard !Task.isCancelled else { return (nil,nil,nil,nil) }
                     let inner = renderInside ? SleeveTexture.render(item:item,details:details,page:.episodes,data:data,artwork:art,episodeArt:episodeArt,theme:theme,quality:quality).map(FluxBitmap.init) : nil
-                    let s = renderSpine ? SleeveTexture.spine(item:item,theme:theme).map(FluxBitmap.init) : nil
+                    let s = renderSpine ? SleeveTexture.spine(item:item,format:format,theme:theme).map(FluxBitmap.init) : nil
                     return (f,b,inner,s)
                 }
                 let (f,b,inner,s) = await withTaskCancellationHandler(operation:{await worker.value},onCancel:{worker.cancel()})
                 guard let self, !Task.isCancelled, self.textureToken == token else { return }
                 if let f { self.front.diffuse.contents = f.image; self.dirtyFront = false }
-                if let b { self.back.diffuse.contents = b.image; self.dirtyBack = false }
+                if let b { self.back.diffuse.contents = b.image; self.seasonRack.backMaterial.diffuse.contents=b.image; self.dirtyBack = false }
                 if let inner { self.inside.diffuse.contents = inner.image; self.dirtyInside = false }
                 if let s { self.spine.diffuse.contents = s.image; self.dirtySpine = false }
                 self.pulse()
             }
         }
         let face:CaseFaceLayout.Page? = CaseFaceLayout.face(yaw:yaw,pitch:pitch).map{ $0 == .front ? (opened ? .episodes:.front):.details }
-        if oldFocus != focused || oldFocusPage != face || changedPrint || changedItem || qualityChanged {
+        if oldFocus != focused || oldFocusPage != face || changedPrint || changedItem || qualityChanged || shapeChanged {
             updateFocus(focused,page:face,data:data,item:item); oldFocus = focused; oldFocusPage = face; pulse()
         }
-        if oldYaw != yaw || oldPitch != pitch {
-            pulse(); SCNTransaction.begin(); SCNTransaction.animationDuration = motion ? 0.24 : 0
+        if firstPose || oldYaw != yaw || oldPitch != pitch {
+            // A newly attached scene already represents the current case pose.
+            // Returning from fullscreen must not animate it through the front.
+            pulse(); SCNTransaction.begin(); SCNTransaction.animationDuration = motion && !firstPose ? 0.24 : 0
             model.eulerAngles = SCNVector3(Float(pitch * .pi/180),Float(yaw * .pi/180),0)
-            SCNTransaction.commit(); oldYaw = yaw; oldPitch = pitch
+            fitCamera(view.bounds.size)
+            SCNTransaction.commit(); oldYaw = yaw; oldPitch = pitch;hasPose=true
         }
     }
     func release() {
@@ -784,17 +891,74 @@ private enum SleeveTexture {
         textureTask?.cancel(); textureToken = UUID(); pauseRender?.cancel(); view.resized = nil
         projectionTask?.cancel(); projectionTask=nil; bridge=nil
         previewVideoNode.geometry?.firstMaterial?.diffuse.contents=nil
-        oldPreviewPlayer=nil;oldPreviewStill=nil;previewVideoActive=false
+        oldPreviewPlayer=nil;oldPreviewStill=nil;oldPreviewShowing=false;previewVideoActive=false
         view.isPlaying = false; view.scene = nil; view.pointOfView = nil
     }
 }
+
+#if os(macOS) && FLUX_CASE_TESTING
+/// Native smoke tests drive the same coordinator as the representable. These
+/// hooks neither replace its meshes/materials nor ship in the application.
+extension CaseScene {
+    var fixtureTexturesReady: Bool {
+        !dirtyFront && !dirtyBack && !dirtySpine && (!collectorOpen || !dirtyInside)
+    }
+    var fixturePreviewOnLid: Bool {
+        collectorOpen && previewSurface === lid && previewImageNode.parent === lid &&
+        previewVideoNode.parent === lid && previewBorder.parent === lid
+    }
+    var fixturePreviewOnRack: Bool {
+        showingSeasonRack && previewImageNode.parent === seasonRack.previewSurface &&
+        previewVideoNode.parent === seasonRack.previewSurface
+    }
+    func fixtureRefreshProjection() { publishPreviewProjection() }
+    func fixtureSeasonPoint(_ index: Int) -> CGPoint? {
+        guard showingSeasonRack,
+              let season = seasonRack.node.childNode(withName: "rack-season-\(index)", recursively: false) else { return nil }
+        // The actual season mesh's left spine is turned toward +z by the rack.
+        let world = season.presentation.convertPosition(SCNVector3(-packageFormat.halfWidth, 0, 0), to: nil)
+        let screen = view.projectPoint(world)
+        return CGPoint(x: CGFloat(screen.x), y: view.isFlipped ? CGFloat(screen.y) : view.bounds.height-CGFloat(screen.y))
+    }
+}
+
+@MainActor final class CaseSceneSmokeHarness {
+    private let renderer = CaseScene()
+    let bridge = CaseHitBridge()
+    var view: SCNView { renderer.view }
+    var texturesReady: Bool { renderer.fixtureTexturesReady }
+    var previewOnLid: Bool { renderer.fixturePreviewOnLid }
+    var previewOnRack: Bool { renderer.fixturePreviewOnRack }
+
+    init(size: CGSize) {
+        renderer.bridge = bridge
+        renderer.view.frame = CGRect(origin: .zero, size: size)
+    }
+    func show(item: IPTVItem, data: CasePrintData, artwork: CGImage, previewStill: CGImage,
+              yaw: Double, pitch: Double = -4, focused: CaseFaceLayout.Action? = nil,
+              neighbors: [IPTVItem] = []) {
+        renderer.update(item: item, details: item.details, data: data, artwork: artwork, episodeArt: [:],
+                        focused: focused, yaw: yaw, pitch: pitch, motion: false, theme: .neo90, quality: .balanced)
+        renderer.updatePreview(still: previewStill, player: nil, playing: false, motion: false)
+        func neighbor(_ index: Int) -> IPTVItem? { neighbors.indices.contains(index) ? neighbors[index] : nil }
+        renderer.updateNeighbors(previous: neighbor(1), next: neighbor(2), previousFar: neighbor(0), nextFar: neighbor(3),
+                                 left: artwork, right: artwork, farLeft: artwork, farRight: artwork,
+                                 concept: .neoVideoClub, motion: false)
+    }
+    func refreshProjection() { renderer.fixtureRefreshProjection() }
+    func hit(_ point: CGPoint) -> (ProceduralCase.Surface, CGPoint)? { renderer.hit(point) }
+    func seasonPoint(_ index: Int) -> CGPoint? { renderer.fixtureSeasonPoint(index) }
+    func hitSeason(_ point: CGPoint) -> Int? { renderer.hitSeason(point) }
+    func release() { renderer.release() }
+}
+#endif
 
 #if os(macOS)
 private struct CaseSceneSurface:NSViewRepresentable {
     let item:IPTVItem;let details:IPTVDetails;let printData:CasePrintData;let artwork:CGImage?;let episodeArt:[String:FluxBitmap];let focused:CaseFaceLayout.Action?;let yaw:Double;let pitch:Double;let motion:Bool;let theme:VideoClubTheme;let quality:CaseRenderQuality;let bridge:CaseHitBridge;let padInput:(CasePadInput)->Void;let padEnabled:Bool
     let previousItem:IPTVItem?;let nextItem:IPTVItem?;let previousFarItem:IPTVItem?;let nextFarItem:IPTVItem?;let leftArtwork:CGImage?;let rightArtwork:CGImage?;let farLeftArtwork:CGImage?;let farRightArtwork:CGImage?;let previewStill:CGImage?;let previewPlayer:AVPlayer?;let previewPlaying:Bool;let concept:ClubInterfaceProfile
     func makeCoordinator()->CaseScene {CaseScene()}
-    func makeNSView(context:Context)->SCNView {let scene=context.coordinator;scene.bridge=bridge;bridge.pick={[weak scene] in scene?.hit($0)};bridge.pickNeighbor={[weak scene] in scene?.hitNeighbor($0)};scene.view.padInput=padInput;scene.view.padEnabled=padEnabled;return scene.view}
+    func makeNSView(context:Context)->SCNView {let scene=context.coordinator;scene.bridge=bridge;bridge.pick={[weak scene] in scene?.hit($0)};bridge.pickNeighbor={[weak scene] in scene?.hitNeighbor($0)};bridge.pickSeason={[weak scene] in scene?.hitSeason($0)};scene.view.padInput=padInput;scene.view.padEnabled=padEnabled;return scene.view}
     func updateNSView(_ view:SCNView,context:Context) {context.coordinator.view.padInput=padInput;context.coordinator.view.padEnabled=padEnabled;context.coordinator.update(item:item,details:details,data:printData,artwork:artwork,episodeArt:episodeArt,focused:focused,yaw:yaw,pitch:pitch,motion:motion,theme:theme,quality:quality);context.coordinator.updatePreview(still:previewStill,player:previewPlayer,playing:previewPlaying,motion:motion);context.coordinator.updateNeighbors(previous:previousItem,next:nextItem,previousFar:previousFarItem,nextFar:nextFarItem,left:leftArtwork,right:rightArtwork,farLeft:farLeftArtwork,farRight:farRightArtwork,concept:concept,motion:motion)}
     static func dismantleNSView(_ nsView:SCNView,coordinator:CaseScene) {coordinator.release()}
 }
@@ -803,7 +967,7 @@ private struct CaseSceneSurface:UIViewRepresentable {
     let item:IPTVItem;let details:IPTVDetails;let printData:CasePrintData;let artwork:CGImage?;let episodeArt:[String:FluxBitmap];let focused:CaseFaceLayout.Action?;let yaw:Double;let pitch:Double;let motion:Bool;let theme:VideoClubTheme;let quality:CaseRenderQuality;let bridge:CaseHitBridge;let padInput:(CasePadInput)->Void;let padEnabled:Bool
     let previousItem:IPTVItem?;let nextItem:IPTVItem?;let previousFarItem:IPTVItem?;let nextFarItem:IPTVItem?;let leftArtwork:CGImage?;let rightArtwork:CGImage?;let farLeftArtwork:CGImage?;let farRightArtwork:CGImage?;let previewStill:CGImage?;let previewPlayer:AVPlayer?;let previewPlaying:Bool;let concept:ClubInterfaceProfile
     func makeCoordinator()->CaseScene {CaseScene()}
-    func makeUIView(context:Context)->SCNView {let scene=context.coordinator;scene.bridge=bridge;bridge.pick={[weak scene] in scene?.hit($0)};bridge.pickNeighbor={[weak scene] in scene?.hitNeighbor($0)};scene.view.padInput=padInput;scene.view.padEnabled=padEnabled;return scene.view}
+    func makeUIView(context:Context)->SCNView {let scene=context.coordinator;scene.bridge=bridge;bridge.pick={[weak scene] in scene?.hit($0)};bridge.pickNeighbor={[weak scene] in scene?.hitNeighbor($0)};bridge.pickSeason={[weak scene] in scene?.hitSeason($0)};scene.view.padInput=padInput;scene.view.padEnabled=padEnabled;return scene.view}
     func updateUIView(_ view:SCNView,context:Context) {context.coordinator.view.padInput=padInput;context.coordinator.view.padEnabled=padEnabled;context.coordinator.update(item:item,details:details,data:printData,artwork:artwork,episodeArt:episodeArt,focused:focused,yaw:yaw,pitch:pitch,motion:motion,theme:theme,quality:quality);context.coordinator.updatePreview(still:previewStill,player:previewPlayer,playing:previewPlaying,motion:motion);context.coordinator.updateNeighbors(previous:previousItem,next:nextItem,previousFar:previousFarItem,nextFar:nextFarItem,left:leftArtwork,right:rightArtwork,farLeft:farLeftArtwork,farRight:farRightArtwork,concept:concept,motion:motion)}
     static func dismantleUIView(_ uiView:SCNView,coordinator:CaseScene) {coordinator.release()}
 }

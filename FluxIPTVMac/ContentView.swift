@@ -39,7 +39,15 @@ struct ContentView: View {
     @AppStorage(ClubInterfaceProfile.storageKey) private var clubProfile: ClubInterfaceProfile = .neoVideoClub
     @State private var remoteNavigationActive = false
     @State private var showingGroups = false
+    @State private var showingNavigationMenu = false
     @State private var groupSearch = ""
+    @State private var liveSidebarVisible = false
+    @State private var browserHeight: CGFloat = 900
+    @FocusState private var liveGroupSearchFocus: Bool
+    @StateObject private var livePreview = LiveTVPreviewController()
+    @AppStorage(LiveTVPreviewDelay.storageKey) private var livePreviewDelay: LiveTVPreviewDelay = .three
+    @AppStorage(LiveTVPreviewDelay.automaticKey) private var automaticLivePreview = true
+    @Environment(\.scenePhase) private var scenePhase
     @State private var series: IPTVItem?
     @State private var seasons: [IPTVSeason] = []
     @State private var seasonNumber: Int?
@@ -100,9 +108,16 @@ struct ContentView: View {
     }
     private var visible: [IPTVItem] { visibleSlice.items }
     private var groups: [String] { library.catalogResults.groups }
-    private var catalogPageSize: Int { max(2,columns)*12 }
+    private var catalogPageSize: Int { max(library.contentKind == .live ? 1 : 2,columns)*12 }
     private var catalogPageCount: Int { visibleSlice.pageCount(size:catalogPageSize) }
     private var displayedItems: ArraySlice<IPTVItem> { visibleSlice.window(page:catalogPage,size:catalogPageSize) }
+    private var livePreviewAllowed: Bool {
+        page == .catalogue && library.contentKind == .live && heldItem == nil && entranceItem == nil
+            && !modalOpen && scenePhase == .active
+    }
+    private var livePreviewKey: String {
+        "\(livePreviewAllowed)|\(previewItem?.id ?? "")|\(automaticLivePreview)|\(livePreviewDelay.rawValue)|\(library.selectedSourceID?.uuidString ?? "")"
+    }
     private func revealCatalogItem(_ id: String) {
         if let p = visibleSlice.page(for:id,size:catalogPageSize), p != catalogPage { catalogPage = p }
     }
@@ -121,7 +136,7 @@ struct ContentView: View {
         if let first = displayedItems.first { focusID=first.id; setPreview(first) }
     }
     private var modalOpen: Bool {
-        addingSource || editingSource != nil || presetEditor != nil || deletingPreset != nil || itemOptions != nil || showingSources || showingLists || showingEngines || showingGroups || library.alertMessage != nil
+        addingSource || editingSource != nil || presetEditor != nil || deletingPreset != nil || itemOptions != nil || showingSources || showingLists || showingEngines || showingGroups || showingNavigationMenu || library.alertMessage != nil
     }
     private var cardWidth: CGFloat {
         #if os(tvOS)
@@ -146,7 +161,7 @@ struct ContentView: View {
     }
     private func showAllCatalog() {
         continueOnly=false;group=nil;library.selectedPresetID=nil;library.search=""
-        clearPreview();resetCatalogWindow();focusID="group-all"
+        clearPreview();resetCatalogWindow();focusID = library.contentKind == .live && !liveSidebarVisible ? "categories" : "group-all"
     }
     private func toggleResumeFilter() {
         if !continueOnly {library.selectedPresetID=nil}
@@ -169,7 +184,10 @@ struct ContentView: View {
             HStack(spacing: 0) {
                 ScrollViewReader { reader in
                     VStack(spacing: 0) {
-                        if page != .player && !cinema { header }
+                        if page != .player && !cinema {
+                            if library.contentKind == .live && page == .catalogue { liveHeader }
+                            else { header }
+                        }
                         switch page {
                         case .catalogue: catalogue
                         case .series: seriesDetail
@@ -205,7 +223,7 @@ struct ContentView: View {
                         systemFocus = id
                         reader.scrollTo(id, anchor: .center)
                         #else
-                        if remoteNavigationActive && !searchFocus {
+                        if remoteNavigationActive && !searchFocus && !liveGroupSearchFocus {
                             systemFocus = id
                             reader.scrollTo(id, anchor: .center)
                         }
@@ -247,9 +265,10 @@ struct ContentView: View {
                 }
             }
             .allowsHitTesting(entranceItem == nil)
-            .onAppear { updateColumns(geometry.size.width) }
+            .onAppear { browserHeight = geometry.size.height; updateColumns(geometry.size.width) }
+            .onChange(of: geometry.size.height) { _, height in browserHeight = height }
             .onChange(of: geometry.size.width) { _, width in updateColumns(width) }
-            .onChange(of: library.contentKind) { _, _ in continueOnly = false; group = nil; clearPreview(); updateColumns(geometry.size.width) }
+            .onChange(of: library.contentKind) { _, _ in continueOnly = false; group = nil; groupSearch = ""; liveGroupSearchFocus = false; clearPreview(); updateColumns(geometry.size.width) }
             .onChange(of: showRemote) { _, _ in updateColumns(geometry.size.width) }
             .onChange(of: density) { _, _ in updateColumns(geometry.size.width) }
             .onChange(of: clubProfile) { _, _ in updateColumns(geometry.size.width) }
@@ -281,6 +300,12 @@ struct ContentView: View {
                 if press.key == .escape { showingSearch = false; searchFocus = false; return .handled }
                 return .ignored
             }
+            if liveGroupSearchFocus {
+                if press.key == .escape { liveGroupSearchFocus = false; return .handled }
+                return .ignored
+            }
+            if heldItem != nil, press.phase == .repeat,
+               press.key == .leftArrow || press.key == .rightArrow { return .handled }
             if press.key == "f" && press.modifiers.contains([.command, .shift]) { dispatch(.fullscreen) }
             else if press.key == "f" && press.modifiers.contains(.command) { search() }
             else if press.key == .upArrow { dispatch(.up) }
@@ -293,7 +318,7 @@ struct ContentView: View {
             else { return .ignored }
             return .handled
         }
-        .onAppear { remoteInput.connect { action in if !modalOpen && !searchFocus { dispatch(action) } } }
+        .onAppear { remoteInput.connect { action in if !modalOpen && !searchFocus && !liveGroupSearchFocus { dispatch(action) } } }
         .onDisappear { remoteInput.disconnect() }
         #endif
         .sheet(isPresented: $addingSource) { AddSourceSheet(onSaved: { home() }).environmentObject(library) }
@@ -309,6 +334,16 @@ struct ContentView: View {
         .sheet(isPresented: $showingGroups) { groupsPanel }
         .sheet(isPresented: $showingEngines, onDismiss: { diagnosticSettings = false }) { enginesPanel }
         .sheet(item: $itemOptions) { item in itemPanel(item) }
+        .confirmationDialog("Navigation", isPresented: $showingNavigationMenu, titleVisibility: .visible) {
+            Button("Sources") { showingSources = true }
+            Button("Rechercher") { showingNavigationMenu = false; search() }
+            Button("Listes et favoris") { showingLists = true }
+            #if !os(tvOS)
+            Button(showRemote ? "Masquer la télécommande" : "Télécommande") { showRemote.toggle() }
+            #endif
+            Button("Réglages") { showingEngines = true }
+            Button("Annuler", role: .cancel) {}
+        }
         .confirmationDialog("Supprimer la liste ?", isPresented: Binding(get: { deletingPreset != nil }, set: { if !$0 { deletingPreset = nil } }), presenting: deletingPreset) { preset in
             Button("Supprimer « \(preset.name) »", role: .destructive) { library.deletePreset(preset); deletingPreset = nil; group = nil }
             Button("Annuler", role: .cancel) { deletingPreset = nil }
@@ -317,8 +352,8 @@ struct ContentView: View {
             Button("OK", role: .cancel) { library.alertMessage = nil }
         } message: { Text(library.alertMessage ?? "") }
         .onChange(of: library.selectedSourceID) { _, _ in home(); group = nil; clearPreview() }
-        .onChange(of: library.selectedPresetID) { _, id in if id != nil {continueOnly=false};group=nil;clearPreview() }
-        .onChange(of: library.search) { _, _ in group = nil; clearPreview() }
+        .onChange(of: library.selectedPresetID) { _, id in if id != nil {continueOnly=false};if library.contentKind != .live {group=nil};clearPreview() }
+        .onChange(of: library.search) { _, _ in if library.contentKind != .live {group=nil};clearPreview() }
         .onChange(of: group) { _, _ in clearPreview(); resetCatalogWindow() }
         .onChange(of: library.catalogResults.revision) { _, _ in resetCatalogWindow() }
         .onChange(of: continueOnly) { _, _ in resetCatalogWindow(); clearPreview() }
@@ -329,7 +364,14 @@ struct ContentView: View {
             if let id=heldItem?.id ?? previewID { revealCatalogItem(id) }
             else { catalogPage=min(catalogPage,catalogPageCount-1) }
         }
-        .onDisappear { caseDetailTask?.cancel(); caseTransitionTask?.cancel(); entranceTask?.cancel(); favoriteFeedbackTask?.cancel(); playerControlsTask?.cancel() }
+        .task(id: livePreviewKey) {
+            guard livePreviewAllowed, let item = previewItem, item.kind == .live else { livePreview.stop(); return }
+            do {
+                let urls = automaticLivePreview ? try library.playbackURLs(for: item) : []
+                livePreview.schedule(id: item.id, urls: urls, delay: livePreviewDelay, enabled: automaticLivePreview)
+            } catch { livePreview.markUnavailable() }
+        }
+        .onDisappear { caseDetailTask?.cancel(); caseTransitionTask?.cancel(); entranceTask?.cancel(); favoriteFeedbackTask?.cancel(); playerControlsTask?.cancel(); livePreview.stop() }
     }
 
     #if !os(tvOS)
@@ -357,7 +399,14 @@ struct ContentView: View {
             }
         }.accessibilityHidden(true)
     }
-    private func setPreview(_ item: IPTVItem) { if previewID != item.id { previewID=item.id; previewItem=item } }
+    private func setPreview(_ item: IPTVItem) {
+        guard previewID != item.id else { return }
+        if item.kind == .live {
+            withAnimation(reduceMotion ? nil : .spring(response: 0.38, dampingFraction: 0.86)) {
+                previewID = item.id; previewItem = item
+            }
+        } else { previewID = item.id; previewItem = item }
+    }
     private func clearPreview() { previewID=nil; previewItem=nil }
     private func selectCard(_ item: IPTVItem) {
         // A successful long press presents a sheet before release; the same
@@ -482,33 +531,78 @@ struct ContentView: View {
         }.padding(.horizontal,30).padding(.vertical,compactChrome ? 8 : 16)
     }
 
+    private var compactNavigation: Bool {
+        #if os(iOS)
+        sizeClass == .compact
+        #else
+        false
+        #endif
+    }
+    private var liveHeader: some View { header }
     private var header: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 12) {
-                HStack(spacing: 9) {
-                    Image(systemName: "waveform.path").font(.title2.weight(.medium)).foregroundStyle(themeAccent)
-                    Text("FLUX").font(.title2.weight(.heavy)).tracking(4)
-                    if !compactChrome {Text("0.8.5").font(.caption2.monospacedDigit()).foregroundStyle(.secondary)}
+        FluxGlassGroup {
+            HStack(spacing: compactNavigation ? 8 : 18) {
+                HStack(spacing: 8) {
+                    Image(systemName: "waveform.path").font(.title2.weight(.semibold)).foregroundStyle(themeAccent)
+                    if !compactNavigation {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("FLUX").font(.title3.weight(.heavy)).tracking(3)
+                            if !compactChrome {
+                                Text(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "")
+                                    .font(.caption2.monospacedDigit()).foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                }.accessibilityElement(children: .combine).accessibilityLabel("Flux IPTV")
+                Spacer(minLength: 0)
+                HStack(spacing: 8) {
+                    ForEach(IPTVMediaKind.allCases, id: \.self) { kind in modeButton(kind) }
                 }
                 Spacer(minLength: 0)
-                navButton("Sources", icon: "square.stack", id: "sources", iconOnly: true) { showingSources = true }
-                navButton("Recherche", icon: "magnifyingglass", id: "search", iconOnly: true) { search() }
-                #if !os(tvOS)
-                navButton("Télécommande", icon: "appletvremote.gen1", id: "remote", active: showRemote, iconOnly: true) { showRemote.toggle() }
-                #endif
-                navButton("Réglages", icon: "gearshape", id: "settings", iconOnly: true) { showingEngines = true }
-            }
-            HStack(spacing: 6) {
-                ForEach(IPTVMediaKind.allCases, id: \.self) { kind in
-                    navButton(kind.frenchTitle, icon: mediaIcon(kind), id: "tab-\(kind.rawValue)", active: library.contentKind == kind && page == .catalogue) { changeKind(kind) }
+                if compactNavigation {
+                    navButton("Navigation", icon: "ellipsis", id: "navigation-more", iconOnly: true) { showingNavigationMenu = true }
+                        .fluxNavigationGlass(radius: 20)
+                } else {
+                    HStack(spacing: 2) {
+                        navButton("Sources", icon: "square.stack", id: "sources", iconOnly: true) { showingSources = true }
+                        navButton("Recherche", icon: "magnifyingglass", id: "search", iconOnly: true) { search() }
+                        #if !os(tvOS)
+                        navButton("Télécommande", icon: "appletvremote.gen1", id: "remote", active: showRemote, iconOnly: true) { showRemote.toggle() }
+                        #endif
+                        if library.contentKind != .live || (browserHeight < 580 && !liveSidebarVisible) {
+                            navButton("Listes", icon: "star", id: "lists", active: library.selectedPresetID != nil, iconOnly: true) { showingLists = true }
+                        }
+                        navButton("Réglages", icon: "gearshape", id: "settings", iconOnly: true) { showingEngines = true }
+                    }.padding(4).fluxNavigationGlass(radius: 23)
                 }
-                Spacer(minLength: 0)
-                navButton("Listes", icon: "star", id: "lists", active: library.selectedPresetID != nil) { showingLists = true }
             }
         }
-        .padding(.horizontal, 18).padding(.vertical, 12)
-        .fluxGlass(radius: 25)
-        .padding(.horizontal, 24).padding(.top, 14).padding(.bottom, 18)
+        .padding(.horizontal, compactNavigation ? 12 : 24).padding(.top, 10).padding(.bottom, 12)
+    }
+    private func modeButton(_ kind: IPTVMediaKind) -> some View {
+        let selected = library.contentKind == kind && page == .catalogue
+        let id = "tab-\(kind.rawValue)"
+        let symbol: String = kind == .live ? "tv.fill" : kind == .movie ? "film.fill" : "square.stack.3d.up.fill"
+        let title: String = kind == .live ? "TV" : kind == .movie ? "Films" : "Séries"
+        let tint: Color = kind == .live ? .cyan : kind == .movie ? .orange : .purple
+        return Button { pointerSelect(id); changeKind(kind) } label: {
+            let layout = browserHeight < 580 ? AnyLayout(HStackLayout(spacing: 6)) : AnyLayout(VStackLayout(spacing: 4))
+            layout {
+                Image(systemName: symbol).symbolRenderingMode(.hierarchical)
+                    .font(.system(size: browserHeight < 580 ? 20 : compactNavigation ? 22 : 27, weight: .medium))
+                Text(title).font(.caption.weight(.semibold)).lineLimit(1)
+            }
+            .foregroundStyle(selected ? tint : .white.opacity(0.92))
+            .frame(minWidth: compactNavigation ? 48 : 72)
+            .padding(.horizontal, 8).padding(.vertical, 9)
+            .fluxNavigationGlass(selected: selected, tint: tint, radius: 21)
+            .overlay {
+                RoundedRectangle(cornerRadius: 21)
+                    .strokeBorder(focusID == id ? .white.opacity(0.85) : .clear, lineWidth: 2)
+                    .allowsHitTesting(false)
+            }
+        }.buttonStyle(.plain).fluxFocus($systemFocus, id: id).id(id)
+            .accessibilityLabel(title).accessibilityValue(selected ? "Sélectionné" : "")
     }
 
     private func navButton(_ title: String, icon: String, id: String, active: Bool = false, iconOnly: Bool = false, action: @escaping () -> Void) -> some View {
@@ -530,7 +624,292 @@ struct ContentView: View {
         }.buttonStyle(.plain).fluxFocus($systemFocus, id: id).id(id).accessibilityLabel(title).fluxHelp(title)
     }
 
-    private var catalogue: some View {
+    private var liveSidebarWidth: CGFloat {
+        #if os(tvOS)
+        340
+        #else
+        254
+        #endif
+    }
+    private var liveGroups: [String] {
+        let term = groupSearch.trimmingCharacters(in: .whitespacesAndNewlines)
+        return term.isEmpty ? groups : groups.filter { $0.localizedStandardContains(term) }
+    }
+    private var liveScopeID: String {
+        if let group { return "live-category-\(group)" }
+        if let preset = library.selectedPresetID { return "live-preset-\(preset)" }
+        return "group-all"
+    }
+    private var liveSidebarIDs: [String] {
+        ["group-all"] + library.currentPresets.map { "live-preset-\($0.id)" }
+            + ["live-manage-lists"] + liveGroups.map { "live-category-\($0)" }
+    }
+    private func selectLiveGroup(_ name: String) {
+        continueOnly = false
+        library.selectedPresetID = nil
+        group = name
+        liveGroupSearchFocus = false
+        clearPreview()
+        resetCatalogWindow()
+    }
+    private func selectLivePreset(_ id: String) {
+        continueOnly = false
+        group = nil
+        library.search = ""
+        library.selectedPresetID = id
+        clearPreview()
+        resetCatalogWindow()
+    }
+    private func liveScopeButton(_ title: String, symbol: String, id: String, count: Int? = nil, action: @escaping () -> Void) -> some View {
+        Button { pointerSelect(id); action() } label: {
+            LiveTVScopeLabel(title: title, symbol: symbol, count: count,
+                             selected: liveScopeID == id, focused: focusID == id, accent: themeAccent)
+        }.buttonStyle(.plain).fluxFocus($systemFocus, id: id).id(id)
+            .accessibilityLabel(title)
+            .accessibilityValue(liveScopeID == id ? "Sélectionné" : "")
+    }
+    private var liveSidebar: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label("VOTRE TÉLÉVISION", systemImage: "tv")
+                .font(.caption.weight(.semibold)).tracking(1.5).foregroundStyle(.secondary)
+                .padding(.horizontal, 10).padding(.top, 4)
+            HStack(spacing: 8) {
+                Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+                TextField("Filtrer les catégories", text: $groupSearch)
+                    .focused($liveGroupSearchFocus)
+                    .onSubmit {
+                        liveGroupSearchFocus = false
+                        focusID = liveGroups.first.map { "live-category-\($0)" } ?? "group-all"
+                        systemFocus = focusID
+                    }
+                if !groupSearch.isEmpty {
+                    Button { groupSearch = "" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary) }
+                        .buttonStyle(.plain).accessibilityLabel("Effacer la recherche de catégories")
+                }
+            }.font(.callout).padding(11)
+                .background(.black.opacity(0.15), in: RoundedRectangle(cornerRadius: 13))
+            ScrollViewReader { categoryReader in
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 5) {
+                        liveScopeButton("Toutes les chaînes", symbol: "square.grid.2x2", id: "group-all", count: library.catalogResults.all.items.count) { showAllCatalog() }
+                        ForEach(library.currentPresets) { preset in
+                            liveScopeButton(preset.name, symbol: preset.isDefault ? "star.fill" : "text.badge.star", id: "live-preset-\(preset.id)") { selectLivePreset(preset.id) }
+                        }
+                        liveScopeButton("Gérer les listes", symbol: "slider.horizontal.3", id: "live-manage-lists") { showingLists = true }
+                        Text("CATÉGORIES").font(.caption2.weight(.semibold)).tracking(1.5).foregroundStyle(.secondary)
+                            .padding(.horizontal, 12).padding(.top, 18).padding(.bottom, 5)
+                        ForEach(liveGroups, id: \.self) { name in
+                            liveScopeButton(name, symbol: "folder", id: "live-category-\(name)", count: library.catalogResults.slice(group: name).items.count) { selectLiveGroup(name) }
+                        }
+                        if liveGroups.isEmpty {
+                            Text(groupSearch.isEmpty ? "Les catégories apparaîtront avec vos chaînes." : "Aucune catégorie correspondante.")
+                                .font(.caption).foregroundStyle(.secondary).padding(12)
+                        }
+                    }.padding(.vertical, 3)
+                }
+                .onChange(of: focusID) { _, id in
+                    if let id, liveSidebarIDs.contains(id) { categoryReader.scrollTo(id, anchor: .center) }
+                }
+            }
+        }
+        .padding(14).frame(width: liveSidebarWidth)
+        .frame(maxHeight: .infinity, alignment: .top)
+        .fluxGlass(radius: 25)
+    }
+    private var liveCompactScopes: some View {
+        HStack(spacing: 8) {
+            Button { pointerSelect("categories"); groupSearch = ""; showingGroups = true } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "line.3.horizontal.decrease")
+                    Text(group ?? "Catégories").font(.callout.weight(.semibold)).lineLimit(1)
+                    Image(systemName: "chevron.down").font(.caption2)
+                }.padding(.horizontal, 13).padding(.vertical, 10)
+            }.buttonStyle(.plain).fluxFocus($systemFocus, id: "categories").id("categories")
+                .fluxNavigationGlass(selected: group != nil, tint: themeAccent, radius: 17)
+            Spacer(minLength: 0)
+            navButton("Favoris", icon: "star.fill", id: "favorites-quick", active: library.selectedPresetID == FavoritePresets.defaultID(for: .live), iconOnly: true) {
+                if library.selectedPresetID == FavoritePresets.defaultID(for: .live) { showAllCatalog() }
+                else { selectLivePreset(FavoritePresets.defaultID(for: .live)) }
+            }.fluxNavigationGlass(radius: 17)
+            navButton("Listes", icon: "text.badge.star", id: "lists", active: library.selectedPresetID != nil, iconOnly: true) { showingLists = true }
+                .fluxNavigationGlass(radius: 17)
+        }
+    }
+    private var liveCatalogue: some View {
+        FluxGlassGroup {
+            HStack(alignment: .top, spacing: 18) {
+                if liveSidebarVisible { liveSidebar }
+                VStack(alignment: .leading, spacing: browserHeight < 700 ? 8 : 14) {
+                    if browserHeight >= 700 {
+                    HStack(alignment: .center, spacing: 12) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(group ?? library.selectedPreset?.name ?? "Télévision")
+                                .font(.title2.weight(.bold)).lineLimit(1)
+                            Text("\(library.selectedSource?.name ?? "Votre salon TV") · \(library.isFiltering ? "Recherche…" : "\(visible.count) chaînes")")
+                                .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                        }
+                        Spacer(minLength: 0)
+                        navButton("Actualiser", icon: "arrow.clockwise", id: "reload", iconOnly: true) { library.reloadSelected() }
+                            .disabled(library.selectedSourceID == nil || library.isLoading)
+                            .fluxNavigationGlass(radius: 18)
+                    }.padding(.horizontal, 3)
+                    }
+                    HStack(spacing: 10) {
+                        if browserHeight < 580 && !liveSidebarVisible {
+                            Button { groupSearch = ""; showingGroups = true } label: { Image(systemName: "line.3.horizontal.decrease") }
+                                .buttonStyle(.plain).fluxFocus($systemFocus, id: "categories").id("categories")
+                                .accessibilityLabel("Catégories TV")
+                        } else { Image(systemName: "magnifyingglass").foregroundStyle(.secondary) }
+                        TextField("Rechercher une chaîne", text: $library.search)
+                            .focused($searchFocus).onSubmit { searchFocus = false; focusFirstItem() }
+                        if !library.search.isEmpty {
+                            Button { library.search = "" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary) }
+                                .buttonStyle(.plain).accessibilityLabel("Effacer la recherche de chaînes")
+                        }
+                        if browserHeight < 700 {
+                            navButton("Actualiser", icon: "arrow.clockwise", id: "reload", iconOnly: true) { library.reloadSelected() }
+                                .disabled(library.selectedSourceID == nil || library.isLoading)
+                        }
+                    }.padding(.horizontal, 16).padding(.vertical, browserHeight < 700 ? 5 : 13).fluxGlass(radius: 20)
+                    if !liveSidebarVisible && browserHeight >= 580 { liveCompactScopes }
+                    liveNotices
+                    if let item = previewItem, item.kind == .live, visibleSlice.index(of: item.id) != nil {
+                        liveSelectedChannel(item)
+                    }
+                    liveChannelContent
+                }.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            }
+        }.padding(.horizontal, compactNavigation ? 12 : 24).padding(.bottom, browserHeight < 700 ? 10 : 18)
+    }
+    @ViewBuilder private var liveNotices: some View {
+        if playback.recoveryMode {
+            HStack(spacing: 10) {
+                Image(systemName: "shield.lefthalf.filled").foregroundStyle(.orange)
+                Text("Lecture Apple activée après une interruption de VLC.").font(.caption)
+                Spacer(minLength: 4)
+                Button("Diagnostic") { diagnosticSettings = true; showingEngines = true }.buttonStyle(.bordered)
+            }.padding(12).fluxFrosted(radius: 16)
+        }
+        if let issue = library.credentialIssue, let source = library.selectedSource, source.kind != .m3uFile {
+            VStack(alignment: .leading, spacing: 9) {
+                Label("Reconnecter « \(source.name) »", systemImage: "person.crop.circle.badge.exclamationmark").font(.headline)
+                Text(issue).font(.caption).foregroundStyle(.secondary)
+                navButton("Reconnecter", icon: "arrow.clockwise", id: "reconnect-source") { editingSource = source }
+            }.padding(14).frame(maxWidth: .infinity, alignment: .leading).fluxFrosted(radius: 18)
+        }
+    }
+    @ViewBuilder private var liveChannelContent: some View {
+        if (library.isLoading || library.isFiltering) && visible.isEmpty {
+            Spacer()
+            ProgressView(library.isLoading ? "Chargement des chaînes…" : "Recherche…").frame(maxWidth: .infinity)
+            Spacer()
+        } else if visible.isEmpty {
+            Spacer()
+            VStack(spacing: 16) {
+                Image(systemName: "tv").font(.system(size: 48, weight: .light)).foregroundStyle(themeAccent)
+                Text(library.sources.isEmpty ? "Votre télévision vous attend" : "Aucune chaîne dans cette sélection")
+                    .font(.title3.weight(.semibold)).multilineTextAlignment(.center)
+                if library.sources.isEmpty {
+                    navButton("Ajouter une source", icon: "plus", id: "add-source") { addingSource = true }
+                } else if library.credentialIssue == nil {
+                    navButton("Toutes les chaînes", icon: "square.grid.2x2", id: "live-reset") { showAllCatalog() }
+                }
+            }.frame(maxWidth: .infinity)
+            Spacer()
+        } else {
+            if catalogPageCount > 1 && browserHeight >= 700 { livePagination }
+            ScrollView {
+                if catalogPageCount > 1 && browserHeight < 700 { livePagination }
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: max(1, columns)), spacing: 12) {
+                    ForEach(displayedItems) { item in liveChannel(item) }
+                }.padding(3).padding(.bottom, 12)
+            }
+        }
+    }
+    private var livePagination: some View {
+        HStack(spacing: 10) {
+            navButton("Page précédente", icon: "chevron.left", id: "page-prev", iconOnly: true) { changeCatalogPage(-1) }.disabled(catalogPage == 0)
+            Text("\(catalogPage + 1) / \(catalogPageCount)").font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+            navButton("Page suivante", icon: "chevron.right", id: "page-next", iconOnly: true) { changeCatalogPage(1) }.disabled(catalogPage + 1 >= catalogPageCount)
+            Spacer(minLength: 0)
+            if let first = displayedItems.first, let last = displayedItems.last, let start = visibleSlice.index(of: first.id), let end = visibleSlice.index(of: last.id) {
+                Text("\(start + 1)–\(end + 1)").font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+            }
+        }
+    }
+    private func liveChannel(_ item: IPTVItem) -> some View {
+        Button {
+            guard !modalOpen else { return }
+            #if os(tvOS)
+            selectCard(item)
+            #else
+            pointerSelect(item.id); setPreview(item)
+            #endif
+        } label: {
+            LiveTVChannelLabel(item: item, number: (visibleSlice.index(of: item.id) ?? 0) + 1,
+                               favorite: library.isFavorite(item), highlighted: focusID == item.id || previewID == item.id,
+                               accent: themeAccent)
+        }.buttonStyle(.plain).fluxFocus($systemFocus, id: item.id).id(item.id)
+            .accessibilityLabel(item.name).accessibilityHint("Sélectionner pour afficher l’aperçu. Regarder ouvre la chaîne. Appui long pour les favoris.")
+            .zIndex(previewID == item.id ? 1 : 0)
+            .animation(reduceMotion ? nil : .spring(response: 0.28, dampingFraction: 0.84), value: focusID == item.id || previewID == item.id)
+            .contextMenu {
+                Button("Regarder", systemImage: "play.fill") { selectCard(item) }
+                Button("Favoris et listes", systemImage: "star") { chooseFavorites(item) }
+            }
+            #if os(tvOS)
+            .onLongPressGesture(minimumDuration: 0.65) { chooseFavorites(item) }
+            #else
+            .onLongPressGesture(minimumDuration: 0.65, maximumDistance: 12) { chooseFavorites(item) }
+            .onHover { inside in if inside && !modalOpen { pointerSelect(item.id); setPreview(item) } }
+            #endif
+    }
+
+    private func liveSelectedChannel(_ item: IPTVItem) -> some View {
+        HStack(spacing: compactNavigation || browserHeight < 700 ? 12 : 20) {
+                    LiveTVPreviewScreen(preview: livePreview, item: item, delay: livePreviewDelay, automatic: automaticLivePreview)
+                        .frame(width: compactNavigation ? 112 : browserHeight < 580 ? 140 : browserHeight < 700 ? 220 : liveSidebarVisible ? 330 : 280)
+                    liveSelectedActions(item).frame(minWidth: compactNavigation ? 120 : 160, maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(browserHeight < 580 ? 10 : 14).fluxGlass(radius: 27)
+        .shadow(color: .black.opacity(0.26), radius: 16, x: 0, y: 12)
+        .transition(.scale(scale: 0.96, anchor: .bottom).combined(with: .opacity))
+        .accessibilityElement(children: .contain)
+    }
+    private func liveSelectedActions(_ item: IPTVItem) -> some View {
+        VStack(alignment: .leading, spacing: compactNavigation || browserHeight < 700 ? 6 : 10) {
+            if !compactNavigation && browserHeight >= 700 {
+            Label("CHAÎNE SÉLECTIONNÉE", systemImage: "tv.fill")
+                .font(.caption2.weight(.semibold)).tracking(1.2).foregroundStyle(themeAccent)
+            }
+            Text(item.name).font(.headline).lineLimit(browserHeight < 580 ? 1 : 2)
+            if browserHeight >= 580 { Text(item.group).font(.caption).foregroundStyle(.secondary).lineLimit(1) }
+            HStack(spacing: compactNavigation ? 5 : 8) {
+                Button { playItem(item) } label: {
+                    Label("Regarder", systemImage: "play.fill").font((compactNavigation ? Font.caption : .callout).weight(.semibold))
+                        .padding(.horizontal, compactNavigation ? 10 : 15).padding(.vertical, browserHeight < 700 ? 7 : 10)
+                        .fluxNavigationGlass(selected: true, tint: themeAccent, radius: 17)
+                }.buttonStyle(.plain).fluxFocus($systemFocus, id: "live-watch").id("live-watch")
+                if !compactNavigation && browserHeight >= 580 {
+                navButton("Favoris", icon: library.isFavorite(item) ? "star.fill" : "star", id: "live-favorite", iconOnly: true) { chooseFavorites(item) }
+                }
+                if livePreview.player != nil {
+                    Button { livePreview.toggleMuted() } label: {
+                        Image(systemName: livePreview.isMuted ? "speaker.slash.fill" : "speaker.wave.2.fill")
+                            .font(.caption).padding(compactNavigation ? 7 : 10)
+                    }.buttonStyle(.plain).fluxFocus($systemFocus, id: "live-preview-mute").id("live-preview-mute")
+                        .accessibilityLabel(livePreview.isMuted ? "Activer le son de l’aperçu" : "Couper le son de l’aperçu")
+                }
+            }
+        }
+    }
+
+    @ViewBuilder private var catalogue: some View {
+        if library.contentKind == .live { liveCatalogue }
+        else { mediaCatalogue }
+    }
+
+    private var mediaCatalogue: some View {
         VStack(alignment: .leading, spacing: 14) {
             if playback.recoveryMode {
                 HStack(spacing: 12) {
@@ -597,9 +976,9 @@ struct ContentView: View {
                 ScrollView {
                     VStack(alignment:.leading,spacing:8) {
                         if library.contentKind == .live {previewHero}
-                        LazyVGrid(columns:Array(repeating:GridItem(.flexible(),spacing:18),count:columns),spacing:clubProfile.isEditorial ? 18:22) {
+                        LazyVGrid(columns:Array(repeating:GridItem(.flexible(),spacing:4),count:columns),spacing:8) {
                             ForEach(displayedItems) { item in card(item) }
-                        }.padding(.horizontal,30).padding(.vertical,15)
+                        }.padding(.horizontal,16).padding(.vertical,12)
                     }
                 }
             }
@@ -624,27 +1003,26 @@ struct ContentView: View {
         return ZStack(alignment: .topTrailing) {
             Button { selectCard(item) } label: {
                 VStack(alignment: .leading, spacing: 8) {
-                    GeometryReader { g in
-                        ZStack {
-                            RoundedRectangle(cornerRadius: 15).fill(Color.white.opacity(0.065))
-                            ArtworkView(url: item.logoURL, fit: item.kind == .live) {
-                                Image(systemName: mediaIcon(item.kind)).font(.largeTitle).foregroundStyle(.secondary).frame(maxWidth: .infinity, maxHeight: .infinity)
-                            }.frame(width: g.size.width, height: g.size.height).clipped()
-                            if item.kind == .live {
-                                VStack { Spacer(); HStack { Text("DIRECT").font(.system(size: 9, weight: .bold)).padding(.horizontal, 6).padding(.vertical, 4).background(.black.opacity(0.78), in: Capsule()); Spacer() } }.padding(8)
-                            }
-                        }.clipShape(RoundedRectangle(cornerRadius: 15))
-                    }.aspectRatio(item.kind == .live ? 16.0/9.0 : 2.0/3.0, contentMode: .fit)
+                    CatalogSleeveArtwork(item: item)
+                    .aspectRatio(2.0/3.0, contentMode: .fit)
                     .background { if item.kind != .live { GeometryReader { proxy in Color.clear.preference(key:CaseFrameKey.self,value:[item.id:proxy.frame(in:.named("club-pane"))]) } } }
                     .opacity(heldItem?.id == item.id && caseExpanded ? 0.18 : 1)
                     .rotation3DEffect(.degrees(focused && !reduceMotion ? -4 : 0),axis:(x:0,y:1,z:0),perspective:0.6)
+                    .scaleEffect(focused && !reduceMotion ? 1.025 : 1)
+                    .offset(y: focused && !reduceMotion ? -3 : 0)
                     Text(item.name).font(.callout.weight(.semibold)).lineLimit(2, reservesSpace: true).frame(maxWidth: .infinity, alignment: .leading)
-                    Text(item.group).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                    HStack(spacing: 5) {
+                        Text(CasePackageFormat.resolve(year: item.details.year).title)
+                            .font(.system(size: 9, weight: .semibold, design: .rounded))
+                            .padding(.horizontal, 5).padding(.vertical, 2)
+                            .background(.white.opacity(0.09), in: RoundedRectangle(cornerRadius: 3))
+                        Text(item.group).font(.caption).lineLimit(1)
+                    }.foregroundStyle(.secondary)
                     if let entry = playback.history.entries[item.id], entry.resumable {
                         ProgressView(value: entry.fraction).tint(themeAccent)
                     }
                 }
-                .padding(7)
+                .padding(.horizontal,2).padding(.vertical,5)
                 .background(.white.opacity(focused ? 0.13 : 0.025), in: RoundedRectangle(cornerRadius: 21))
                 .overlay(RoundedRectangle(cornerRadius: 21).strokeBorder(focused ? Color.white.opacity(0.88) : .white.opacity(0.08), lineWidth: focused ? 2 : 1).allowsHitTesting(false))
             }.buttonStyle(.plain).fluxFocus($systemFocus, id: item.id).id(item.id)
@@ -675,6 +1053,8 @@ struct ContentView: View {
             }.padding(13)
             #endif
         }
+        .zIndex(focused ? 1 : 0)
+        .animation(reduceMotion ? nil : .spring(response: 0.28, dampingFraction: 0.85), value: focused)
     }
 
     private var seriesDetail: some View {
@@ -993,7 +1373,7 @@ struct ContentView: View {
             Button("Toutes les catégories") { group = nil; showingGroups = false }
             LazyVStack(alignment: .leading, spacing: 8) {
                 ForEach(groups.filter { groupSearch.isEmpty || $0.localizedStandardContains(groupSearch) }, id: \.self) { name in
-                    Button { group = name; showingGroups = false } label: { HStack { Text(name).lineLimit(2); Spacer(); if group == name { Image(systemName: "checkmark") } }.padding(10).frame(maxWidth: .infinity, alignment: .leading).background(.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 12)) }.buttonStyle(.plain)
+                    Button { if library.contentKind == .live { selectLiveGroup(name) } else { group = name }; showingGroups = false } label: { HStack { Text(name).lineLimit(2); Spacer(); if group == name { Image(systemName: "checkmark") } }.padding(10).frame(maxWidth: .infinity, alignment: .leading).background(.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 12)) }.buttonStyle(.plain)
                 }
             }
             Button("Fermer") { showingGroups = false }
@@ -1017,7 +1397,7 @@ struct ContentView: View {
             Button("Catalogue complet") { showAllCatalog(); showingLists = false }
             ForEach(library.currentPresets) { preset in
                 HStack {
-                    Button { continueOnly=false; library.selectedPresetID = preset.id; showingLists = false } label: { Label(preset.name + " (\(preset.itemIDs.count))", systemImage: "star").frame(maxWidth: .infinity, alignment: .leading) }.buttonStyle(.bordered)
+                    Button { continueOnly=false; group=nil; library.selectedPresetID = preset.id; showingLists = false } label: { Label(preset.name + " (\(preset.itemIDs.count))", systemImage: "star").frame(maxWidth: .infinity, alignment: .leading) }.buttonStyle(.bordered)
                     if !preset.isDefault {
                         Button("Renommer") { showingLists = false; DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { presetEditor = PresetEditor(kind: preset.kind, existing: preset) } }
                         Button(role: .destructive) { showingLists = false; DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { deletingPreset = preset } } label: { Image(systemName: "trash") }
@@ -1044,8 +1424,20 @@ struct ContentView: View {
     private func updateColumns(_ width: CGFloat) {
         let usable = width - (showRemote && width >= 800 ? 215 : 0)
         compactChrome = usable < 900
-        let estimated = (usable - 60) / (cardWidth + 18)
-        columns = estimated.isFinite ? Int(max(2, min(10, estimated))) : 5
+        liveSidebarVisible = library.contentKind == .live && usable >= 920
+        if library.contentKind == .live {
+            let channelWidth = usable - 48 - (liveSidebarVisible ? liveSidebarWidth + 18 : 0)
+            #if os(tvOS)
+            let minimumTile: CGFloat = 410
+            #else
+            let minimumTile: CGFloat = 274
+            #endif
+            let estimated = (channelWidth + 12) / (minimumTile + 12)
+            columns = estimated.isFinite ? Int(max(1, min(6, estimated))) : 3
+        } else {
+            let estimated = (usable - 32) / (cardWidth + 4)
+            columns = estimated.isFinite ? Int(max(2, min(10, estimated))) : 5
+        }
     }
     private func pointerSelect(_ id: String) {
         #if !os(tvOS)
@@ -1054,12 +1446,21 @@ struct ContentView: View {
         focusID = id
     }
     private func changeKind(_ kind: IPTVMediaKind) { home(); library.contentKind = kind; showAllCatalog(); focusID = "tab-\(kind.rawValue)" }
-    private func focusFirstItem() { focusID = visible.first?.id ?? "tab-\(library.contentKind.rawValue)" }
+    private func focusFirstItem() {
+        let target = visible.first?.id ?? "tab-\(library.contentKind.rawValue)"
+        focusID = target
+        Task { @MainActor in
+            await Task.yield()
+            guard page == .catalogue, !modalOpen, !searchFocus, !liveGroupSearchFocus else { return }
+            systemFocus = target
+        }
+    }
     private func search() {
         guard !modalOpen else { return }
         cancelEntrance()
         if page != .catalogue { home() } else { dismissCaseImmediately() }
-        showingSearch = true; searchFocus = true
+        liveGroupSearchFocus = false
+        showingSearch = library.contentKind != .live; searchFocus = true
     }
     private func openItem(_ item: IPTVItem) {
         library.selectedItemID = item.id
@@ -1078,6 +1479,7 @@ struct ContentView: View {
         }
     }
     private func playItem(_ item: IPTVItem) {
+        livePreview.stop()
         guard !item.isSeriesCollection else { showCase(item, episodes: true); return }
         cancelEntrance()
         dismissCaseImmediately()
@@ -1185,22 +1587,33 @@ struct ContentView: View {
     private var focusRows: [[String]] {
         var rows: [[String]] = []
         if page != .player && !cinema {
+            if compactNavigation {
+                rows.append(["navigation-more"])
+            } else {
             #if os(tvOS)
-            rows.append(["sources", "search", "settings"])
+                rows.append(["sources", "search"] + (library.contentKind != .live || (browserHeight < 580 && !liveSidebarVisible) ? ["lists"] : []) + ["settings"])
             #else
-            rows.append(["sources", "search", "remote", "settings"])
+                rows.append(["sources", "search", "remote"] + (library.contentKind != .live || (browserHeight < 580 && !liveSidebarVisible) ? ["lists"] : []) + ["settings"])
             #endif
-            rows.append(["tab-live", "tab-movie", "tab-series", "lists"])
+            }
+            rows.append(["tab-live", "tab-movie", "tab-series"])
         }
         switch page {
         case .catalogue:
             if library.selectedSourceID != nil && !library.isLoading { rows.append(["reload"]) }
             if library.credentialIssue != nil { rows.append(["reconnect-source"]) }
-            rows.append(["group-all", "categories"] + (library.contentKind == .movie ? ["continue-only"] : []) + (library.sources.isEmpty ? [] : ["favorites-quick"]))
+            if library.contentKind == .live {
+                if !liveSidebarVisible { rows.append(browserHeight < 580 ? ["categories"] : ["categories", "favorites-quick", "lists"]) }
+                if visible.isEmpty && !library.sources.isEmpty && library.credentialIssue == nil { rows.append(["live-reset"]) }
+            } else {
+                rows.append(["group-all", "categories"] + (library.contentKind == .movie ? ["continue-only"] : []) + (library.sources.isEmpty ? [] : ["favorites-quick"]))
+            }
             if library.sources.isEmpty { rows.append(["add-source"]) }
             else if !visible.isEmpty {
+                if library.contentKind == .live, let item = previewItem, visibleSlice.index(of: item.id) != nil {
+                    rows.append(["live-watch"] + (!compactNavigation && browserHeight >= 580 ? ["live-favorite"] : []) + (livePreview.player == nil ? [] : ["live-preview-mute"]))
+                }
                 if catalogPageCount>1 {rows.append((catalogPage>0 ? ["page-prev"] : []) + (catalogPage+1<catalogPageCount ? ["page-next"] : []))}
-                if library.contentKind == .live && previewItem != nil {rows.append(["hero-play","hero-favorite"])}
             }
         case .series:
             rows += [["series-favorite", "series-back"]]
@@ -1247,7 +1660,12 @@ struct ContentView: View {
         }
         switch action {
         case .up, .down, .left, .right:
-            if page == .catalogue { focusID=visibleSlice.move(from:focusID,action:action,prefix:focusRows,columns:columns) }
+            if page == .catalogue, library.contentKind == .live {
+                focusID = LiveTVNavigation.move(from: focusID, action: action, channels: visibleSlice,
+                                               columns: columns, sidebarIDs: liveSidebarVisible ? liveSidebarIDs : [],
+                                               preferredSidebarID: liveScopeID, preferredChannelID: previewID, prefix: focusRows)
+            }
+            else if page == .catalogue { focusID=visibleSlice.move(from:focusID,action:action,prefix:focusRows,columns:columns) }
             else { focusID = RemoteNavigation.move(from: focusID, action: action, rows: focusRows) }
         case .select: activateFocus()
         case .back: back()
@@ -1275,9 +1693,17 @@ struct ContentView: View {
         if page == .series, let item = episodes.first(where: { $0.id == id }) { playItem(item); return }
         if id.hasPrefix("tab-"), let kind = IPTVMediaKind(rawValue: String(id.dropFirst(4))) { changeKind(kind); return }
         if id.hasPrefix("season-"), let n = Int(id.dropFirst(7)) { seasonNumber = n; return }
+        if id.hasPrefix("live-category-") { selectLiveGroup(String(id.dropFirst("live-category-".count))); return }
+        if id.hasPrefix("live-preset-") { selectLivePreset(String(id.dropFirst("live-preset-".count))); return }
         if id == "group-all" { showAllCatalog(); return }
         if id.hasPrefix("group-") { group = String(id.dropFirst(6)); return }
         switch id {
+        case "live-watch": if let item = previewItem { playItem(item) }
+        case "live-favorite": if let item = previewItem { chooseFavorites(item) }
+        case "live-preview-mute": livePreview.toggleMuted()
+        case "navigation-more": showingNavigationMenu = true
+        case "live-manage-lists": showingLists = true
+        case "live-reset": showAllCatalog()
         case "page-prev": changeCatalogPage(-1)
         case "page-next": changeCatalogPage(1)
         case "hero-play": if let item=previewItem { openItem(item) }
@@ -1288,7 +1714,11 @@ struct ContentView: View {
         case "lists": showingLists = true
         case "categories": groupSearch = ""; showingGroups = true
         case "continue-only": toggleResumeFilter()
-        case "favorites-quick": toggleQuickFavorites()
+        case "favorites-quick":
+            if library.contentKind == .live {
+                if library.selectedPresetID == FavoritePresets.defaultID(for: .live) { showAllCatalog() }
+                else { selectLivePreset(FavoritePresets.defaultID(for: .live)) }
+            } else { toggleQuickFavorites() }
         case "volume-down": playback.adjustVolume(-0.1)
         case "volume-up": playback.adjustVolume(0.1)
         case "mute": playback.toggleMute()

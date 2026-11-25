@@ -1,11 +1,11 @@
 import Foundation
 
 public enum TrailerPreviewDelay: Int, CaseIterable, Identifiable, Codable, Sendable {
-    case three = 3, five = 5, ten = 10
+    case one = 1, three = 3, five = 5, ten = 10
     public static let storageKey = "fluxiptv.appearance.trailerPreviewDelay"
     public static let automaticKey = "fluxiptv.appearance.automaticTrailerPreview"
     public var id: Int { rawValue }
-    public var title: String { "\(rawValue) secondes" }
+    public var title: String { rawValue == 1 ? "1 seconde" : "\(rawValue) secondes" }
 }
 
 /// A validated public YouTube identifier. The embedded player consumes this ID;

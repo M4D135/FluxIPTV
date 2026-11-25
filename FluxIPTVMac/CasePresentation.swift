@@ -57,6 +57,9 @@ struct CasePresentation: View {
     @StateObject private var descriptions=CaseDescriptionModel()
     @State private var descriptionID=""
     @State private var descriptionActive=false
+    @State private var inspectorNavigation=CaseInspectorNavigation()
+    @State private var selectingSeason=false
+    @State private var selectingEpisode=false
     @StateObject private var bridge=CaseHitBridge()
     @State private var page:CaseFaceLayout.Page = .details
     @State private var focused:CaseFaceLayout.Action?
@@ -70,10 +73,12 @@ struct CasePresentation: View {
     @State private var handoffTask:Task<Void,Never>?
     @State private var handoffToken=UUID()
     @State private var trailerFullscreen=false
+    @State private var lastPreviewProjection:CasePreviewProjection?
     @State private var qrURL:URL?
     @State private var seasons:[IPTVSeason]=[]
     @State private var seasonIndex = 0
     @State private var episodePage = 0
+    @State private var selectedEpisodeIndex = 0
     @State private var seasonLoading = false
     @State private var seasonError = false
     @State private var loadedSeriesID:String?
@@ -107,6 +112,9 @@ struct CasePresentation: View {
         data.descriptionStatus=loaded ? descriptions.status:(descriptions.source == .iptv ? nil:"Chargement de la description…")
         data.descriptionSourceURL=loaded ? descriptions.sourceURL:nil
         data.previewStatus=mediaPreview.statusText
+        data.seasonNumbers=seasons.map(\.number)
+        data.selectedSeasonIndex=seasonIndex
+        data.seasonSelectionVisible=item.isSeriesCollection && !collectorOpen
         return data
     }
     private var collectorOpen:Bool {item.isSeriesCollection && page == .episodes}
@@ -119,12 +127,16 @@ struct CasePresentation: View {
         // explicitly grants the continuous pan to the 3D object.
         return manipulating
         #else
-        return manipulating || !collectorOpen
+        return true
         #endif
     }
-    private var previewVisible:Bool {!suspended && (trailerFullscreen || (currentFace == .details && !collectorOpen && !dragging && !manipulating)) && !startingPlayback && qrURL == nil && scenePhase == .active}
-    private var youtubeViewportEligible:Bool {trailerFullscreen || (previewVisible && bridge.previewProjection?.isAutoplayEligible == true)}
-    private var previewKey:String {"\(item.id)|\(previewVisible)|\(automaticPreview)|\(previewDelay.rawValue)|\(details.trailerURL?.absoluteString ?? "")|\(item.backdropURL?.absoluteString ?? "")"}
+    // A selected case owns its session throughout rotation. Only its rendered
+    // face pauses playback; a gesture or the target angle never destroys it.
+    private var previewActive:Bool {!suspended && !startingPlayback && qrURL == nil && scenePhase == .active}
+    private var previewVisible:Bool {previewActive && (trailerFullscreen || bridge.previewBackFacing)}
+    private var youtubeViewportEligible:Bool {previewVisible && (trailerFullscreen || bridge.previewProjection?.isAutoplayEligible == true)}
+    private var previewKey:String {"\(item.id)|\(previewActive)|\(automaticPreview)|\(previewDelay.rawValue)|\(details.trailerURL?.absoluteString ?? "")|\(item.backdropURL?.absoluteString ?? "")"}
+    private let youtubeSurfaceSize=CGSize(width:480,height:270)
     private func regions(_ face:CaseFaceLayout.Page)->[CaseFaceLayout.Region] {
         CaseFaceLayout.regions(face,series:item.isSeriesCollection,trailer:details.trailerURL != nil,episodeCount:visibleEpisodes.count,retry:seasonError).filter { region in
             if case .episode = region.action {return true};return false
@@ -138,9 +150,8 @@ struct CasePresentation: View {
                 CaseTrailerView(preview:mediaPreview,remoteEvent:remoteEvent,close:closeTrailer)
             } else {
                 VStack(spacing:4) {
-                    modelControl
-                        .overlay(alignment:.topLeading) { inlineYouTubePreview }
-                        .overlay { sideArrows }
+                    inspectionPlayButton.padding(.top,5)
+                    modelViewport
                         .frame(maxWidth:.infinity,maxHeight:.infinity)
                         .layoutPriority(1)
                     externalControls
@@ -151,14 +162,22 @@ struct CasePresentation: View {
         .onChange(of:remoteEvent){_,event in if let event {handle(event.action)}}
         .onChange(of:padSignal){_,signal in if let signal {handlePad(signal.input)}}
         .task(id:previewKey) {
-            let filmURL:URL? = previewVisible && item.kind == .movie ? (try? library.playbackURLs(for:item))?.first:nil
-            mediaPreview.update(item:item,details:details,filmURL:filmURL,backVisible:previewVisible,automatic:automaticPreview,delay:previewDelay)
-            if trailerFullscreen && previewVisible {mediaPreview.setYouTubeViewportEligible(true);mediaPreview.activateTrailer()}
+            let filmURL:URL? = previewActive && item.kind == .movie ? (try? library.playbackURLs(for:item))?.first:nil
+            mediaPreview.setBackFacing(previewVisible)
+            mediaPreview.update(item:item,details:details,filmURL:filmURL,backVisible:previewActive,automatic:automaticPreview,delay:previewDelay)
+            mediaPreview.setYouTubeViewportEligible(youtubeViewportEligible)
+            if trailerFullscreen && previewActive {mediaPreview.activateTrailer()}
         }
         .onDisappear{cancelHandoff();mediaPreview.stop();onTrailerPresentation(false)}
         .onChange(of:trailerFullscreen){_,visible in onTrailerPresentation(visible)}
+        .onChange(of:previewVisible){_,visible in mediaPreview.setBackFacing(visible)}
         .onChange(of:youtubeViewportEligible){_,eligible in mediaPreview.setYouTubeViewportEligible(eligible)}
-        .onAppear{mediaPreview.setYouTubeViewportEligible(youtubeViewportEligible)}
+        .onChange(of:bridge.previewProjection){_,projection in if let projection {lastPreviewProjection=projection}}
+        .onAppear {
+            mediaPreview.setBackFacing(previewVisible)
+            mediaPreview.setYouTubeViewportEligible(youtubeViewportEligible)
+            if let projection=bridge.previewProjection {lastPreviewProjection=projection}
+        }
         .onChange(of:scenePhase){_,phase in
             if phase != .active {cancelHandoff();padRotation=nil;dragging=false;manipulating=false;mediaPreview.stop()}
         }
@@ -170,7 +189,7 @@ struct CasePresentation: View {
         }
 
         #if os(macOS)
-        .focusable().focused($keyboardSurfaceFocused)
+        .focusable().focused($keyboardSurfaceFocused).focusEffectDisabled()
         .onAppear {keyboardSurfaceFocused=true}
         #endif
         #if os(tvOS)
@@ -179,37 +198,31 @@ struct CasePresentation: View {
         #endif
         .onChange(of:item.id){_,_ in
             // Preserve the orientation, but never reuse the previous series data.
-            cancelHandoff();trailerFullscreen=false;qrURL=nil;loadedSeriesID=nil;seasons=[];seasonIndex=0;episodePage=0;seasonError=false;seasonLoading=false
+            cancelHandoff();trailerFullscreen=false;qrURL=nil;loadedSeriesID=nil;seasons=[];seasonIndex=0;episodePage=0;selectedEpisodeIndex=0;seasonError=false;seasonLoading=false
             page = .details;commandsActive=false;manipulating=false;descriptionActive=false;descriptions.reset();descriptionID=""
-            focused=nil;padRotation=nil;dragging=false
+            focused=nil;padRotation=nil;dragging=false;lastPreviewProjection=nil
+            inspectorNavigation=CaseInspectorNavigation();selectingSeason=false;selectingEpisode=false
             #if os(tvOS)
             nativeCommandFocus=nil;surfaceFocused=true
             #endif
         }
-        .onAppear {if startEpisodes && item.isSeriesCollection {page = .episodes;orient(back:false)}}
-        .task(id:"\(item.id)|\(page == .episodes)|\(reloadToken)") {await fetchEpisodesIfNeeded()}
+        .onAppear {if startEpisodes && item.isSeriesCollection {page = .episodes;selectingEpisode=true;orient(back:false)}}
+        .task(id:"\(item.id)|\(reloadToken)") {await fetchEpisodesIfNeeded()}
         #if os(tvOS)
         .sheet(isPresented:Binding(get:{qrURL != nil},set:{if !$0{qrURL=nil}})) {if let qrURL {CaseQRView(url:qrURL,close:{self.qrURL=nil})}}
         #endif
-    }
-    private var caseTitle:some View {
-        HStack(spacing:10) {
-            if concept == .neoVideoClub { Image(systemName:"film.stack").foregroundStyle(.cyan) }
-            Text(item.name).font(.title3.weight(.semibold)).lineLimit(1)
-            Spacer(minLength:8)
-            Text("\(position+1) / \(max(1,count))").font(.caption.monospacedDigit()).foregroundStyle(.secondary)
-        }.padding(.horizontal,24).frame(maxWidth:900)
     }
     private var primaryActions:[CaseFaceLayout.Action] {
         [item.isSeriesCollection ? (collectorOpen ? .details:.episodes):.play,.favorite,.flip,.rotate,.close]
     }
     private var secondaryActions:[CaseFaceLayout.Action] {
-        guard currentFace != .front, currentFace != nil else{return []}
         if page == .episodes && item.isSeriesCollection {
-            var actions:[CaseFaceLayout.Action]=[.previousSeason,.nextSeason,.previousPage,.nextPage]
+            var actions:[CaseFaceLayout.Action]=[.previousPage,.nextPage]
+            if details.trailerURL != nil {actions.insert(.trailer,at:0)}
             if seasonError {actions.append(.retry)}
             return actions
         }
+        guard currentFace != .front, currentFace != nil else{return []}
         var actions:[CaseFaceLayout.Action]=details.trailerURL != nil ? [.trailer] : []
         actions += [.description,.wikipedia,.allocine]
         return actions
@@ -218,7 +231,7 @@ struct CasePresentation: View {
     private func commandLabel(_ action:CaseFaceLayout.Action)->(String,String) {
         switch action {
         case .play:return (playback.history.entries[item.id]?.resumable == true ? "Reprendre":"Regarder","play.fill")
-        case .episodes:return ("Ouvrir le coffret","shippingbox")
+        case .episodes:return ("Ouvrir la saison","shippingbox")
         case .favorite:return (isFavorite ? "Favori":"Favoris",isFavorite ? "star.fill":"star")
         case .flip:return ("Retourner","arrow.triangle.2.circlepath")
         case .rotate:return (manipulating ? "Terminer":"Manipuler","rotate.3d")
@@ -231,7 +244,7 @@ struct CasePresentation: View {
         case .nextSeason:return ("Saison +","chevron.right")
         case .previousPage:return ("Page −","arrow.left")
         case .nextPage:return ("Page +","arrow.right")
-        case .details:return (collectorOpen ? "Fermer le coffret":"Fiche",collectorOpen ? "shippingbox":"doc.text")
+        case .details:return (collectorOpen ? "Choisir une saison":"Fiche",collectorOpen ? "shippingbox":"doc.text")
         case .description:return ("Description","text.alignleft")
         case .retry:return ("Réessayer","arrow.clockwise")
         case .close:return ("Reposer","arrow.uturn.backward")
@@ -252,16 +265,18 @@ struct CasePresentation: View {
             .overlay(RoundedRectangle(cornerRadius:14).strokeBorder(commandsActive && focused == action ? Color.cyan:Color.white.opacity(0.11),lineWidth:commandsActive && focused == action ? 2:1))
         }.buttonStyle(.plain).accessibilityLabel(title)
         #if os(tvOS)
+        .focusable(!compact)
         .focused($nativeCommandFocus,equals:action)
         .onMoveCommand { direction in
             switch direction {
-            case .up:leaveCommands()
+            case .up:focusInspector(.preview)
             case .left:moveCommand(-1)
             case .right:moveCommand(1)
+            case .down:focusInspector(.dismiss)
             default:break
             }
         }
-        .onExitCommand {leaveCommands()}
+        .onExitCommand {handle(.back)}
         #endif
     }
     private var sideArrows:some View {
@@ -272,48 +287,92 @@ struct CasePresentation: View {
         }.padding(.horizontal,16)
     }
     private var externalControls:some View {
-        VStack(spacing:5) {
-            caseTitle
-            if startingPlayback {ProgressView("Ouverture de la vidéo…").font(.caption)}
-            else if previewVisible {Text(mediaPreview.stillLabel+" · "+mediaPreview.statusText).font(.caption2).foregroundStyle(.secondary).lineLimit(1)}
-            if collectorOpen && !seasons.isEmpty {seasonStrip}
-            ScrollViewReader { reader in
-                ScrollView(.horizontal,showsIndicators:false) {
-                    HStack(spacing:8) {ForEach(commandActions,id:\.self){ action in commandButton(action).id(action)}}
-                        .padding(.horizontal,3)
-                }.frame(height:46)
-                 .onChange(of:focused){_,action in
-                    if let action,commandActions.contains(action) {
-                        withAnimation(reduceMotion ? nil:.easeOut(duration:0.18)){reader.scrollTo(action,anchor:.center)}
+        VStack(spacing:6) {
+            if commandsActive || descriptionActive || manipulating {
+                ScrollViewReader { reader in
+                    ScrollView(.horizontal,showsIndicators:false) {
+                        HStack(spacing:7) {ForEach(commandActions,id:\.self){ action in commandButton(action).id(action)}}
+                            .padding(.horizontal,3)
+                    }.frame(height:46)
+                    .onChange(of:focused){_,action in
+                        if let action,commandActions.contains(action) {
+                            withAnimation(reduceMotion ? nil:.easeOut(duration:0.18)){reader.scrollTo(action,anchor:.center)}
+                        }
                     }
-                 }
+                }
+            } else {
+                HStack(spacing:12) {
+                    inspectionButton("Reposer",icon:"arrow.uturn.backward",target:.dismiss) {activate(.close)}
+                    Spacer(minLength:6)
+                    inspectionButton("Actions",icon:"ellipsis",target:.more,iconOnly:true) {enterCommands()}
+                    Spacer(minLength:6)
+                    inspectionButton(isFavorite ? "Favori":"Favoris",icon:isFavorite ? "star.fill":"star",target:.favorite) {favorite()}
+                }
             }
-            Text(navigationHint).font(.caption2).foregroundStyle(.secondary).lineLimit(2)
-        }.padding(.horizontal,12).padding(.vertical,7)
-         .frame(maxWidth:1000)
-         .fluxMediaGlass(radius:23).padding(.horizontal,12)
+            if startingPlayback {ProgressView("Ouverture de la vidéo…").font(.caption)}
+            else if seasonLoading {Text("Chargement des saisons…").font(.caption).foregroundStyle(.secondary)}
+            else if seasonError {Button("Saisons indisponibles · Réessayer"){activate(.retry)}.font(.caption)}
+            else if previewVisible,!mediaPreview.statusText.isEmpty {Text(mediaPreview.statusText).font(.caption2).foregroundStyle(.secondary).lineLimit(1)}
+            Text(navigationHint).font(.caption).foregroundStyle(.secondary).lineLimit(2)
+        }.padding(.horizontal,10).padding(.vertical,8)
+         .frame(maxWidth:controlBarWidth)
+         .fluxMediaGlass(radius:23).padding(.horizontal,10)
          .frame(maxWidth:.infinity)
          .accessibilityHint(navigationHint)
     }
-    private var navigationHint:String {
-        if descriptionActive {return "Description · \(descriptions.source.title) · ← → : source · OK : ouvrir la source · Retour : pochette"}
-        if manipulating {return "Flèches : tourner · OK : terminer"}
-        if commandsActive {return "← → : actions · OK : activer · ↑ ou Retour : pochette"}
-        if collectorOpen {return "↑ ↓ : épisodes · ← → : saisons · OK : regarder · Retour : fermer"}
-        return "← → : pochettes · ↑ / OK : \(item.isSeriesCollection ? "saisons":"regarder") · ↓ : actions · Retour : reposer"
+    private var controlBarWidth:CGFloat {
+        #if os(tvOS)
+        return commandsActive || descriptionActive || manipulating ? 1040:820
+        #else
+        return commandsActive || descriptionActive || manipulating ? 680:520
+        #endif
     }
-    private var seasonStrip:some View {
-        ScrollView(.horizontal,showsIndicators:false) {
-            HStack(spacing:7) {
-                ForEach(Array(seasons.enumerated()),id:\.element.id) { index,season in
-                    Button {selectSeason(index)} label: {
-                        Text("Saison \(season.number)").font(.caption.weight(.semibold))
-                            .padding(.horizontal,12).padding(.vertical,6)
-                            .background(.white.opacity(index == seasonIndex ? 0.22:0.06),in:Capsule())
-                    }.buttonStyle(.plain)
-                }
-            }.padding(.horizontal,5)
-        }.frame(maxWidth:650)
+    private var primaryPlaybackTitle:String {
+        if item.isSeriesCollection {
+            if let season=selectedSeason,visibleEpisodes.indices.contains(selectedEpisodeIndex) {
+                let number=visibleEpisodes[selectedEpisodeIndex].episodeNumber ?? (episodePage*CaseFaceLayout.episodePageSize+selectedEpisodeIndex+1)
+                return "Voir S\(season.number) · E\(number)"
+            }
+            return "Voir l’épisode"
+        }
+        return playback.history.entries[item.id]?.resumable == true ? "Reprendre le film":"Voir le film"
+    }
+    private var inspectionPlayButton:some View {
+        inspectionButton(primaryPlaybackTitle,icon:"play.fill",target:.play) {playSelectedContent()}
+            .padding(4).fluxMediaGlass(radius:22)
+            .disabled(startingPlayback || (item.isSeriesCollection && (seasonLoading || visibleEpisodes.isEmpty)))
+            .accessibilityHint("La touche Lecture lance aussi ce contenu, quelle que soit la sélection.")
+    }
+    private func inspectionButton(_ title:String,icon:String,target:CaseInspectorNavigation.Target,iconOnly:Bool=false,action:@escaping ()->Void)->some View {
+        let selected=inspectorNavigation.target == target && !commandsActive && !descriptionActive && !manipulating
+        return Button(action:action) {
+            HStack(spacing:8) {
+                Image(systemName:icon)
+                if !iconOnly {Text(title).lineLimit(1)}
+            }
+            .font(.callout.weight(.semibold))
+            .padding(.horizontal,iconOnly ? 12:15).padding(.vertical,9)
+            .background(.white.opacity(selected ? 0.24:0.045),in:RoundedRectangle(cornerRadius:14))
+            .overlay(RoundedRectangle(cornerRadius:14).strokeBorder(selected ? Color.cyan:Color.clear,lineWidth:1.5))
+        }.buttonStyle(.plain).accessibilityLabel(title)
+            .accessibilityAddTraits(selected ? .isSelected:[])
+            #if os(tvOS)
+            .focusable(false)
+            #endif
+    }
+    private var navigationHint:String {
+        if descriptionActive {return "← → Source · Valider Ouvrir · ↑ Aperçu · Retour Reposer"}
+        if manipulating {return "Flèches : tourner · OK : terminer · Menu : reposer"}
+        if commandsActive {return "← → Actions · Valider Choisir · ↑ Aperçu · Retour Reposer"}
+        if selectingSeason {return "← → Choisir la saison · Valider Épisodes · Lecture Lire · ↑ Aperçu · ↓ Actions"}
+        if selectingEpisode {return "← → Épisode · Valider / Lecture Lire · ↑ Aperçu · ↓ Actions"}
+        switch inspectorNavigation.target {
+        case .object:
+            return item.isSeriesCollection ? "← → Tourner · Double appui : changer · Valider Saisons · ↑ Aperçu":"← → Tourner · Double appui : changer · ↑ Aperçu · Lecture Lire"
+        case .preview:return details.trailerURL == nil ? "Aucune bande-annonce fournie · ↑ Lecture · ↓ Actions":"Valider Bande-annonce en grand · ↑ Lecture · ↓ Actions · Lecture Lire"
+        case .play:return "Valider / Lecture Lire · ↓ Aperçu · Retour Reposer"
+        case .dismiss,.favorite,.more:return "← → Choisir · Valider Activer · ↑ Aperçu · Retour Reposer"
+        }
     }
     private var model:some View {
         Case3DView(item:item,details:details,printData:printData,focused:manipulating ? nil:focused,yaw:yaw,pitch:pitch,motion:!reduceMotion && !dragging,bridge:bridge,padInput:handlePad,padEnabled:acceptsRotation,previousItem:previousItem,nextItem:nextItem,previousFarItem:previousFarItem,nextFarItem:nextFarItem,selectedTheme:selectedTheme,previewStill:mediaPreview.still,previewPlayer:mediaPreview.player,previewPlaying:mediaPreview.showVideo && previewVisible,concept:concept)
@@ -321,16 +380,18 @@ struct CasePresentation: View {
     }
     @ViewBuilder private var inlineYouTubePreview:some View {
         #if os(macOS) || os(iOS)
-        if previewVisible, !trailerFullscreen,
+        if previewActive, !trailerFullscreen,
            case .youtube = TrailerPreviewRoute.resolve(details.trailerURL),
-           let projection=bridge.previewProjection {
+           let projection=bridge.previewProjection ?? lastPreviewProjection {
+            let drawable=bridge.previewProjection != nil && previewVisible
             ZStack(alignment:.topTrailing) {
-                if let session=mediaPreview.youtubeSession, projection.isAutoplayEligible {
-                    // A real interactive web view follows the projected case
-                    // surface. SceneKit cannot render a live WKWebView texture.
+                if let session=mediaPreview.youtubeSession {
+                    // Keep one mounted host through edge-on/front rotations.
+                    // A fixed logical viewport is projected onto the sleeve;
+                    // its WebKit document never shrinks or reloads mid-gesture.
                     YouTubeTrailerSurface(session:session)
-                        .opacity(mediaPreview.showVideo ? 1:0)
-                        .allowsHitTesting(mediaPreview.showVideo)
+                        .opacity(mediaPreview.showVideo && drawable ? 1:0)
+                        .allowsHitTesting(mediaPreview.showVideo && drawable && !dragging && !manipulating)
                         .animation(reduceMotion ? nil:.easeInOut(duration:0.5),value:mediaPreview.showVideo)
                 } else {
                     Color.clear.allowsHitTesting(false)
@@ -341,23 +402,30 @@ struct CasePresentation: View {
                         .fluxMediaGlass(radius:12)
                 }.buttonStyle(.plain).offset(y:-34)
                     .accessibilityLabel("Bande-annonce en plein écran")
+                    .opacity(drawable ? 1:0).allowsHitTesting(drawable)
             }
-            .frame(width:projection.surfaceSize.width,height:projection.surfaceSize.height)
-            .projectionEffect(previewTransform(projection))
+            .frame(width:youtubeSurfaceSize.width,height:youtubeSurfaceSize.height)
+            .projectionEffect(previewTransform(projection,sourceSize:youtubeSurfaceSize))
+            .accessibilityHidden(!drawable)
         }
         #endif
     }
-    private func previewTransform(_ projection:CasePreviewProjection)->ProjectionTransform {
+    private func previewTransform(_ projection:CasePreviewProjection,sourceSize:CGSize)->ProjectionTransform {
         let m=projection.matrix
+        let xScale=projection.surfaceSize.width/sourceSize.width
+        let yScale=projection.surfaceSize.height/sourceSize.height
         var transform=CATransform3DIdentity
-        transform.m11=m.m11;transform.m12=m.m12;transform.m14=m.m14
-        transform.m21=m.m21;transform.m22=m.m22;transform.m24=m.m24
+        transform.m11=m.m11*xScale;transform.m12=m.m12*xScale;transform.m14=m.m14*xScale
+        transform.m21=m.m21*yScale;transform.m22=m.m22*yScale;transform.m24=m.m24*yScale
         transform.m41=m.m41;transform.m42=m.m42
         return ProjectionTransform(transform)
     }
     private func openTrailer() {
-        leaveCommands();faceBack()
+        leaveCommands()
+        inspectorNavigation.focus(.preview);focused = .trailer
+        if !collectorOpen {faceBack()}
         let filmURL:URL? = item.kind == .movie ? (try? library.playbackURLs(for:item))?.first:nil
+        mediaPreview.setBackFacing(true)
         mediaPreview.update(item:item,details:details,filmURL:filmURL,backVisible:true,automatic:automaticPreview,delay:previewDelay)
         mediaPreview.setYouTubeViewportEligible(true)
         trailerFullscreen=true
@@ -366,17 +434,65 @@ struct CasePresentation: View {
     private func closeTrailer() {
         mediaPreview.setMuted(true)
         trailerFullscreen=false
+        inspectorNavigation.focus(.preview);focused = .trailer
+        mediaPreview.setBackFacing(bridge.previewBackFacing)
         #if os(macOS)
         keyboardSurfaceFocused=false
         Task { @MainActor in await Task.yield();keyboardSurfaceFocused=true }
         #endif
     }
+    private var modelViewport:some View {
+        modelControl
+            .overlay(alignment:.topLeading) { inlineYouTubePreview }
+            .overlay { sideArrows }
+            .coordinateSpace(name:"case-viewport")
+            #if !os(tvOS)
+            // An ancestor gesture survives the video being hosted above the
+            // SceneKit view. Native YouTube buttons remain independently usable.
+            .simultaneousGesture(caseDragGesture)
+            #endif
+    }
+    #if !os(tvOS)
+    private var caseDragGesture:some Gesture {
+        DragGesture(minimumDistance:5,coordinateSpace:.named("case-viewport"))
+            .onChanged { value in
+                guard acceptsRotation else{return}
+                if !dragging && !mayBeginDrag(at:value.startLocation) {return}
+                #if os(macOS)
+                guard padRotation == nil else{return}
+                if !dragging {
+                    dragYaw=yaw;dragPitch=pitch;dragging=true;focused=nil
+                    inspectorNavigation.focus(.object);selectingSeason=false;selectingEpisode=false
+                }
+                yaw=dragYaw+Double(value.translation.width)*0.60
+                pitch=dragPitch+Double(value.translation.height)*0.55
+                #else
+                handlePad(.translation(Double(value.translation.width),Double(value.translation.height)))
+                #endif
+            }
+            .onEnded { value in
+                #if os(macOS)
+                if padRotation == nil {dragging=false}
+                #else
+                if padRotation != nil {handlePad(.finishTranslation(Double(value.translation.width),Double(value.translation.height)))}
+                #endif
+            }
+    }
+    private func mayBeginDrag(at point:CGPoint)->Bool {
+        guard mediaPreview.showVideo,case .youtube = TrailerPreviewRoute.resolve(details.trailerURL),
+              let (_,uv)=bridge.pick?(point),bridge.previewContentUVFrame.contains(uv) else{return true}
+        let frame=bridge.previewContentUVFrame
+        let y=(uv.y-frame.minY)/frame.height
+        // Leave the title, timeline, volume and player control bands to WebKit.
+        return y>0.18 && y<0.76
+    }
+    #endif
     @ViewBuilder private var modelControl:some View {
         #if os(tvOS)
         // One native focus target routes the Siri Remote to the external commands
         // and the printed episode regions.
         Button {handle(.select)} label:{model}
-            .buttonStyle(.plain).focused($surfaceFocused)
+            .buttonStyle(.plain).focused($surfaceFocused).focusEffectDisabled()
             .onAppear{surfaceFocused=true}
             .onMoveCommand {direction in
                 let action:RemoteAction
@@ -386,7 +502,7 @@ struct CasePresentation: View {
                 pendingDirection?.cancel()
                 guard !dragging,Date.timeIntervalSinceReferenceDate-lastPadTime > 0.18 else{return}
                 pendingDirection=Task { @MainActor in
-                    try? await Task.sleep(nanoseconds:110_000_000)
+                    try? await Task.sleep(nanoseconds:20_000_000)
                     guard !Task.isCancelled,!dragging,Date.timeIntervalSinceReferenceDate-lastPadTime > 0.18 else{return}
                     handle(action)
                 }
@@ -398,6 +514,10 @@ struct CasePresentation: View {
             Color.clear.contentShape(Rectangle())
             .onTapGesture { location in
                 guard !dragging else{return}
+                if !collectorOpen,let index=bridge.pickSeason?(location) {
+                    if selectingSeason && index == seasonIndex {activate(.episodes)} else {selectSeason(index)}
+                    return
+                }
                 guard let (surface,uv)=bridge.pick?(location) else {
                     if let offset=bridge.pickNeighbor?(location) {moveNeighbor(offset)}
                     else {close()}
@@ -405,42 +525,29 @@ struct CasePresentation: View {
                 }
                 if surface == .front || surface == .back {
                     let face:CaseFaceLayout.Page=surface == .front ? (collectorOpen ? .episodes:.front):.details
-                    if face == .details && !collectorOpen,CaseBackMediaLayout.descriptionFrame.contains(uv) {
+                    if face == .details,CaseBackMediaLayout.descriptionFrame.contains(uv) {
                         activate(.description)
                         if CaseBackMediaLayout.descriptionPrevious.contains(uv) {descriptions.step(-1)}
                         else if CaseBackMediaLayout.descriptionNext.contains(uv) {descriptions.step(1)}
                         else if CaseBackMediaLayout.descriptionLink.contains(uv),descriptionID == descriptionKey,let url=descriptions.sourceURL {showLink(url)}
                         else {activate(.description)}
                     }
-                    else if face == .details && !collectorOpen,CaseBackMediaLayout.frame.contains(uv) {activate(.trailer)}
-                    else if face == .details && !collectorOpen,let action=CaseBackMediaLayout.action(at:uv) {activate(action == .play && item.isSeriesCollection ? .episodes:action)}
+                    else if face == .details,CaseBackMediaLayout.frame.contains(uv) {activate(.trailer)}
+                    else if face == .details,let action=CaseBackMediaLayout.action(at:uv) {
+                        if action == .play {playSelectedContent()}else{activate(action)}
+                    }
                     else if let action=CaseFaceLayout.action(at:uv,in:regions(face)) {activate(action)}
                     else if collectorOpen && surface == .back {closeCollector()}
-                    else {selectPrimary()}
-                } else {selectPrimary()}
+                    else {handle(.select)}
+                } else {handle(.select)}
             }
-            .gesture(DragGesture(minimumDistance:5).onChanged{value in
-                #if os(macOS)
-                if padRotation != nil {return}
-                if !dragging {dragYaw=yaw;dragPitch=pitch;dragging=true;focused=nil;commandsActive=false;descriptionActive=false}
-                yaw=dragYaw+Double(value.translation.width)*0.60
-                pitch=dragPitch+Double(value.translation.height)*0.55
-                #else
-                handlePad(.translation(Double(value.translation.width),Double(value.translation.height)))
-                #endif
-            }.onEnded{value in
-                #if os(macOS)
-                if padRotation == nil {dragging=false}
-                #else
-                handlePad(.finishTranslation(Double(value.translation.width),Double(value.translation.height)))
-                #endif
-            })
+
             }
             .accessibilityElement(children:.ignore)
             .accessibilityLabel(item.name)
             .accessibilityHint("Glissez sur la boîte ou à deux doigts sur le trackpad pour la tourner.")
             .accessibilityAction(named:Text("Retourner")){flip()}
-            .accessibilityAction(named:Text("Lire ou ouvrir les épisodes")){activate(item.isSeriesCollection ? .episodes:.play)}
+            .accessibilityAction(named:Text("Lire le film ou l’épisode")){playSelectedContent()}
             .accessibilityAction(named:Text("Reposer")){close()}
         #endif
     }
@@ -457,6 +564,7 @@ struct CasePresentation: View {
                 guard !dragging else{return}
                 padRotation=CasePadRotation(yaw:yaw,pitch:pitch)
                 dragging=true;focused=nil;commandsActive=false;descriptionActive=false
+                inspectorNavigation.focus(.object);selectingSeason=false;selectingEpisode=false
             }
             guard var rotation=padRotation else{return}
             let pose:CasePadRotation.Pose
@@ -480,15 +588,32 @@ struct CasePresentation: View {
         yaw=target+((yaw-target)/360).rounded()*360;pitch=0
     }
     private func faceBack() {orient(back:true)}
-    private func closeCollector() {page = .details;leaveCommands();orient(back:false)}
-    private func enterCommands() {
-        commandsActive=true;focused = .favorite
+    private func closeCollector() {
+        page = .details;leaveCommands();orient(back:false)
+        selectingSeason = !seasons.isEmpty
+    }
+    private func focusInspector(_ target:CaseInspectorNavigation.Target) {
+        commandsActive=false;descriptionActive=false;manipulating=false
+        selectingSeason=false;selectingEpisode=false
+        inspectorNavigation.focus(target)
+        focused = target == .preview ? .trailer:nil
+        // The open collector already exposes its preview on the hinged lid.
+        if target == .preview && !collectorOpen {faceBack()}
         #if os(tvOS)
-        surfaceFocused=false;nativeCommandFocus = .favorite
+        nativeCommandFocus=nil;surfaceFocused=true
+        #endif
+    }
+    private func enterCommands() {
+        inspectorNavigation.focus(.more)
+        selectingSeason=false;selectingEpisode=false;manipulating=false;descriptionActive=false
+        commandsActive=true;focused = primaryActions.first
+        #if os(tvOS)
+        surfaceFocused=false;nativeCommandFocus = focused
         #endif
     }
     private func leaveCommands() {
-        commandsActive=false;descriptionActive=false;focused=collectorOpen && !visibleEpisodes.isEmpty ? .episode(0):nil
+        commandsActive=false;descriptionActive=false;focused=nil
+        selectingSeason=false;selectingEpisode=false;inspectorNavigation.focus(.object)
         #if os(tvOS)
         nativeCommandFocus=nil;surfaceFocused=true
         #endif
@@ -526,39 +651,41 @@ struct CasePresentation: View {
         if let jumpBy {jumpBy(offset)}
         else if offset < 0 {previous()} else {next()}
     }
-    private func selectPrimary() {
-        if collectorOpen {
-            guard !seasonLoading else{return}
-            if seasonError {activate(.retry)}
-            else if let focused,case .episode=focused {activate(focused)}
-            else if !visibleEpisodes.isEmpty {activate(.episode(0))}
-        } else {activate(item.isSeriesCollection ? .episodes:.play)}
+    private func playSelectedContent() {
+        guard !startingPlayback else{return}
+        guard item.isSeriesCollection else {preparePlayback(play);return}
+        guard !seasonLoading else{return}
+        if seasonError {activate(.retry);return}
+        guard !visibleEpisodes.isEmpty else{return}
+        activate(.episode(max(0,min(selectedEpisodeIndex,visibleEpisodes.count-1))))
     }
     private func selectSeason(_ index:Int) {
         guard seasons.indices.contains(index) else{return}
-        seasonIndex=index;episodePage=0;focused=seasons[index].episodes.isEmpty ? nil:.episode(0)
-        #if os(tvOS)
-        nativeCommandFocus=nil;surfaceFocused=true;commandsActive=false
-        #endif
+        if seasonIndex != index {seasonIndex=index;episodePage=0;selectedEpisodeIndex=0}
+        page = .details;focusInspector(.object);selectingSeason=true;orient(back:false)
+    }
+    private func enterEpisodeSelection() {
+        focusInspector(.object);selectingEpisode=true
+        focused=visibleEpisodes.isEmpty ? nil:.episode(selectedEpisodeIndex)
+        orient(back:false)
     }
     private func moveEpisode(_ delta:Int) {
         guard !visibleEpisodes.isEmpty else{return}
-        let current:Int
-        if let focused,case .episode(let index)=focused {current=index}else{current=delta>0 ? -1:visibleEpisodes.count}
-        let next=current+delta
-        if next<0,episodePage>0 {episodePage-=1;focused = .episode(visibleEpisodes.count-1)}
-        else if next>=visibleEpisodes.count,episodePage+1<pageCount {episodePage+=1;focused = .episode(0)}
-        else {focused = .episode(max(0,min(visibleEpisodes.count-1,next)))}
+        let next=selectedEpisodeIndex+delta
+        if next<0,episodePage>0 {episodePage-=1;selectedEpisodeIndex=visibleEpisodes.count-1}
+        else if next>=visibleEpisodes.count,episodePage+1<pageCount {episodePage+=1;selectedEpisodeIndex=0}
+        else {selectedEpisodeIndex=max(0,min(visibleEpisodes.count-1,next))}
+        focused = .episode(selectedEpisodeIndex)
     }
     private func fetchEpisodesIfNeeded() async {
-        guard page == .episodes,item.isSeriesCollection,loadedSeriesID != item.id else{return}
+        guard item.isSeriesCollection,loadedSeriesID != item.id else{return}
         let id=item.id
         seasonLoading=true;seasonError=false
         do {
             let result=try await library.seasons(for:item)
             guard !Task.isCancelled,id == item.id else{return}
-            seasons=result;seasonIndex=0;episodePage=0;loadedSeriesID=id;seasonLoading=false
-            if collectorOpen,!visibleEpisodes.isEmpty {focused = .episode(0)}
+            seasons=result;seasonIndex=0;episodePage=0;selectedEpisodeIndex=0;loadedSeriesID=id;seasonLoading=false
+            if selectingEpisode,!visibleEpisodes.isEmpty {focused = .episode(0)}
         } catch {
             guard !Task.isCancelled else{return};seasonLoading=false;seasonError=true
         }
@@ -567,12 +694,12 @@ struct CasePresentation: View {
         switch action {
         case .flip:flip()
         case .rotate:let wasManipulating=manipulating;leaveCommands();manipulating = !wasManipulating;focused=nil
-        case .play:preparePlayback(play)
+        case .play:playSelectedContent()
         case .favorite:favorite()
         case .previous:moveNeighbor(-1)
         case .next:moveNeighbor(1)
         case .close:cancelHandoff();mediaPreview.stop();close()
-        case .episodes:guard item.isSeriesCollection else{return};manipulating=false;page = .episodes;leaveCommands();orient(back:false)
+        case .episodes:guard item.isSeriesCollection else{return};page = .episodes;enterEpisodeSelection()
         case .details:closeCollector()
         case .description:
             descriptionActive=true;commandsActive=false;focused = .description
@@ -581,10 +708,10 @@ struct CasePresentation: View {
             #endif
         case .previousSeason:selectSeason(max(0,seasonIndex-1))
         case .nextSeason:selectSeason(min(max(0,seasons.count-1),seasonIndex+1))
-        case .previousPage:episodePage=max(0,episodePage-1);focused=visibleEpisodes.isEmpty ? nil:.episode(0)
-        case .nextPage:episodePage=min(pageCount-1,episodePage+1);focused=visibleEpisodes.isEmpty ? nil:.episode(0)
+        case .previousPage:episodePage=max(0,episodePage-1);selectedEpisodeIndex=0;enterEpisodeSelection()
+        case .nextPage:episodePage=min(pageCount-1,episodePage+1);selectedEpisodeIndex=0;enterEpisodeSelection()
         case .retry:loadedSeriesID=nil;reloadToken=UUID()
-        case .episode(let index):if visibleEpisodes.indices.contains(index){let episode=visibleEpisodes[index],allSeasons=seasons;preparePlayback{playEpisode(episode,allSeasons)}}
+        case .episode(let index):if visibleEpisodes.indices.contains(index){selectedEpisodeIndex=index;let episode=visibleEpisodes[index],allSeasons=seasons;preparePlayback{playEpisode(episode,allSeasons)}}
         case .trailer:
             guard let url=details.trailerURL else{return}
             switch TrailerPreviewRoute.resolve(url) {
@@ -610,32 +737,35 @@ struct CasePresentation: View {
             }
         }
         if trailerFullscreen {return}
-        if qrURL != nil {if action == .back {qrURL=nil};return}
+        if qrURL != nil {if action == .back || action == .home {qrURL=nil};return}
+        if action != .left && action != .right {inspectorNavigation.focus(inspectorNavigation.target)}
+        // These shortcuts have the same meaning in every inspection context.
+        if action == .back || action == .home {activate(.close);return}
+        if action == .playPause {playSelectedContent();return}
+        if action == .fullscreen {toggleNativeFullscreen();return}
+        if action == .previous {moveNeighbor(-1);return}
+        if action == .next {moveNeighbor(1);return}
+        if action == .options {enterCommands();return}
+        if action == .mute {mediaPreview.toggleMuted();return}
+
         if manipulating {
             switch action {
             case .left:yaw -= 25
             case .right:yaw += 25
             case .up:pitch -= 25
             case .down:pitch += 25
-            case .select,.options:manipulating=false
-            case .previous:moveNeighbor(-1)
-            case .next:moveNeighbor(1)
-            case .back:manipulating=false
-            case .home:close()
-            case .fullscreen:toggleNativeFullscreen()
-            case .playPause:activate(item.isSeriesCollection ? .episodes:.play)
+            case .select:manipulating=false;focusInspector(.object)
             default:break
             }
             return
         }
         if descriptionActive {
             switch action {
-            case .left,.previous:descriptions.step(-1)
-            case .right,.next:descriptions.step(1)
+            case .left:descriptions.step(-1)
+            case .right:descriptions.step(1)
             case .select:if descriptionID == descriptionKey,let url=descriptions.sourceURL {showLink(url)}
-            case .back,.up:leaveCommands()
-            case .down,.options:descriptionActive=false;enterCommands()
-            case .home:mediaPreview.stop();close()
+            case .up:focusInspector(.preview)
+            case .down:focusInspector(.dismiss)
             default:break
             }
             return
@@ -645,34 +775,63 @@ struct CasePresentation: View {
             case .left:moveCommand(-1)
             case .right:moveCommand(1)
             case .select:if let focused {activate(focused)}
-            case .up,.options,.back:leaveCommands()
-            case .home:mediaPreview.stop();close()
-            case .playPause:selectPrimary()
+            case .up:focusInspector(.preview)
+            case .down:focusInspector(.dismiss)
             default:break
             }
             return
         }
-        if collectorOpen {
+        if selectingSeason {
             switch action {
-            case .up:moveEpisode(-1)
-            case .down:moveEpisode(1)
-            case .left:activate(.previousSeason)
-            case .right:activate(.nextSeason)
-            case .select,.playPause:selectPrimary()
-            case .back:closeCollector()
-            case .home:close()
-            case .options:enterCommands()
-            case .previous:moveNeighbor(-1)
-            case .next:moveNeighbor(1)
-            case .fullscreen:toggleNativeFullscreen()
+            case .left:selectSeason(max(0,seasonIndex-1))
+            case .right:selectSeason(min(max(0,seasons.count-1),seasonIndex+1))
+            case .select:activate(.episodes)
+            case .up:focusInspector(.preview)
+            case .down:focusInspector(.dismiss)
             default:break
             }
             return
         }
-        switch action {
-        case .down,.options:enterCommands()
-        case .fullscreen:toggleNativeFullscreen()
-        default:if let command=CaseCarousel.command(for:action,series:item.isSeriesCollection) {activate(command)}
+        if selectingEpisode {
+            switch action {
+            case .left:moveEpisode(-1)
+            case .right:moveEpisode(1)
+            case .select:playSelectedContent()
+            case .up:focusInspector(.preview)
+            case .down:focusInspector(.dismiss)
+            default:break
+            }
+            return
+        }
+        if action == .select,inspectorNavigation.target == .object,item.isSeriesCollection {
+            if collectorOpen {enterEpisodeSelection()}
+            else if seasonError {activate(.retry)}
+            else if !seasons.isEmpty {selectSeason(seasonIndex)}
+            return
+        }
+        switch inspectorNavigation.handle(action:action,at:Date.timeIntervalSinceReferenceDate) {
+        case .none:break
+        case .focus(let target):focusInspector(target)
+        case .rotate(let degrees):
+            focused=nil;selectingSeason=false;selectingEpisode=false
+            yaw += degrees
+        case .neighbor(let offset):
+            if CaseCarousel.index(from:position,offset:offset,count:count) != nil {
+                // The first tap already turned immediately. A confirmed double
+                // press keeps the original orientation while changing titles.
+                yaw -= Double(offset)*25
+                moveNeighbor(offset)
+            }
+        case .activate(let target):
+            switch target {
+            case .preview:activate(.trailer)
+            case .play:playSelectedContent()
+            case .dismiss:activate(.close)
+            case .favorite:favorite()
+            case .more:enterCommands()
+            case .object:break
+            }
+        case .close:activate(.close)
         }
     }
 
@@ -754,7 +913,7 @@ private struct CaseTrailerView:View {
             case .playPause:preview.togglePlayback()
             case .rewind:preview.seek(by:-15)
             case .forward:preview.seek(by:15)
-            case .back,.home:close()
+            case .back,.home:Task { @MainActor in await Task.yield();close() }
             default:break
             }
         }

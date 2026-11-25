@@ -9,14 +9,19 @@
 		A34C6AF67F091A0F6C2D560F /* CaseCarousel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaseCarousel.swift; sourceTree = "<group>"; };
 		2456E75E1A2A3EB288D693FB /* CaseDescriptionSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaseDescriptionSource.swift; sourceTree = "<group>"; };
 		381938EAFDF42904BF98BFD7 /* CaseFaceLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaseFaceLayout.swift; sourceTree = "<group>"; };
+		C7E54D480A6ED9E2FD47EB21 /* CaseInspectorNavigation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaseInspectorNavigation.swift; sourceTree = "<group>"; };
 		F91A44BC238E1393E8B553E6 /* CaseMetadataDownload.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaseMetadataDownload.swift; sourceTree = "<group>"; };
+		D4F3455477E485D46F33635D /* CasePackageFormat.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CasePackageFormat.swift; sourceTree = "<group>"; };
 		90A019F14A12DE658D3A65B6 /* CasePadRotation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CasePadRotation.swift; sourceTree = "<group>"; };
+		D4BB3EC3F3C021F355CB56B8 /* CasePreviewFacing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CasePreviewFacing.swift; sourceTree = "<group>"; };
 		BFC1A3596AACABC36C1E175F /* CasePreviewProjection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CasePreviewProjection.swift; sourceTree = "<group>"; };
 		452F88EAC0D58B7EDF7B3E0F /* CatalogIndex.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CatalogIndex.swift; sourceTree = "<group>"; };
 		D858DAA00A790C43E176CB27 /* CinemaLinks.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CinemaLinks.swift; sourceTree = "<group>"; };
 		50BBE112FB62DFA6872F556B /* ClubInterfaceProfile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClubInterfaceProfile.swift; sourceTree = "<group>"; };
 		0D6FEB8D4AD3F7D711918322 /* FavoritePresets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FavoritePresets.swift; sourceTree = "<group>"; };
 		036A1023727878A68B77CCC7 /* IPTVModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IPTVModels.swift; sourceTree = "<group>"; };
+		9463E88EFC70B971E7E7C96E /* LiveTVNavigation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveTVNavigation.swift; sourceTree = "<group>"; };
+		FC445A6EF515962E38773446 /* LiveTVPreviewDelay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveTVPreviewDelay.swift; sourceTree = "<group>"; };
 		FDECBD0360D30C131670438D /* M3UParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = M3UParser.swift; sourceTree = "<group>"; };
 		9C49654EB3B401B54721801E /* MediaEnvironment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaEnvironment.swift; sourceTree = "<group>"; };
 		EAA4B03EAF7C63917F9A4E6E /* PlaybackPlan.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackPlan.swift; sourceTree = "<group>"; };
@@ -26,6 +31,7 @@
 		95ED7A3B302068FE5CBC17EA /* ProceduralCase.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProceduralCase.swift; sourceTree = "<group>"; };
 		55AA823D8EF68824FCD43A6B /* ProceduralCinema.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProceduralCinema.swift; sourceTree = "<group>"; };
 		B342FF1B2DECDBEE24F36A91 /* RemoteNavigation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteNavigation.swift; sourceTree = "<group>"; };
+		9A11A4D8FE9410B768A09E48 /* SeriesSeasonRackLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SeriesSeasonRackLayout.swift; sourceTree = "<group>"; };
 		A6BB62F25119F5B1F0283B96 /* TrailerPreview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrailerPreview.swift; sourceTree = "<group>"; };
 		00FE16DDFE7938957389D12C /* VideoClubTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoClubTheme.swift; sourceTree = "<group>"; };
 		51FA6BBD31BE139E4F553A2C /* ViewingHistory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ViewingHistory.swift; sourceTree = "<group>"; };
@@ -37,11 +43,14 @@
 		53647C1074E5060BC554EC8A /* CaseDescriptionModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaseDescriptionModel.swift; sourceTree = "<group>"; };
 		BC9D6B22944CFC1231A477D7 /* CaseMediaPreview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaseMediaPreview.swift; sourceTree = "<group>"; };
 		8095FF09F9AE3C07534854A2 /* CasePresentation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CasePresentation.swift; sourceTree = "<group>"; };
+		3BFD8B8EEDB186F0A5CFD4DF /* CatalogSleeveArtwork.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CatalogSleeveArtwork.swift; sourceTree = "<group>"; };
 		1FB363223C915553FC767B86 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		A26CC5019246397EBB95B3A3 /* FavoriteAssignmentSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FavoriteAssignmentSheet.swift; sourceTree = "<group>"; };
 		AA567ED50C3E4D436FDBD3E0 /* FluxIPTVApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FluxIPTVApp.swift; sourceTree = "<group>"; };
 		CA3ACC96A965517BA8E76FC9 /* GlassStyle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlassStyle.swift; sourceTree = "<group>"; };
 		E9C9EDA47B7C41EDEA525A39 /* IPTVLibrary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IPTVLibrary.swift; sourceTree = "<group>"; };
+		ADA8975A1796E6749CEB0B2C /* LiveTVComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveTVComponents.swift; sourceTree = "<group>"; };
+		AD622DA4935BDC530F50B585 /* LiveTVPreviewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveTVPreviewController.swift; sourceTree = "<group>"; };
 		1035168744182B56EC2FE967 /* PlaybackController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackController.swift; sourceTree = "<group>"; };
 		8F96025E151B7351D4135963 /* PlaybackEntranceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackEntranceView.swift; sourceTree = "<group>"; };
 		F46FBD079B57E6EE0A61520B /* PlaybackSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackSettingsView.swift; sourceTree = "<group>"; };
@@ -49,6 +58,7 @@
 		3EA2E05D3E5745ACF09347E8 /* PresetAndSeriesViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PresetAndSeriesViews.swift; sourceTree = "<group>"; };
 		40B0D6A75520946395F6C85A /* ProceduralStage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProceduralStage.swift; sourceTree = "<group>"; };
 		8440593A979F82601C2CDF77 /* RemotePad.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemotePad.swift; sourceTree = "<group>"; };
+		B06C15F83A429A4CBBC690F8 /* SeriesSeasonRack.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SeriesSeasonRack.swift; sourceTree = "<group>"; };
 		B2C63DE91AAA0F41EF7776D1 /* SourcePersistence.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SourcePersistence.swift; sourceTree = "<group>"; };
 		8AB13C934679310A8F38D0D6 /* YouTubeTrailerPlayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouTubeTrailerPlayer.swift; sourceTree = "<group>"; };
 		F6C4B7F7819F529F98FC80B2 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
@@ -58,8 +68,8 @@
 		61A406D1649C4DF03DEC068C /* room-resources */ = {isa = PBXFileReference; lastKnownFileType = folder; path = RoomBakes; sourceTree = "<group>"; };
 		DC76E9F0C0006E8F919E0C51 /* root */ = {isa = PBXGroup; children = (239C0D59794E714594381626, CB0CD26C9B99B510311A518B, FBDC4F23F93125BBEEAE800C,); sourceTree = "<group>"; };
 		239C0D59794E714594381626 /* core-parent */ = {isa = PBXGroup; children = (94A0426E8D3203DA5468CCF0,); path = Sources; sourceTree = "<group>"; };
-		94A0426E8D3203DA5468CCF0 /* core */ = {isa = PBXGroup; children = (EA66153F326A858F16EAE35D, 6E744E270A436789C4003813, A34C6AF67F091A0F6C2D560F, 2456E75E1A2A3EB288D693FB, 381938EAFDF42904BF98BFD7, F91A44BC238E1393E8B553E6, 90A019F14A12DE658D3A65B6, BFC1A3596AACABC36C1E175F, 452F88EAC0D58B7EDF7B3E0F, D858DAA00A790C43E176CB27, 50BBE112FB62DFA6872F556B, 0D6FEB8D4AD3F7D711918322, 036A1023727878A68B77CCC7, FDECBD0360D30C131670438D, 9C49654EB3B401B54721801E, EAA4B03EAF7C63917F9A4E6E, 420473A080BD6055CC581596, F5BF64969CE486329699ED56, E481AF8ABB271ACE3C470576, 95ED7A3B302068FE5CBC17EA, 55AA823D8EF68824FCD43A6B, B342FF1B2DECDBEE24F36A91, A6BB62F25119F5B1F0283B96, 00FE16DDFE7938957389D12C, 51FA6BBD31BE139E4F553A2C, B3E6AC9A291484565BB06AF7, 814BB721E711CEF5F0207F32,); path = FluxIPTVCore; sourceTree = "<group>"; };
-		CB0CD26C9B99B510311A518B /* mac-parent */ = {isa = PBXGroup; children = (19F762623A67C2CA119F12C0, C96EA2AA5EC51285B0ACF5D7, 21DE11E8264A380E96152294, 53647C1074E5060BC554EC8A, BC9D6B22944CFC1231A477D7, 8095FF09F9AE3C07534854A2, 1FB363223C915553FC767B86, A26CC5019246397EBB95B3A3, AA567ED50C3E4D436FDBD3E0, CA3ACC96A965517BA8E76FC9, E9C9EDA47B7C41EDEA525A39, 1035168744182B56EC2FE967, 8F96025E151B7351D4135963, F46FBD079B57E6EE0A61520B, CA25A936E0D2F366D8457B91, 3EA2E05D3E5745ACF09347E8, 40B0D6A75520946395F6C85A, 8440593A979F82601C2CDF77, B2C63DE91AAA0F41EF7776D1, 8AB13C934679310A8F38D0D6, F6C4B7F7819F529F98FC80B2, 9151EC2D8CA7E92275B48BF4, 71FC873CB7C523DC7E55770F, 63E20DBBFB9EFEB7C1B7AB8F, 61A406D1649C4DF03DEC068C,); path = FluxIPTVMac; name = FluxIPTVShared; sourceTree = "<group>"; };
+		94A0426E8D3203DA5468CCF0 /* core */ = {isa = PBXGroup; children = (EA66153F326A858F16EAE35D, 6E744E270A436789C4003813, A34C6AF67F091A0F6C2D560F, 2456E75E1A2A3EB288D693FB, 381938EAFDF42904BF98BFD7, C7E54D480A6ED9E2FD47EB21, F91A44BC238E1393E8B553E6, D4F3455477E485D46F33635D, 90A019F14A12DE658D3A65B6, D4BB3EC3F3C021F355CB56B8, BFC1A3596AACABC36C1E175F, 452F88EAC0D58B7EDF7B3E0F, D858DAA00A790C43E176CB27, 50BBE112FB62DFA6872F556B, 0D6FEB8D4AD3F7D711918322, 036A1023727878A68B77CCC7, 9463E88EFC70B971E7E7C96E, FC445A6EF515962E38773446, FDECBD0360D30C131670438D, 9C49654EB3B401B54721801E, EAA4B03EAF7C63917F9A4E6E, 420473A080BD6055CC581596, F5BF64969CE486329699ED56, E481AF8ABB271ACE3C470576, 95ED7A3B302068FE5CBC17EA, 55AA823D8EF68824FCD43A6B, B342FF1B2DECDBEE24F36A91, 9A11A4D8FE9410B768A09E48, A6BB62F25119F5B1F0283B96, 00FE16DDFE7938957389D12C, 51FA6BBD31BE139E4F553A2C, B3E6AC9A291484565BB06AF7, 814BB721E711CEF5F0207F32,); path = FluxIPTVCore; sourceTree = "<group>"; };
+		CB0CD26C9B99B510311A518B /* mac-parent */ = {isa = PBXGroup; children = (19F762623A67C2CA119F12C0, C96EA2AA5EC51285B0ACF5D7, 21DE11E8264A380E96152294, 53647C1074E5060BC554EC8A, BC9D6B22944CFC1231A477D7, 8095FF09F9AE3C07534854A2, 3BFD8B8EEDB186F0A5CFD4DF, 1FB363223C915553FC767B86, A26CC5019246397EBB95B3A3, AA567ED50C3E4D436FDBD3E0, CA3ACC96A965517BA8E76FC9, E9C9EDA47B7C41EDEA525A39, ADA8975A1796E6749CEB0B2C, AD622DA4935BDC530F50B585, 1035168744182B56EC2FE967, 8F96025E151B7351D4135963, F46FBD079B57E6EE0A61520B, CA25A936E0D2F366D8457B91, 3EA2E05D3E5745ACF09347E8, 40B0D6A75520946395F6C85A, 8440593A979F82601C2CDF77, B06C15F83A429A4CBBC690F8, B2C63DE91AAA0F41EF7776D1, 8AB13C934679310A8F38D0D6, F6C4B7F7819F529F98FC80B2, 9151EC2D8CA7E92275B48BF4, 71FC873CB7C523DC7E55770F, 63E20DBBFB9EFEB7C1B7AB8F, 61A406D1649C4DF03DEC068C,); path = FluxIPTVMac; name = FluxIPTVShared; sourceTree = "<group>"; };
 		FBDC4F23F93125BBEEAE800C /* products */ = {isa = PBXGroup; children = (38A007151ABE87CC01A5B6E9, 45BC2EF616C3744216202257, 952A4F8FB81691F9EB3DB324,); name = Products; sourceTree = "<group>"; };
 		F38F8ED01E21EBB846643D18 /* vlc-package */ = {isa = XCRemoteSwiftPackageReference; repositoryURL = "https://github.com/videolan/vlckit.git"; requirement = {kind = revision; revision = 7f98c70f9f0c11fbdf828220890bd6280361ae99; }; };
 		38A007151ABE87CC01A5B6E9 /* product */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = FluxIPTV.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -68,14 +78,19 @@
 		5EFDF9C82E2F5D0DB15E8A29 /* build Sources/FluxIPTVCore/CaseCarousel.swift */ = {isa = PBXBuildFile; fileRef = A34C6AF67F091A0F6C2D560F; };
 		CD2B86619E3A2F775CD182AA /* build Sources/FluxIPTVCore/CaseDescriptionSource.swift */ = {isa = PBXBuildFile; fileRef = 2456E75E1A2A3EB288D693FB; };
 		A35B178F026FCC1A32EF06F9 /* build Sources/FluxIPTVCore/CaseFaceLayout.swift */ = {isa = PBXBuildFile; fileRef = 381938EAFDF42904BF98BFD7; };
+		28FCACC5CE0D76E35D674B7B /* build Sources/FluxIPTVCore/CaseInspectorNavigation.swift */ = {isa = PBXBuildFile; fileRef = C7E54D480A6ED9E2FD47EB21; };
 		F7CC6D4484C5E5DD55B203F0 /* build Sources/FluxIPTVCore/CaseMetadataDownload.swift */ = {isa = PBXBuildFile; fileRef = F91A44BC238E1393E8B553E6; };
+		CC42AE3945965745ECA52AF3 /* build Sources/FluxIPTVCore/CasePackageFormat.swift */ = {isa = PBXBuildFile; fileRef = D4F3455477E485D46F33635D; };
 		6D3236559BEB8C6E3396B78E /* build Sources/FluxIPTVCore/CasePadRotation.swift */ = {isa = PBXBuildFile; fileRef = 90A019F14A12DE658D3A65B6; };
+		E710ABA2F3F7EB1B013F7AAA /* build Sources/FluxIPTVCore/CasePreviewFacing.swift */ = {isa = PBXBuildFile; fileRef = D4BB3EC3F3C021F355CB56B8; };
 		7A97E0A815827F1D6E667C87 /* build Sources/FluxIPTVCore/CasePreviewProjection.swift */ = {isa = PBXBuildFile; fileRef = BFC1A3596AACABC36C1E175F; };
 		28AB7460D2F1B55235971A02 /* build Sources/FluxIPTVCore/CatalogIndex.swift */ = {isa = PBXBuildFile; fileRef = 452F88EAC0D58B7EDF7B3E0F; };
 		C37408CC246D3BB8DB0CC419 /* build Sources/FluxIPTVCore/CinemaLinks.swift */ = {isa = PBXBuildFile; fileRef = D858DAA00A790C43E176CB27; };
 		EB8CE1F91BF6AA27C0D33F2F /* build Sources/FluxIPTVCore/ClubInterfaceProfile.swift */ = {isa = PBXBuildFile; fileRef = 50BBE112FB62DFA6872F556B; };
 		716C2405DD8EBF52496F46B9 /* build Sources/FluxIPTVCore/FavoritePresets.swift */ = {isa = PBXBuildFile; fileRef = 0D6FEB8D4AD3F7D711918322; };
 		9DB07E990F32E92050A9439C /* build Sources/FluxIPTVCore/IPTVModels.swift */ = {isa = PBXBuildFile; fileRef = 036A1023727878A68B77CCC7; };
+		CD0EA5A1F1EA3DDAE922A7E0 /* build Sources/FluxIPTVCore/LiveTVNavigation.swift */ = {isa = PBXBuildFile; fileRef = 9463E88EFC70B971E7E7C96E; };
+		319E63B87BDD2E44C9504E9B /* build Sources/FluxIPTVCore/LiveTVPreviewDelay.swift */ = {isa = PBXBuildFile; fileRef = FC445A6EF515962E38773446; };
 		AD3E63F435DB98C1A582F4F0 /* build Sources/FluxIPTVCore/M3UParser.swift */ = {isa = PBXBuildFile; fileRef = FDECBD0360D30C131670438D; };
 		F34F0D93E1508080ECF23ECD /* build Sources/FluxIPTVCore/MediaEnvironment.swift */ = {isa = PBXBuildFile; fileRef = 9C49654EB3B401B54721801E; };
 		4D4B3E1668ECF2D3CD5E3D6B /* build Sources/FluxIPTVCore/PlaybackPlan.swift */ = {isa = PBXBuildFile; fileRef = EAA4B03EAF7C63917F9A4E6E; };
@@ -85,6 +100,7 @@
 		16A46A6E107FA4E18D62546E /* build Sources/FluxIPTVCore/ProceduralCase.swift */ = {isa = PBXBuildFile; fileRef = 95ED7A3B302068FE5CBC17EA; };
 		F0A2E477E1731618DABCC7A2 /* build Sources/FluxIPTVCore/ProceduralCinema.swift */ = {isa = PBXBuildFile; fileRef = 55AA823D8EF68824FCD43A6B; };
 		28186EF4961F1CE0628D4634 /* build Sources/FluxIPTVCore/RemoteNavigation.swift */ = {isa = PBXBuildFile; fileRef = B342FF1B2DECDBEE24F36A91; };
+		A13ED9504F4031958179C4AC /* build Sources/FluxIPTVCore/SeriesSeasonRackLayout.swift */ = {isa = PBXBuildFile; fileRef = 9A11A4D8FE9410B768A09E48; };
 		9016B46642305E5B019536FC /* build Sources/FluxIPTVCore/TrailerPreview.swift */ = {isa = PBXBuildFile; fileRef = A6BB62F25119F5B1F0283B96; };
 		2B16BF3F0914294BA3D04746 /* build Sources/FluxIPTVCore/VideoClubTheme.swift */ = {isa = PBXBuildFile; fileRef = 00FE16DDFE7938957389D12C; };
 		8402E24053258193120FE6D6 /* build Sources/FluxIPTVCore/ViewingHistory.swift */ = {isa = PBXBuildFile; fileRef = 51FA6BBD31BE139E4F553A2C; };
@@ -96,11 +112,14 @@
 		077DAE59C5A9C80869CE07EB /* build FluxIPTVMac/CaseDescriptionModel.swift */ = {isa = PBXBuildFile; fileRef = 53647C1074E5060BC554EC8A; };
 		CF05C7BE05C4B6DEC7F19CA8 /* build FluxIPTVMac/CaseMediaPreview.swift */ = {isa = PBXBuildFile; fileRef = BC9D6B22944CFC1231A477D7; };
 		98C98968A14E841EDFF7613B /* build FluxIPTVMac/CasePresentation.swift */ = {isa = PBXBuildFile; fileRef = 8095FF09F9AE3C07534854A2; };
+		3AA578AEA5ACCE23BEFF16A4 /* build FluxIPTVMac/CatalogSleeveArtwork.swift */ = {isa = PBXBuildFile; fileRef = 3BFD8B8EEDB186F0A5CFD4DF; };
 		04F7F7B1F3B25EEF5A9D7854 /* build FluxIPTVMac/ContentView.swift */ = {isa = PBXBuildFile; fileRef = 1FB363223C915553FC767B86; };
 		B4F6D5DE74B4459E6BBCE77B /* build FluxIPTVMac/FavoriteAssignmentSheet.swift */ = {isa = PBXBuildFile; fileRef = A26CC5019246397EBB95B3A3; };
 		6B66178D79C8F7EA08385CD0 /* build FluxIPTVMac/FluxIPTVApp.swift */ = {isa = PBXBuildFile; fileRef = AA567ED50C3E4D436FDBD3E0; };
 		6B1930F5CC090CA35A0E3860 /* build FluxIPTVMac/GlassStyle.swift */ = {isa = PBXBuildFile; fileRef = CA3ACC96A965517BA8E76FC9; };
 		AC481B782D31790101BF55FC /* build FluxIPTVMac/IPTVLibrary.swift */ = {isa = PBXBuildFile; fileRef = E9C9EDA47B7C41EDEA525A39; };
+		870DE4E3E86746C153DEA813 /* build FluxIPTVMac/LiveTVComponents.swift */ = {isa = PBXBuildFile; fileRef = ADA8975A1796E6749CEB0B2C; };
+		F2B92CB33D644B013C6B3E23 /* build FluxIPTVMac/LiveTVPreviewController.swift */ = {isa = PBXBuildFile; fileRef = AD622DA4935BDC530F50B585; };
 		0C617F6BB7304B5CF7FC5091 /* build FluxIPTVMac/PlaybackController.swift */ = {isa = PBXBuildFile; fileRef = 1035168744182B56EC2FE967; };
 		4BB91E7F9258A0005422E8AD /* build FluxIPTVMac/PlaybackEntranceView.swift */ = {isa = PBXBuildFile; fileRef = 8F96025E151B7351D4135963; };
 		387D641BEF1F219D5C47D3F3 /* build FluxIPTVMac/PlaybackSettingsView.swift */ = {isa = PBXBuildFile; fileRef = F46FBD079B57E6EE0A61520B; };
@@ -108,16 +127,17 @@
 		B9F33E5E20DE47A24643E731 /* build FluxIPTVMac/PresetAndSeriesViews.swift */ = {isa = PBXBuildFile; fileRef = 3EA2E05D3E5745ACF09347E8; };
 		CEAABF38BCF9F88E0392F7D5 /* build FluxIPTVMac/ProceduralStage.swift */ = {isa = PBXBuildFile; fileRef = 40B0D6A75520946395F6C85A; };
 		6D32D12847337945E816A0E9 /* build FluxIPTVMac/RemotePad.swift */ = {isa = PBXBuildFile; fileRef = 8440593A979F82601C2CDF77; };
+		3DC2D18A7FF0CB64D79711A0 /* build FluxIPTVMac/SeriesSeasonRack.swift */ = {isa = PBXBuildFile; fileRef = B06C15F83A429A4CBBC690F8; };
 		B44CA12BFC63396390E9D64B /* build FluxIPTVMac/SourcePersistence.swift */ = {isa = PBXBuildFile; fileRef = B2C63DE91AAA0F41EF7776D1; };
 		1D9E69FAF132FFAF470B73FC /* build FluxIPTVMac/YouTubeTrailerPlayer.swift */ = {isa = PBXBuildFile; fileRef = 8AB13C934679310A8F38D0D6; };
-		F612CD2E22E187AC48B5913C /* sources-phase */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (F01B05C8BF85725A98B2F0B8, A4B4024AAD77975C623CDE08, 5EFDF9C82E2F5D0DB15E8A29, CD2B86619E3A2F775CD182AA, A35B178F026FCC1A32EF06F9, F7CC6D4484C5E5DD55B203F0, 6D3236559BEB8C6E3396B78E, 7A97E0A815827F1D6E667C87, 28AB7460D2F1B55235971A02, C37408CC246D3BB8DB0CC419, EB8CE1F91BF6AA27C0D33F2F, 716C2405DD8EBF52496F46B9, 9DB07E990F32E92050A9439C, AD3E63F435DB98C1A582F4F0, F34F0D93E1508080ECF23ECD, 4D4B3E1668ECF2D3CD5E3D6B, A8CF801F36B1C1FDFD6715B4, E9C08E0DE50FA0589D872753, 867FB6E6673DBAF6D62CD055, 16A46A6E107FA4E18D62546E, F0A2E477E1731618DABCC7A2, 28186EF4961F1CE0628D4634, 9016B46642305E5B019536FC, 2B16BF3F0914294BA3D04746, 8402E24053258193120FE6D6, 7410DE5C5602C7D4C9B1376F, D1CB34C646AE1FA38A8DD0AF, 7A78DA5A482AB82E14A9D865, 71FFF57E16EF0CEBD63682D1, 50424E148B7C33A224DDDC0D, 077DAE59C5A9C80869CE07EB, CF05C7BE05C4B6DEC7F19CA8, 98C98968A14E841EDFF7613B, 04F7F7B1F3B25EEF5A9D7854, B4F6D5DE74B4459E6BBCE77B, 6B66178D79C8F7EA08385CD0, 6B1930F5CC090CA35A0E3860, AC481B782D31790101BF55FC, 0C617F6BB7304B5CF7FC5091, 4BB91E7F9258A0005422E8AD, 387D641BEF1F219D5C47D3F3, 21007B25481D15F39A8039C7, B9F33E5E20DE47A24643E731, CEAABF38BCF9F88E0392F7D5, 6D32D12847337945E816A0E9, B44CA12BFC63396390E9D64B, 1D9E69FAF132FFAF470B73FC,); runOnlyForDeploymentPostprocessing = 0; };
+		F612CD2E22E187AC48B5913C /* sources-phase */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (F01B05C8BF85725A98B2F0B8, A4B4024AAD77975C623CDE08, 5EFDF9C82E2F5D0DB15E8A29, CD2B86619E3A2F775CD182AA, A35B178F026FCC1A32EF06F9, 28FCACC5CE0D76E35D674B7B, F7CC6D4484C5E5DD55B203F0, CC42AE3945965745ECA52AF3, 6D3236559BEB8C6E3396B78E, E710ABA2F3F7EB1B013F7AAA, 7A97E0A815827F1D6E667C87, 28AB7460D2F1B55235971A02, C37408CC246D3BB8DB0CC419, EB8CE1F91BF6AA27C0D33F2F, 716C2405DD8EBF52496F46B9, 9DB07E990F32E92050A9439C, CD0EA5A1F1EA3DDAE922A7E0, 319E63B87BDD2E44C9504E9B, AD3E63F435DB98C1A582F4F0, F34F0D93E1508080ECF23ECD, 4D4B3E1668ECF2D3CD5E3D6B, A8CF801F36B1C1FDFD6715B4, E9C08E0DE50FA0589D872753, 867FB6E6673DBAF6D62CD055, 16A46A6E107FA4E18D62546E, F0A2E477E1731618DABCC7A2, 28186EF4961F1CE0628D4634, A13ED9504F4031958179C4AC, 9016B46642305E5B019536FC, 2B16BF3F0914294BA3D04746, 8402E24053258193120FE6D6, 7410DE5C5602C7D4C9B1376F, D1CB34C646AE1FA38A8DD0AF, 7A78DA5A482AB82E14A9D865, 71FFF57E16EF0CEBD63682D1, 50424E148B7C33A224DDDC0D, 077DAE59C5A9C80869CE07EB, CF05C7BE05C4B6DEC7F19CA8, 98C98968A14E841EDFF7613B, 3AA578AEA5ACCE23BEFF16A4, 04F7F7B1F3B25EEF5A9D7854, B4F6D5DE74B4459E6BBCE77B, 6B66178D79C8F7EA08385CD0, 6B1930F5CC090CA35A0E3860, AC481B782D31790101BF55FC, 870DE4E3E86746C153DEA813, F2B92CB33D644B013C6B3E23, 0C617F6BB7304B5CF7FC5091, 4BB91E7F9258A0005422E8AD, 387D641BEF1F219D5C47D3F3, 21007B25481D15F39A8039C7, B9F33E5E20DE47A24643E731, CEAABF38BCF9F88E0392F7D5, 6D32D12847337945E816A0E9, 3DC2D18A7FF0CB64D79711A0, B44CA12BFC63396390E9D64B, 1D9E69FAF132FFAF470B73FC,); runOnlyForDeploymentPostprocessing = 0; };
 		69680EDE0CF9B24DB8DBFE04 /* frameworks-phase */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
 		C86BF66DF247520C93D0DADE /* room-build */ = {isa = PBXBuildFile; fileRef = 61A406D1649C4DF03DEC068C; };
 		86F6FE2DD6E869C1842A14B3 /* resources-phase */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (C86BF66DF247520C93D0DADE,); runOnlyForDeploymentPostprocessing = 0; };
 		0E8A3AD980EC179856012B7E /* target */ = {isa = PBXNativeTarget; buildConfigurationList = 976B52545947CA66FD9EF2A4; buildPhases = (F612CD2E22E187AC48B5913C, 69680EDE0CF9B24DB8DBFE04, 86F6FE2DD6E869C1842A14B3,); buildRules = (); dependencies = (); packageProductDependencies = (); name = FluxIPTV; productName = FluxIPTV; productReference = 38A007151ABE87CC01A5B6E9; productType = "com.apple.product-type.application"; };
 		4D8F54E7CBAF670D9F6C230D /* target-Debug */ = {isa = XCBuildConfiguration; buildSettings = {
         CODE_SIGN_STYLE = Automatic;
-        CURRENT_PROJECT_VERSION = 18;
+        CURRENT_PROJECT_VERSION = 19;
         GENERATE_INFOPLIST_FILE = NO;
         INFOPLIST_FILE = FluxIPTVMac/Info.plist;
         SDKROOT = macosx;
@@ -126,7 +146,7 @@
         CODE_SIGN_ENTITLEMENTS = FluxIPTVMac/FluxIPTV.entitlements; ENABLE_APP_SANDBOX = YES;
         LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
         ENABLE_DEBUG_DYLIB = NO;
-        MARKETING_VERSION = 0.8.5;
+        MARKETING_VERSION = 0.8.6;
         PRODUCT_BUNDLE_IDENTIFIER = com.m4d135.FluxIPTV;
         PRODUCT_NAME = "$(TARGET_NAME)";
         SWIFT_VERSION = 5.0;
@@ -136,7 +156,7 @@
         }; name = Debug; };
 		1A6EFC2CD0AF63DD14BE0438 /* target-Release */ = {isa = XCBuildConfiguration; buildSettings = {
         CODE_SIGN_STYLE = Automatic;
-        CURRENT_PROJECT_VERSION = 18;
+        CURRENT_PROJECT_VERSION = 19;
         GENERATE_INFOPLIST_FILE = NO;
         INFOPLIST_FILE = FluxIPTVMac/Info.plist;
         SDKROOT = macosx;
@@ -145,7 +165,7 @@
         CODE_SIGN_ENTITLEMENTS = FluxIPTVMac/FluxIPTV.entitlements; ENABLE_APP_SANDBOX = YES;
         LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
         ENABLE_DEBUG_DYLIB = NO;
-        MARKETING_VERSION = 0.8.5;
+        MARKETING_VERSION = 0.8.6;
         PRODUCT_BUNDLE_IDENTIFIER = com.m4d135.FluxIPTV;
         PRODUCT_NAME = "$(TARGET_NAME)";
         SWIFT_VERSION = 5.0;
@@ -160,14 +180,19 @@
 		047A9C9BC2597F6A28E2DE10 /* build Sources/FluxIPTVCore/CaseCarousel.swift-ios */ = {isa = PBXBuildFile; fileRef = A34C6AF67F091A0F6C2D560F; };
 		ED0B8D6459AF6A783BEA35A4 /* build Sources/FluxIPTVCore/CaseDescriptionSource.swift-ios */ = {isa = PBXBuildFile; fileRef = 2456E75E1A2A3EB288D693FB; };
 		E82B1FA747C684EF27B88A1B /* build Sources/FluxIPTVCore/CaseFaceLayout.swift-ios */ = {isa = PBXBuildFile; fileRef = 381938EAFDF42904BF98BFD7; };
+		25426E863600C1727C30B1A0 /* build Sources/FluxIPTVCore/CaseInspectorNavigation.swift-ios */ = {isa = PBXBuildFile; fileRef = C7E54D480A6ED9E2FD47EB21; };
 		908E2A9F583845C64DD81594 /* build Sources/FluxIPTVCore/CaseMetadataDownload.swift-ios */ = {isa = PBXBuildFile; fileRef = F91A44BC238E1393E8B553E6; };
+		F07368032922219054E864F5 /* build Sources/FluxIPTVCore/CasePackageFormat.swift-ios */ = {isa = PBXBuildFile; fileRef = D4F3455477E485D46F33635D; };
 		C15EB01D995ACEFF59EC1B10 /* build Sources/FluxIPTVCore/CasePadRotation.swift-ios */ = {isa = PBXBuildFile; fileRef = 90A019F14A12DE658D3A65B6; };
+		86FF541CAC5A6BC9FDB0D200 /* build Sources/FluxIPTVCore/CasePreviewFacing.swift-ios */ = {isa = PBXBuildFile; fileRef = D4BB3EC3F3C021F355CB56B8; };
 		8AFCE2CBD4033B99EE863B5C /* build Sources/FluxIPTVCore/CasePreviewProjection.swift-ios */ = {isa = PBXBuildFile; fileRef = BFC1A3596AACABC36C1E175F; };
 		F74C5F04EA04DFBFAE07D8A0 /* build Sources/FluxIPTVCore/CatalogIndex.swift-ios */ = {isa = PBXBuildFile; fileRef = 452F88EAC0D58B7EDF7B3E0F; };
 		E36F3190CC94565A9503D258 /* build Sources/FluxIPTVCore/CinemaLinks.swift-ios */ = {isa = PBXBuildFile; fileRef = D858DAA00A790C43E176CB27; };
 		965FE88E2539C6A735EA3D53 /* build Sources/FluxIPTVCore/ClubInterfaceProfile.swift-ios */ = {isa = PBXBuildFile; fileRef = 50BBE112FB62DFA6872F556B; };
 		0B08D1704472370DBFB59B02 /* build Sources/FluxIPTVCore/FavoritePresets.swift-ios */ = {isa = PBXBuildFile; fileRef = 0D6FEB8D4AD3F7D711918322; };
 		C6D5895EF2446C755B28408A /* build Sources/FluxIPTVCore/IPTVModels.swift-ios */ = {isa = PBXBuildFile; fileRef = 036A1023727878A68B77CCC7; };
+		D00DF07B83A5969B4B1D87A4 /* build Sources/FluxIPTVCore/LiveTVNavigation.swift-ios */ = {isa = PBXBuildFile; fileRef = 9463E88EFC70B971E7E7C96E; };
+		ADFE08BB382ABFE905098CE2 /* build Sources/FluxIPTVCore/LiveTVPreviewDelay.swift-ios */ = {isa = PBXBuildFile; fileRef = FC445A6EF515962E38773446; };
 		C0EE2EB335DE44C4774F4097 /* build Sources/FluxIPTVCore/M3UParser.swift-ios */ = {isa = PBXBuildFile; fileRef = FDECBD0360D30C131670438D; };
 		81FFE6D96BCBFFD9B3BDB9AF /* build Sources/FluxIPTVCore/MediaEnvironment.swift-ios */ = {isa = PBXBuildFile; fileRef = 9C49654EB3B401B54721801E; };
 		8372AC9D94940EE02D674B58 /* build Sources/FluxIPTVCore/PlaybackPlan.swift-ios */ = {isa = PBXBuildFile; fileRef = EAA4B03EAF7C63917F9A4E6E; };
@@ -177,6 +202,7 @@
 		776E943B83AF0DF79B57FAAD /* build Sources/FluxIPTVCore/ProceduralCase.swift-ios */ = {isa = PBXBuildFile; fileRef = 95ED7A3B302068FE5CBC17EA; };
 		599D02AF1765C1D29DA4DA47 /* build Sources/FluxIPTVCore/ProceduralCinema.swift-ios */ = {isa = PBXBuildFile; fileRef = 55AA823D8EF68824FCD43A6B; };
 		6AFB39C2CE55B6AE91919D71 /* build Sources/FluxIPTVCore/RemoteNavigation.swift-ios */ = {isa = PBXBuildFile; fileRef = B342FF1B2DECDBEE24F36A91; };
+		D05871808CF8523309C52FB7 /* build Sources/FluxIPTVCore/SeriesSeasonRackLayout.swift-ios */ = {isa = PBXBuildFile; fileRef = 9A11A4D8FE9410B768A09E48; };
 		DB13F0B90DD734E5C5BD911F /* build Sources/FluxIPTVCore/TrailerPreview.swift-ios */ = {isa = PBXBuildFile; fileRef = A6BB62F25119F5B1F0283B96; };
 		58732F81D0CF2E4E50AD788B /* build Sources/FluxIPTVCore/VideoClubTheme.swift-ios */ = {isa = PBXBuildFile; fileRef = 00FE16DDFE7938957389D12C; };
 		A62D5B6CE872F451740110F6 /* build Sources/FluxIPTVCore/ViewingHistory.swift-ios */ = {isa = PBXBuildFile; fileRef = 51FA6BBD31BE139E4F553A2C; };
@@ -188,11 +214,14 @@
 		2F4B79471729C099BFC0E4C9 /* build FluxIPTVMac/CaseDescriptionModel.swift-ios */ = {isa = PBXBuildFile; fileRef = 53647C1074E5060BC554EC8A; };
 		A704327A33A0258D99E5B511 /* build FluxIPTVMac/CaseMediaPreview.swift-ios */ = {isa = PBXBuildFile; fileRef = BC9D6B22944CFC1231A477D7; };
 		94D1C3F4C08F77E097D244D7 /* build FluxIPTVMac/CasePresentation.swift-ios */ = {isa = PBXBuildFile; fileRef = 8095FF09F9AE3C07534854A2; };
+		0D5009560AB0829BBEEABA71 /* build FluxIPTVMac/CatalogSleeveArtwork.swift-ios */ = {isa = PBXBuildFile; fileRef = 3BFD8B8EEDB186F0A5CFD4DF; };
 		B11FBA55FA4DD566E8A74AEE /* build FluxIPTVMac/ContentView.swift-ios */ = {isa = PBXBuildFile; fileRef = 1FB363223C915553FC767B86; };
 		DEFEA2C99ABBAB18E495F20A /* build FluxIPTVMac/FavoriteAssignmentSheet.swift-ios */ = {isa = PBXBuildFile; fileRef = A26CC5019246397EBB95B3A3; };
 		C3D1D92AAEC7B378AB6702A8 /* build FluxIPTVMac/FluxIPTVApp.swift-ios */ = {isa = PBXBuildFile; fileRef = AA567ED50C3E4D436FDBD3E0; };
 		31EF387B363733F34731AB5F /* build FluxIPTVMac/GlassStyle.swift-ios */ = {isa = PBXBuildFile; fileRef = CA3ACC96A965517BA8E76FC9; };
 		AE4494D8FF6396359BFF7C6B /* build FluxIPTVMac/IPTVLibrary.swift-ios */ = {isa = PBXBuildFile; fileRef = E9C9EDA47B7C41EDEA525A39; };
+		FA67751E2FA005325E24BB7B /* build FluxIPTVMac/LiveTVComponents.swift-ios */ = {isa = PBXBuildFile; fileRef = ADA8975A1796E6749CEB0B2C; };
+		AE351B45CE6195988C63B4B8 /* build FluxIPTVMac/LiveTVPreviewController.swift-ios */ = {isa = PBXBuildFile; fileRef = AD622DA4935BDC530F50B585; };
 		2F5813919D9984408C50FD3C /* build FluxIPTVMac/PlaybackController.swift-ios */ = {isa = PBXBuildFile; fileRef = 1035168744182B56EC2FE967; };
 		99D15862E323D3A032130B14 /* build FluxIPTVMac/PlaybackEntranceView.swift-ios */ = {isa = PBXBuildFile; fileRef = 8F96025E151B7351D4135963; };
 		1079D988F18F3A9D5EF9F454 /* build FluxIPTVMac/PlaybackSettingsView.swift-ios */ = {isa = PBXBuildFile; fileRef = F46FBD079B57E6EE0A61520B; };
@@ -200,9 +229,10 @@
 		15D75F5226E2A398CCF756C4 /* build FluxIPTVMac/PresetAndSeriesViews.swift-ios */ = {isa = PBXBuildFile; fileRef = 3EA2E05D3E5745ACF09347E8; };
 		E08031932CEB24F657FBFBAA /* build FluxIPTVMac/ProceduralStage.swift-ios */ = {isa = PBXBuildFile; fileRef = 40B0D6A75520946395F6C85A; };
 		7529143148B806F6193B2A17 /* build FluxIPTVMac/RemotePad.swift-ios */ = {isa = PBXBuildFile; fileRef = 8440593A979F82601C2CDF77; };
+		A6C32F765C30D79257D1AED7 /* build FluxIPTVMac/SeriesSeasonRack.swift-ios */ = {isa = PBXBuildFile; fileRef = B06C15F83A429A4CBBC690F8; };
 		639CF01D95F6693617BCD664 /* build FluxIPTVMac/SourcePersistence.swift-ios */ = {isa = PBXBuildFile; fileRef = B2C63DE91AAA0F41EF7776D1; };
 		2089F6B99474F02A43201130 /* build FluxIPTVMac/YouTubeTrailerPlayer.swift-ios */ = {isa = PBXBuildFile; fileRef = 8AB13C934679310A8F38D0D6; };
-		11979CFF081B738F48777A3C /* sources-phase-ios */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (6109BF5B33D4407E5AF818A2, 7E9EDB80CD95A76C3D85515C, 047A9C9BC2597F6A28E2DE10, ED0B8D6459AF6A783BEA35A4, E82B1FA747C684EF27B88A1B, 908E2A9F583845C64DD81594, C15EB01D995ACEFF59EC1B10, 8AFCE2CBD4033B99EE863B5C, F74C5F04EA04DFBFAE07D8A0, E36F3190CC94565A9503D258, 965FE88E2539C6A735EA3D53, 0B08D1704472370DBFB59B02, C6D5895EF2446C755B28408A, C0EE2EB335DE44C4774F4097, 81FFE6D96BCBFFD9B3BDB9AF, 8372AC9D94940EE02D674B58, 91D5A4802B08737A7FF11701, 649393B01A72653CCAD7EDA8, 00B5EA4E6ED235CE33A919FC, 776E943B83AF0DF79B57FAAD, 599D02AF1765C1D29DA4DA47, 6AFB39C2CE55B6AE91919D71, DB13F0B90DD734E5C5BD911F, 58732F81D0CF2E4E50AD788B, A62D5B6CE872F451740110F6, C0A73A891BAA5D41C202A36F, 86BF47A5C6CE1DF89E9AAF98, 1D45C90A1E12F18913DDDE1F, A77D7677B7B2B823CDF0214E, 284B293728BE8FF8D1058F4F, 2F4B79471729C099BFC0E4C9, A704327A33A0258D99E5B511, 94D1C3F4C08F77E097D244D7, B11FBA55FA4DD566E8A74AEE, DEFEA2C99ABBAB18E495F20A, C3D1D92AAEC7B378AB6702A8, 31EF387B363733F34731AB5F, AE4494D8FF6396359BFF7C6B, 2F5813919D9984408C50FD3C, 99D15862E323D3A032130B14, 1079D988F18F3A9D5EF9F454, FAADE155E4B43485AA161F17, 15D75F5226E2A398CCF756C4, E08031932CEB24F657FBFBAA, 7529143148B806F6193B2A17, 639CF01D95F6693617BCD664, 2089F6B99474F02A43201130,); runOnlyForDeploymentPostprocessing = 0; };
+		11979CFF081B738F48777A3C /* sources-phase-ios */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (6109BF5B33D4407E5AF818A2, 7E9EDB80CD95A76C3D85515C, 047A9C9BC2597F6A28E2DE10, ED0B8D6459AF6A783BEA35A4, E82B1FA747C684EF27B88A1B, 25426E863600C1727C30B1A0, 908E2A9F583845C64DD81594, F07368032922219054E864F5, C15EB01D995ACEFF59EC1B10, 86FF541CAC5A6BC9FDB0D200, 8AFCE2CBD4033B99EE863B5C, F74C5F04EA04DFBFAE07D8A0, E36F3190CC94565A9503D258, 965FE88E2539C6A735EA3D53, 0B08D1704472370DBFB59B02, C6D5895EF2446C755B28408A, D00DF07B83A5969B4B1D87A4, ADFE08BB382ABFE905098CE2, C0EE2EB335DE44C4774F4097, 81FFE6D96BCBFFD9B3BDB9AF, 8372AC9D94940EE02D674B58, 91D5A4802B08737A7FF11701, 649393B01A72653CCAD7EDA8, 00B5EA4E6ED235CE33A919FC, 776E943B83AF0DF79B57FAAD, 599D02AF1765C1D29DA4DA47, 6AFB39C2CE55B6AE91919D71, D05871808CF8523309C52FB7, DB13F0B90DD734E5C5BD911F, 58732F81D0CF2E4E50AD788B, A62D5B6CE872F451740110F6, C0A73A891BAA5D41C202A36F, 86BF47A5C6CE1DF89E9AAF98, 1D45C90A1E12F18913DDDE1F, A77D7677B7B2B823CDF0214E, 284B293728BE8FF8D1058F4F, 2F4B79471729C099BFC0E4C9, A704327A33A0258D99E5B511, 94D1C3F4C08F77E097D244D7, 0D5009560AB0829BBEEABA71, B11FBA55FA4DD566E8A74AEE, DEFEA2C99ABBAB18E495F20A, C3D1D92AAEC7B378AB6702A8, 31EF387B363733F34731AB5F, AE4494D8FF6396359BFF7C6B, FA67751E2FA005325E24BB7B, AE351B45CE6195988C63B4B8, 2F5813919D9984408C50FD3C, 99D15862E323D3A032130B14, 1079D988F18F3A9D5EF9F454, FAADE155E4B43485AA161F17, 15D75F5226E2A398CCF756C4, E08031932CEB24F657FBFBAA, 7529143148B806F6193B2A17, A6C32F765C30D79257D1AED7, 639CF01D95F6693617BCD664, 2089F6B99474F02A43201130,); runOnlyForDeploymentPostprocessing = 0; };
 		3FD9E5F2D1A73417FDEABD76 /* vlc-product-ios */ = {isa = XCSwiftPackageProductDependency; package = F38F8ED01E21EBB846643D18; productName = VLCKit; };
 		6CB6DFF608736B98438B66BC /* vlc-build-ios */ = {isa = PBXBuildFile; productRef = 3FD9E5F2D1A73417FDEABD76; };
 		FDC5BB8A5966CE4F0B6CF9F5 /* frameworks-phase-ios */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (6CB6DFF608736B98438B66BC,); runOnlyForDeploymentPostprocessing = 0; };
@@ -211,7 +241,7 @@
 		AA1BBEB035328A3BC110B813 /* target-ios */ = {isa = PBXNativeTarget; buildConfigurationList = 9F07F9ED32AD2F975CEBC709; buildPhases = (11979CFF081B738F48777A3C, FDC5BB8A5966CE4F0B6CF9F5, 0D957B5BBCE5653AF2CE7F53,); buildRules = (); dependencies = (); packageProductDependencies = (3FD9E5F2D1A73417FDEABD76,); name = FluxIPTViOS; productName = FluxIPTViOS; productReference = 45BC2EF616C3744216202257; productType = "com.apple.product-type.application"; };
 		F0901AEB62460547CC98F589 /* target-Debug-ios */ = {isa = XCBuildConfiguration; buildSettings = {
         CODE_SIGN_STYLE = Automatic;
-        CURRENT_PROJECT_VERSION = 18;
+        CURRENT_PROJECT_VERSION = 19;
         GENERATE_INFOPLIST_FILE = NO;
         INFOPLIST_FILE = FluxIPTVMac/Info-iOS.plist;
         SDKROOT = iphoneos;
@@ -220,7 +250,7 @@
         SUPPORTS_MACCATALYST = NO;
         LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
         
-        MARKETING_VERSION = 0.8.5;
+        MARKETING_VERSION = 0.8.6;
         PRODUCT_BUNDLE_IDENTIFIER = com.m4d135.FluxIPTV.ios;
         PRODUCT_NAME = "$(TARGET_NAME)";
         SWIFT_VERSION = 5.0;
@@ -230,7 +260,7 @@
         }; name = Debug; };
 		AACDA0C13952657CE02C1821 /* target-Release-ios */ = {isa = XCBuildConfiguration; buildSettings = {
         CODE_SIGN_STYLE = Automatic;
-        CURRENT_PROJECT_VERSION = 18;
+        CURRENT_PROJECT_VERSION = 19;
         GENERATE_INFOPLIST_FILE = NO;
         INFOPLIST_FILE = FluxIPTVMac/Info-iOS.plist;
         SDKROOT = iphoneos;
@@ -239,7 +269,7 @@
         SUPPORTS_MACCATALYST = NO;
         LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
         
-        MARKETING_VERSION = 0.8.5;
+        MARKETING_VERSION = 0.8.6;
         PRODUCT_BUNDLE_IDENTIFIER = com.m4d135.FluxIPTV.ios;
         PRODUCT_NAME = "$(TARGET_NAME)";
         SWIFT_VERSION = 5.0;
@@ -254,14 +284,19 @@
 		F943BA5E1836842CF2E2C94B /* build Sources/FluxIPTVCore/CaseCarousel.swift-tv */ = {isa = PBXBuildFile; fileRef = A34C6AF67F091A0F6C2D560F; };
 		983B2EB44A32EF8B34D4E7BD /* build Sources/FluxIPTVCore/CaseDescriptionSource.swift-tv */ = {isa = PBXBuildFile; fileRef = 2456E75E1A2A3EB288D693FB; };
 		5F136E69DB2541296F7C522A /* build Sources/FluxIPTVCore/CaseFaceLayout.swift-tv */ = {isa = PBXBuildFile; fileRef = 381938EAFDF42904BF98BFD7; };
+		484ADF0D92A792CF47EB69B4 /* build Sources/FluxIPTVCore/CaseInspectorNavigation.swift-tv */ = {isa = PBXBuildFile; fileRef = C7E54D480A6ED9E2FD47EB21; };
 		AD0D34D90286F2282776A8A7 /* build Sources/FluxIPTVCore/CaseMetadataDownload.swift-tv */ = {isa = PBXBuildFile; fileRef = F91A44BC238E1393E8B553E6; };
+		19D087B9890F80BAA813D716 /* build Sources/FluxIPTVCore/CasePackageFormat.swift-tv */ = {isa = PBXBuildFile; fileRef = D4F3455477E485D46F33635D; };
 		6BF27A5FFCF94041D648657D /* build Sources/FluxIPTVCore/CasePadRotation.swift-tv */ = {isa = PBXBuildFile; fileRef = 90A019F14A12DE658D3A65B6; };
+		679B4A59A6E084A6C2A6D79D /* build Sources/FluxIPTVCore/CasePreviewFacing.swift-tv */ = {isa = PBXBuildFile; fileRef = D4BB3EC3F3C021F355CB56B8; };
 		C7C084B83B5C6187764AD723 /* build Sources/FluxIPTVCore/CasePreviewProjection.swift-tv */ = {isa = PBXBuildFile; fileRef = BFC1A3596AACABC36C1E175F; };
 		DAE953BC35167107EB9B673F /* build Sources/FluxIPTVCore/CatalogIndex.swift-tv */ = {isa = PBXBuildFile; fileRef = 452F88EAC0D58B7EDF7B3E0F; };
 		E3113D5A44DEBECDA88BD138 /* build Sources/FluxIPTVCore/CinemaLinks.swift-tv */ = {isa = PBXBuildFile; fileRef = D858DAA00A790C43E176CB27; };
 		BF8CAD8131AA6E1A7ACBEF6B /* build Sources/FluxIPTVCore/ClubInterfaceProfile.swift-tv */ = {isa = PBXBuildFile; fileRef = 50BBE112FB62DFA6872F556B; };
 		7F23B38D05171F900C0E8E79 /* build Sources/FluxIPTVCore/FavoritePresets.swift-tv */ = {isa = PBXBuildFile; fileRef = 0D6FEB8D4AD3F7D711918322; };
 		72F34BB327CE198AD72EE439 /* build Sources/FluxIPTVCore/IPTVModels.swift-tv */ = {isa = PBXBuildFile; fileRef = 036A1023727878A68B77CCC7; };
+		5DE41BCD5652C2C366C2071D /* build Sources/FluxIPTVCore/LiveTVNavigation.swift-tv */ = {isa = PBXBuildFile; fileRef = 9463E88EFC70B971E7E7C96E; };
+		362284082D429A69D74B1C21 /* build Sources/FluxIPTVCore/LiveTVPreviewDelay.swift-tv */ = {isa = PBXBuildFile; fileRef = FC445A6EF515962E38773446; };
 		757C434FD1D16E5F4D01CDC2 /* build Sources/FluxIPTVCore/M3UParser.swift-tv */ = {isa = PBXBuildFile; fileRef = FDECBD0360D30C131670438D; };
 		6356C4025636D8A2BF2A8806 /* build Sources/FluxIPTVCore/MediaEnvironment.swift-tv */ = {isa = PBXBuildFile; fileRef = 9C49654EB3B401B54721801E; };
 		6F7DD84CE40E5798D41A00E7 /* build Sources/FluxIPTVCore/PlaybackPlan.swift-tv */ = {isa = PBXBuildFile; fileRef = EAA4B03EAF7C63917F9A4E6E; };
@@ -271,6 +306,7 @@
 		E12AE22C92D712C022F61725 /* build Sources/FluxIPTVCore/ProceduralCase.swift-tv */ = {isa = PBXBuildFile; fileRef = 95ED7A3B302068FE5CBC17EA; };
 		37C16F1182C53FF4053EEA2A /* build Sources/FluxIPTVCore/ProceduralCinema.swift-tv */ = {isa = PBXBuildFile; fileRef = 55AA823D8EF68824FCD43A6B; };
 		AAE9936BC445B0006D0AC5BF /* build Sources/FluxIPTVCore/RemoteNavigation.swift-tv */ = {isa = PBXBuildFile; fileRef = B342FF1B2DECDBEE24F36A91; };
+		4D1AD106A83B23611EC9FDA9 /* build Sources/FluxIPTVCore/SeriesSeasonRackLayout.swift-tv */ = {isa = PBXBuildFile; fileRef = 9A11A4D8FE9410B768A09E48; };
 		4C6FED6BB10987B581C3CDD5 /* build Sources/FluxIPTVCore/TrailerPreview.swift-tv */ = {isa = PBXBuildFile; fileRef = A6BB62F25119F5B1F0283B96; };
 		FFF69A7222EAF91D8F5C44B8 /* build Sources/FluxIPTVCore/VideoClubTheme.swift-tv */ = {isa = PBXBuildFile; fileRef = 00FE16DDFE7938957389D12C; };
 		74F79FA905FCFB4D07631586 /* build Sources/FluxIPTVCore/ViewingHistory.swift-tv */ = {isa = PBXBuildFile; fileRef = 51FA6BBD31BE139E4F553A2C; };
@@ -282,11 +318,14 @@
 		C0191538F2003A2882BD47F9 /* build FluxIPTVMac/CaseDescriptionModel.swift-tv */ = {isa = PBXBuildFile; fileRef = 53647C1074E5060BC554EC8A; };
 		146BD4F5CAAA8A7ADEAD4F65 /* build FluxIPTVMac/CaseMediaPreview.swift-tv */ = {isa = PBXBuildFile; fileRef = BC9D6B22944CFC1231A477D7; };
 		DA309CA02A88F752A2C7CDF1 /* build FluxIPTVMac/CasePresentation.swift-tv */ = {isa = PBXBuildFile; fileRef = 8095FF09F9AE3C07534854A2; };
+		F1B15B58186A44058545E97F /* build FluxIPTVMac/CatalogSleeveArtwork.swift-tv */ = {isa = PBXBuildFile; fileRef = 3BFD8B8EEDB186F0A5CFD4DF; };
 		B7941EBD0ED2F9AB0A124EB7 /* build FluxIPTVMac/ContentView.swift-tv */ = {isa = PBXBuildFile; fileRef = 1FB363223C915553FC767B86; };
 		F03E269CD90A08365C880FEB /* build FluxIPTVMac/FavoriteAssignmentSheet.swift-tv */ = {isa = PBXBuildFile; fileRef = A26CC5019246397EBB95B3A3; };
 		E1816C308FA0E517EBA56D85 /* build FluxIPTVMac/FluxIPTVApp.swift-tv */ = {isa = PBXBuildFile; fileRef = AA567ED50C3E4D436FDBD3E0; };
 		7E590391BE048D8438FBD9DC /* build FluxIPTVMac/GlassStyle.swift-tv */ = {isa = PBXBuildFile; fileRef = CA3ACC96A965517BA8E76FC9; };
 		3829AC6D363BDBEECD5D93CA /* build FluxIPTVMac/IPTVLibrary.swift-tv */ = {isa = PBXBuildFile; fileRef = E9C9EDA47B7C41EDEA525A39; };
+		B65BC9E8B0D35A66896F3508 /* build FluxIPTVMac/LiveTVComponents.swift-tv */ = {isa = PBXBuildFile; fileRef = ADA8975A1796E6749CEB0B2C; };
+		24976C1F136D3A5395CF7D85 /* build FluxIPTVMac/LiveTVPreviewController.swift-tv */ = {isa = PBXBuildFile; fileRef = AD622DA4935BDC530F50B585; };
 		13A33C3591325A0139C5013F /* build FluxIPTVMac/PlaybackController.swift-tv */ = {isa = PBXBuildFile; fileRef = 1035168744182B56EC2FE967; };
 		9FB7DF151DA64CF06E07C41C /* build FluxIPTVMac/PlaybackEntranceView.swift-tv */ = {isa = PBXBuildFile; fileRef = 8F96025E151B7351D4135963; };
 		DC4685B76FA35BD98FBFFB26 /* build FluxIPTVMac/PlaybackSettingsView.swift-tv */ = {isa = PBXBuildFile; fileRef = F46FBD079B57E6EE0A61520B; };
@@ -294,9 +333,10 @@
 		9F91D525E9C569ECAB91A304 /* build FluxIPTVMac/PresetAndSeriesViews.swift-tv */ = {isa = PBXBuildFile; fileRef = 3EA2E05D3E5745ACF09347E8; };
 		618A56EC3C7647A9C43A935F /* build FluxIPTVMac/ProceduralStage.swift-tv */ = {isa = PBXBuildFile; fileRef = 40B0D6A75520946395F6C85A; };
 		3B8CF9AAA886DD9DD2527291 /* build FluxIPTVMac/RemotePad.swift-tv */ = {isa = PBXBuildFile; fileRef = 8440593A979F82601C2CDF77; };
+		64EF723C6F962D36FE6AA1F1 /* build FluxIPTVMac/SeriesSeasonRack.swift-tv */ = {isa = PBXBuildFile; fileRef = B06C15F83A429A4CBBC690F8; };
 		40B518964AAF875F7C7B965C /* build FluxIPTVMac/SourcePersistence.swift-tv */ = {isa = PBXBuildFile; fileRef = B2C63DE91AAA0F41EF7776D1; };
 		52352D835AAE73763956A74F /* build FluxIPTVMac/YouTubeTrailerPlayer.swift-tv */ = {isa = PBXBuildFile; fileRef = 8AB13C934679310A8F38D0D6; };
-		32BE9FB3579D1DC06702422D /* sources-phase-tv */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (DD4C956A273BF3AADB818A63, ABC00B7757349E82831F95BC, F943BA5E1836842CF2E2C94B, 983B2EB44A32EF8B34D4E7BD, 5F136E69DB2541296F7C522A, AD0D34D90286F2282776A8A7, 6BF27A5FFCF94041D648657D, C7C084B83B5C6187764AD723, DAE953BC35167107EB9B673F, E3113D5A44DEBECDA88BD138, BF8CAD8131AA6E1A7ACBEF6B, 7F23B38D05171F900C0E8E79, 72F34BB327CE198AD72EE439, 757C434FD1D16E5F4D01CDC2, 6356C4025636D8A2BF2A8806, 6F7DD84CE40E5798D41A00E7, F6FC11083CAB359B2E2311E3, 323E438BC17E27C740D654AD, DC5003577E2D1925C293B98E, E12AE22C92D712C022F61725, 37C16F1182C53FF4053EEA2A, AAE9936BC445B0006D0AC5BF, 4C6FED6BB10987B581C3CDD5, FFF69A7222EAF91D8F5C44B8, 74F79FA905FCFB4D07631586, 2FF380C358FA54F0E1A01644, 9D3DFDDEB93FEF3E0F8AD1A0, BE71FA92A9E224670EB34801, 2A6317FF8FEA2F35028D8AED, A2A7B86ABB634E770795266C, C0191538F2003A2882BD47F9, 146BD4F5CAAA8A7ADEAD4F65, DA309CA02A88F752A2C7CDF1, B7941EBD0ED2F9AB0A124EB7, F03E269CD90A08365C880FEB, E1816C308FA0E517EBA56D85, 7E590391BE048D8438FBD9DC, 3829AC6D363BDBEECD5D93CA, 13A33C3591325A0139C5013F, 9FB7DF151DA64CF06E07C41C, DC4685B76FA35BD98FBFFB26, 6F125F3687E78E91D08D6690, 9F91D525E9C569ECAB91A304, 618A56EC3C7647A9C43A935F, 3B8CF9AAA886DD9DD2527291, 40B518964AAF875F7C7B965C, 52352D835AAE73763956A74F,); runOnlyForDeploymentPostprocessing = 0; };
+		32BE9FB3579D1DC06702422D /* sources-phase-tv */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (DD4C956A273BF3AADB818A63, ABC00B7757349E82831F95BC, F943BA5E1836842CF2E2C94B, 983B2EB44A32EF8B34D4E7BD, 5F136E69DB2541296F7C522A, 484ADF0D92A792CF47EB69B4, AD0D34D90286F2282776A8A7, 19D087B9890F80BAA813D716, 6BF27A5FFCF94041D648657D, 679B4A59A6E084A6C2A6D79D, C7C084B83B5C6187764AD723, DAE953BC35167107EB9B673F, E3113D5A44DEBECDA88BD138, BF8CAD8131AA6E1A7ACBEF6B, 7F23B38D05171F900C0E8E79, 72F34BB327CE198AD72EE439, 5DE41BCD5652C2C366C2071D, 362284082D429A69D74B1C21, 757C434FD1D16E5F4D01CDC2, 6356C4025636D8A2BF2A8806, 6F7DD84CE40E5798D41A00E7, F6FC11083CAB359B2E2311E3, 323E438BC17E27C740D654AD, DC5003577E2D1925C293B98E, E12AE22C92D712C022F61725, 37C16F1182C53FF4053EEA2A, AAE9936BC445B0006D0AC5BF, 4D1AD106A83B23611EC9FDA9, 4C6FED6BB10987B581C3CDD5, FFF69A7222EAF91D8F5C44B8, 74F79FA905FCFB4D07631586, 2FF380C358FA54F0E1A01644, 9D3DFDDEB93FEF3E0F8AD1A0, BE71FA92A9E224670EB34801, 2A6317FF8FEA2F35028D8AED, A2A7B86ABB634E770795266C, C0191538F2003A2882BD47F9, 146BD4F5CAAA8A7ADEAD4F65, DA309CA02A88F752A2C7CDF1, F1B15B58186A44058545E97F, B7941EBD0ED2F9AB0A124EB7, F03E269CD90A08365C880FEB, E1816C308FA0E517EBA56D85, 7E590391BE048D8438FBD9DC, 3829AC6D363BDBEECD5D93CA, B65BC9E8B0D35A66896F3508, 24976C1F136D3A5395CF7D85, 13A33C3591325A0139C5013F, 9FB7DF151DA64CF06E07C41C, DC4685B76FA35BD98FBFFB26, 6F125F3687E78E91D08D6690, 9F91D525E9C569ECAB91A304, 618A56EC3C7647A9C43A935F, 3B8CF9AAA886DD9DD2527291, 64EF723C6F962D36FE6AA1F1, 40B518964AAF875F7C7B965C, 52352D835AAE73763956A74F,); runOnlyForDeploymentPostprocessing = 0; };
 		72A03C283374DE0506B2F201 /* vlc-product-tv */ = {isa = XCSwiftPackageProductDependency; package = F38F8ED01E21EBB846643D18; productName = VLCKit; };
 		D704BC61B206E3D01182EC26 /* vlc-build-tv */ = {isa = PBXBuildFile; productRef = 72A03C283374DE0506B2F201; };
 		2FDA18EEA001EF1971430EA0 /* frameworks-phase-tv */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (D704BC61B206E3D01182EC26,); runOnlyForDeploymentPostprocessing = 0; };
@@ -305,7 +345,7 @@
 		34C60569D211C4BD688A56D5 /* target-tv */ = {isa = PBXNativeTarget; buildConfigurationList = 0E248EB62620FC60AE33244C; buildPhases = (32BE9FB3579D1DC06702422D, 2FDA18EEA001EF1971430EA0, 45886F944F9835C186DBF83E,); buildRules = (); dependencies = (); packageProductDependencies = (72A03C283374DE0506B2F201,); name = FluxIPTVTV; productName = FluxIPTVTV; productReference = 952A4F8FB81691F9EB3DB324; productType = "com.apple.product-type.application"; };
 		19F77E6636126856E997D07E /* target-Debug-tv */ = {isa = XCBuildConfiguration; buildSettings = {
         CODE_SIGN_STYLE = Automatic;
-        CURRENT_PROJECT_VERSION = 18;
+        CURRENT_PROJECT_VERSION = 19;
         GENERATE_INFOPLIST_FILE = NO;
         INFOPLIST_FILE = FluxIPTVMac/Info-tvOS.plist;
         SDKROOT = appletvos;
@@ -314,7 +354,7 @@
         
         LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
         
-        MARKETING_VERSION = 0.8.5;
+        MARKETING_VERSION = 0.8.6;
         PRODUCT_BUNDLE_IDENTIFIER = com.m4d135.FluxIPTV.tv;
         PRODUCT_NAME = "$(TARGET_NAME)";
         SWIFT_VERSION = 5.0;
@@ -324,7 +364,7 @@
         }; name = Debug; };
 		6685DDB375A03C1CB9440E00 /* target-Release-tv */ = {isa = XCBuildConfiguration; buildSettings = {
         CODE_SIGN_STYLE = Automatic;
-        CURRENT_PROJECT_VERSION = 18;
+        CURRENT_PROJECT_VERSION = 19;
         GENERATE_INFOPLIST_FILE = NO;
         INFOPLIST_FILE = FluxIPTVMac/Info-tvOS.plist;
         SDKROOT = appletvos;
@@ -333,7 +373,7 @@
         
         LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
         
-        MARKETING_VERSION = 0.8.5;
+        MARKETING_VERSION = 0.8.6;
         PRODUCT_BUNDLE_IDENTIFIER = com.m4d135.FluxIPTV.tv;
         PRODUCT_NAME = "$(TARGET_NAME)";
         SWIFT_VERSION = 5.0;

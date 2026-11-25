@@ -37,7 +37,9 @@ import Foundation
     }()
 
     private var configuration: Configuration?
+    // Session activity is independent of the selected case's orientation.
     private var backVisible = false
+    private var backFacing = false
     private var generation = UUID()
     private var screenshotTask: Task<Void, Never>?
     private var drainingScreenshot: Task<Void, Never>?
@@ -56,7 +58,7 @@ import Foundation
     // actor-isolated @Published player. The action owns only playback resources.
     private var playerCleanup: (@MainActor @Sendable () -> Void)?
     private var youtubeViewportEligible = false
-    private var resumeWhenVisible = false
+    private var nativeWantsPlayback = false
 
     var externalURL: URL? {
         switch TrailerPreviewRoute.resolve(configuration?.trailerURL) {
@@ -113,8 +115,9 @@ import Foundation
         }
     }
 
-    /// Synchronous lifecycle entry point. Repeating an identical visible request
-    /// does not restart the countdown or the player.
+    /// Synchronous lifecycle entry point. backVisible means that the selected
+    /// case's preview session is active, even while its front faces the camera.
+    /// Use setBackFacing for orientation changes without recreating the player.
     func update(item: IPTVItem, details: IPTVDetails, filmURL: URL?, backVisible: Bool,
                 automatic: Bool, delay: TrailerPreviewDelay) {
         guard !Task.isCancelled else { return }
@@ -139,45 +142,46 @@ import Foundation
         case .external: phase = .external
         case .youtube:
             #if os(macOS) || os(iOS)
-            phase = automatic ? .preparing : .still
-            if automatic { queueAutomaticStart(token: token) }
+            phase = automatic && backFacing ? .preparing : .still
+            if automatic && backFacing { queueAutomaticStart(token: token) }
             #else
             phase = .external
             #endif
         case .native:
-            phase = automatic ? .preparing : .still
-            if automatic { queueAutomaticStart(token: token) }
+            phase = automatic && backFacing ? .preparing : .still
+            if automatic && backFacing { queueAutomaticStart(token: token) }
         }
     }
 
     private func queueAutomaticStart(token: UUID) {
-        guard let request = configuration, request.automatic else { return }
+        guard let request = configuration, request.automatic, backFacing else { return }
         delayTask?.cancel()
         let framePreparation = screenshotTask ?? drainingScreenshot
         delayTask = Task { @MainActor [weak self] in
             await framePreparation?.value
-            guard let self, self.isCurrent(token) else { return }
+            guard let self, self.isCurrent(token), self.backFacing else { return }
             // Give the still/thumbnail a bounded chance to arrive. Its failure
             // must not suppress an otherwise available trailer indefinitely.
             for _ in 0..<20 where self.still == nil {
                 do { try await Task.sleep(nanoseconds: 100_000_000) } catch { return }
-                guard self.isCurrent(token) else { return }
+                guard self.isCurrent(token), self.backFacing else { return }
             }
             await Task.yield()
-            guard self.isCurrent(token) else { return }
+            guard self.isCurrent(token), self.backFacing else { return }
             if case .youtube = TrailerPreviewRoute.resolve(request.trailerURL), !self.youtubeViewportEligible {
                 self.phase = .still; self.delayTask = nil; return
             }
             self.phase = .waiting
             do { try await Task.sleep(nanoseconds: UInt64(request.delay.rawValue) * 1_000_000_000) }
             catch { return }
-            guard self.isCurrent(token) else { return }
+            guard self.isCurrent(token), self.backFacing else { return }
             if case .youtube = TrailerPreviewRoute.resolve(request.trailerURL), !self.youtubeViewportEligible {
                 self.phase = .still
                 self.delayTask = nil
                 return
             }
             await self.handoffToPlayer(token: token, unmute: false)
+            guard self.isCurrent(token) else { return }
             self.delayTask = nil
         }
     }
@@ -185,7 +189,7 @@ import Foundation
     /// The same session moves into the expanded native container. No restart,
     /// second web view or second audio decoder is needed on promotion.
     @discardableResult func activateTrailer(unmute: Bool = true) -> Bool {
-        guard backVisible, hasInlineTrailer else { return false }
+        guard backVisible, backFacing, hasInlineTrailer else { return false }
         delayTask?.cancel(); delayTask = nil
         failureMessage = nil
         #if os(macOS) || os(iOS)
@@ -195,39 +199,63 @@ import Foundation
         }
         #endif
         if let player {
-            player.isMuted = !unmute
-            player.play()
+            if unmute { player.isMuted = false }
+            if phase == .ended { player.seek(to: .zero); progress = 0 }
+            nativeWantsPlayback = true
+            requestNativePlayback(player)
             return true
         }
         let token = generation
         delayTask = Task { @MainActor [weak self] in
             guard let self, self.isCurrent(token) else { return }
             await self.handoffToPlayer(token: token, unmute: unmute)
+            guard self.isCurrent(token) else { return }
             self.delayTask = nil
         }
         return true
     }
 
-    /// YouTube requires a visible viewport of at least 200 × 200. Smaller
-    /// cases retain the still and can always be opened by explicit selection.
+    /// Only the first automatic start depends on the eligible viewport. Once
+    /// started, rotation preserves playback until the front faces the camera.
     func setYouTubeViewportEligible(_ eligible: Bool) {
         guard eligible != youtubeViewportEligible else { return }
         objectWillChange.send()
         youtubeViewportEligible = eligible
         #if os(macOS) || os(iOS)
-        if let youtubeSession {
-            if !eligible {
-                resumeWhenVisible = phase == .playing || phase == .loading
-                youtubeSession.pause()
-            } else if resumeWhenVisible {
-                resumeWhenVisible = false
-                youtubeSession.play()
-            }
-        } else if eligible, backVisible, configuration?.automatic == true, delayTask == nil,
+        if youtubeSession == nil, eligible, backVisible, backFacing, configuration?.automatic == true, delayTask == nil,
                   case .youtube = TrailerPreviewRoute.resolve(configuration?.trailerURL), phase == .still {
             queueAutomaticStart(token: generation)
         }
         #endif
+    }
+
+    /// Pause the retained session on the front, then resume the same position
+    /// on the back only if it was playing or loading before the turn.
+    func setBackFacing(_ visible: Bool) {
+        guard backFacing != visible else { return }
+        backFacing = visible
+        if !visible {
+            delayTask?.cancel(); delayTask = nil
+            playbackTimeout?.cancel(); playbackTimeout = nil
+            if [.preparing, .waiting].contains(phase) { phase = .still }
+        }
+        #if os(macOS) || os(iOS)
+        if let youtubeSession {
+            youtubeSession.setBackFacing(visible)
+            return
+        }
+        #endif
+        if let player {
+            if !visible {
+                player.pause()
+                if nativeWantsPlayback { phase = .paused }
+            } else if nativeWantsPlayback, phase != .ended {
+                requestNativePlayback(player)
+            }
+        } else if visible, backVisible, configuration?.automatic == true, delayTask == nil,
+                  [.still, .preparing, .waiting].contains(phase) {
+            queueAutomaticStart(token: generation)
+        }
     }
 
     func setMuted(_ muted: Bool) {
@@ -236,13 +264,22 @@ import Foundation
         youtubeSession?.setMuted(muted)
         #endif
     }
+    func toggleMuted() {
+        #if os(macOS) || os(iOS)
+        if let youtubeSession {youtubeSession.setMuted(!youtubeSession.isMuted);return}
+        #endif
+        if let player {player.isMuted.toggle()}
+    }
     func togglePlayback() {
         #if os(macOS) || os(iOS)
         if let youtubeSession { youtubeSession.togglePlayback(); return }
         #endif
         guard let player else { activateTrailer(); return }
-        if player.timeControlStatus == .playing { player.pause(); phase = .paused }
-        else { player.play() }
+        if nativeWantsPlayback {
+            nativeWantsPlayback = false
+            playbackTimeout?.cancel(); playbackTimeout = nil
+            player.pause(); phase = .paused
+        } else { activateTrailer(unmute: false) }
     }
     func seek(by delta: Double) {
         #if os(macOS) || os(iOS)
@@ -253,8 +290,8 @@ import Foundation
         if seconds.isFinite { player.seek(to: CMTime(seconds: max(0, seconds + delta), preferredTimescale: 600)) }
     }
 
-    /// Call before film/episode playback, a neighbor change,
-    /// front-face rotation, app backgrounding and inspector dismissal.
+    /// Call before film/episode playback, a neighbor change, app backgrounding
+    /// and inspector dismissal. A front-face rotation only uses setBackFacing.
     func stop() {
         cancelWork(clearStill: true)
         configuration = nil
@@ -283,7 +320,6 @@ import Foundation
         generator?.cancelAllCGImageGeneration(); generator = nil
         stopPlayer()
         stopYouTube()
-        resumeWhenVisible = false
         failureMessage = nil
         if clearStill { still = nil; source = .none }
     }
@@ -370,7 +406,7 @@ import Foundation
         generator?.cancelAllCGImageGeneration()
         extractionTimeout?.cancel()
         await pending?.value
-        guard isCurrent(token) else { return }
+        guard isCurrent(token), backFacing else { return }
         screenshotTask = nil; drainingScreenshot = nil; generator = nil; extractionTimeout = nil
         switch TrailerPreviewRoute.resolve(configuration?.trailerURL) {
         case .native(let url): startPlayer(url: url, token: token, unmute: unmute)
@@ -390,6 +426,7 @@ import Foundation
         guard isCurrent(token) else { return }
         phase = .loading
         let candidate = YouTubeTrailerSession(trailer: video)
+        candidate.setBackFacing(backFacing)
         candidate.onReady = { [weak self, weak candidate] in
             guard let self, let candidate, self.isCurrent(token), self.youtubeSession === candidate else { return }
             // The iframe is ready before the session asks it to play. Reveal
@@ -402,9 +439,6 @@ import Foundation
             case .idle: break
             case .loading: self.phase = .loading
             case .playing:
-                guard self.youtubeViewportEligible else {
-                    self.resumeWhenVisible = true; candidate.pause(); return
-                }
                 self.phase = .playing; self.showVideo = true
             case .paused: self.phase = .paused
             case .ended: self.phase = .ended
@@ -440,6 +474,7 @@ import Foundation
         candidate.actionAtItemEnd = .pause
         candidate.preventsDisplaySleepDuringVideoPlayback = false
         candidate.automaticallyWaitsToMinimizeStalling = true
+        nativeWantsPlayback = true
 
         itemObservation = item.observe(\.status, options: [.initial, .new]) { [weak self] item, _ in
             Task { @MainActor [weak self] in
@@ -451,13 +486,19 @@ import Foundation
             Task { @MainActor [weak self] in
                 guard let self, self.isCurrent(token), self.player === observed else { return }
                 if observed.timeControlStatus == .playing {
+                    guard self.backFacing else { observed.pause(); return }
+                    self.nativeWantsPlayback = true
                     self.playbackTimeout?.cancel(); self.playbackTimeout = nil
                     self.phase = .playing
                     self.showVideo = true
                 } else if observed.timeControlStatus == .waitingToPlayAtSpecifiedRate {
+                    guard self.backFacing else { observed.pause(); return }
+                    self.nativeWantsPlayback = true
                     self.phase = .loading
                     self.schedulePlaybackTimeout(token: token)
                 } else if self.showVideo, self.phase != .ended {
+                    if self.backFacing { self.nativeWantsPlayback = false }
+                    self.playbackTimeout?.cancel(); self.playbackTimeout = nil
                     self.phase = .paused
                 }
             }
@@ -465,7 +506,10 @@ import Foundation
         endObserver = NotificationCenter.default.addObserver(forName: .AVPlayerItemDidPlayToEndTime, object: item, queue: .main) { [weak self, weak item] _ in
             Task { @MainActor [weak self, weak item] in
                 guard let self, let item, self.isCurrent(token), self.player?.currentItem === item else { return }
-                self.stopPlayer(); self.phase = .ended
+                self.nativeWantsPlayback = false
+                self.playbackTimeout?.cancel(); self.playbackTimeout = nil
+                self.progress = 1
+                self.phase = .ended
             }
         }
         failureObserver = NotificationCenter.default.addObserver(forName: .AVPlayerItemFailedToPlayToEndTime, object: item, queue: .main) { [weak self, weak item] _ in
@@ -489,7 +533,18 @@ import Foundation
             candidate.pause()
             candidate.replaceCurrentItem(with: nil)
         }
-        schedulePlaybackTimeout(token: token)
+        requestNativePlayback(candidate)
+    }
+
+    private func requestNativePlayback(_ candidate: AVPlayer) {
+        guard backVisible, backFacing else { phase = .paused; return }
+        if candidate.timeControlStatus == .playing {
+            phase = .playing
+            showVideo = true
+            return
+        }
+        phase = .loading
+        schedulePlaybackTimeout(token: generation)
         candidate.play()
     }
 
@@ -497,12 +552,13 @@ import Foundation
         playbackTimeout?.cancel()
         playbackTimeout = Task { @MainActor [weak self] in
             do { try await Task.sleep(nanoseconds: 10_000_000_000) } catch { return }
-            guard let self, self.isCurrent(token), self.phase == .loading else { return }
+            guard let self, self.isCurrent(token), self.backFacing, self.phase == .loading else { return }
             self.stopPlayer(); self.phase = .failed
         }
     }
 
     private func stopPlayer() {
+        nativeWantsPlayback = false
         playbackTimeout?.cancel(); playbackTimeout = nil
         itemObservation?.invalidate(); itemObservation = nil
         transportObservation?.invalidate(); transportObservation = nil
