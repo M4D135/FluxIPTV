@@ -1,6 +1,7 @@
-// Syntax-level regression guard for SwiftUI accessor macros and property wrappers.
+// Syntax and declaration guard, including code inside inactive platform branches.
 import Foundation
 import SwiftParser
+import SwiftParserDiagnostics
 import SwiftSyntax
 
 final class StateVisitor: SyntaxVisitor {
@@ -28,12 +29,21 @@ final class StateVisitor: SyntaxVisitor {
     }
 }
 let paths = Array(CommandLine.arguments.dropFirst())
-var errors = 0
+var syntaxErrors = 0
+var declarationErrors = 0
 for path in paths {
     let tree = Parser.parse(source: try String(contentsOfFile: path, encoding: .utf8))
+    // SwiftParser recovers malformed input into a tree. Walking that tree alone
+    // would silently accept syntax errors, even ones that break every Apple SDK.
+    let locations = SourceLocationConverter(fileName: path, tree: tree)
+    for diagnostic in ParseDiagnosticsGenerator.diagnostics(for: tree) where diagnostic.diagMessage.severity == .error {
+        let location = diagnostic.location(converter: locations)
+        print("\(path):\(location.line):\(location.column): error: \(diagnostic.message)")
+        syntaxErrors += 1
+    }
     let visitor = StateVisitor(path: path, tree: tree)
     visitor.walk(tree)
-    errors += visitor.errors
+    declarationErrors += visitor.errors
 }
-print("Checked \(paths.count) Swift files: \(errors) invalid attributed declarations")
-exit(errors == 0 ? 0 : 1)
+print("Checked \(paths.count) Swift files: \(syntaxErrors) syntax errors, \(declarationErrors) invalid attributed declarations")
+exit(syntaxErrors == 0 && declarationErrors == 0 ? 0 : 1)

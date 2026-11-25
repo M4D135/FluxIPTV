@@ -10,6 +10,14 @@
 - Résolveur local de bandes-annonces publiques YouTube et lecture AVPlayer tvOS ; aucun renvoi QR/iPhone.
 - Correction de disponibilité des API du Trousseau sans migration des identifiants.
 
+## Corrections de finalisation
+
+- Correction de la déclaration conditionnelle du focus qui bloquait les quatre compilations Apple de la première révision 0.8.8.
+- La garde SwiftParser rejette maintenant les erreurs de syntaxe, y compris dans les branches de compilation conditionnelle, en plus des déclarations SwiftUI invalides.
+- Conservation de la sourdine demandée pendant le chargement asynchrone d’une bande-annonce ; retour à la fiche et commande de son partagent le même état que le lecteur.
+- Nouvelle tentative après une erreur de session YouTube depuis le bouton Lire, en conservant la préférence de son.
+- Validation de la recherche après la fin du filtrage, pour éviter de focaliser ou d’ouvrir un ancien résultat.
+
 ## Garde-fous exécutés par la CI
 
 | Vérification | Ce qu’elle établit |

@@ -44,7 +44,6 @@ struct MediaDetailPresentation: View {
     @State private var fullscreenTrailer = false
     @State private var expandedDescription = false
     @State private var descriptionPage = 0
-    @State private var previewMuted = true
     @State private var focusedID = "play"
     @FocusState private var nativeFocus: String?
     @State private var startingPlayback = false
@@ -251,8 +250,8 @@ struct MediaDetailPresentation: View {
                 .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
                 .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(.white.opacity(0.14), lineWidth: 1).allowsHitTesting(false))
                 .overlay(alignment: .bottomTrailing) {
-                    control("mute", title: previewMuted ? "Activer le son" : "Couper le son", icon: previewMuted ? "speaker.slash" : "speaker.wave.2", iconOnly: true) {
-                        previewMuted.toggle(); preview.setMuted(previewMuted)
+                    control("mute", title: preview.isMuted ? "Activer le son" : "Couper le son", icon: preview.isMuted ? "speaker.slash" : "speaker.wave.2", iconOnly: true) {
+                        preview.setMuted(!preview.isMuted)
                     }
                     .disabled(!preview.showVideo)
                     .padding(16)
@@ -465,10 +464,10 @@ struct MediaDetailPresentation: View {
         guard !startingPlayback, details.trailerURL != nil else { return }
         preview.setBackFacing(true); preview.setYouTubeViewportEligible(true)
         _ = preview.activateTrailer()
-        previewMuted = false; fullscreenTrailer = true
+        fullscreenTrailer = true
     }
     private func closeTrailer() {
-        previewMuted = true; preview.setMuted(true); fullscreenTrailer = false; setFocus("trailer")
+        preview.setMuted(true); fullscreenTrailer = false; setFocus("trailer")
     }
     private func closeDescription() { expandedDescription = false; setFocus("description") }
     private func moveDescription(_ delta: Int) { descriptionPage = max(0, min(descriptionPages.count - 1, descriptionPage + delta)) }
@@ -510,7 +509,7 @@ struct MediaDetailPresentation: View {
         case .back, .home: dismiss()
         case .playPause: startPlayback()
         case .fullscreen: openTrailer()
-        case .mute: previewMuted.toggle(); preview.setMuted(previewMuted)
+        case .mute: preview.setMuted(!preview.isMuted)
         case .up, .down, .left, .right:
                 if let target = RemoteNavigation.move(from: focusedID, action: action, rows: focusRows) {
                 setFocus(target)
@@ -521,7 +520,7 @@ struct MediaDetailPresentation: View {
             case "back": dismiss()
             case "favorite": favorite()
             case "trailer": openTrailer()
-            case "mute": previewMuted.toggle(); preview.setMuted(previewMuted)
+            case "mute": preview.setMuted(!preview.isMuted)
             case "description": descriptionPage = 0; expandedDescription = true; setFocus("description-back")
             case "retry-episodes": seasonReload = UUID()
             default: startPlayback()
@@ -705,7 +704,6 @@ private struct MediaDetailTrailerPresentation: View {
     let close: () -> Void
     @FocusState private var nativeFocus: String?
     @State private var focus = "back"
-    @State private var muted = false
     #if os(macOS)
     @State private var expandedWindowNumber: Int?
     @State private var escapeMonitor: Any?
@@ -729,7 +727,7 @@ private struct MediaDetailTrailerPresentation: View {
                 button("rewind", title: "−15 s", icon: "gobackward.15", compact: compact) { preview.seek(by: -15) }
                 button("play", title: preview.isPlaying ? "Pause" : "Lire", icon: preview.isPlaying ? "pause.fill" : "play.fill", compact: compact) { preview.togglePlayback() }
                 button("forward", title: "+15 s", icon: "goforward.15", compact: compact) { preview.seek(by: 15) }
-                button("mute", title: muted ? "Activer le son" : "Couper le son", icon: muted ? "speaker.slash" : "speaker.wave.2", compact: compact) { muted.toggle(); preview.setMuted(muted) }
+                button("mute", title: preview.isMuted ? "Activer le son" : "Couper le son", icon: preview.isMuted ? "speaker.slash" : "speaker.wave.2", compact: compact) { preview.setMuted(!preview.isMuted) }
             }.padding(.horizontal, horizontalMargin).padding(.top, topMargin)
             MediaDetailTrailerSurface(preview: preview).frame(maxWidth: .infinity, maxHeight: .infinity)
             if preview.phase != .playing {
@@ -772,7 +770,7 @@ private struct MediaDetailTrailerPresentation: View {
             case .playPause: preview.togglePlayback()
             case .rewind: preview.seek(by: -15)
             case .forward: preview.seek(by: 15)
-            case .mute: muted.toggle(); preview.setMuted(muted)
+            case .mute: preview.setMuted(!preview.isMuted)
             case .left, .right, .up, .down:
                 if let target = RemoteNavigation.move(from: focus, action: action, rows: [actions]) { focus = target; nativeFocus = target }
             case .select:
@@ -780,7 +778,7 @@ private struct MediaDetailTrailerPresentation: View {
                 case "back": close()
                 case "rewind": preview.seek(by: -15)
                 case "forward": preview.seek(by: 15)
-                case "mute": muted.toggle(); preview.setMuted(muted)
+                case "mute": preview.setMuted(!preview.isMuted)
                 default: preview.togglePlayback()
                 }
             default: break

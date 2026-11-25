@@ -110,7 +110,7 @@ private enum CatalogUIFailure: Error, CustomStringConvertible {
             items.append(IPTVItem(id: "fixture-movie-\(index)", sourceID: source.id, name: titles[index],
                                   group: index % 2 == 0 ? "Cinéma · Aventure" : "Cinéma · Classiques", logoURL: url,
                                   kind: .movie, directURL: nil, xtreamStreamID: nil, fileExtension: nil,
-                                  details: IPTVDetails(synopsis: "Une équipe rejoint un observatoire isolé pour une dernière nuit sous les étoiles. Les souvenirs des voyageurs se croisent et font naître une nouvelle aventure. Le synopsis reste lisible à distance dans cette fiche plein écran.", year: year, genre: "Aventure · Drame", duration: "1 h 48")))
+                                  details: IPTVDetails(synopsis: "Une équipe rejoint un observatoire isolé pour une dernière nuit sous les étoiles. Les souvenirs des voyageurs se croisent et font naître une nouvelle aventure. Le synopsis reste lisible à distance dans cette fiche plein écran.", year: year, duration: "1 h 48", genre: "Aventure · Drame")))
         }
         let seriesArtwork = artworkRoot.appendingPathComponent("series.png")
         cache(try fixtureArtwork(width: 360, height: 540, index: 7, title: "LES SAISONS", subtitle: "JAQUETTE LOCALE · 2014"), at: seriesArtwork)
@@ -180,6 +180,62 @@ private enum CatalogUIFailure: Error, CustomStringConvertible {
             await Task.yield()
         }
         try require(captureFailures.isEmpty, captureFailures.joined(separator: "\n"))
+        try await verifySearchSubmission(source: source, items: items, playback: playback)
+    }
+
+    /// Exercise the production submit handler against the real 150 ms filter,
+    /// including an immediate second OK while old matches are still visible.
+    @MainActor private static func verifySearchSubmission(source: IPTVSource, items: [IPTVItem], playback: PlaybackController) async throws {
+        let scenarios: [(query: String, expected: String?, replacement: String?)] = [
+            ("dunes", "fixture-movie-1", nil),
+            ("no-matching-flux-title", "tab-movie", nil),
+            ("dunes", nil, "port")
+        ]
+        for scenario in scenarios {
+            let library = IPTVLibrary(catalogFixture: source, items: items, kind: .movie)
+            let original = library.catalogResults.all.items.first
+            try require(original?.id != "fixture-movie-1", "The search fixture needs a different old first item.")
+            var observations: [CatalogSearchFocusSnapshot] = []
+            let root = ContentView(fixtureSelection: original, fixtureSearchSubmission: scenario.query,
+                                   fixtureSearchObservation: { observations.append($0) })
+                .environmentObject(library).environmentObject(playback)
+                .preferredColorScheme(.dark).environment(\.scenePhase, .active)
+            let host = NSHostingView(rootView: root)
+            let window = NSWindow(contentRect: CGRect(x: 30, y: 30, width: 1440, height: 900),
+                                  styleMask: [.titled], backing: .buffered, defer: false)
+            window.isReleasedWhenClosed = false
+            window.contentView = host
+            window.makeKeyAndOrderFront(nil)
+            defer { window.orderOut(nil); window.close() }
+
+            for _ in 0..<100 {
+                if observations.contains(where: { $0.query == scenario.query && $0.filtering && $0.pending }) { break }
+                try await Task.sleep(nanoseconds: 10_000_000)
+            }
+            try require(observations.contains(where: { $0.query == scenario.query && $0.filtering && $0.pending }),
+                        "Search submission did not defer focus while the real filter was running.")
+            if let replacement = scenario.replacement { library.search = replacement }
+            let finalQuery = scenario.replacement ?? scenario.query
+            for _ in 0..<160 {
+                if let last = observations.last, last.query == finalQuery, !last.filtering, !last.pending,
+                   scenario.expected == nil || last.focusID == scenario.expected { break }
+                try await Task.sleep(nanoseconds: 25_000_000)
+            }
+            guard let final = observations.last else { throw CatalogUIFailure.assertion("No search focus observation arrived.") }
+            try require(final.query == finalQuery && !final.filtering && !final.pending,
+                        "Search focus did not settle or cancel within the bounded deadline.")
+            if let expected = scenario.expected {
+                try require(final.focusID == expected, "Submit focused \(final.focusID ?? "nil") instead of the current result \(expected).")
+            } else {
+                try require(library.catalogResults.all.items.map(\.id) == ["fixture-movie-2"],
+                            "The replacement query did not supply the current catalogue.")
+                try require(!observations.contains(where: { $0.query == finalQuery && $0.focusID == "fixture-movie-1" }),
+                            "A superseded search stole focus after its query changed.")
+            }
+            try require(observations.allSatisfy { $0.heldItemID == nil } && library.selectedItemID == nil && playback.playingItem == nil,
+                        "The early OK opened an old search result while filtering.")
+            print("PASS: debounced search '\(scenario.query)'\(scenario.replacement.map { " → '\($0)'" } ?? "") deferred/cancelled focus and rejected stale OK.")
+        }
     }
 
     private static func cache(_ image: CGImage, at url: URL) {

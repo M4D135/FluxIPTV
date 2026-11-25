@@ -21,7 +21,7 @@ private enum SmokeFailure: Error, CustomStringConvertible {
                 guard CommandLine.arguments.count == 2 else { throw SmokeFailure.assertion("Pass the fixture JavaScript path.") }
                 let fixture = try String(contentsOfFile: CommandLine.arguments[1], encoding: .utf8)
                 try await run(fixture: fixture)
-                print("PASS: native WKWebView bridge, controls, state validation, SwiftUI handoff, error mapping, and disposal.")
+                print("PASS: native WKWebView bridge, controls, state validation, SwiftUI handoff, deferred mute intent, failed-session retry, error mapping, and disposal.")
                 print("Local IFrame API fixture only; no live YouTube playback was tested.")
                 exit(0)
             } catch {
@@ -302,6 +302,76 @@ private enum SmokeFailure: Error, CustomStringConvertible {
         try require(messages[100] != messages[101], "Unavailable video and embed restriction were conflated.")
         try require(messages[153]?.contains("153") == true && messages[153] != messages[101],
                     "Application identity error 153 lost its distinct diagnosis.")
+        try await controllerHandoff(fixture: fixture, inline: inline)
+    }
+
+    /// Exercise the real owner across its queued handoff, before any player
+    /// exists. This is the same mute-intent boundary used while tvOS awaits a
+    /// native URL; the local web fixture makes its result observable offline.
+    @MainActor private static func controllerHandoff(fixture: String, inline: NSHostingView<AnyView>) async throws {
+        let trailer = YouTubeTrailer(videoID: "M7lc1UVf-VE")!
+        guard let context = CGContext(data: nil, width: 1, height: 1, bitsPerComponent: 8,
+                                      bytesPerRow: 4, space: CGColorSpaceCreateDeviceRGB(),
+                                      bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue),
+              let image = context.makeImage() else { throw SmokeFailure.assertion("Cannot create the offline controller thumbnail.") }
+        let thumbnailKey = trailer.thumbnailURL.absoluteString as NSString
+        ArtworkLoader.cache.setObject(FluxBitmap(image), forKey: thumbnailKey)
+        defer { ArtworkLoader.cache.removeObject(forKey: thumbnailKey) }
+
+        let controller = CaseMediaPreviewController()
+        controller.iframeAPIFixture = fixture
+        defer { controller.stop(); inline.rootView = AnyView(EmptyView()) }
+        let item = IPTVItem(id: "controller-trailer", sourceID: UUID(), name: "Local trailer fixture", group: "Fixture",
+                            logoURL: nil, kind: .movie, directURL: nil, xtreamStreamID: nil, fileExtension: nil)
+        controller.setBackFacing(true)
+        controller.update(item: item, details: IPTVDetails(trailerURL: trailer.watchURL), filmURL: nil,
+                          backVisible: true, automatic: false, delay: .one)
+        controller.setYouTubeViewportEligible(true)
+        try require(controller.activateTrailer(), "The controller rejected a valid trailer activation.")
+        try require(controller.youtubeSession == nil && controller.player == nil,
+                    "The queued handoff no longer permits testing mute before player creation.")
+        // Reproduces Return from fullscreen while the trailer is still loading.
+        controller.setMuted(true)
+        try await eventually("The controller did not create its first web session.") { controller.youtubeSession != nil }
+        guard let firstSession = controller.youtubeSession, let firstWebView = firstSession.fixtureWebView else {
+            throw SmokeFailure.assertion("The controller's first session has no web view.")
+        }
+        try require(controller.isMuted && firstSession.isMuted,
+                    "The queued activation overwrote a mute requested before player creation.")
+        inline.rootView = AnyView(YouTubeTrailerSurface(session: firstSession))
+        try await fixtureLoaded(in: firstWebView)
+        try await evaluate("window.fixture.ready()", in: firstWebView)
+        try await eventually("The controller's first session did not request playback.") {
+            try await number("window.fixture.commands.filter(x => x === 'play').length", in: firstWebView) == 1
+        }
+        let firstPlayerMuted = try await boolean("window.fixture.player.muted", in: firstWebView)
+        try require(firstPlayerMuted,
+                    "A muted handoff requested audible playback in the actual web player.")
+        try await evaluate("window.fixture.error(153)", in: firstWebView)
+        try await eventually("The controller did not expose the fixture failure.") { controller.phase == .failed }
+
+        controller.togglePlayback()
+        try await eventually("Fullscreen Play could not recreate the failed web session.") {
+            guard let current = controller.youtubeSession else { return false }
+            return current !== firstSession
+        }
+        guard let retriedSession = controller.youtubeSession, let retriedWebView = retriedSession.fixtureWebView else {
+            throw SmokeFailure.assertion("The retried controller session has no web view.")
+        }
+        try require(firstSession.fixtureWebView == nil && firstWebView.superview == nil,
+                    "Retry kept the failed web player attached or retained.")
+        try require(controller.isMuted && retriedSession.isMuted,
+                    "Retry discarded the user's mute choice.")
+        inline.rootView = AnyView(YouTubeTrailerSurface(session: retriedSession))
+        try await fixtureLoaded(in: retriedWebView)
+        try await evaluate("window.fixture.ready()", in: retriedWebView)
+        try await eventually("The new controller session did not request playback.") {
+            try await number("window.fixture.commands.filter(x => x === 'play').length", in: retriedWebView) == 1
+        }
+        try await evaluate("window.fixture.state(1)", in: retriedWebView)
+        try await eventually("The new controller session never recovered playback.") { controller.phase == .playing }
+        try require(controller.youtubeSession === retriedSession && controller.failureMessage == nil,
+                    "Retry duplicated the player or retained the old failure.")
     }
 
     @MainActor private static func fixtureLoaded(in view: WKWebView) async throws {

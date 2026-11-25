@@ -17,9 +17,18 @@ import Foundation
     @Published private(set) var phase: Phase = .idle
     @Published private(set) var progress: Double = 0
     @Published private(set) var failureMessage: String?
+    // Retain the latest audio intent while the native URL or web session is
+    // still loading. Returning to the silent inline preview can happen before
+    // either player exists, so applying mute only to a player loses that choice.
+    @Published private(set) var isMuted = true
     #if os(macOS) || os(iOS)
     @Published private(set) var youtubeSession: YouTubeTrailerSession?
     private var youtubeCleanup: (@MainActor @Sendable () -> Void)?
+    #if FLUX_TRAILER_TESTING
+    // The standalone native harness supplies the same local IFrame boundary
+    // used by YouTubeTrailerSession; production has no alternate provider.
+    var iframeAPIFixture: String?
+    #endif
     #endif
 
     private struct Configuration: Equatable {
@@ -162,7 +171,7 @@ import Foundation
                 self.delayTask = nil
                 return
             }
-            await self.handoffToPlayer(token: token, unmute: false)
+            await self.handoffToPlayer(token: token)
             guard self.isCurrent(token) else { return }
             self.delayTask = nil
         }
@@ -172,6 +181,7 @@ import Foundation
     /// second web view or second audio decoder is needed on promotion.
     @discardableResult func activateTrailer(unmute: Bool = true) -> Bool {
         guard backVisible, backFacing, hasInlineTrailer else { return false }
+        if unmute { setMuted(false) }
         delayTask?.cancel(); delayTask = nil
         failureMessage = nil
         #if os(macOS) || os(iOS)
@@ -181,7 +191,6 @@ import Foundation
         }
         #endif
         if let player {
-            if unmute { player.isMuted = false }
             if phase == .ended { player.seek(to: .zero); progress = 0 }
             nativeWantsPlayback = true
             requestNativePlayback(player)
@@ -190,7 +199,7 @@ import Foundation
         let token = generation
         delayTask = Task { @MainActor [weak self] in
             guard let self, self.isCurrent(token) else { return }
-            await self.handoffToPlayer(token: token, unmute: unmute)
+            await self.handoffToPlayer(token: token)
             guard self.isCurrent(token) else { return }
             self.delayTask = nil
         }
@@ -246,6 +255,7 @@ import Foundation
     }
 
     func setMuted(_ muted: Bool) {
+        isMuted = muted
         player?.isMuted = muted
         #if os(macOS) || os(iOS)
         youtubeSession?.setMuted(muted)
@@ -253,15 +263,18 @@ import Foundation
     }
     func toggleMuted() {
         #if os(macOS) || os(iOS)
-        if let youtubeSession {youtubeSession.setMuted(!youtubeSession.isMuted);return}
+        if let youtubeSession { setMuted(!youtubeSession.isMuted); return }
         #endif
-        if let player {player.isMuted.toggle()}
+        setMuted(!isMuted)
     }
     func togglePlayback() {
+        // Failed web sessions intentionally reject commands. An explicit retry
+        // must dispose that session and pass through the normal creation path.
+        if phase == .failed { activateTrailer(unmute: false); return }
         #if os(macOS) || os(iOS)
         if let youtubeSession { youtubeSession.togglePlayback(); return }
         #endif
-        guard let player else { activateTrailer(); return }
+        guard let player else { activateTrailer(unmute: false); return }
         if nativeWantsPlayback {
             nativeWantsPlayback = false
             playbackTimeout?.cancel(); playbackTimeout = nil
@@ -308,6 +321,7 @@ import Foundation
         stopPlayer()
         stopYouTube()
         failureMessage = nil
+        isMuted = true
         if clearStill { still = nil; source = .none }
     }
 
@@ -391,7 +405,7 @@ import Foundation
         #endif
     }
 
-    private func handoffToPlayer(token: UUID, unmute: Bool) async {
+    private func handoffToPlayer(token: UUID) async {
         let pending = screenshotTask ?? drainingScreenshot
         pending?.cancel()
         generator?.cancelAllCGImageGeneration()
@@ -400,16 +414,16 @@ import Foundation
         guard isCurrent(token), backFacing else { return }
         screenshotTask = nil; drainingScreenshot = nil; generator = nil; extractionTimeout = nil
         switch TrailerPreviewRoute.resolve(configuration?.trailerURL) {
-        case .native(let url): startPlayer(url: url, token: token, unmute: unmute)
+        case .native(let url): startPlayer(url: url, token: token)
         case .youtube(let video):
             #if os(macOS) || os(iOS)
-            startYouTube(video, token: token, unmute: unmute)
+            startYouTube(video, token: token)
             #elseif os(tvOS)
             phase = .loading
             do {
                 let url = try await NativeYouTubeTrailerResolver.resolve(video)
                 guard isCurrent(token), backFacing else { return }
-                startPlayer(url: url, token: token, unmute: unmute)
+                startPlayer(url: url, token: token)
             } catch is CancellationError {
                 return
             } catch {
@@ -424,11 +438,16 @@ import Foundation
     }
 
     #if os(macOS) || os(iOS)
-    private func startYouTube(_ video: YouTubeTrailer, token: UUID, unmute: Bool) {
+    private func startYouTube(_ video: YouTubeTrailer, token: UUID) {
         stopPlayer(); stopYouTube()
         guard isCurrent(token) else { return }
         phase = .loading
+        #if FLUX_TRAILER_TESTING
+        let candidate = iframeAPIFixture.map { YouTubeTrailerSession(trailer: video, iframeAPIFixture: $0) }
+            ?? YouTubeTrailerSession(trailer: video)
+        #else
         let candidate = YouTubeTrailerSession(trailer: video)
+        #endif
         candidate.setBackFacing(backFacing)
         candidate.onReady = { [weak self, weak candidate] in
             guard let self, let candidate, self.isCurrent(token), self.youtubeSession === candidate else { return }
@@ -450,8 +469,18 @@ import Foundation
             }
         }
         youtubeSession = candidate
-        youtubeCleanup = { @MainActor [candidate] in candidate.onReady = nil; candidate.onStateChange = nil; candidate.stop() }
-        candidate.start(muted: !unmute)
+        // The embedded player's own mute control also feeds the shared UI.
+        // Ignore only its initial default; start(muted:) applies our retained
+        // intent immediately and all subsequent samples are authoritative.
+        let muteObservation = candidate.$isMuted.dropFirst().sink { [weak self, weak candidate] muted in
+            guard let self, let candidate, self.isCurrent(token), self.youtubeSession === candidate else { return }
+            self.isMuted = muted
+        }
+        youtubeCleanup = { @MainActor [candidate, muteObservation] in
+            muteObservation.cancel()
+            candidate.onReady = nil; candidate.onStateChange = nil; candidate.stop()
+        }
+        candidate.start(muted: isMuted)
     }
     #endif
 
@@ -464,7 +493,7 @@ import Foundation
         #endif
     }
 
-    private func startPlayer(url: URL, token: UUID, unmute: Bool) {
+    private func startPlayer(url: URL, token: UUID) {
         stopPlayer()
         stopYouTube()
         guard isCurrent(token) else { return }
@@ -474,7 +503,7 @@ import Foundation
         item.preferredPeakBitRate = 4_000_000
         item.preferredMaximumResolution = CGSize(width: 1920, height: 1080)
         let candidate = AVPlayer()
-        candidate.isMuted = !unmute
+        candidate.isMuted = isMuted
         candidate.actionAtItemEnd = .pause
         candidate.preventsDisplaySleepDuringVideoPlayback = false
         candidate.automaticallyWaitsToMinimizeStalling = true

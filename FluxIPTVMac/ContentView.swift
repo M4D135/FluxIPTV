@@ -6,6 +6,27 @@ import AppKit
 
 private enum FluxPage: Equatable { case catalogue, series, player }
 
+/// A submitted search may still be filtering. Retain its browsing context, not
+/// an item from the previous result set, until the current results are ready.
+private struct CatalogFocusRequest: Equatable {
+    let sourceID: UUID?
+    let kind: IPTVMediaKind
+    let query: String
+    let group: String?
+    let presetID: String?
+    let resumeOnly: Bool
+}
+
+#if FLUX_CATALOG_UI_TESTING
+struct CatalogSearchFocusSnapshot {
+    let focusID: String?
+    let query: String
+    let filtering: Bool
+    let pending: Bool
+    let heldItemID: String?
+}
+#endif
+
 /// One living-room UI for Mac, iPhone, iPad and Apple TV. All actual tvOS navigation
 /// uses the OS focus engine; the Mac simulator and gamepad use the shared focus grid.
 struct ContentView: View {
@@ -85,6 +106,7 @@ struct ContentView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @FocusState private var systemFocus: String?
     @FocusState private var searchFocus: Bool
+    @State private var pendingCatalogFocus: CatalogFocusRequest?
     @State private var cinema = false
     @State private var caseTrailerVisible = false
     @State private var cinemaControls = true
@@ -99,9 +121,13 @@ struct ContentView: View {
     @StateObject private var remoteInput = RemoteInputBridge()
 
     #if FLUX_CATALOG_UI_TESTING
+    private var fixtureSearchSubmission: String?
+    private var fixtureSearchObservation: ((CatalogSearchFocusSnapshot) -> Void)?
     /// Seed only the initial selection; layout, controls and artwork remain the
     /// same production views used by the application.
-    init(fixtureSelection: IPTVItem? = nil, fixtureSeasons: [IPTVSeason] = [], fixtureOpenSeason: Int? = nil, fixtureEpisodeID: String? = nil, fixtureOpenItem: Bool = false) {
+    init(fixtureSelection: IPTVItem? = nil, fixtureSeasons: [IPTVSeason] = [], fixtureOpenSeason: Int? = nil, fixtureEpisodeID: String? = nil, fixtureOpenItem: Bool = false, fixtureSearchSubmission: String? = nil, fixtureSearchObservation: ((CatalogSearchFocusSnapshot) -> Void)? = nil) {
+        self.fixtureSearchSubmission = fixtureSearchSubmission
+        self.fixtureSearchObservation = fixtureSearchObservation
         _previewID = State(initialValue: fixtureSelection?.id)
         _previewItem = State(initialValue: fixtureSelection)
         _focusID = State(initialValue: fixtureSelection?.id ?? "tab-live")
@@ -129,6 +155,11 @@ struct ContentView: View {
 
     private var visibleSlice: CatalogSlice {
         continueOnly ? resumeSlice : library.catalogResults.slice(group:group)
+    }
+    private var catalogFocusContext: CatalogFocusRequest {
+        CatalogFocusRequest(sourceID: library.selectedSourceID, kind: library.contentKind,
+                            query: library.search, group: group,
+                            presetID: library.selectedPresetID, resumeOnly: continueOnly)
     }
     private var visible: [IPTVItem] { visibleSlice.items }
     private var groups: [String] { library.catalogResults.groups }
@@ -229,6 +260,7 @@ struct ContentView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .coordinateSpace(name: "club-pane")
                     .onChange(of: page) { previous, destination in
+                        pendingCatalogFocus = nil
                         guard previous == .series,destination == .catalogue,let target=focusID,visibleSlice.item(id:target) != nil else{return}
                         revealCatalogItem(target)
                         Task { @MainActor in
@@ -238,6 +270,7 @@ struct ContentView: View {
                         }
                     }
                     .onChange(of: heldItem?.id) { _, id in
+                        if id != nil { pendingCatalogFocus = nil }
                         guard id == nil, page != .player, let target=focusID else{return}
                         if page == .catalogue {revealCatalogItem(target)}
                         Task { @MainActor in
@@ -248,6 +281,9 @@ struct ContentView: View {
                         }
                     }
                     .onChange(of: focusID) { _, id in
+                        #if FLUX_CATALOG_UI_TESTING
+                        reportSearchFocusFixture()
+                        #endif
                         guard let id, heldItem == nil else { return }
                         if page == .catalogue, let item = visibleSlice.item(id:id) {
                             revealCatalogItem(id); setPreview(item)
@@ -303,6 +339,14 @@ struct ContentView: View {
                 if library.sources.isEmpty { focusID = "add-source"; systemFocus = "add-source" }
                 #if FLUX_CATALOG_UI_TESTING
                 if !library.sources.isEmpty, heldItem == nil { systemFocus = focusID }
+                if let query = fixtureSearchSubmission {
+                    library.search = query
+                    focusFirstItem()
+                    // Exercise the same early OK as the remote, while the
+                    // debounced library still exposes the previous results.
+                    activateFocus()
+                    reportSearchFocusFixture()
+                }
                 #endif
             }
             .onChange(of: geometry.size.height) { _, height in browserHeight = height }
@@ -395,6 +439,18 @@ struct ContentView: View {
         .onChange(of: library.search) { _, _ in if library.contentKind != .live {group=nil};clearPreview() }
         .onChange(of: group) { _, _ in clearPreview(); resetCatalogWindow() }
         .onChange(of: library.catalogResults.revision) { _, _ in resetCatalogWindow() }
+        .onChange(of: catalogFocusContext) { _, context in
+            if let request = pendingCatalogFocus, request != context { pendingCatalogFocus = nil }
+            #if FLUX_CATALOG_UI_TESTING
+            reportSearchFocusFixture()
+            #endif
+        }
+        .onChange(of: library.isFiltering) { _, filtering in
+            if !filtering { resolveCatalogFocus() }
+            #if FLUX_CATALOG_UI_TESTING
+            reportSearchFocusFixture()
+            #endif
+        }
         .onChange(of: continueOnly) { _, _ in resetCatalogWindow(); clearPreview() }
         .onChange(of: playback.history.entries) { _, _ in
             if continueOnly { rebuildResumeSlice(); catalogPage=min(catalogPage,catalogPageCount-1) }
@@ -1598,14 +1654,35 @@ struct ContentView: View {
     }
     private func changeKind(_ kind: IPTVMediaKind) { home(); library.contentKind = kind; showAllCatalog(); focusID = "tab-\(kind.rawValue)" }
     private func focusFirstItem() {
+        guard page == .catalogue, heldItem == nil, !modalOpen, !searchFocus, !liveGroupSearchFocus else { return }
+        pendingCatalogFocus = catalogFocusContext
+        resolveCatalogFocus()
+    }
+    private func resolveCatalogFocus() {
+        guard let request = pendingCatalogFocus else { return }
+        guard request == catalogFocusContext, page == .catalogue, heldItem == nil,
+              !modalOpen, !searchFocus, !liveGroupSearchFocus else {
+            pendingCatalogFocus = nil
+            return
+        }
+        guard !library.isFiltering else { return }
+        pendingCatalogFocus = nil
         let target = visible.first?.id ?? "tab-\(library.contentKind.rawValue)"
         focusID = target
         Task { @MainActor in
             await Task.yield()
-            guard page == .catalogue, !modalOpen, !searchFocus, !liveGroupSearchFocus else { return }
+            guard request == catalogFocusContext, page == .catalogue, heldItem == nil,
+                  !library.isFiltering, focusID == target, !modalOpen,
+                  !searchFocus, !liveGroupSearchFocus else { return }
             systemFocus = target
         }
     }
+    #if FLUX_CATALOG_UI_TESTING
+    private func reportSearchFocusFixture() {
+        fixtureSearchObservation?(CatalogSearchFocusSnapshot(focusID: focusID, query: library.search,
+            filtering: library.isFiltering, pending: pendingCatalogFocus != nil, heldItemID: heldItem?.id))
+    }
+    #endif
     private func search() {
         guard !modalOpen else { return }
         cancelEntrance()
@@ -1614,6 +1691,9 @@ struct ContentView: View {
         showingSearch = televisionLayout || library.contentKind != .live; searchFocus = true
     }
     private func openItem(_ item: IPTVItem) {
+        // While a query is filtering, visibleSlice can still contain the old
+        // matches. A quick second OK must not open one of those stale items.
+        guard page != .catalogue || !library.isFiltering else { return }
         library.selectedItemID = item.id
         setPreview(item)
         if item.isSeriesCollection {loadSeries(item)}

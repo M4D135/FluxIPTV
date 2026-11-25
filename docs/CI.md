@@ -6,7 +6,7 @@ Le workflow [Swift / Apple platforms](https://github.com/M4D135/FluxIPTV/actions
 
 | Job | Travail | Fichiers disponibles |
 |---|---|---|
-| Tests du cœur | Swift 6.2 sur Linux, garde des déclarations SwiftUI, intégrité des 18 fonds et cohérence des projets Xcode partagé et Apple TV générés | Journal des tests et vérifications |
+| Tests du cœur | Swift 6.2 sur Linux, garde syntaxique et déclarations SwiftUI, intégrité des 18 fonds et cohérence des projets Xcode partagé et Apple TV générés | Journal des tests et vérifications |
 | macOS | Compilation Xcode de `FluxIPTV`, signature désactivée | Journal, résultat `.xcresult`, application compressée si la compilation réussit |
 | iOS | Compilation Xcode de `FluxIPTViOS` pour simulateur | Journal, résultat `.xcresult`, application de simulateur compressée si la compilation réussit |
 | tvOS | Compilation de `FluxIPTV-AppleTV.xcodeproj`, schéma `FluxIPTVTV`, pour simulateur | Journal, résultat `.xcresult`, application de simulateur compressée si la compilation réussit |

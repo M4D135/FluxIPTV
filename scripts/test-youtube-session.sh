@@ -25,7 +25,14 @@ PLIST
 xcrun swiftc -parse-as-library -swift-version 5 -D FLUX_TRAILER_TESTING \
   -sdk "$(xcrun --sdk macosx --show-sdk-path)" \
   -target "$(uname -m)-apple-macosx14.0" \
+  "$repo_root/Sources/FluxIPTVCore/IPTVModels.swift" \
+  "$repo_root/Sources/FluxIPTVCore/ArtworkGate.swift" \
+  "$repo_root/Sources/FluxIPTVCore/ProceduralCinema.swift" \
+  "$repo_root/Sources/FluxIPTVCore/VideoClubTheme.swift" \
   "$repo_root/Sources/FluxIPTVCore/TrailerPreview.swift" \
+  "$repo_root/FluxIPTVMac/GlassStyle.swift" \
+  "$repo_root/FluxIPTVMac/ArtworkView.swift" \
+  "$repo_root/FluxIPTVMac/CaseMediaPreview.swift" \
   "$repo_root/FluxIPTVMac/YouTubeTrailerPlayer.swift" \
   "$repo_root/Tests/Native/YouTubeSessionSmoke.swift" \
   -o "$smoke_app/Contents/MacOS/YouTubeSessionSmoke"
