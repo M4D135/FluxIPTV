@@ -144,8 +144,8 @@ extension View {
     /// remain independent of the surface treatment.
     func fluxTelevisionGlass(radius: CGFloat, tint: Color = .clear, translucent: Bool = true) -> some View {
         let shape = RoundedRectangle(cornerRadius: radius, style: .continuous)
-        return background(Color(red: 0.07, green: 0.085, blue: 0.12).opacity(translucent ? 0.9 : 1), in: shape)
-            .background(tint.opacity(0.18), in: shape)
+        return background(tint.opacity(0.18), in: shape)
+            .background(Color(red: 0.07, green: 0.085, blue: 0.12).opacity(translucent ? 0.9 : 1), in: shape)
             .overlay(shape.strokeBorder(LinearGradient(colors: [.white.opacity(0.32), .white.opacity(0.08)],
                                                         startPoint: .topLeading, endPoint: .bottomTrailing), lineWidth: 1)
                 .allowsHitTesting(false))

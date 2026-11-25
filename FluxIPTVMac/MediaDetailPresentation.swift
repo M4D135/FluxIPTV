@@ -50,6 +50,35 @@ struct MediaDetailPresentation: View {
     @State private var handoffTask: Task<Void, Never>?
     @State private var handoffToken = UUID()
 
+    init(item: IPTVItem, details: IPTVDetails, close: @escaping () -> Void,
+         play: @escaping () -> Void, playEpisode: @escaping (IPTVItem, [IPTVSeason]) -> Void,
+         favorite: @escaping () -> Void, isFavorite: Bool, remoteEvent: MediaDetailRemoteEvent?,
+         initialSeasons: [IPTVSeason] = [], initialSeasonNumber: Int? = nil,
+         initialEpisodeID: String? = nil, suspended: Bool = false,
+         onTrailerPresentation: @escaping (Bool) -> Void = { _ in }) {
+        self.item = item
+        self.details = details
+        self.close = close
+        self.play = play
+        self.playEpisode = playEpisode
+        self.favorite = favorite
+        self.isFavorite = isFavorite
+        self.remoteEvent = remoteEvent
+        self.initialSeasons = initialSeasons
+        self.initialSeasonNumber = initialSeasonNumber
+        self.initialEpisodeID = initialEpisodeID
+        self.suspended = suspended
+        self.onTrailerPresentation = onTrailerPresentation
+        // The season shelf already has these episodes. Install them before
+        // the first focus evaluation, so the restored episode's Play button
+        // is enabled immediately instead of falling back to "Les saisons".
+        let availableSeasons = item.isSeriesCollection ? initialSeasons : []
+        let initialSeason = availableSeasons.first(where: { $0.number == initialSeasonNumber }) ?? availableSeasons.first
+        let initialEpisode = initialSeason?.episodes.first(where: { $0.id == initialEpisodeID }) ?? initialSeason?.episodes.first
+        _seasons = State(initialValue: availableSeasons)
+        _selectedEpisodeID = State(initialValue: initialEpisode?.id)
+    }
+
     private var active: Bool { !suspended && !startingPlayback && scenePhase == .active && !expandedDescription }
     private var selectedSeason: IPTVSeason? {
         seasons.first(where: { $0.number == initialSeasonNumber }) ?? seasons.first
@@ -125,7 +154,13 @@ struct MediaDetailPresentation: View {
             seasons = value
             if !episodes.contains(where: { $0.id == selectedEpisodeID }) { selectedEpisodeID = episodes.first?.id }
         }
-        .onChange(of: remoteEvent) { _, event in if let event { handle(event.action) } }
+        .onChange(of: remoteEvent) { [fullscreenTrailer] _, event in
+            // Route according to the screen that received the event. The
+            // trailer's handler may close itself before this parent callback
+            // runs; reading live state here would consume Back/Select twice.
+            guard !fullscreenTrailer, let event else { return }
+            handle(event.action)
+        }
         .onChange(of: nativeFocus) { _, value in
             guard let value else { return }
             focusedID = value
@@ -133,7 +168,7 @@ struct MediaDetailPresentation: View {
         }
         .onChange(of: fullscreenTrailer) { _, value in onTrailerPresentation(value) }
         .onChange(of: scenePhase) { _, phase in if phase != .active { cancelHandoff(); preview.stop() } }
-        .onAppear { nativeFocus = "play" }
+        .onAppear { setFocus(item.isSeriesCollection && selectedEpisode == nil ? "back" : "play") }
         .onDisappear { cancelHandoff(); preview.stop(); onTrailerPresentation(false) }
     }
 
@@ -369,6 +404,9 @@ struct MediaDetailPresentation: View {
             .focused($nativeFocus, equals: id).focusEffectDisabled()
             .id(id)
             .accessibilityIdentifier("media-detail-\(id)")
+            #if os(tvOS) && FLUX_CATALOG_UI_TESTING
+            .background(TVCatalogControlFrameProbe(identifier: "media-detail-\(id)").allowsHitTesting(false))
+            #endif
             #if !os(tvOS)
             .onHover { inside in if inside { focusedID = id } }
             #endif

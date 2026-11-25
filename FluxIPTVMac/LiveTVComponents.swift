@@ -148,9 +148,13 @@ struct LiveTVPreviewScreen: View {
     let delay: LiveTVPreviewDelay
     let automatic: Bool
 
+    private var displayedPhase: LiveTVPreviewController.Phase {
+        preview.previewedItemID == item.id ? preview.phase : .idle
+    }
+
     private var showPlaceholder: Bool {
         #if os(tvOS)
-        preview.phase != .playing
+        displayedPhase != .playing
         #else
         true
         #endif
@@ -170,7 +174,7 @@ struct LiveTVPreviewScreen: View {
                         #else
                         .frame(width: min(78, geometry.size.width * 0.5), height: min(64, geometry.size.height * 0.5))
                         #endif
-                        if preview.phase == .loading { ProgressView().controlSize(.small) }
+                        if displayedPhase == .loading { ProgressView().controlSize(.small) }
                         else if geometry.size.height >= 100 {
                             #if os(tvOS)
                             Text(status).font(.system(size: 18, weight: .medium)).foregroundStyle(.white.opacity(0.7)).multilineTextAlignment(.center).lineLimit(2)
@@ -183,13 +187,13 @@ struct LiveTVPreviewScreen: View {
                     .frame(width: geometry.size.width, height: geometry.size.height)
                 }
             }
-            if let player = preview.player {
+            if preview.previewedItemID == item.id, let player = preview.player {
                 LiveTVNativePreview(player: player)
-                    .opacity(preview.phase == .playing ? 1 : 0)
-                    .animation(reduceMotion ? nil : .easeOut(duration: 0.25), value: preview.phase == .playing)
+                    .opacity(displayedPhase == .playing ? 1 : 0)
+                    .animation(reduceMotion ? nil : .easeOut(duration: 0.25), value: displayedPhase == .playing)
             }
             #if os(tvOS)
-            if preview.phase == .playing {
+            if displayedPhase == .playing {
                 VStack {
                     Spacer()
                     HStack {
@@ -216,7 +220,7 @@ struct LiveTVPreviewScreen: View {
     }
     private var status: String {
         if !automatic { return "Aperçu automatique désactivé" }
-        switch preview.phase {
+        switch displayedPhase {
         case .idle, .waiting: return "Aperçu après \(delay.title)"
         case .loading: return "Ouverture de la chaîne…"
         case .playing: return "En direct"

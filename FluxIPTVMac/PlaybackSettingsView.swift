@@ -174,7 +174,7 @@ struct PlaybackSettingsView: View {
                 }
                 #if os(tvOS)
                 Toggle("Transparence légère",isOn:$glass)
-                Text("Décors conservés, surfaces sombres et animations fluides. Les effets de flou sont allégés sur Apple TV.").font(.caption).foregroundStyle(.secondary)
+                Text("Décors conservés, surfaces sombres et transitions animées. Les effets de flou sont allégés sur Apple TV.").font(.caption).foregroundStyle(.secondary)
                 #else
                 Toggle("Liquid Glass",isOn:$glass)
                 Text(FluxAppearance.nativeAvailable ? "Effet Apple natif disponible." : "Matériau translucide système sur cette version d’OS.").font(.caption).foregroundStyle(.secondary)

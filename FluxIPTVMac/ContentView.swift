@@ -129,6 +129,7 @@ struct ContentView: View {
     init(fixtureSelection: IPTVItem? = nil, fixtureSeasons: [IPTVSeason] = [], fixtureOpenSeason: Int? = nil, fixtureEpisodeID: String? = nil, fixtureOpenItem: Bool = false, fixtureSearchSubmission: String? = nil, fixtureSearchObservation: ((CatalogSearchFocusSnapshot) -> Void)? = nil) {
         self.fixtureSearchSubmission = fixtureSearchSubmission
         self.fixtureSearchObservation = fixtureSearchObservation
+        _showingSearch = State(initialValue: fixtureSearchSubmission != nil)
         _previewID = State(initialValue: fixtureSelection?.id)
         _previewItem = State(initialValue: fixtureSelection)
         _focusID = State(initialValue: fixtureSelection?.id ?? "tab-live")
@@ -201,7 +202,10 @@ struct ContentView: View {
     }
     private var cardWidth: CGFloat {
         #if os(tvOS)
-        return density == "compact" ? 260 : 300
+        // Seven portrait cards fit the 1080p TV safe width in the normal mode.
+        // Keep their full footer inside the remaining height below the menus;
+        // six columns still left a 552-point card in a roughly 520-point area.
+        return density == "compact" ? 210 : 240
         #elseif os(iOS)
         return sizeClass == .compact ? 124 : (library.contentKind == .live ? 174 : 150)
         #else
@@ -319,6 +323,20 @@ struct ContentView: View {
             }
         }
         .onChange(of: systemFocus) { _, id in
+            // Removing the old results can make the native focus engine pick
+            // the first header button before our submitted-search destination
+            // is mounted. Keep that temporary fallback from cancelling the
+            // explicit handoff; acknowledge only the requested destination.
+            if let request = pendingCatalogFocus, request == catalogFocusContext,
+               !library.isFiltering, page == .catalogue, heldItem == nil,
+               !modalOpen, !searchFocus, !liveGroupSearchFocus {
+                let target = visible.first?.id ?? "tab-\(library.contentKind.rawValue)"
+                guard id == target else { return }
+                pendingCatalogFocus = nil
+                #if FLUX_CATALOG_UI_TESTING
+                reportSearchFocusFixture()
+                #endif
+            }
             if heldItem == nil, let id, focusID != id { focusID = id }
             #if FLUX_CATALOG_UI_TESTING
             reportSearchFocusFixture()
@@ -406,7 +424,7 @@ struct ContentView: View {
     private var commandCatalogue: some View {
         platformCatalogue
         #if os(tvOS)
-        .fluxExit(heldItem != nil || page != .catalogue || showingSearch || group != nil || continueOnly || library.selectedPresetID != nil) { if heldItem != nil { dispatch(.back) } else { back() } }
+        .fluxExit(heldItem != nil || page != .catalogue || showingSearch || !library.search.isEmpty || group != nil || continueOnly || library.selectedPresetID != nil) { if heldItem != nil { dispatch(.back) } else { back() } }
         .onPlayPauseCommand { dispatch(.playPause) }
         #else
         .onKeyPress(keys: [.upArrow, .downArrow, .leftArrow, .rightArrow, .return, .escape, .space, "f"], phases: [.down, .repeat]) { press in
@@ -516,11 +534,12 @@ struct ContentView: View {
     private var activeCatalogue: some View {
         resultsObservedCatalogue
         .task(id: livePreviewKey) {
+            guard !Task.isCancelled else { return }
             guard livePreviewAllowed, let item = previewItem, item.kind == .live else { livePreview.stop(); return }
             do {
                 let urls = automaticLivePreview ? try library.playbackURLs(for: item) : []
                 livePreview.schedule(id: item.id, urls: urls, delay: livePreviewDelay, enabled: automaticLivePreview)
-            } catch { livePreview.markUnavailable() }
+            } catch { livePreview.markUnavailable(id: item.id) }
         }
         .onDisappear { caseDetailTask?.cancel(); caseTransitionTask?.cancel(); seriesTask?.cancel(); entranceTask?.cancel(); favoriteFeedbackTask?.cancel(); playerControlsTask?.cancel(); livePreview.stop() }
     }
@@ -552,6 +571,7 @@ struct ContentView: View {
     private func setPreview(_ item: IPTVItem) {
         guard previewID != item.id else { return }
         if item.kind == .live {
+            livePreview.stop()
             withAnimation(reduceMotion ? nil : .spring(response: 0.38, dampingFraction: 0.86)) {
                 previewID = item.id; previewItem = item
             }
@@ -715,6 +735,9 @@ struct ContentView: View {
                         .strokeBorder(focusID == "add-source" ? .white : .clear, lineWidth: 3))
             }.buttonStyle(FluxBareButtonStyle()).fluxFocus($systemFocus, id: "add-source")
                 .id("add-source").accessibilityIdentifier("welcome-load-source")
+                #if os(tvOS) && FLUX_CATALOG_UI_TESTING
+                .background(TVCatalogControlFrameProbe(identifier: "welcome-load-source").allowsHitTesting(false))
+                #endif
                 .padding(.top, 10)
         }.padding(36).frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -791,6 +814,9 @@ struct ContentView: View {
             .animation(reduceMotion ? nil : .spring(response: 0.25, dampingFraction: 0.88), value: focused)
             .accessibilityLabel(title).accessibilityValue(selected ? "Sélectionné" : "")
             .accessibilityIdentifier("navigation-\(id)")
+            #if os(tvOS) && FLUX_CATALOG_UI_TESTING
+            .background(TVCatalogControlFrameProbe(identifier: "navigation-\(id)").allowsHitTesting(false))
+            #endif
     }
 
     private func navButton(_ title: String, icon: String, id: String, active: Bool = false, iconOnly: Bool = false, action: @escaping () -> Void) -> some View {
@@ -1124,6 +1150,9 @@ struct ContentView: View {
         }.buttonStyle(FluxBareButtonStyle()).fluxFocus($systemFocus, id: item.id).id(item.id)
             .accessibilityLabel(item.name).accessibilityHint(televisionLayout ? "L’aperçu démarre dans cette vignette. Valider pour regarder. Appui long pour les favoris." : "Sélectionner pour afficher l’aperçu. Regarder ouvre la chaîne. Appui long pour les favoris.")
             .accessibilityIdentifier("live-channel-\(item.id)")
+            #if os(tvOS) && FLUX_CATALOG_UI_TESTING
+            .background(TVCatalogControlFrameProbe(identifier: "live-channel-\(item.id)").allowsHitTesting(false))
+            #endif
             .zIndex(focusID == item.id ? 1 : 0)
             .animation(reduceMotion ? nil : .spring(response: 0.28, dampingFraction: 0.84), value: focusID == item.id)
             .contextMenu {
@@ -1246,14 +1275,27 @@ struct ContentView: View {
             } else {
                 // Both visual concepts always begin in the complete, paginated grid.
                 if catalogPageCount > 1 { catalogPagination }
-                ScrollView {
-                    VStack(alignment:.leading,spacing:8) {
-                        if library.contentKind == .live {previewHero}
-                        LazyVGrid(columns:Array(repeating:GridItem(.flexible(),spacing:4),count:columns),spacing:8) {
-                            ForEach(displayedItems) { item in card(item) }
-                        }.padding(.horizontal,16).padding(.vertical,12)
-                    }
+                #if os(tvOS)
+                GeometryReader { viewport in
+                    // Headers, search and pagination have already taken their
+                    // space. Keep one complete row inside the remaining view,
+                    // including the 12-point scroll padding above and below.
+                    mediaCatalogGrid(cardHeight: max(0, viewport.size.height - 24))
                 }
+                #else
+                mediaCatalogGrid()
+                #endif
+            }
+        }
+    }
+
+    private func mediaCatalogGrid(cardHeight: CGFloat? = nil) -> some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 8) {
+                if library.contentKind == .live { previewHero }
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 4), count: columns), spacing: 8) {
+                    ForEach(displayedItems) { item in card(item, height: cardHeight) }
+                }.padding(.horizontal, 16).padding(.vertical, 12)
             }
         }
     }
@@ -1270,7 +1312,7 @@ struct ContentView: View {
         }.padding(.horizontal,30)
     }
 
-    private func card(_ item: IPTVItem) -> some View {
+    private func card(_ item: IPTVItem, height: CGFloat? = nil) -> some View {
         let focused = focusID == item.id
         let favorite = library.isFavorite(item)
         return ZStack(alignment: .topTrailing) {
@@ -1281,7 +1323,13 @@ struct ContentView: View {
                     .rotation3DEffect(.degrees(focused && !reduceMotion ? -4 : 0),axis:(x:0,y:1,z:0),perspective:0.6)
                     .scaleEffect(focused && !reduceMotion ? 1.025 : 1)
                     .offset(y: focused && !reduceMotion ? -3 : 0)
+                    #if os(tvOS)
+                    .frame(maxWidth: .infinity)
+                    #endif
                     Text(item.name).font(.callout.weight(.semibold)).lineLimit(2, reservesSpace: true).frame(maxWidth: .infinity, alignment: .leading)
+                        #if os(tvOS)
+                        .fixedSize(horizontal: false, vertical: true).layoutPriority(1)
+                        #endif
                     HStack(spacing: 5) {
                         Text(CasePackageFormat.resolve(year: item.details.year).title)
                             .font(.system(size: televisionLayout ? 18 : 9, weight: .semibold, design: .rounded))
@@ -1289,14 +1337,30 @@ struct ContentView: View {
                             .background(.white.opacity(0.09), in: RoundedRectangle(cornerRadius: 3))
                         Text(item.group).font(.caption).lineLimit(1)
                     }.foregroundStyle(.secondary)
+                        #if os(tvOS)
+                        .fixedSize(horizontal: false, vertical: true).layoutPriority(1)
+                        #endif
                     if let entry = playback.history.entries[item.id], entry.resumable {
                         ProgressView(value: entry.fraction).tint(themeAccent)
+                            #if os(tvOS)
+                            .layoutPriority(1)
+                            #endif
                     }
                 }
+                #if os(tvOS)
+                // Text keeps its natural size. The flexible 2:3 artwork takes
+                // the height left by the labels and optional progress bar;
+                // reserve the card's own 5-point vertical padding on each side.
+                .frame(height: height.map { max(0, $0 - 10) }, alignment: .top)
+                #endif
                 .padding(.horizontal,2).padding(.vertical,5)
                 .background(.white.opacity(focused ? 0.13 : 0.025), in: RoundedRectangle(cornerRadius: 21))
                 .overlay(RoundedRectangle(cornerRadius: 21).strokeBorder(focused ? Color.white.opacity(0.88) : .white.opacity(0.08), lineWidth: focused ? 2 : 1).allowsHitTesting(false))
             }.buttonStyle(FluxBareButtonStyle()).fluxFocus($systemFocus, id: item.id).id(item.id)
+                .accessibilityIdentifier("catalog-card-\(item.id)")
+                #if os(tvOS) && FLUX_CATALOG_UI_TESTING
+                .background(TVCatalogControlFrameProbe(identifier: "catalog-card-\(item.id)").allowsHitTesting(false))
+                #endif
                 #if os(tvOS)
                 .simultaneousGesture(LongPressGesture(minimumDuration: 0.65).onEnded { _ in chooseFavorites(item) })
                 #else
@@ -1698,7 +1762,7 @@ struct ContentView: View {
             let estimated = (channelWidth + gap) / (minimumTile + gap)
             columns = estimated.isFinite ? Int(max(1, min(televisionLayout ? 4 : 6, estimated))) : 3
         } else {
-            let estimated = (usable - 32) / (cardWidth + 4)
+            let estimated = (usable - 32 + 4) / (cardWidth + 4)
             columns = estimated.isFinite ? Int(max(2, min(10, estimated))) : 5
         }
     }
@@ -1722,18 +1786,29 @@ struct ContentView: View {
             return
         }
         guard !library.isFiltering else { return }
-        pendingCatalogFocus = nil
         let target = visible.first?.id ?? "tab-\(library.contentKind.rawValue)"
         Task { @MainActor in
             await Task.yield()
+            guard pendingCatalogFocus == request else { return }
             guard request == catalogFocusContext, page == .catalogue, heldItem == nil,
                   !library.isFiltering, !modalOpen,
-                  !searchFocus, !liveGroupSearchFocus else { return }
-            // Removing the old results can make the OS temporarily focus its
-            // first control. That fallback is not a cancellation of Submit.
-            // Apply both selections after the result-view update has yielded.
+                  !searchFocus, !liveGroupSearchFocus else {
+                pendingCatalogFocus = nil
+                return
+            }
+            // The native engine may briefly choose a header while the new
+            // result mounts. Apply both focus states after that view update.
+            let alreadyFocused = systemFocus == target
             focusID = target
             systemFocus = target
+            // A changed binding is acknowledged by onChange(systemFocus).
+            // If it already names the target, there will be no change event.
+            if alreadyFocused {
+                pendingCatalogFocus = nil
+                #if FLUX_CATALOG_UI_TESTING
+                reportSearchFocusFixture()
+                #endif
+            }
         }
     }
     #if FLUX_CATALOG_UI_TESTING

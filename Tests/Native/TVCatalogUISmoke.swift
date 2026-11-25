@@ -12,12 +12,49 @@ private enum TVCatalogUIFailure: Error, CustomStringConvertible {
     var description: String { switch self { case .assertion(let message): return message } }
 }
 
+/// Installed behind the actual production control only in this fixture build.
+/// Its bounds are laid out by SwiftUI, then read back from UIKit in the same
+/// window as the real focused item. It never takes focus or handles input.
+struct TVCatalogControlFrameProbe: UIViewRepresentable {
+    let identifier: String
+
+    func makeUIView(context: Context) -> TVCatalogControlProbeView {
+        let view = TVCatalogControlProbeView()
+        view.controlIdentifier = identifier
+        view.backgroundColor = .clear
+        view.isOpaque = false
+        view.isUserInteractionEnabled = false
+        view.isAccessibilityElement = false
+        view.accessibilityElementsHidden = true
+        return view
+    }
+
+    func updateUIView(_ view: TVCatalogControlProbeView, context: Context) {
+        view.controlIdentifier = identifier
+    }
+
+    func sizeThatFits(_ proposal: ProposedViewSize, uiView: TVCatalogControlProbeView, context: Context) -> CGSize? {
+        guard let width = proposal.width, let height = proposal.height else { return nil }
+        return CGSize(width: width, height: height)
+    }
+}
+
+final class TVCatalogControlProbeView: UIView {
+    var controlIdentifier = ""
+    override var canBecomeFocused: Bool { false }
+}
+
+@MainActor private final class TVCatalogSearchObservations: ObservableObject {
+    var snapshots: [CatalogSearchFocusSnapshot] = []
+}
+
 /// The script substitutes this entry point in a temporary repository copy. It
 /// hosts the real application views in a booted tvOS Simulator, including the
 /// system focus engine. It never loads saved accounts or remote media.
 @main @MainActor private struct TVCatalogUISmoke: App {
     @StateObject private var library: IPTVLibrary
     @StateObject private var playback: PlaybackController
+    @StateObject private var searchObservations = TVCatalogSearchObservations()
     private let fixture: TVCatalogFixture
 
     init() {
@@ -48,11 +85,16 @@ private enum TVCatalogUIFailure: Error, CustomStringConvertible {
         WindowGroup {
             ContentView(fixtureSelection: fixture.selection, fixtureSeasons: fixture.seasons,
                         fixtureOpenSeason: fixture.openSeason, fixtureEpisodeID: fixture.episodeID,
-                        fixtureOpenItem: fixture.kind == .movie)
+                        fixtureOpenItem: fixture.scenario == "movie",
+                        fixtureSearchSubmission: fixture.searchQuery,
+                        fixtureSearchObservation: { searchObservations.snapshots.append($0) })
                 .environmentObject(library)
                 .environmentObject(playback)
                 .preferredColorScheme(.dark)
-                .task { await TVCatalogCapture.awaitInitialFocus(fixture: fixture, playback: playback) }
+                .task {
+                    await TVCatalogCapture.awaitInitialFocus(fixture: fixture, library: library,
+                                                             playback: playback, searches: searchObservations)
+                }
         }
     }
 }
@@ -70,6 +112,9 @@ private enum TVCatalogUIFailure: Error, CustomStringConvertible {
     var expectedInitialControl: String {
         switch scenario {
         case "live": return "live-channel-fixture-live-0"
+        case "movies": return "catalog-card-fixture-movie-1"
+        case "search-empty": return "navigation-tab-movie"
+        case "search-result": return "catalog-card-fixture-movie-0"
         case "welcome": return "welcome-load-source"
         default: return "media-detail-play"
         }
@@ -78,15 +123,39 @@ private enum TVCatalogUIFailure: Error, CustomStringConvertible {
     var minimumFocusSize: CGSize {
         switch scenario {
         case "live": return CGSize(width: 300, height: 230)
+        case "movies", "search-result": return CGSize(width: 240, height: 350)
+        case "search-empty": return CGSize(width: 150, height: 112)
         case "welcome": return CGSize(width: 300, height: 72)
         default: return CGSize(width: 180, height: 64)
         }
     }
 
+    var searchQuery: String? {
+        switch scenario {
+        case "search-empty": return "no-matching-flux-title"
+        case "search-result": return "dunes"
+        default: return nil
+        }
+    }
+
+    var expectedSearchFocus: String? {
+        switch scenario {
+        case "search-empty": return "tab-movie"
+        case "search-result": return "fixture-movie-0"
+        default: return nil
+        }
+    }
+
+    var expectedSearchResults: [String] {
+        scenario == "search-result" ? ["fixture-movie-0"] : []
+    }
+
+    var usesPortraitControl: Bool { scenario == "movies" || scenario == "search-result" }
+
     static func make() throws -> TVCatalogFixture {
         let scenario = ProcessInfo.processInfo.environment["FLUX_UI_SCENARIO"] ?? ""
-        try TVCatalogCapture.require(["movie", "series", "live", "welcome"].contains(scenario),
-                                     "FLUX_UI_SCENARIO must be movie, series, live or welcome.")
+        try TVCatalogCapture.require(["movie", "movies", "series", "live", "welcome", "search-empty", "search-result"].contains(scenario),
+                                     "FLUX_UI_SCENARIO must name a supported catalogue, detail, welcome or search scenario.")
         let source = IPTVSource(id: UUID(uuidString: "00000000-0000-0000-0000-000000000003")!,
                                 name: "Catalogue local de démonstration", kind: .m3uFile)
         if scenario == "welcome" {
@@ -145,9 +214,10 @@ private enum TVCatalogUIFailure: Error, CustomStringConvertible {
         let episodeID = "fixture-series-s12-e15"
         try TVCatalogCapture.require(seasons.first(where: { $0.number == 12 })?.episodes.contains(where: { $0.id == episodeID }) == true,
                                      "The exact requested S12/E15 fixture identifier is absent.")
+        let isMovie = scenario == "movie" || scenario == "movies" || scenario.hasPrefix("search-")
         return TVCatalogFixture(scenario: scenario, source: source, items: items,
-                                kind: scenario == "movie" ? .movie : .series,
-                                selection: scenario == "movie" ? items[1] : collection,
+                                kind: isMovie ? .movie : .series,
+                                selection: isMovie ? items[1] : collection,
                                 seasons: scenario == "series" ? seasons : [],
                                 openSeason: scenario == "series" ? 12 : nil,
                                 episodeID: scenario == "series" ? episodeID : nil)
@@ -216,7 +286,8 @@ private enum TVCatalogUIFailure: Error, CustomStringConvertible {
         ], forName: UserDefaults.argumentDomain)
     }
 
-    static func awaitInitialFocus(fixture: TVCatalogFixture, playback: PlaybackController) async {
+    static func awaitInitialFocus(fixture: TVCatalogFixture, library: IPTVLibrary,
+                                  playback: PlaybackController, searches: TVCatalogSearchObservations) async {
         do {
             // Wait for real SwiftUI tasks and the native compositor, not a
             // synthetic scenePhase override or an image-renderer snapshot.
@@ -225,41 +296,91 @@ private enum TVCatalogUIFailure: Error, CustomStringConvertible {
             var lastObservation: [String: Any] = [:]
             for _ in 0..<80 {
                 try Task.checkCancellation()
+                let precedingFocus = previousFocus
+                previousFocus = ""
                 try require(playback.playingItem == nil && playback.player.currentItem == nil,
                             "The visual fixture unexpectedly started main playback.")
+                let search = searchEvidence(fixture: fixture, library: library, observations: searches.snapshots)
+                lastObservation = search.report
                 let windows = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
                     .filter { $0.activationState == .foregroundActive }.flatMap(\.windows)
                 if let window = windows.first(where: { $0.isKeyWindow && !$0.isHidden }),
                    window.bounds.width > 800, window.bounds.height > 400 {
                     try require(!containsSceneKit(window), "A SceneKit view is still mounted in the full-screen detail hierarchy.")
                     if let focused = UIFocusSystem.focusSystem(for: window)?.focusedItem {
-                        let frame = focused.frame
+                        let native = nativeFrame(focused, in: window)
+                        let frame = native.frame
+                        let measuredProbes = controlProbes(in: window).filter {
+                            $0.controlIdentifier == fixture.expectedInitialControl && $0.window === window
+                        }
+                        // ViewThatFits may measure a fallback before choosing
+                        // its visible child. A zero-sized/offscreen probe is
+                        // not a second mounted control; two visible probes
+                        // remain ambiguous and must fail.
+                        let probes = measuredProbes.filter {
+                            let bounds = $0.convert($0.bounds, to: window)
+                            return valid(bounds) && valid(bounds.intersection(window.bounds))
+                        }
+                        let expectedFrame = probes.count == 1 ? probes[0].convert(probes[0].bounds, to: window) : CGRect.null
+                        let viewport = probes.count == 1 ? visibleViewport(from: probes[0].superview, in: window) : CGRect.null
+                        let comparison = compareFocus(frame, with: expectedFrame, in: window.bounds)
                         let windowArea = window.bounds.width * window.bounds.height
-                        let fraction = frame.width * frame.height / windowArea
-                        let bounded = !frame.isEmpty && !frame.isInfinite && !frame.isNull && fraction.isFinite &&
-                            fraction < 0.18 && frame.width < window.bounds.width * 0.75 && frame.height < window.bounds.height * 0.45
+                        let fraction = area(frame) / windowArea
+                        // A portrait catalogue card includes its 2:3 artwork
+                        // and labels. Keep the tighter bound for all controls
+                        // and landscape tiles in the other scenarios.
+                        let maximumHeightFraction: CGFloat = fixture.usesPortraitControl ? 0.60 : 0.45
+                        let bounded = valid(frame) && fraction.isFinite &&
+                            fraction < 0.18 && frame.width < window.bounds.width * 0.75 && frame.height < window.bounds.height * maximumHeightFraction
                         let identity = focusIdentity(focused)
-                        // Some SwiftUI focus items expose an accessibility ID
-                        // directly, others only their UIKit geometry. An ID,
-                        // when exposed, must match the intended initial control.
-                        let expectedFocus = identity.identifier.isEmpty || identity.identifier == fixture.expectedInitialControl
+                        // An empty accessibility identifier supplies no proof.
+                        // Every pass requires the native focused item's real
+                        // geometry to match one unique measured control.
+                        let identifierConflict = !identity.identifier.isEmpty && identity.identifier != fixture.expectedInitialControl
+                        let expectedFocus = probes.count == 1 && comparison.matches && !identifierConflict
                         let largeEnough = frame.width >= fixture.minimumFocusSize.width && frame.height >= fixture.minimumFocusSize.height
-                        lastObservation = [
+                        // A small enough card can still extend below its grid.
+                        // The actual control probe supplies the clipping chain,
+                        // while the native focused item's frame is independently
+                        // converted through its verified focus container.
+                        let fullyVisible = valid(frame) && valid(expectedFrame) && valid(viewport) &&
+                            viewport.insetBy(dx: -1, dy: -1).contains(frame) &&
+                            viewport.insetBy(dx: -1, dy: -1).contains(expectedFrame)
+                        let visibilityAccepted = !fixture.usesPortraitControl || fullyVisible
+                        let nativeReport: [String: Any] = [
                             "windowPoints": [window.bounds.width, window.bounds.height],
                             "focusedType": String(describing: type(of: focused)),
                             "focusedIdentifier": identity.identifier,
                             "focusedLabel": identity.label,
-                            "focusFrame": [frame.origin.x, frame.origin.y, frame.width, frame.height],
+                            "focusFrame": coordinates(frame),
+                            "focusFrameInWindow": coordinates(frame),
+                            "focusViewportInWindow": coordinates(viewport),
+                            "fullyVisibleNativeFocus": fullyVisible,
+                            "rawFocusFrame": coordinates(focused.frame),
+                            "focusFrameConversion": native.method,
+                            "focusContainerTrace": native.trace,
                             "focusAreaFraction": fraction.isFinite ? Double(fraction) : -1,
                             "boundedNativeFocus": bounded,
                             "largeEnoughNativeControl": largeEnough,
                             "minimumFocusPoints": [fixture.minimumFocusSize.width, fixture.minimumFocusSize.height],
+                            "maximumFocusHeightFraction": maximumHeightFraction,
                             "expectedInitialControlIdentifier": fixture.expectedInitialControl,
                             "expectedControlIdentifierObserved": identity.identifier == fixture.expectedInitialControl,
+                            "expectedControlProbeCount": probes.count,
+                            "measuredControlProbeCount": measuredProbes.count,
+                            "expectedControlFrameObserved": probes.count == 1 && valid(expectedFrame),
+                            "expectedControlFrame": coordinates(expectedFrame),
+                            "nativeFocusMatchesExpectedControl": expectedFocus,
+                            "focusCoveredByExpectedControl": comparison.focusCoverage,
+                            "expectedControlCoveredByFocus": comparison.controlCoverage,
+                            "focusCenterDistance": comparison.centerDistance,
+                            "expectedControlVisibleFraction": comparison.visibleFraction,
+                            "focusProof": "UIFocusSystem.focusedItem geometry compared with a noninteractive UIKit probe laid out behind the actual control",
                             "sceneKitViewMounted": false
                         ]
-                        let key = "\(identity.identifier)|\(frame)"
-                        stableSamples = bounded && expectedFocus && largeEnough && key == previousFocus ? stableSamples + 1 : 0
+                        lastObservation.merge(nativeReport) { _, new in new }
+                        let key = "\(identity.identifier)|\(frame)|\(expectedFrame)|\(viewport)"
+                        stableSamples = bounded && expectedFocus && largeEnough && visibilityAccepted && search.passed && key == precedingFocus ? stableSamples + 1 : 0
                         previousFocus = key
                         if stableSamples >= 4 {
                             var report = lastObservation
@@ -268,11 +389,14 @@ private enum TVCatalogUIFailure: Error, CustomStringConvertible {
                             report["selectedItemID"] = fixture.selection?.id ?? ""
                             report["requestedSeason"] = fixture.openSeason ?? 0
                             report["requestedEpisodeID"] = fixture.episodeID ?? ""
-                            report["captureMode"] = "native tvOS Simulator; actual initial focus only"
+                            report["captureMode"] = fixture.searchQuery == nil
+                                ? "native tvOS Simulator; measured actual initial focus"
+                                : "native tvOS Simulator; production search-submit hook and measured actual resulting focus"
+                            report["physicalRemoteNavigationTested"] = false
                             report["mediaPlaybackTested"] = false
                             report["mediaFixture"] = "Local artwork only; no playable URL. Trailer and live playback are not exercised."
                             try write(report)
-                            print("FLUX_TV_UI_READY \(fixture.scenario): native focus=\(identity.identifier), frame=\(frame).")
+                            print("FLUX_TV_UI_READY \(fixture.scenario): native focus=\(identity.identifier), frame=\(frame), measured control=\(expectedFrame).")
                             print("No account, credential, network media, SceneKit surface or remote input injection was used.")
                             return
                         }
@@ -283,7 +407,7 @@ private enum TVCatalogUIFailure: Error, CustomStringConvertible {
             var report = lastObservation
             report["status"] = "failed"
             report["scenario"] = fixture.scenario
-            report["error"] = "No stable native focus on the expected bounded, sufficiently large control within 22 seconds."
+            report["error"] = "No stable native focus matching the measured expected control, fully visible portrait viewport and scenario assertions within 22 seconds."
             try write(report)
             fputs("FAIL: tvOS UI did not reach the expected stable bounded native focus.\n", stderr)
         } catch is CancellationError {
@@ -294,6 +418,143 @@ private enum TVCatalogUIFailure: Error, CustomStringConvertible {
             try? write(["status": "failed", "scenario": fixture.scenario, "error": String(describing: error)])
             fputs("FAIL: \(error)\n", stderr)
         }
+    }
+
+    private static func searchEvidence(fixture: TVCatalogFixture, library: IPTVLibrary,
+                                       observations: [CatalogSearchFocusSnapshot]) -> (passed: Bool, report: [String: Any]) {
+        guard let query = fixture.searchQuery, let expectedFocus = fixture.expectedSearchFocus else {
+            return (true, ["searchSubmissionTested": false])
+        }
+        let deferred = observations.contains { $0.query == query && $0.filtering && $0.pending }
+        let last = observations.last
+        let settled = last?.query == query && last?.filtering == false && last?.pending == false && last?.focusID == expectedFocus
+        let resultIDs = library.catalogResults.all.items.map(\.id)
+        let resultsMatch = library.search == query && !library.isFiltering && resultIDs == fixture.expectedSearchResults
+        let rejectedEarlyOK = !observations.isEmpty && observations.allSatisfy { $0.heldItemID == nil } && library.selectedItemID == nil
+        let trace: [[String: Any]] = observations.map {
+            ["query": $0.query, "focusID": $0.focusID ?? "", "filtering": $0.filtering,
+             "pending": $0.pending, "heldItemID": $0.heldItemID ?? ""]
+        }
+        return (deferred && settled && resultsMatch && rejectedEarlyOK, [
+            "searchSubmissionTested": true,
+            "searchQuery": query,
+            "searchDeferredDuringFiltering": deferred,
+            "searchSettledOnExpectedTarget": settled,
+            "searchResultsMatch": resultsMatch,
+            "searchExpectedFocusID": expectedFocus,
+            "searchResultIDs": resultIDs,
+            "searchRejectedStaleActivation": rejectedEarlyOK,
+            "searchObservations": trace,
+            "searchSubmissionMethod": "Existing fixture hook invokes the production submit handler and immediate activation while the real debounced filter runs; no Siri Remote input is injected"
+        ])
+    }
+
+    private static func controlProbes(in view: UIView) -> [TVCatalogControlProbeView] {
+        guard !view.isHidden, view.alpha > 0.01 else { return [] }
+        var result: [TVCatalogControlProbeView] = []
+        if let probe = view as? TVCatalogControlProbeView { result.append(probe) }
+        for child in view.subviews { result.append(contentsOf: controlProbes(in: child)) }
+        return result
+    }
+
+    private static func visibleViewport(from view: UIView?, in window: UIWindow) -> CGRect {
+        var visible = window.safeAreaLayoutGuide.layoutFrame.intersection(window.bounds)
+        var ancestor = view
+        while let candidate = ancestor {
+            if candidate.isHidden || candidate.alpha <= 0.01 { return .null }
+            if candidate.clipsToBounds {
+                visible = visible.intersection(candidate.convert(candidate.bounds, to: window))
+            }
+            ancestor = candidate.superview
+        }
+        return visible
+    }
+
+    /// A non-UIView focus item's frame belongs to its parent's child-item
+    /// container. SwiftUI may expose the focused item through a responder
+    /// adapter that is not object-identical to any item returned by a later
+    /// focusItems(in:) enumeration. That enumeration is not the ancestry API.
+    ///
+    /// Use the *actual focused item's immediate parent*, verify that parent's
+    /// public focus ancestry reaches this active window, and convert through
+    /// the parent's declared child-container coordinate space. The expected
+    /// control/probe is deliberately not an input to this conversion.
+    ///
+    /// If that direct relationship is unavailable, fail rather than trying
+    /// arbitrary ancestor spaces or assuming that the raw frame is global.
+    /// https://developer.apple.com/documentation/uikit/uifocusenvironment/parentfocusenvironment
+    /// https://developer.apple.com/documentation/uikit/uifocusenvironment/focusitemcontainer
+    /// https://developer.apple.com/documentation/uikit/uifocusitem/frame
+    /// https://developer.apple.com/documentation/uikit/uifocusitemcontainer/coordinatespace
+    private static func nativeFrame(_ focused: any UIFocusItem, in window: UIWindow)
+        -> (frame: CGRect, method: String, trace: [String]) {
+        if let view = focused as? UIView, view.window === window {
+            return (view.convert(view.bounds, to: window), "UIView.bounds converted to the active UIWindow", [])
+        }
+        guard valid(focused.frame), let parent = focused.parentFocusEnvironment else {
+            return (.null, "Native focused item has no valid frame/direct parent; cannot pass", [])
+        }
+        var environment: (any UIFocusEnvironment)? = parent
+        var visited: Set<ObjectIdentifier> = []
+        var trace: [String] = []
+        var reachesActiveWindow = false
+        for _ in 0..<24 {
+            guard let ancestor = environment else { break }
+            guard visited.insert(ObjectIdentifier(ancestor)).inserted else {
+                trace.append("Cycle in public parentFocusEnvironment chain")
+                break
+            }
+            trace.append("Native parent chain: \(type(of: ancestor))")
+            if ObjectIdentifier(ancestor) == ObjectIdentifier(window) {
+                reachesActiveWindow = true
+                trace.append("Native parent chain reaches the exact active UIWindow")
+                break
+            }
+            environment = ancestor.parentFocusEnvironment
+        }
+        guard reachesActiveWindow else {
+            return (.null, "Native focus ancestry does not reach the active UIWindow; cannot pass", trace)
+        }
+        guard let container = parent.focusItemContainer else {
+            return (.null, "Immediate native focus parent declares no child-item container; cannot pass", trace)
+        }
+        let space = container.coordinateSpace
+        let containerBounds = window.convert(space.bounds, from: space)
+        let converted = window.convert(focused.frame, from: space)
+        trace.append("Immediate parent child container: \(type(of: container))")
+        trace.append("Declared coordinate space: \(type(of: space)); bounds in window=\(coordinates(containerBounds))")
+        guard valid(containerBounds), valid(converted) else {
+            return (.null, "Declared native coordinate-space conversion is invalid; cannot pass", trace)
+        }
+        return (converted,
+                "Actual focusedItem.parentFocusEnvironment.focusItemContainer.coordinateSpace; native ancestry verified to active UIWindow",
+                trace)
+    }
+
+    private static func valid(_ frame: CGRect) -> Bool {
+        !frame.isNull && !frame.isInfinite && !frame.isEmpty &&
+        frame.origin.x.isFinite && frame.origin.y.isFinite && frame.width.isFinite && frame.height.isFinite
+    }
+
+    private static func area(_ frame: CGRect) -> CGFloat { valid(frame) ? frame.width * frame.height : 0 }
+
+    private static func coordinates(_ frame: CGRect) -> [CGFloat] {
+        valid(frame) ? [frame.origin.x, frame.origin.y, frame.width, frame.height] : []
+    }
+
+    private static func compareFocus(_ focus: CGRect, with control: CGRect, in window: CGRect)
+        -> (matches: Bool, focusCoverage: Double, controlCoverage: Double, centerDistance: [Double], visibleFraction: Double) {
+        guard valid(focus), valid(control) else { return (false, 0, 0, [], 0) }
+        let intersection = area(focus.intersection(control))
+        let focusCoverage = intersection / area(focus)
+        let controlCoverage = intersection / area(control)
+        let dx = abs(focus.midX - control.midX), dy = abs(focus.midY - control.midY)
+        let visibleFraction = area(control.intersection(window)) / area(control)
+        // Small scale animations may change the outline, but cannot move its
+        // centre to another button or make a large ancestor count as the item.
+        let centered = dx <= max(6, control.width * 0.04) && dy <= max(6, control.height * 0.04)
+        let matches = centered && focusCoverage >= 0.88 && controlCoverage >= 0.88 && visibleFraction >= 0.98
+        return (matches, Double(focusCoverage), Double(controlCoverage), [Double(dx), Double(dy)], Double(visibleFraction))
     }
 
     private static func containsSceneKit(_ view: UIView) -> Bool {

@@ -47,8 +47,10 @@ private enum LiveSmokeFailure: Error, CustomStringConvertible {
         defer {preview.stop()}
         preview.schedule(id:"first",urls:[firstURL],delay:.one)
         try require(preview.phase == .waiting && preview.player == nil,"The TV decoder started before its delay.")
+        try require(preview.previewedItemID == "first","The waiting preview is not associated with its channel.")
         try await wait(0.30)
         preview.schedule(id:"second",urls:[secondURL],delay:.one)
+        try require(preview.previewedItemID == "second","Changing selection retained the previous channel identity.")
         try await wait(0.78)
         try require(preview.player == nil && preview.phase == .waiting,"A cancelled first selection still started its decoder.")
         // Same selection must neither restart its timer nor replace its player.
@@ -65,10 +67,22 @@ private enum LiveSmokeFailure: Error, CustomStringConvertible {
         preview.toggleMuted()
         try require(!preview.isMuted && !firstPlayer.isMuted,"Sound control did not reach the actual AVPlayer.")
 
+        // A cancelled catalogue task must not replace the active channel or
+        // turn a stale URL-resolution failure into the new selection's error.
+        let cancelledSelection = Task { @MainActor in
+            preview.schedule(id:"cancelled",urls:[firstURL],delay:.one)
+            preview.markUnavailable(id:"cancelled")
+        }
+        cancelledSelection.cancel()
+        await cancelledSelection.value
+        try require(preview.previewedItemID == "second" && preview.player === firstPlayer && preview.phase == .playing,
+                    "A cancelled selection changed the active preview or its identity.")
+
         preview.schedule(id:"third",urls:[firstURL],delay:.three)
         try require(preview.player == nil && firstPlayer.currentItem == nil && firstPlayer.rate == 0,"Changing selection left the previous decoder active.")
         try require(preview.isMuted,"A new channel inherited the previous sound setting.")
         preview.stop()
+        try require(preview.previewedItemID == nil,"Stopping the preview retained the previous channel identity.")
         try await wait(3.2)
         try require(preview.player == nil && preview.phase == .idle,"Stopping the TV preview did not cancel its timer.")
         preview.schedule(id:"disabled",urls:[firstURL],delay:.one,enabled:false)
@@ -82,10 +96,12 @@ private enum LiveSmokeFailure: Error, CustomStringConvertible {
         _ = await fallbackPlayer?.seek(to:CMTime(seconds:11.8,preferredTimescale:600))
         try await eventually("The end of a live preview remained labelled as playing.") {preview.phase == .failed && preview.player == nil}
         try require(fallbackPlayer?.currentItem == nil,"An ended preview retained its decoder.")
-        preview.markUnavailable()
+        preview.markUnavailable(id:"unavailable")
         try require(preview.phase == .failed && preview.player == nil,"Unavailable state retained a decoder.")
+        try require(preview.previewedItemID == "unavailable","A URL-resolution failure lost its channel identity and would be hidden by the view.")
         preview.schedule(id:"empty",urls:[],delay:.one)
         try require(preview.phase == .failed && preview.player == nil,"An empty URL list should fail without allocating a decoder.")
+        try require(preview.previewedItemID == "empty","An empty URL failure retained another channel's identity.")
 
         var disposable:LiveTVPreviewController?=LiveTVPreviewController()
         disposable?.schedule(id:"deinit",urls:[firstURL],delay:.one)

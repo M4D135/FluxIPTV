@@ -9,6 +9,9 @@ import Foundation
     @Published private(set) var player: AVPlayer?
     @Published private(set) var phase: Phase = .idle
     @Published private(set) var isMuted = true
+    /// The player and its status belong to one channel, including URL failures
+    /// that happen before a playback request can be scheduled.
+    @Published private(set) var previewedItemID: String?
 
     private struct Request: Equatable {
         let id: String
@@ -33,6 +36,7 @@ import Foundation
         guard request != next else { return }
         stop()
         request = next
+        previewedItemID = id
         guard enabled else { return }
         guard !next.urls.isEmpty else { phase = .failed; return }
         let token = generation
@@ -49,13 +53,19 @@ import Foundation
     func stop() {
         generation = UUID()
         request = nil
+        previewedItemID = nil
         delayTask?.cancel(); delayTask = nil
         releasePlayer()
         isMuted = true
         phase = .idle
     }
 
-    func markUnavailable() { stop(); phase = .failed }
+    func markUnavailable(id: String) {
+        guard !Task.isCancelled else { return }
+        stop()
+        previewedItemID = id
+        phase = .failed
+    }
 
     func toggleMuted() {
         isMuted.toggle()
