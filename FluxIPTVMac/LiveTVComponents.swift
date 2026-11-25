@@ -141,9 +141,9 @@ struct LiveTVChannelLabel: View {
     #endif
 }
 
-#if !os(tvOS)
 /// One channel of the desk list: logo, name, category and position. The row
-/// under the pointer grows; the selected channel feeds the preview panel.
+/// under the pointer, or selected by the remote, grows; the selected channel
+/// feeds the preview panel.
 struct LiveTVChannelRow: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let item: IPTVItem
@@ -151,27 +151,43 @@ struct LiveTVChannelRow: View {
     let favorite: Bool
     let highlighted: Bool
     let accent: Color
+    /// A television is read from the sofa.
+    private var k: CGFloat {
+        #if os(tvOS)
+        1.3
+        #else
+        1
+        #endif
+    }
+    /// Secondary text keeps a size that is read from a sofa.
+    private var small: CGFloat {
+        #if os(tvOS)
+        18
+        #else
+        12.5
+        #endif
+    }
 
     var body: some View {
-        let shape = RoundedRectangle(cornerRadius: 16, style: .continuous)
-        HStack(spacing: 12) {
+        let shape = RoundedRectangle(cornerRadius: 16 * k, style: .continuous)
+        HStack(spacing: 12 * k) {
             ArtworkView(url: item.logoURL, fit: true) {
-                Image(systemName: "tv").font(.title3).foregroundStyle(.secondary)
+                Image(systemName: "tv").font(.system(size: 20 * k)).foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-            .padding(5).frame(width: 46, height: 46)
-            .background(.white.opacity(0.09), in: RoundedRectangle(cornerRadius: 11, style: .continuous))
+            .padding(5 * k).frame(width: 46 * k, height: 46 * k)
+            .background(.white.opacity(0.09), in: RoundedRectangle(cornerRadius: 11 * k, style: .continuous))
             .clipped()
-            VStack(alignment: .leading, spacing: 3) {
-                Text(item.name).font(.headline).lineLimit(1)
-                Text(item.group).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+            VStack(alignment: .leading, spacing: 3 * k) {
+                Text(item.name).font(.system(size: 17 * k, weight: .semibold)).lineLimit(1)
+                Text(item.group).font(.system(size: small)).foregroundStyle(.secondary).lineLimit(1)
             }.frame(maxWidth: .infinity, alignment: .leading)
-            if favorite { Image(systemName: "star.fill").font(.caption).foregroundStyle(.yellow) }
-            Text("\(number)").font(.caption.monospacedDigit().weight(.medium))
+            if favorite { Image(systemName: "star.fill").font(.system(size: 12 * k)).foregroundStyle(.yellow) }
+            Text("\(number)").font(.system(size: small, weight: .medium).monospacedDigit())
                 .foregroundStyle(highlighted ? Color.white.opacity(0.9) : Color.secondary)
         }
-        .padding(.horizontal, 12).padding(.vertical, 9)
-        .frame(maxWidth: .infinity, minHeight: 64, alignment: .leading)
+        .padding(.horizontal, 12 * k).padding(.vertical, 9 * k)
+        .frame(maxWidth: .infinity, minHeight: 64 * k, alignment: .leading)
         .background(highlighted ? accent.opacity(0.26) : Color.black.opacity(0.28), in: shape)
         .overlay {
             shape.strokeBorder(highlighted ? Color.white.opacity(0.88) : Color.white.opacity(0.10), lineWidth: highlighted ? 2 : 0.8)
@@ -182,7 +198,6 @@ struct LiveTVChannelRow: View {
         .shadow(color: .black.opacity(highlighted ? 0.38 : 0), radius: 12, x: 0, y: 8)
     }
 }
-#endif
 
 struct LiveTVPreviewScreen: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -330,18 +345,18 @@ struct LiveTVScopeLabel: View {
     let accent: Color
 
     var body: some View {
-        HStack(spacing: 10) {
-            Image(systemName: symbol).frame(width: 20)
+        HStack(spacing: Desk.pt(10)) {
+            Image(systemName: symbol).font(Desk.font(.callout)).frame(width: Desk.pt(22))
                 .foregroundStyle(selected ? accent : .secondary)
-            Text(title).font(.callout.weight(selected ? .semibold : .regular))
+            Text(title).font(Desk.font(.callout, selected ? .semibold : .regular))
                 .lineLimit(2).frame(maxWidth: .infinity, alignment: .leading)
-            if let count { Text("\(count)").font(.caption.monospacedDigit()).foregroundStyle(.secondary) }
-            if selected { Image(systemName: "checkmark").font(.caption.weight(.bold)).foregroundStyle(accent) }
+            if let count { Text("\(count)").font(Desk.font(.caption).monospacedDigit()).foregroundStyle(.secondary) }
+            if selected { Image(systemName: "checkmark").font(Desk.font(.caption, .bold)).foregroundStyle(accent) }
         }
-        .padding(.horizontal, 12).padding(.vertical, 11)
-        .background(selected ? accent.opacity(0.16) : .white.opacity(focused ? 0.09 : 0), in: RoundedRectangle(cornerRadius: 13))
+        .padding(.horizontal, Desk.pt(12)).padding(.vertical, Desk.pt(11))
+        .background(selected ? accent.opacity(0.16) : .white.opacity(focused ? 0.09 : 0), in: RoundedRectangle(cornerRadius: Desk.pt(13)))
         .overlay {
-            RoundedRectangle(cornerRadius: 13)
+            RoundedRectangle(cornerRadius: Desk.pt(13))
                 .strokeBorder(focused ? .white.opacity(0.75) : .clear, lineWidth: 2)
                 .allowsHitTesting(false)
         }

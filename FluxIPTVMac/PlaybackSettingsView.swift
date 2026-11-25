@@ -7,7 +7,15 @@ import AVKit
 /// holds the sources; elsewhere it remains a sheet.
 struct PlaybackSettingsView: View {
     /// What the Sources page shows in place of the saved sources.
-    enum SourceEditor: Hashable { case new, existing(IPTVSource) }
+    enum SourceEditor: Hashable, Identifiable {
+        case new, existing(IPTVSource)
+        var id: String {
+            switch self {
+            case .new: "new"
+            case .existing(let source): source.id.uuidString
+            }
+        }
+    }
     enum Page: String, CaseIterable, Identifiable {
         case sources, appearance, dock, video, network, audio, library, diagnostic
         var id: String { rawValue }
@@ -113,6 +121,12 @@ struct PlaybackSettingsView: View {
             else if inline { page = .sources }
             if inline { sourceEditor = initialSourceEditor }
         }
+        #if os(tvOS)
+        .fullScreenCover(item: $sourceEditor) { editor in
+            AddSourceSheet(existing: edited(editor), onSaved: { sourceEditor = nil; sourceSaved() })
+                .environmentObject(library)
+        }
+        #endif
         .confirmationDialog("Effacer les positions de reprise ?",
                             isPresented: Binding(get: { confirmingClear && !inline }, set: { confirmingClear = $0 })) {
             Button("Effacer", role: .destructive) { playback.clearHistory() }
@@ -123,47 +137,47 @@ struct PlaybackSettingsView: View {
     private var sheetBody: some View {
         GeometryReader { geo in
             let wide = geo.size.width >= 740
-            VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: Desk.pt(14)) {
                 HStack {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Réglages").font(.largeTitle.bold())
-                        Text(versionLabel + "  ·  Centre de contrôle").font(.caption).foregroundStyle(.secondary)
+                    VStack(alignment: .leading, spacing: Desk.pt(4)) {
+                        Text("Réglages").font(Desk.font(.largeTitle, .bold))
+                        Text(versionLabel + "  ·  Centre de contrôle").font(Desk.font(.caption)).foregroundStyle(.secondary)
                     }
                     Spacer()
                     Button("Fermer", action: close).buttonStyle(.bordered)
                 }
                 if wide {
-                    HStack(alignment: .top, spacing: 22) {
-                        VStack(alignment: .leading, spacing: 8) {
+                    HStack(alignment: .top, spacing: Desk.pt(22)) {
+                        VStack(alignment: .leading, spacing: Desk.pt(8)) {
                             ForEach(pages) { destination in pageButton(destination) }
                             Spacer(minLength: 0)
-                        }.frame(width: 230)
-                        ScrollView { settingsContent.frame(maxWidth: .infinity, alignment: .leading).padding(12) }.id(page)
+                        }.frame(width: Desk.pt(230))
+                        ScrollView { settingsContent.frame(maxWidth: .infinity, alignment: .leading).padding(Desk.pt(12)) }.id(page)
                     }
                 } else {
                     ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 6) { ForEach(pages) { destination in pageButton(destination) } }
+                        HStack(spacing: Desk.pt(6)) { ForEach(pages) { destination in pageButton(destination) } }
                     }
-                    ScrollView { settingsContent.frame(maxWidth: .infinity, alignment: .leading).padding(8) }.id(page)
+                    ScrollView { settingsContent.frame(maxWidth: .infinity, alignment: .leading).padding(Desk.pt(8)) }.id(page)
                 }
                 if draft != playback.settings { saveBar }
             }
-            .padding(24).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .padding(Desk.pt(24)).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .background { if playback.playingItem == nil { FluxBackdrop() } else { Color.black } }
         }
         #if os(macOS)
-        .frame(minWidth: 850, minHeight: 610)
+        .frame(minWidth: Desk.pt(850), minHeight: Desk.pt(610))
         #endif
     }
 
     /// The same navigation column as the catalogue, then one panel of content.
     private var inlineBody: some View {
         FluxGlassGroup {
-            HStack(alignment: .top, spacing: 18) {
-                VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top, spacing: Desk.pt(18)) {
+                VStack(alignment: .leading, spacing: Desk.pt(12)) {
                     navigationHeading
                     ScrollView {
-                        VStack(alignment: .leading, spacing: 5) {
+                        VStack(alignment: .leading, spacing: Desk.pt(5)) {
                             ForEach(pages) { destination in
                                 Button { page = destination; sourceEditor = nil; removingSource = nil } label: {
                                     LiveTVScopeLabel(title: destination.title, symbol: destination.icon,
@@ -173,42 +187,42 @@ struct PlaybackSettingsView: View {
                                 .accessibilityIdentifier("settings-page-\(destination.rawValue)")
                                 .accessibilityValue(page == destination ? "Sélectionné" : "")
                             }
-                        }.padding(.vertical, 3)
+                        }.padding(.vertical, Desk.pt(3))
                     }
-                    Text(versionLabel).font(.caption2.monospacedDigit()).foregroundStyle(.secondary)
-                        .padding(.horizontal, 10).padding(.bottom, 2)
+                    Text(versionLabel).font(Desk.font(.caption2).monospacedDigit()).foregroundStyle(.secondary)
+                        .padding(.horizontal, Desk.pt(10)).padding(.bottom, Desk.pt(2))
                 }
-                .padding(14).frame(width: 254)
+                .padding(Desk.pt(14)).frame(width: navigationWidth)
                 .frame(maxHeight: .infinity, alignment: .top)
-                .fluxGlass(radius: 25)
+                .fluxGlass(radius: Desk.pt(25))
                 .padding(.bottom, navigationFootRoom)
 
                 VStack(alignment: .leading, spacing: 0) {
-                    VStack(alignment: .leading, spacing: 5) {
-                        Text(page.title).font(.largeTitle.weight(.bold)).accessibilityAddTraits(.isHeader)
-                        Text(page.subtitle).font(.callout).foregroundStyle(.secondary)
+                    VStack(alignment: .leading, spacing: Desk.pt(5)) {
+                        Text(page.title).font(Desk.font(.largeTitle, .bold)).accessibilityAddTraits(.isHeader)
+                        Text(page.subtitle).font(Desk.font(.callout)).foregroundStyle(.secondary)
                     }
-                    .padding(.horizontal, 26).padding(.top, 22).padding(.bottom, 14)
+                    .padding(.horizontal, Desk.pt(26)).padding(.top, Desk.pt(22)).padding(.bottom, Desk.pt(14))
                     ScrollView {
                         settingsContent
-                            .frame(maxWidth: 960, alignment: .leading)
+                            .frame(maxWidth: Desk.pt(960), alignment: .leading)
                             .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.horizontal, 26).padding(.bottom, 24)
+                            .padding(.horizontal, Desk.pt(26)).padding(.bottom, Desk.pt(24))
                     }.id(page)
-                    if draft != playback.settings { saveBar.padding(14) }
+                    if draft != playback.settings { saveBar.padding(Desk.pt(14)) }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                .fluxGlass(radius: 27)
+                .fluxGlass(radius: Desk.pt(27))
             }
         }
-        .padding(.horizontal, 24)
+        .padding(.horizontal, Desk.pt(24))
         #if !os(tvOS)
         .controlSize(.large)
         #endif
     }
 
     @ViewBuilder private var navigationHeading: some View {
-        #if os(macOS)
+        #if os(macOS) || os(tvOS)
         if overPlayback {
             DeskColumnHeader(title: "RÉGLAGES", close: close)
         } else if let goBack, let goHome {
@@ -220,8 +234,8 @@ struct PlaybackSettingsView: View {
     }
     private var plainNavigationHeading: some View {
         Label("RÉGLAGES", systemImage: "gearshape")
-            .font(.caption.weight(.semibold)).tracking(1.5).foregroundStyle(.secondary)
-            .padding(.horizontal, 10).padding(.top, 4)
+            .font(Desk.font(.caption, .semibold)).tracking(1.5).foregroundStyle(.secondary)
+            .padding(.horizontal, Desk.pt(10)).padding(.top, Desk.pt(4))
     }
 
     private var saveBar: some View {
@@ -232,37 +246,37 @@ struct PlaybackSettingsView: View {
                 Button("Appliquer et relancer") { playback.saveSettings(draft, restart: true); close() }.buttonStyle(.bordered)
             }
             Button("Enregistrer") { playback.saveSettings(draft, restart: false) }.buttonStyle(.borderedProminent)
-        }.padding(12)
+        }.padding(Desk.pt(12))
         return Group {
             // Inside a glass panel the bar stays translucent.
-            if inline { bar.modifier(SettingsCard()) } else { bar.fluxFrosted(radius: 16) }
+            if inline { bar.modifier(SettingsCard()) } else { bar.fluxFrosted(radius: Desk.pt(16)) }
         }
     }
 
     private func pageButton(_ destination: Page) -> some View {
         Button { page = destination } label: {
             Label(destination.title, systemImage: destination.icon)
-                .font(.body.weight(page == destination ? .semibold : .regular)).lineLimit(1)
-                .frame(maxWidth: .infinity, alignment: .leading).padding(12)
-                .background(.white.opacity(page == destination ? 0.20 : 0.035), in: RoundedRectangle(cornerRadius: 14))
-                .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(.white.opacity(page == destination ? 0.30 : 0.06), lineWidth: 1))
+                .font(Desk.font(.body, page == destination ? .semibold : .regular)).lineLimit(1)
+                .frame(maxWidth: .infinity, alignment: .leading).padding(Desk.pt(12))
+                .background(.white.opacity(page == destination ? 0.20 : 0.035), in: RoundedRectangle(cornerRadius: Desk.pt(14)))
+                .overlay(RoundedRectangle(cornerRadius: Desk.pt(14)).strokeBorder(.white.opacity(page == destination ? 0.30 : 0.06), lineWidth: 1))
         }.buttonStyle(.plain)
     }
 
     private func section<V: View>(_ name: String, _ detail: String, @ViewBuilder content: () -> V) -> some View {
-        let card = VStack(alignment: .leading, spacing: 16) {
-            Text(name).font(.title2.bold())
-            Text(detail).font(.callout).foregroundStyle(.secondary)
+        let card = VStack(alignment: .leading, spacing: Desk.pt(16)) {
+            Text(name).font(Desk.font(.title2, .bold))
+            Text(detail).font(Desk.font(.callout)).foregroundStyle(.secondary)
             Divider()
             content()
-        }.padding(18).frame(maxWidth: .infinity, alignment: .leading)
+        }.padding(Desk.pt(18)).frame(maxWidth: .infinity, alignment: .leading)
         return Group {
-            if inline { card.modifier(SettingsCard()) } else { card.fluxFrosted(radius: 20) }
+            if inline { card.modifier(SettingsCard()) } else { card.fluxFrosted(radius: Desk.pt(20)) }
         }
     }
 
     private var settingsContent: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: Desk.pt(16)) {
             switch page {
             case .sources:
                 sourcesSettings
@@ -274,14 +288,14 @@ struct PlaybackSettingsView: View {
                 section("Lecture et décodage", "Choisissez le moteur, le décodage et les déplacements dans la vidéo.") {
                     #if os(macOS)
                     Label("AVPlayer natif · mode sécurisé", systemImage: "shield.checkered")
-                    Text("VLC intégré désactivé sur Mac après le plantage OpenGL. Les flux incompatibles peuvent être ouverts dans VLC externe, sur demande.").font(.caption).foregroundStyle(.secondary)
+                    Text("VLC intégré désactivé sur Mac après le plantage OpenGL. Les flux incompatibles peuvent être ouverts dans VLC externe, sur demande.").font(Desk.font(.caption)).foregroundStyle(.secondary)
                     #else
                     Picker("Moteur", selection: $draft.engine) { ForEach(PlaybackSettings.Engine.allCases, id: \.self) { Text($0.title).tag($0) } }
                     Toggle("Décodage matériel VLC (si disponible)", isOn: $draft.hardware)
                     #endif
                     choice("Saut avant / arrière", value: $draft.skipSeconds, values: [5, 10, 15, 30, 60, 120], unit: "s")
                     Toggle("Reprendre automatiquement films et épisodes", isOn: Binding(get: { playback.resumeEnabled }, set: { playback.setResumeEnabled($0) }))
-                    Text("Le format et les codecs du fournisseur déterminent les possibilités de lecture.").font(.caption).foregroundStyle(.secondary)
+                    Text("Le format et les codecs du fournisseur déterminent les possibilités de lecture.").font(Desk.font(.caption)).foregroundStyle(.secondary)
                 }
             case .network:
                 section("Profils réseau", "Ajustez le compromis entre zapping et stabilité.") {
@@ -326,16 +340,16 @@ struct PlaybackSettingsView: View {
                     Text("\(playback.history.entries.count) positions enregistrées")
                     Toggle("Reprise automatique", isOn: Binding(get: { playback.resumeEnabled }, set: { playback.setResumeEnabled($0) }))
                     if inline && confirmingClear {
-                        HStack(spacing: 10) {
-                            Text("Effacer les positions de reprise ?").font(.callout.weight(.semibold))
-                            Spacer(minLength: 8)
+                        HStack(spacing: Desk.pt(10)) {
+                            Text("Effacer les positions de reprise ?").font(Desk.font(.callout, .semibold))
+                            Spacer(minLength: Desk.pt(8))
                             actionButton("Annuler", icon: "xmark") { confirmingClear = false }
                             actionButton("Effacer", icon: "trash", tint: .red) { playback.clearHistory(); confirmingClear = false }
                         }
                     } else {
                         Button("Effacer l’historique", role: .destructive) { confirmingClear = true }
                     }
-                    Text("Les identifiants restent dans le stockage choisi pour chaque source. Les sources et les favoris ne sont pas supprimés par cette action.").font(.caption).foregroundStyle(.secondary)
+                    Text("Les identifiants restent dans le stockage choisi pour chaque source. Les sources et les favoris ne sont pas supprimés par cette action.").font(Desk.font(.caption)).foregroundStyle(.secondary)
                 }
             case .diagnostic:
                 section("État du lecteur", "Aucune adresse de flux ni aucun mot de passe ne sont affichés ici.") {
@@ -348,7 +362,7 @@ struct PlaybackSettingsView: View {
                         Button("Effacer le marqueur de récupération") { playback.resumeNormalMode() }.buttonStyle(.bordered)
                     } else { Label("Mode normal", systemImage: "checkmark.circle") }
                     if playback.playingItem != nil { Button("Réessayer le flux") { playback.retry(); close() }.buttonStyle(.bordered) }
-                    Text("Si l’app se ferme brutalement, conservez le rapport de crash macOS (.ips) pour identifier la cause exacte.").font(.caption).foregroundStyle(.secondary)
+                    Text("Si l’app se ferme brutalement, conservez le rapport de crash macOS (.ips) pour identifier la cause exacte.").font(Desk.font(.caption)).foregroundStyle(.secondary)
                 }
             }
         }
@@ -382,13 +396,32 @@ struct PlaybackSettingsView: View {
         return nil
     }
 
+    /// The same width as the navigation column of the catalogue.
+    private var navigationWidth: CGFloat {
+        #if os(iOS)
+        254
+        #elseif os(tvOS)
+        max(FluxDockMetrics(.corner).length(count: FluxDockItem.allCases.count, vertical: false), 410)
+        #else
+        FluxDockMetrics(.corner).length(count: FluxDockItem.allCases.count, vertical: false)
+        #endif
+    }
+    /// On a television the form of a source is a screen of its own.
+    private var sourceFormCovers: Bool {
+        #if os(tvOS)
+        true
+        #else
+        false
+        #endif
+    }
+
     private var sourcesSettings: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            if let editor = sourceEditor {
+        VStack(alignment: .leading, spacing: Desk.pt(14)) {
+            if let editor = sourceEditor, !sourceFormCovers {
                 Button { sourceEditor = nil } label: {
                     Label("Toutes les sources", systemImage: "chevron.left")
-                        .font(.callout.weight(.semibold))
-                        .padding(.horizontal, 15).padding(.vertical, 10)
+                        .font(Desk.font(.callout, .semibold))
+                        .padding(.horizontal, Desk.pt(15)).padding(.vertical, Desk.pt(10))
                         .background(.white.opacity(0.09), in: Capsule())
                         .contentShape(Capsule())
                 }.buttonStyle(FluxBareButtonStyle()).accessibilityIdentifier("settings-sources-back")
@@ -400,59 +433,59 @@ struct PlaybackSettingsView: View {
             } else {
                 if library.sources.isEmpty {
                     Text("Aucune source pour l’instant. Ajoutez votre abonnement ou votre playlist pour retrouver vos chaînes, films et séries.")
-                        .font(.title3).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                        .font(Desk.font(.title3)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 }
                 ForEach(library.sources) { source in sourceCard(source) }
                 Button { sourceEditor = .new; removingSource = nil } label: {
-                    let shape = RoundedRectangle(cornerRadius: 20, style: .continuous)
-                    HStack(spacing: 16) {
-                        Image(systemName: "plus").font(.system(size: 24, weight: .semibold)).foregroundStyle(.cyan)
-                            .frame(width: 58, height: 58)
-                            .background(Color.cyan.opacity(0.18), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("Ajouter une source").font(.title3.weight(.semibold))
-                            Text("Xtream Codes, lien M3U ou fichier M3U").font(.callout).foregroundStyle(.secondary)
+                    let shape = RoundedRectangle(cornerRadius: Desk.pt(20), style: .continuous)
+                    HStack(spacing: Desk.pt(16)) {
+                        Image(systemName: "plus").font(Desk.system(24, .semibold)).foregroundStyle(.cyan)
+                            .frame(width: Desk.pt(58), height: Desk.pt(58))
+                            .background(Color.cyan.opacity(0.18), in: RoundedRectangle(cornerRadius: Desk.pt(16), style: .continuous))
+                        VStack(alignment: .leading, spacing: Desk.pt(4)) {
+                            Text("Ajouter une source").font(Desk.font(.title3, .semibold))
+                            Text("Xtream Codes, lien M3U ou fichier M3U").font(Desk.font(.callout)).foregroundStyle(.secondary)
                         }
-                        Spacer(minLength: 8)
-                        Image(systemName: "chevron.right").font(.headline).foregroundStyle(.secondary)
+                        Spacer(minLength: Desk.pt(8))
+                        Image(systemName: "chevron.right").font(Desk.font(.headline)).foregroundStyle(.secondary)
                     }
-                    .padding(16).frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(Desk.pt(16)).frame(maxWidth: .infinity, alignment: .leading)
                     .background(.white.opacity(0.045), in: shape)
                     .overlay(shape.strokeBorder(style: StrokeStyle(lineWidth: 1.2, dash: [7, 6])).foregroundStyle(.white.opacity(0.28)).allowsHitTesting(false))
                     .contentShape(shape)
                 }.buttonStyle(FluxBareButtonStyle()).accessibilityIdentifier("settings-add-source")
                 Label("Les identifiants restent sur cet appareil, dans le stockage choisi pour chaque source.", systemImage: "lock.shield")
-                    .font(.caption).foregroundStyle(.secondary).padding(.top, 4)
+                    .font(Desk.font(.caption)).foregroundStyle(.secondary).padding(.top, Desk.pt(4))
             }
         }
     }
 
     private func sourceCard(_ source: IPTVSource) -> some View {
         let active = source.id == library.selectedSourceID
-        let shape = RoundedRectangle(cornerRadius: 20, style: .continuous)
-        return HStack(alignment: .center, spacing: 16) {
-            Image(systemName: source.symbol).font(.system(size: 26, weight: .medium))
+        let shape = RoundedRectangle(cornerRadius: Desk.pt(20), style: .continuous)
+        return HStack(alignment: .center, spacing: Desk.pt(16)) {
+            Image(systemName: source.symbol).font(Desk.system(26, .medium))
                 .foregroundStyle(active ? Color.cyan : .white.opacity(0.85))
-                .frame(width: 58, height: 58)
-                .background((active ? Color.cyan : .white).opacity(active ? 0.18 : 0.07), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-            VStack(alignment: .leading, spacing: 5) {
-                HStack(spacing: 10) {
-                    Text(source.name).font(.title3.weight(.semibold)).lineLimit(1)
+                .frame(width: Desk.pt(58), height: Desk.pt(58))
+                .background((active ? Color.cyan : .white).opacity(active ? 0.18 : 0.07), in: RoundedRectangle(cornerRadius: Desk.pt(16), style: .continuous))
+            VStack(alignment: .leading, spacing: Desk.pt(5)) {
+                HStack(spacing: Desk.pt(10)) {
+                    Text(source.name).font(Desk.font(.title3, .semibold)).lineLimit(1)
                     if active {
-                        Text("ACTIVE").font(.system(size: 10, weight: .bold)).tracking(1.2)
-                            .padding(.horizontal, 8).padding(.vertical, 4)
+                        Text("ACTIVE").font(Desk.system(10, .bold)).tracking(1.2)
+                            .padding(.horizontal, Desk.pt(8)).padding(.vertical, Desk.pt(4))
                             .foregroundStyle(.cyan).background(Color.cyan.opacity(0.20), in: Capsule())
                     }
                 }
-                Text(summary(source, active: active)).font(.callout).foregroundStyle(.secondary).lineLimit(2)
+                Text(summary(source, active: active)).font(Desk.font(.callout)).foregroundStyle(.secondary).lineLimit(2)
                 if active, let issue = library.credentialIssue {
-                    Label(issue, systemImage: "exclamationmark.triangle.fill").font(.caption).foregroundStyle(.orange)
+                    Label(issue, systemImage: "exclamationmark.triangle.fill").font(Desk.font(.caption)).foregroundStyle(.orange)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
-            Spacer(minLength: 12)
+            Spacer(minLength: Desk.pt(12))
             if removingSource == source {
-                Text("Supprimer cette source ?").font(.callout.weight(.semibold))
+                Text("Supprimer cette source ?").font(Desk.font(.callout, .semibold))
                 actionButton("Annuler", icon: "xmark") { removingSource = nil }
                 actionButton("Supprimer", icon: "trash", tint: .red) { library.removeSource(source); removingSource = nil }
             } else {
@@ -465,7 +498,7 @@ struct PlaybackSettingsView: View {
                 actionButton("Supprimer", icon: "trash", iconOnly: true) { removingSource = source }
             }
         }
-        .padding(16).frame(maxWidth: .infinity, alignment: .leading)
+        .padding(Desk.pt(16)).frame(maxWidth: .infinity, alignment: .leading)
         .background(.black.opacity(active ? 0.30 : 0.20), in: shape)
         .overlay(shape.strokeBorder(active ? Color.cyan.opacity(0.55) : .white.opacity(0.09), lineWidth: active ? 1.5 : 1).allowsHitTesting(false))
         .accessibilityElement(children: .contain)
@@ -473,13 +506,13 @@ struct PlaybackSettingsView: View {
     }
 
     private func actionButton(_ title: String, icon: String, tint: Color? = nil, iconOnly: Bool = false, action: @escaping () -> Void) -> some View {
-        let shape = RoundedRectangle(cornerRadius: 13, style: .continuous)
+        let shape = RoundedRectangle(cornerRadius: Desk.pt(13), style: .continuous)
         return Button(action: action) {
             Group {
                 if iconOnly { Image(systemName: icon) } else { Label(title, systemImage: icon) }
             }
-            .font(.callout.weight(.semibold)).lineLimit(1)
-            .padding(.horizontal, iconOnly ? 13 : 15).padding(.vertical, 11)
+            .font(Desk.font(.callout, .semibold)).lineLimit(1)
+            .padding(.horizontal, iconOnly ? 13 : 15).padding(.vertical, Desk.pt(11))
             .foregroundStyle(tint ?? .white)
             .background((tint ?? .white).opacity(tint == nil ? 0.09 : 0.18), in: shape)
             .overlay(shape.strokeBorder((tint ?? .white).opacity(0.22), lineWidth: 1).allowsHitTesting(false))
@@ -490,26 +523,26 @@ struct PlaybackSettingsView: View {
     // MARK: Dock
 
     private var dockSettings: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: Desk.pt(16)) {
             section("Emplacement", "Sous la colonne de navigation, le dock est compact et les autres colonnes descendent jusqu’au bord. En bas ou en haut, il garde une bande pour lui. À gauche et à droite, il devient une colonne. Sur l’accueil, il occupe le milieu de la fenêtre.") {
-                HStack(spacing: 12) {
+                HStack(spacing: Desk.pt(12)) {
                     ForEach(FluxDockPosition.allCases) { choice in positionTile(choice) }
                 }
             }
             section("Thème", "L’apparence de la plaque et des icônes.") {
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 170), spacing: 10)], spacing: 10) {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 170), spacing: Desk.pt(10))], spacing: Desk.pt(10)) {
                     ForEach(FluxDockTheme.allCases) { choice in themeTile(choice) }
                 }
             }
             section("Icônes", "Glissez une icône dans le dock pour la déplacer, ou utilisez les flèches.") {
                 let order = FluxDockItem.order(from: dockOrder)
                 ForEach(Array(order.enumerated()), id: \.element) { index, item in
-                    HStack(spacing: 14) {
-                        Image(systemName: item.symbol).font(.system(size: 18, weight: .medium))
-                            .foregroundStyle(item.tint).frame(width: 38, height: 38)
-                            .background(item.tint.opacity(0.16), in: RoundedRectangle(cornerRadius: 11, style: .continuous))
-                        Text(item.title).font(.body.weight(.medium))
-                        Spacer(minLength: 8)
+                    HStack(spacing: Desk.pt(14)) {
+                        Image(systemName: item.symbol).font(Desk.system(18, .medium))
+                            .foregroundStyle(item.tint).frame(width: Desk.pt(38), height: Desk.pt(38))
+                            .background(item.tint.opacity(0.16), in: RoundedRectangle(cornerRadius: Desk.pt(11), style: .continuous))
+                        Text(item.title).font(Desk.font(.body, .medium))
+                        Spacer(minLength: Desk.pt(8))
                         actionButton("Avancer \(item.title)", icon: "chevron.up", iconOnly: true) {
                             dockOrder = FluxDockItem.stored(FluxDockItem.moving(item, to: index - 1, in: order))
                         }.disabled(index == 0).opacity(index == 0 ? 0.35 : 1)
@@ -529,21 +562,21 @@ struct PlaybackSettingsView: View {
     private func positionTile(_ choice: FluxDockPosition) -> some View {
         let selected = dockPosition == choice
         let alignment: Alignment = choice == .bottom ? .bottom : choice == .corner ? .bottomLeading : choice == .top ? .top : choice == .leading ? .leading : .trailing
-        let screen = RoundedRectangle(cornerRadius: 9, style: .continuous)
-        let tile = RoundedRectangle(cornerRadius: 16, style: .continuous)
+        let screen = RoundedRectangle(cornerRadius: Desk.pt(9), style: .continuous)
+        let tile = RoundedRectangle(cornerRadius: Desk.pt(16), style: .continuous)
         return Button { dockPosition = choice } label: {
-            VStack(spacing: 10) {
+            VStack(spacing: Desk.pt(10)) {
                 screen.strokeBorder(.white.opacity(0.45), lineWidth: 1.5)
                     .background(.black.opacity(0.25), in: screen)
-                    .frame(width: 96, height: 60)
+                    .frame(width: Desk.pt(96), height: Desk.pt(60))
                     .overlay(alignment: alignment) {
                         Capsule().fill(selected ? Color.cyan : .white.opacity(0.75))
                             .frame(width: choice.isVertical ? 7 : choice.isCompact ? 24 : 44, height: choice.isVertical ? 30 : 7)
-                            .padding(6)
+                            .padding(Desk.pt(6))
                     }
-                Text(choice.title).font(.callout.weight(selected ? .semibold : .regular))
+                Text(choice.title).font(Desk.font(.callout, selected ? .semibold : .regular))
             }
-            .padding(.horizontal, 14).padding(.vertical, 12).frame(maxWidth: .infinity)
+            .padding(.horizontal, Desk.pt(14)).padding(.vertical, Desk.pt(12)).frame(maxWidth: .infinity)
             .background(.white.opacity(selected ? 0.14 : 0.05), in: tile)
             .overlay(tile.strokeBorder(Color.cyan.opacity(selected ? 0.85 : 0), lineWidth: 2).allowsHitTesting(false))
             .contentShape(tile)
@@ -555,20 +588,20 @@ struct PlaybackSettingsView: View {
 
     private func themeTile(_ choice: FluxDockTheme) -> some View {
         let selected = dockTheme == choice
-        let tile = RoundedRectangle(cornerRadius: 14, style: .continuous)
+        let tile = RoundedRectangle(cornerRadius: Desk.pt(14), style: .continuous)
         return Button { dockTheme = choice } label: {
-            VStack(alignment: .leading, spacing: 9) {
-                HStack(spacing: 6) {
+            VStack(alignment: .leading, spacing: Desk.pt(9)) {
+                HStack(spacing: Desk.pt(6)) {
                     ForEach([FluxDockItem.live, .movie, .series], id: \.self) { item in
                         FluxDockSwatch(item: item, theme: choice)
                     }
                     Spacer(minLength: 0)
                     if selected { Image(systemName: "checkmark.circle.fill").foregroundStyle(.cyan) }
                 }
-                Text(choice.title).font(.callout.weight(.semibold)).lineLimit(1)
-                Text(choice.subtitle).font(.caption2).foregroundStyle(.secondary).lineLimit(2, reservesSpace: true)
+                Text(choice.title).font(Desk.font(.callout, .semibold)).lineLimit(1)
+                Text(choice.subtitle).font(Desk.font(.caption2)).foregroundStyle(.secondary).lineLimit(2, reservesSpace: true)
             }
-            .padding(12).frame(maxWidth: .infinity, alignment: .leading)
+            .padding(Desk.pt(12)).frame(maxWidth: .infinity, alignment: .leading)
             .background(.white.opacity(selected ? 0.14 : 0.05), in: tile)
             .overlay(tile.strokeBorder(Color.cyan.opacity(selected ? 0.85 : 0), lineWidth: 2).allowsHitTesting(false))
             .contentShape(tile)
@@ -581,10 +614,10 @@ struct PlaybackSettingsView: View {
     // MARK: Interface
 
     private var appearanceSettings: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: Desk.pt(16)) {
             section("Les trois espaces", "Films au cinéma, séries au vidéoclub, chaînes TV dans le salon. Chaque lieu possède son propre thème.") {
                 Toggle("Afficher les décors", isOn: Binding(get: { stage != .off }, set: { stage = $0 ? .orbit : .off }))
-                Text("Les décors sont fixes. Ils disparaissent au lancement de la lecture plein écran.").font(.caption).foregroundStyle(.secondary)
+                Text("Les décors sont fixes. Ils disparaissent au lancement de la lecture plein écran.").font(Desk.font(.caption)).foregroundStyle(.secondary)
             }
             environmentSection(.cinema, selection: $cinemaTheme)
             environmentSection(.videoClub, selection: $seriesTheme)
@@ -595,31 +628,31 @@ struct PlaybackSettingsView: View {
                     ForEach(LiveTVPreviewDelay.allCases) { delay in Text(delay.title).tag(delay) }
                 }.disabled(!automaticLivePreview)
                 Text("Un seul aperçu à la fois, muet au départ. Le bouton Son active son audio ; Regarder ouvre la chaîne. Changer de chaîne, de catégorie ou d’espace arrête l’aperçu précédent.")
-                    .font(.caption).foregroundStyle(.secondary)
+                    .font(Desk.font(.caption)).foregroundStyle(.secondary)
             }
             section("Présentation et commandes", "La fiche des films et séries présente la description, la boîte du titre, la lecture et les favoris.") {
                 ForEach(ClubInterfaceProfile.allCases) { concept in
                     Button { clubProfile = concept } label: {
-                        HStack(alignment: .center, spacing: 14) {
-                            Image(systemName: concept.symbol).font(.title2).frame(width: 40)
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(concept == .neoVideoClub ? "Néo rétro" : "Épurée").font(.headline)
-                                Text(concept == .neoVideoClub ? "Grandes jaquettes rapprochées et décor rétro." : "Cartes aérées et commandes discrètes.").font(.caption).foregroundStyle(.secondary)
+                        HStack(alignment: .center, spacing: Desk.pt(14)) {
+                            Image(systemName: concept.symbol).font(Desk.font(.title2)).frame(width: Desk.pt(40))
+                            VStack(alignment: .leading, spacing: Desk.pt(4)) {
+                                Text(concept == .neoVideoClub ? "Néo rétro" : "Épurée").font(Desk.font(.headline))
+                                Text(concept == .neoVideoClub ? "Grandes jaquettes rapprochées et décor rétro." : "Cartes aérées et commandes discrètes.").font(Desk.font(.caption)).foregroundStyle(.secondary)
                             }
-                            Spacer(minLength: 8)
+                            Spacer(minLength: Desk.pt(8))
                             if clubProfile == concept { Image(systemName: "checkmark.circle.fill").foregroundStyle(.cyan) }
-                        }.padding(10).frame(maxWidth: .infinity, alignment: .leading)
-                            .background(.white.opacity(clubProfile == concept ? 0.16 : 0.04), in: RoundedRectangle(cornerRadius: 12))
+                        }.padding(Desk.pt(10)).frame(maxWidth: .infinity, alignment: .leading)
+                            .background(.white.opacity(clubProfile == concept ? 0.16 : 0.04), in: RoundedRectangle(cornerRadius: Desk.pt(12)))
                     }.buttonStyle(.bordered)
                 }
                 #if os(tvOS)
                 Toggle(FluxAppearance.nativeAvailable ? "Liquid Glass" : "Transparence légère", isOn: $glass)
                 Text(FluxAppearance.nativeAvailable
                      ? "Effet Apple natif sur les panneaux et les commandes. Désactivez-le pour revenir aux surfaces sombres, plus légères à afficher."
-                     : "Décors conservés, surfaces sombres et transitions animées.").font(.caption).foregroundStyle(.secondary)
+                     : "Décors conservés, surfaces sombres et transitions animées.").font(Desk.font(.caption)).foregroundStyle(.secondary)
                 #else
                 Toggle("Liquid Glass", isOn: $glass)
-                Text(FluxAppearance.nativeAvailable ? "Effet Apple natif disponible." : "Matériau translucide système sur cette version d’OS.").font(.caption).foregroundStyle(.secondary)
+                Text(FluxAppearance.nativeAvailable ? "Effet Apple natif disponible." : "Matériau translucide système sur cette version d’OS.").font(Desk.font(.caption)).foregroundStyle(.secondary)
                 #endif
                 Toggle("Afficher les jaquettes", isOn: $artwork)
                 Picker("Taille des cartes", selection: $density) { Text("Grand écran").tag("cinema"); Text("Compacte").tag("compact") }
@@ -627,8 +660,8 @@ struct PlaybackSettingsView: View {
                 #if os(macOS)
                 if inline && !overPlayback {
                     Toggle("Retour affiche d’abord les zones de l’écran", isOn: $backShowsZones)
-                    Text("Au clavier ou à la télécommande, Retour encadre le haut, la colonne, le contenu, l’aperçu et le dock : les flèches choisissent, OK entre, Retour une seconde fois revient à l’écran précédent. Désactivé, Retour revient tout de suite à l’écran précédent ; Tab passe toujours d’une zone à l’autre.")
-                        .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    Text("Au clavier ou à la télécommande, Retour encadre le haut, la colonne, le contenu, l’aperçu et le dock, et indique où mène chaque flèche : une flèche entre dans la zone voisine, OK referme, Retour une seconde fois revient à l’écran précédent. Désactivé, Retour revient tout de suite à l’écran précédent ; Tab passe toujours d’une zone à l’autre.")
+                        .font(Desk.font(.caption)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 }
                 #endif
                 if let remoteVisible { Toggle("Afficher la télécommande virtuelle", isOn: remoteVisible) }
@@ -648,10 +681,10 @@ struct PlaybackSettingsView: View {
         section(environment.title + " · " + environment.kind.frenchTitle, environment.subtitle) {
             if playback.playingItem == nil {
                 RoomEnvironmentPreview(environment: environment, theme: selection.wrappedValue)
-                    .frame(maxWidth: 560)
+                    .frame(maxWidth: Desk.pt(560))
                     .accessibilityLabel("Aperçu : " + environment.title + ", " + selection.wrappedValue.title)
             }
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 160), spacing: 10)], spacing: 10) {
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 160), spacing: Desk.pt(10))], spacing: Desk.pt(10)) {
                 ForEach(VideoClubTheme.allCases, id: \.self) { candidate in themeButton(candidate, selection: selection) }
             }
         }
@@ -661,20 +694,20 @@ struct PlaybackSettingsView: View {
         let palette = candidate.palette
         let selected = selection.wrappedValue == candidate
         return Button { selection.wrappedValue = candidate } label: {
-            VStack(alignment: .leading, spacing: 9) {
-                HStack(spacing: 5) {
+            VStack(alignment: .leading, spacing: Desk.pt(9)) {
+                HStack(spacing: Desk.pt(5)) {
                     ForEach([palette.wall, palette.wood, palette.accent, palette.second].indices, id: \.self) { i in
                         let p = [palette.wall, palette.wood, palette.accent, palette.second][i]
-                        Circle().fill(Color(red: p.x, green: p.y, blue: p.z)).frame(width: 16, height: 16)
+                        Circle().fill(Color(red: p.x, green: p.y, blue: p.z)).frame(width: Desk.pt(16), height: Desk.pt(16))
                     }
                     Spacer(minLength: 0)
                     if selected { Image(systemName: "checkmark.circle.fill").foregroundStyle(.white) }
                 }
-                Text(candidate.title).font(.callout.weight(.semibold)).lineLimit(1)
-                Text(candidate.subtitle).font(.caption2).foregroundStyle(.secondary).lineLimit(2)
-            }.padding(12).frame(maxWidth: .infinity, alignment: .leading)
-                .background(.white.opacity(selected ? 0.15 : 0.05), in: RoundedRectangle(cornerRadius: 14))
-                .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(Color(red: palette.accent.x, green: palette.accent.y, blue: palette.accent.z).opacity(selected ? 0.95 : 0.15), lineWidth: selected ? 2 : 1))
+                Text(candidate.title).font(Desk.font(.callout, .semibold)).lineLimit(1)
+                Text(candidate.subtitle).font(Desk.font(.caption2)).foregroundStyle(.secondary).lineLimit(2)
+            }.padding(Desk.pt(12)).frame(maxWidth: .infinity, alignment: .leading)
+                .background(.white.opacity(selected ? 0.15 : 0.05), in: RoundedRectangle(cornerRadius: Desk.pt(14)))
+                .overlay(RoundedRectangle(cornerRadius: Desk.pt(14)).strokeBorder(Color(red: palette.accent.x, green: palette.accent.y, blue: palette.accent.z).opacity(selected ? 0.95 : 0.15), lineWidth: selected ? 2 : 1))
         }.buttonStyle(.plain)
         .accessibilityLabel(candidate.title + (selected ? ", sélectionné" : ""))
         .accessibilityAddTraits(selected ? .isSelected : [])
@@ -691,7 +724,7 @@ struct PlaybackSettingsView: View {
 /// A translucent card inside the settings panel, which is already glass.
 private struct SettingsCard: ViewModifier {
     func body(content: Content) -> some View {
-        let shape = RoundedRectangle(cornerRadius: 20, style: .continuous)
+        let shape = RoundedRectangle(cornerRadius: Desk.pt(20), style: .continuous)
         content
             .background(.black.opacity(0.24), in: shape)
             .overlay(shape.strokeBorder(.white.opacity(0.09), lineWidth: 1).allowsHitTesting(false))
@@ -704,14 +737,14 @@ private struct FluxDockSwatch: View {
     let theme: FluxDockTheme
     var body: some View {
         let tint = item.tint
-        let shape = RoundedRectangle(cornerRadius: 8, style: .continuous)
-        let glyph = Image(systemName: item.symbol).font(.system(size: 13, weight: .medium)).frame(width: 28, height: 28)
+        let shape = RoundedRectangle(cornerRadius: Desk.pt(8), style: .continuous)
+        let glyph = Image(systemName: item.symbol).font(Desk.system(13, .medium)).frame(width: Desk.pt(28), height: Desk.pt(28))
         switch theme {
         case .vivid:
             glyph.foregroundStyle(.white)
                 .background(LinearGradient(colors: [tint, tint.opacity(0.6)], startPoint: .top, endPoint: .bottom), in: shape)
         case .neon:
-            glyph.foregroundStyle(tint).shadow(color: tint.opacity(0.8), radius: 4)
+            glyph.foregroundStyle(tint).shadow(color: tint.opacity(0.8), radius: Desk.pt(4))
                 .background(Color(red: 0.02, green: 0.025, blue: 0.06), in: shape)
                 .overlay(shape.strokeBorder(tint.opacity(0.6), lineWidth: 1))
         case .floating:

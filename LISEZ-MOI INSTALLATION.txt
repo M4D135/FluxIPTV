@@ -40,11 +40,12 @@ NOUVEAUTÉS DE LA 0.9.0 SUR MAC
 L'application s'ouvre sur un accueil : TV, Films, Séries, Recherche, Favoris
 et Réglages forment un grand dock au milieu de la fenêtre. Retour (Échap, ou le
 chevron en haut de la colonne) revient à l'écran précédent jusqu'à cet accueil.
-Hors de l'accueil, le dock se range sous la colonne de navigation, en bas à
-gauche, avec les mêmes icônes. Il peut aussi se placer en bas, en haut, à
-gauche ou à droite ; ses icônes grossissent sous le pointeur, se déplacent par
-glissement et changent de thème dans Réglages > Dock. Les sources se gèrent
-dans Réglages > Sources.
+Hors de l'accueil, le dock se tient en bas au centre, comme le Dock de macOS,
+avec les mêmes icônes ; Retour et Accueil sont à sa gauche, l'heure à sa
+droite. Il peut aussi se placer sous la colonne, en haut, à gauche ou à
+droite ; ses icônes grossissent sous le pointeur, se déplacent par glissement
+et changent de thème dans Réglages > Dock. Les sources se gèrent dans
+Réglages > Sources.
 Une colonne de navigation à gauche donne le catalogue, les listes et les
 catégories de chaque espace, sans fenêtre surgissante.
 TV : catégories, chaînes en une seule liste, puis l'aperçu et les informations
@@ -53,9 +54,11 @@ clic ouvre la chaîne.
 Pendant un direct, la liste des chaînes se pose à gauche de l'image (bord
 gauche au pointeur, bouton Liste des chaînes, ou flèche gauche) pour zapper
 sans revenir au catalogue. Les réglages s'y ouvrent en panneaux de verre.
-Au clavier ou à la télécommande, Retour encadre d'abord les zones de l'écran
-(haut, colonne, contenu, aperçu, dock) : les flèches choisissent, OK entre,
-Retour une seconde fois revient à l'écran précédent. Tab change de zone.
+Au clavier ou à la télécommande : les flèches vont au contrôle voisin, OK
+valide, Retour affiche la boussole des zones (haut, colonne, contenu, aperçu,
+dock) où une flèche saute dans la zone voisine, et Retour une seconde fois
+revient à l'écran précédent. Tab change de zone.
+L'Apple TV reprend la même interface : accueil, dock, colonnes, zapping.
 Films et séries : filtre par langue reconnue dans les titres et catégories.
 Fiche d'un film : panneau de verre sur le catalogue flouté, boîtier à gauche.
 Fiche d'une série : saisons, épisodes en liste, visuel de l'épisode.

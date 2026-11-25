@@ -170,7 +170,7 @@ final class DockModelTests: XCTestCase {
         #else
         XCTAssertEqual(LiveTVPreviewDelay.platformDefault, .one)
         #endif
-        XCTAssertEqual(FluxDockPosition.defaultValue, .corner)
+        XCTAssertEqual(FluxDockPosition.defaultValue, .bottom)
         XCTAssertEqual(FluxDockTheme.defaultValue, .glass)
         for position in FluxDockPosition.allCases {
             XCTAssertNotEqual(position.inward, position.outward)

@@ -23,7 +23,6 @@ extension FluxDockItem {
     }
 }
 
-#if !os(tvOS)
 /// Sizes shared by the bar and by the screen that leaves room for it. The
 /// compact form holds the same destinations in the width of the navigation
 /// column, without labels. The hero form is the bar of the home screen, in
@@ -32,7 +31,23 @@ struct FluxDockMetrics: Equatable {
     enum Form: Equatable { case compact, regular, hero(CGFloat) }
     let form: Form
     init(_ position: FluxDockPosition) { form = position.isCompact ? .compact : .regular }
-    init(hero scale: CGFloat) { form = .hero(max(0.6, min(1.2, scale))) }
+    init(hero scale: CGFloat) { form = .hero(max(0.6, min(Self.heroLimit, scale))) }
+
+    /// A television is read from the sofa: the same bar, larger.
+    static var screenUnit: CGFloat {
+        #if os(tvOS)
+        1.35
+        #else
+        1
+        #endif
+    }
+    static var heroLimit: CGFloat {
+        #if os(tvOS)
+        1.62
+        #else
+        1.2
+        #endif
+    }
 
     var compact: Bool { form == .compact }
     var hero: Bool { unit != nil }
@@ -40,29 +55,34 @@ struct FluxDockMetrics: Equatable {
         if case .hero(let scale) = form { return scale }
         return nil
     }
+    private var k: CGFloat { Self.screenUnit }
 
     var cell: CGSize {
         if let unit { return CGSize(width: 138 * unit, height: 150 * unit) }
-        return compact ? CGSize(width: 38, height: 38) : CGSize(width: 74, height: 72)
+        // The larger names of a television need their own height.
+        return compact ? CGSize(width: 38 * k, height: 38 * k)
+            : CGSize(width: 74 * k, height: 72 * k + (Self.screenUnit > 1 ? 8 : 0))
     }
-    var spacing: CGFloat { unit.map { 10 * $0 } ?? (compact ? 2 : 4) }
-    var platePadding: CGFloat { unit.map { 20 * $0 } ?? (compact ? 8 : 9) }
-    var tile: CGFloat { unit.map { 96 * $0 } ?? (compact ? 34 : 50) }
-    var glyph: CGFloat { unit.map { 44 * $0 } ?? (compact ? 18 : 25) }
-    var tileRadius: CGFloat { unit.map { 27 * $0 } ?? (compact ? 11 : 15) }
-    var label: CGFloat { unit.map { 15.5 * $0 } ?? 11 }
-    var labelSpacing: CGFloat { unit.map { 11 * $0 } ?? 5 }
-    var radius: CGFloat { unit.map { 46 * $0 } ?? (compact ? 20 : 28) }
+    var spacing: CGFloat { unit.map { 10 * $0 } ?? (compact ? 2 : 4) * k }
+    var platePadding: CGFloat { unit.map { 20 * $0 } ?? (compact ? 8 : 9) * k }
+    var tile: CGFloat { unit.map { 96 * $0 } ?? (compact ? 34 : 50) * k }
+    var glyph: CGFloat { unit.map { 44 * $0 } ?? (compact ? 18 : 25) * k }
+    var tileRadius: CGFloat { unit.map { 27 * $0 } ?? (compact ? 11 : 15) * k }
+    /// Names stay readable from a sofa, whatever the size of the icons.
+    var label: CGFloat { unit.map { 15.5 * $0 } ?? max(11 * k, Self.screenUnit > 1 ? 18 : 11) }
+    var labelSpacing: CGFloat { unit.map { 11 * $0 } ?? 5 * k }
+    var radius: CGFloat { unit.map { 46 * $0 } ?? (compact ? 20 : 28) * k }
     var maximumScale: Double { hero ? 1.2 : compact ? 1.34 : 1.42 }
     /// Transparent room around the plate for magnified icons. It tracks the
     /// pointer but never receives a click.
-    var growth: CGFloat { unit.map { 44 * $0 } ?? (compact ? 18 : 40) }
+    var growth: CGFloat { unit.map { 44 * $0 } ?? (compact ? 18 : 40) * k }
     static let edgeMargin: CGFloat = 10
 
     /// Width or height that the screen must leave free on the bar's edge.
     static func thickness(_ position: FluxDockPosition) -> CGFloat {
         let metrics = FluxDockMetrics(position)
-        return (position.isVertical ? metrics.cell.width : metrics.cell.height) + metrics.platePadding * 2 + edgeMargin + 6
+        // The screens end clearly above the plate: nothing touches it.
+        return (position.isVertical ? metrics.cell.width : metrics.cell.height) + metrics.platePadding * 2 + edgeMargin + Desk.pt(16)
     }
     /// Length of the plate along its axis, for a given number of destinations.
     func length(count: Int, vertical: Bool) -> CGFloat {
@@ -135,13 +155,26 @@ struct FluxDock: View {
         case .trailing: return EdgeInsets(top: room, leading: room, bottom: room, trailing: 0)
         }
     }
+    /// A remote has no pointer: the destination it selects is the one that grows.
+    private var focusIndex: Int? { focusedID.flatMap { id in order.firstIndex { $0.focusID == id } } }
     private var magnification: Double {
-        hovering && magnifies && dragged == nil && !reduceMotion ? 1 : 0
+        #if os(tvOS)
+        return focusIndex != nil && magnifies && !reduceMotion ? 1 : 0
+        #else
+        return hovering && magnifies && dragged == nil && !reduceMotion ? 1 : 0
+        #endif
+    }
+    private var magnifiedPoint: Double {
+        #if os(tvOS)
+        return focusIndex.map { magnifier.center($0) } ?? pointer
+        #else
+        return pointer
+        #endif
     }
 
     var body: some View {
         let items = order
-        FluxDockStrip(intensity: magnification, pointer: pointer, magnifier: magnifier, metrics: metrics, vertical: vertical,
+        FluxDockStrip(intensity: magnification, pointer: magnifiedPoint, magnifier: magnifier, metrics: metrics, vertical: vertical,
                       anchor: anchor, items: items, dragged: dragged, dragTranslation: dragTranslation,
                       reduceMotion: reduceMotion,
                       plate: {
@@ -157,6 +190,11 @@ struct FluxDock: View {
                       },
                       cell: { item in cell(item, items: items) })
             .animation(reduceMotion ? nil : .spring(response: 0.24, dampingFraction: 0.8), value: magnification)
+            #if os(tvOS)
+            // The icons slide as the selection moves along the bar.
+            .animation(reduceMotion ? nil : .spring(response: 0.28, dampingFraction: 0.82), value: focusIndex)
+            .padding(growthInsets)
+            #else
             .coordinateSpace(name: "flux-dock")
             // The menu belongs to the plate; the transparent room around it
             // must leave a secondary click to the screen underneath.
@@ -168,9 +206,10 @@ struct FluxDock: View {
                 case .ended: hovering = false; report(nil)
                 }
             }
+            #endif
             .accessibilityElement(children: .contain)
             .accessibilityLabel("Barre des destinations")
-            #if FLUX_CATALOG_UI_TESTING
+            #if FLUX_CATALOG_UI_TESTING && !os(tvOS)
             .onAppear {
                 // A capture has no pointer: place one on the requested icon.
                 if let index = UserDefaults.standard.object(forKey: "fluxiptv.fixture.dockPointer") as? Int,
@@ -181,6 +220,7 @@ struct FluxDock: View {
             #endif
     }
 
+    #if !os(tvOS)
     /// The pointer starts the effect on the plate and keeps it while it stays
     /// over the enlarged icons, which reach past the plate.
     private func track(_ location: CGPoint) {
@@ -202,6 +242,7 @@ struct FluxDock: View {
         hovered = item
         hover?(item)
     }
+    #endif
 
     private func cell(_ item: FluxDockItem, items: [FluxDockItem]) -> some View {
         let id = item.focusID
@@ -214,17 +255,31 @@ struct FluxDock: View {
                          theme: theme, position: placement, metrics: metrics)
         }
         .buttonStyle(FluxBareButtonStyle())
+        #if os(tvOS)
+        // A button already takes the focus of the remote.
+        .focused(systemFocus, equals: id).focusEffectDisabled()
+        #else
         .focusable().focused(systemFocus, equals: id).focusEffectDisabled()
+        #endif
         .id(id)
+        #if !os(tvOS)
+        // On a television the selected icon is the magnified one already.
         .scaleEffect(focused && !reduceMotion ? (metrics.hero ? 1.06 : 1.12) : 1, anchor: anchor)
         .animation(reduceMotion ? nil : .spring(response: 0.25, dampingFraction: 0.85), value: focused)
-        .help(item.title)
+        #endif
         .accessibilityLabel(item.title)
         .accessibilityValue(selection.contains(item) ? "Sélectionné" : "")
         .accessibilityIdentifier("navigation-\(id)")
+        #if os(tvOS) && FLUX_CATALOG_UI_TESTING
+        .background(TVCatalogControlFrameProbe(identifier: "navigation-\(id)").allowsHitTesting(false))
+        #endif
+        #if !os(tvOS)
+        .help(item.title)
         .simultaneousGesture(reorderGesture(item, items: items))
+        #endif
     }
 
+    #if !os(tvOS)
     private func reorderGesture(_ item: FluxDockItem, items: [FluxDockItem]) -> some Gesture {
         DragGesture(minimumDistance: 12, coordinateSpace: .named("flux-dock"))
             .onChanged { value in
@@ -263,6 +318,7 @@ struct FluxDock: View {
         Divider()
         Button("Réglages du dock…", action: openSettings)
     }
+    #endif
 }
 
 /// Lays the icons out by hand so that the pointer drives their size on every
@@ -435,9 +491,8 @@ struct FluxDockCell: View {
                                                            startPoint: .top, endPoint: .bottom), lineWidth: 1))
     }
 }
-#endif
 
-#if os(macOS)
+#if os(macOS) || os(tvOS)
 /// Round control at the top of a navigation column: back, home.
 struct DeskHeaderButton: View {
     let symbol: String
@@ -447,19 +502,24 @@ struct DeskHeaderButton: View {
     var focused = false
     let action: () -> Void
     @State private var hovered = false
+    private var side: CGFloat { 28 * FluxDockMetrics.screenUnit }
 
     var body: some View {
         Button(action: action) {
-            Image(systemName: symbol).font(.system(size: 12, weight: .bold))
+            Image(systemName: symbol).font(.system(size: side * 0.43, weight: .bold))
                 .foregroundStyle(.white.opacity(hovered || focused ? 1 : 0.82))
-                .frame(width: 28, height: 28)
+                .frame(width: side, height: side)
                 .background(.white.opacity(hovered || focused ? 0.22 : 0.09), in: Circle())
                 .overlay(Circle().strokeBorder(.white.opacity(focused ? 0.9 : 0), lineWidth: 2).allowsHitTesting(false))
                 .contentShape(Circle())
+                .scaleEffect(focused ? 1.12 : 1)
         }
         .buttonStyle(FluxBareButtonStyle())
+        #if os(macOS)
         .onHover { hovered = $0 }
-        .help(title).accessibilityLabel(title).accessibilityIdentifier(identifier)
+        .help(title)
+        #endif
+        .accessibilityLabel(title).accessibilityIdentifier(identifier)
     }
 }
 
@@ -499,8 +559,13 @@ struct DeskColumnHeader: View {
     }
 
     @ViewBuilder private func bound<V: View>(_ view: V, id: String) -> some View {
-        if let systemFocus { view.focusable().focused(systemFocus, equals: id).focusEffectDisabled().id(id) }
-        else { view }
+        if let systemFocus {
+            #if os(tvOS)
+            view.focused(systemFocus, equals: id).focusEffectDisabled().id(id)
+            #else
+            view.focusable().focused(systemFocus, equals: id).focusEffectDisabled().id(id)
+            #endif
+        } else { view }
     }
 }
 #endif

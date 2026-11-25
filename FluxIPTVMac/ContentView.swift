@@ -57,7 +57,7 @@ struct ContentView: View {
     #if os(iOS)
     @Environment(\.horizontalSizeClass) private var sizeClass
     #endif
-    #if os(macOS) && !FLUX_CATALOG_UI_TESTING
+    #if (os(macOS) || os(tvOS)) && !FLUX_CATALOG_UI_TESTING
     @State private var page: FluxPage = .home
     #else
     @State private var page: FluxPage = .catalogue
@@ -182,6 +182,10 @@ struct ContentView: View {
     /// Zones of the screen, shown by Back for a keyboard or a remote.
     @State private var zoneMode = false
     @State private var zoneFocus: DeskZone = .content
+    @State private var zoneReturnFocus: String?
+    /// Row of the navigation column that must receive the remote when the
+    /// content of the column changes under it.
+    @State private var sidebarFocusRequest: String?
     @AppStorage(DeskZone.backKey) private var backShowsZones = true
     // Channel list over the picture, to change channel without leaving it.
     @State private var zapListVisible = false
@@ -243,7 +247,7 @@ struct ContentView: View {
         self.fixtureRestoreBrowsing = fixtureRestoreBrowsing
         _pendingBrowseRestore = State(initialValue: fixtureRestoreBrowsing)
         _showingSearch = State(initialValue: fixtureSearchSubmission != nil)
-        #if os(macOS)
+        #if os(macOS) || os(tvOS)
         // The desk lists countries and languages in its navigation column.
         _sidebarCountries = State(initialValue: fixtureOpenCountries)
         #else
@@ -380,7 +384,7 @@ struct ContentView: View {
 
     private func browserPane(reader: ScrollViewProxy) -> some View {
         ZStack {
-            #if os(macOS)
+            #if os(macOS) || os(tvOS)
             deskPane(reader: reader)
             #else
             if library.sources.isEmpty {
@@ -465,6 +469,16 @@ struct ContentView: View {
         }
         .onChange(of: systemFocus) { _, id in
             #if os(tvOS)
+            // The first native entry into a list that has just replaced the
+            // content of the column is redirected to its selected row. The
+            // request is consumed before the binding is written, so that
+            // later moves never snap back.
+            if let request = sidebarFocusRequest, let id, id == "countries-back" || id.hasPrefix("country-") {
+                sidebarFocusRequest = nil
+                focusID = request
+                if id != request { systemFocus = request }
+                return
+            }
             if id != nil, page == .catalogue, heldItem == nil, !modalOpen {
                 browserHasEnteredFocus = true
             }
@@ -548,13 +562,24 @@ struct ContentView: View {
         .onAppear {
             browserHeight = geometry.size.height; updateColumns(geometry.size.width)
             if library.sources.isEmpty { focusID = "add-source"; systemFocus = "add-source" }
-            #if os(macOS)
+            #if os(macOS) || os(tvOS)
             // The home screen starts on the section used last.
             if showsHome { focusID = currentDockID; systemFocus = focusID }
             #endif
             #if FLUX_CATALOG_UI_TESTING
             if fixtureRestoreBrowsing { restoreBrowsingContext() }
             else if !library.sources.isEmpty, heldItem == nil { systemFocus = focusID }
+            #if os(macOS) || os(tvOS)
+            if sidebarCountries {
+                // The list of countries opens on the one in use.
+                focusID = library.countryCode.map { "country-\($0)" } ?? "country-all"
+                systemFocus = focusID
+            }
+            if page == .settings { focusID = FluxDockItem.settings.focusID; systemFocus = focusID }
+            #endif
+            #if os(tvOS)
+            if fixtureZapList, let id = zapFocusID { systemFocus = "zap-\(id)" }
+            #endif
             if !fixtureActions.isEmpty {
                 Task { @MainActor in
                     try? await Task.sleep(nanoseconds: 500_000_000)
@@ -614,7 +639,9 @@ struct ContentView: View {
     private var commandCatalogue: some View {
         platformCatalogue
         #if os(tvOS)
-        .fluxExit(heldItem != nil || page != .catalogue || showingSearch || handlesCatalogueBack) { if heldItem != nil { dispatch(.back) } else { back() } }
+        // The home screen is the first one: Menu leaves the application
+        // there, and returns one step everywhere else.
+        .fluxExit(heldItem != nil || (page != .home && !library.sources.isEmpty)) { if heldItem != nil { dispatch(.back) } else { back() } }
         .onPlayPauseCommand { dispatch(.playPause) }
         #else
         .onKeyPress(keys: [.upArrow, .downArrow, .leftArrow, .rightArrow, .return, .escape, .space, "f", .tab, "\u{19}"], phases: [.down, .repeat]) { press in
@@ -678,7 +705,7 @@ struct ContentView: View {
                               select: selectLiveCountry, close: { showingCountries = false })
         }
         .sheet(isPresented: $showingEngines, onDismiss: { diagnosticSettings = false }) { enginesPanel }
-        #if !os(macOS)
+        #if os(iOS)
         .sheet(item: $itemOptions) { item in itemPanel(item) }
         #endif
     }
@@ -698,7 +725,7 @@ struct ContentView: View {
             Button("Supprimer « \(preset.name) »", role: .destructive) { library.deletePreset(preset); deletingPreset = nil; group = nil }
             Button("Annuler", role: .cancel) { deletingPreset = nil }
         }
-        #if !os(macOS)
+        #if os(iOS)
         .alert("Flux IPTV", isPresented: Binding(get: { library.alertMessage != nil }, set: { if !$0 { library.alertMessage = nil } })) {
             Button("OK", role: .cancel) { library.alertMessage = nil }
         } message: { Text(library.alertMessage ?? "") }
@@ -796,7 +823,7 @@ struct ContentView: View {
                 Color(red: 0.025, green: 0.035, blue: 0.065).ignoresSafeArea()
             } else {
                 Group {
-                    #if os(macOS)
+                    #if os(macOS) || os(tvOS)
                     if showsHome { homeRooms }
                     else {
                         FluxBackdrop(theme: theme)
@@ -816,7 +843,7 @@ struct ContentView: View {
         }.accessibilityHidden(true)
     }
     private var backdropBlur: CGFloat {
-        #if os(macOS)
+        #if os(macOS) || os(tvOS)
         if (heldItem != nil && caseExpanded) || page == .settings { return 26 }
         // Behind the home screen the room is a wallpaper: its signs and
         // posters must not compete with the name of the destination.
@@ -976,7 +1003,7 @@ struct ContentView: View {
     /// The Mac presents the desk layout: a dock for the destinations, a
     /// navigation column, and panels drawn in the window instead of sheets.
     private var usesDesk: Bool {
-        #if os(macOS)
+        #if os(macOS) || os(tvOS)
         true
         #else
         false
@@ -988,6 +1015,8 @@ struct ContentView: View {
         if favoritesMode && page != .home { return FluxDockItem.favorites.focusID }
         return FluxDockItem(kind: library.contentKind).focusID
     }
+    /// On the Mac the form is drawn in the settings; on a television it is
+    /// a screen of its own, and a sheet on a phone.
     private func presentAddSource() {
         #if os(macOS)
         openSettings(.sources, editing: .new)
@@ -1002,24 +1031,46 @@ struct ContentView: View {
         editingSource = source
         #endif
     }
+    /// Back and Home stand at the top of the column unless the bar carries them.
+    private var deskHeaderIDs: [String] {
+        #if os(iOS)
+        return []
+        #else
+        return barFlanks ? [] : [DeskZone.backID, DeskZone.homeID]
+        #endif
+    }
+    /// A remote always shows what it selects; a keyboard only once it is used.
+    private var focusShown: Bool {
+        #if os(tvOS)
+        true
+        #else
+        remoteNavigationActive
+        #endif
+    }
     private func presentSources() {
-        #if os(macOS)
+        #if os(macOS) || os(tvOS)
         openSettings(.sources)
         #else
         showingSources = true
         #endif
     }
     private func presentLists() {
-        #if os(macOS)
+        #if os(macOS) || os(tvOS)
         enterFavorites()
         #else
         showingLists = true
         #endif
     }
     private func presentCountries() {
-        #if os(macOS)
+        #if os(macOS) || os(tvOS)
         sidebarCountries = true
-        focusID = library.countryCode.map { "country-\($0)" } ?? "country-all"
+        let current = library.countryCode.map { "country-\($0)" } ?? "country-all"
+        focusID = current
+        #if os(tvOS)
+        // The rows mount with this update and the focus engine first enters
+        // the list by itself: its entry is redirected to the country in use.
+        sidebarFocusRequest = current
+        #endif
         #else
         showingCountries = true
         #endif
@@ -1027,7 +1078,7 @@ struct ContentView: View {
     /// During playback the settings are glass panels above the picture, which
     /// keeps playing; elsewhere on the Mac they are a screen of the window.
     private func presentSettings(diagnostic: Bool = false) {
-        #if os(macOS)
+        #if os(macOS) || os(tvOS)
         if page == .player { playerSettings = DeskSettingsRequest(page: diagnostic ? .diagnostic : nil) }
         else { openSettings(diagnostic ? .diagnostic : nil) }
         #else
@@ -1036,7 +1087,7 @@ struct ContentView: View {
     }
     private func leaveSettings() {
         guard page == .settings else { return }
-        #if os(macOS)
+        #if os(macOS) || os(tvOS)
         deskBack()
         #else
         page = .catalogue
@@ -1193,11 +1244,15 @@ struct ContentView: View {
             .accessibilityIdentifier("navigation-\(id)")
     }
 
+    /// The navigation column of the desk is as wide as the bar under it.
     private var liveSidebarWidth: CGFloat {
-        #if os(tvOS)
-        340
-        #else
+        #if os(iOS)
         254
+        #elseif os(tvOS)
+        // Wide enough for « Toutes les chaînes » and its count on one line.
+        max(FluxDockMetrics(.corner).length(count: FluxDockItem.allCases.count, vertical: false), 410)
+        #else
+        FluxDockMetrics(.corner).length(count: FluxDockItem.allCases.count, vertical: false)
         #endif
     }
     private var liveGroups: [String] {
@@ -1607,7 +1662,7 @@ struct ContentView: View {
     }
 
     @ViewBuilder private var catalogue: some View {
-        #if os(macOS)
+        #if os(macOS) || os(tvOS)
         if library.contentKind == .live { liveDeskCatalogue }
         else { mediaDeskCatalogue }
         #else
@@ -1748,16 +1803,16 @@ struct ContentView: View {
                     #if os(tvOS)
                     .frame(maxWidth: .infinity)
                     #endif
-                    Text(item.name).font(.callout.weight(.semibold)).lineLimit(2, reservesSpace: true).frame(maxWidth: .infinity, alignment: .leading)
+                    Text(item.name).font(Desk.font(.callout, .semibold)).lineLimit(2, reservesSpace: true).frame(maxWidth: .infinity, alignment: .leading)
                         #if os(tvOS)
                         .fixedSize(horizontal: false, vertical: true).layoutPriority(1)
                         #endif
                     HStack(spacing: 5) {
                         Text(CasePackageFormat.resolve(year: item.details.year).title)
-                            .font(.system(size: televisionLayout ? 18 : 9, weight: .semibold, design: .rounded))
+                            .font(.system(size: televisionLayout ? 15 : 9, weight: .semibold, design: .rounded))
                             .padding(.horizontal, 5).padding(.vertical, 2)
                             .background(.white.opacity(0.09), in: RoundedRectangle(cornerRadius: 3))
-                        Text(item.group).font(.caption).lineLimit(1)
+                        Text(item.group).font(Desk.font(.caption)).lineLimit(1)
                     }.foregroundStyle(.secondary)
                         #if os(tvOS)
                         .fixedSize(horizontal: false, vertical: true).layoutPriority(1)
@@ -1878,7 +1933,7 @@ struct ContentView: View {
                     }
                     #endif
                 #if os(tvOS)
-                if !playerControlsVisible {
+                if !playerControlsVisible && !zapListVisible {
                     // An invisible native focus target lets Select restore the
                     // controls without keeping a permanent badge over the film.
                     Button { revealPlayerControls(focus: true) } label: {
@@ -1915,13 +1970,11 @@ struct ContentView: View {
                     VStack { Spacer(); liveBanner.padding(.bottom, playerControlsVisible ? 104 : 0) }
                         .allowsHitTesting(false).transition(.opacity)
                 }
-                #if !os(tvOS)
                 if zapListVisible, zapListAvailable {
                     zapList
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
                         .transition(.move(edge: .leading).combined(with: .opacity))
                 }
-                #endif
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(.black)
@@ -1947,6 +2000,13 @@ struct ContentView: View {
         }
         .onChange(of: systemFocus) { _, id in
             if page == .player, playerControlsVisible, id != nil, id != "cinema-controls" { revealPlayerControls() }
+            #if os(tvOS)
+            // The channel under the remote is the one OK will show.
+            if zapListVisible, let id, id.hasPrefix("zap-") {
+                zapFocusID = String(id.dropFirst(4))
+                armZapListTimer()
+            }
+            #endif
         }
         .onChange(of: modalOpen) { _, _ in if page == .player { revealPlayerControls() } }
         .onChange(of: voiceOverEnabled) { _, _ in if page == .player { revealPlayerControls() } }
@@ -1985,10 +2045,26 @@ struct ContentView: View {
         zapFocusID = visibleSlice.item(id: playback.playingItem?.id)?.id ?? visible.first?.id
         zapListVisible = true
         armZapListTimer()
+        #if os(tvOS)
+        // The remote lands on the channel being watched.
+        let target = zapFocusID.map { "zap-\($0)" }
+        Task { @MainActor in
+            await Task.yield()
+            guard zapListVisible, let target else { return }
+            systemFocus = target
+        }
+        #endif
     }
     private func closeZapList() {
         zapListTask?.cancel(); zapListTask = nil
         zapListVisible = false
+        #if os(tvOS)
+        Task { @MainActor in
+            await Task.yield()
+            guard page == .player, !zapListVisible else { return }
+            systemFocus = playerControlsVisible ? "playpause" : "cinema-controls"
+        }
+        #endif
     }
     /// The list leaves by itself when nothing is done with it.
     private func armZapListTimer() {
@@ -1996,7 +2072,7 @@ struct ContentView: View {
         zapListTask = Task { @MainActor in
             try? await Task.sleep(nanoseconds: 12_000_000_000)
             guard !Task.isCancelled else { return }
-            zapListVisible = false; zapListTask = nil
+            closeZapList()
         }
     }
     private func zap(to item: IPTVItem) {
@@ -2034,54 +2110,64 @@ struct ContentView: View {
         armZapListTimer()
     }
 
-    #if !os(tvOS)
     private var zapList: some View {
         let playingID = zapPlayingID
         let anchor = zapFocusID ?? playingID
         let size = 60
         let pageIndex = anchor.flatMap { visibleSlice.page(for: $0, size: size) } ?? 0
         let window = visibleSlice.window(page: pageIndex, size: size)
-        return VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 6) {
+        return VStack(alignment: .leading, spacing: Desk.pt(10)) {
+            HStack(spacing: Desk.pt(6)) {
                 zapHeaderButton("chevron.left", title: "Catégorie précédente") { cycleZapCategory(-1) }
                 VStack(spacing: 2) {
-                    Text(group ?? library.selectedPreset?.name ?? "Toutes les chaînes").font(.headline).lineLimit(1)
-                    Text("\(visible.count) \(visible.count == 1 ? "chaîne" : "chaînes")").font(.caption).foregroundStyle(.secondary)
+                    Text(group ?? library.selectedPreset?.name ?? "Toutes les chaînes").font(Desk.font(.headline)).lineLimit(1)
+                    Text("\(visible.count) \(visible.count == 1 ? "chaîne" : "chaînes")").font(Desk.font(.caption)).foregroundStyle(.secondary)
                 }.frame(maxWidth: .infinity)
                 zapHeaderButton("chevron.right", title: "Catégorie suivante") { cycleZapCategory(1) }
                 zapHeaderButton("xmark", title: "Fermer la liste des chaînes") { closeZapList() }
             }
             ScrollViewReader { reader in
                 ScrollView {
-                    LazyVStack(spacing: 6) {
+                    LazyVStack(spacing: Desk.pt(6)) {
                         ForEach(window) { item in zapRow(item, playing: item.id == playingID) }
-                    }.padding(.horizontal, 10).padding(.vertical, 6)
+                    }.padding(.horizontal, Desk.pt(10)).padding(.vertical, Desk.pt(6))
                 }
                 .onAppear { if let anchor { reader.scrollTo("zap-\(anchor)", anchor: .center) } }
                 .onChange(of: pageIndex) { _, _ in if let anchor { reader.scrollTo("zap-\(anchor)", anchor: .center) } }
+                #if !os(tvOS)
                 .onChange(of: zapFocusID) { _, id in
                     // A pointer never moves the list under itself.
                     guard zapKeyboard, let id else { return }
                     withAnimation(reduceMotion ? nil : .easeOut(duration: 0.16)) { reader.scrollTo("zap-\(id)", anchor: .center) }
                 }
+                #endif
                 .onChange(of: group) { _, _ in if let id = zapFocusID { reader.scrollTo("zap-\(id)", anchor: .center) } }
             }
-            Text("↑ ↓ choisir  ·  Entrée regarder  ·  ← → catégorie  ·  Échap fermer")
-                .font(.caption2).foregroundStyle(.white.opacity(0.6)).frame(maxWidth: .infinity)
+            Text(zapHint)
+                .font(Desk.font(.caption2)).foregroundStyle(.white.opacity(0.6)).frame(maxWidth: .infinity)
         }
-        .padding(12).frame(width: 400)
+        .padding(Desk.pt(12)).frame(width: Desk.pt(400))
         .frame(maxHeight: .infinity)
-        .fluxMediaGlass(radius: 28)
+        .fluxMediaGlass(radius: Desk.pt(28))
         .padding(playerChromeInset)
+        #if !os(tvOS)
         .onHover { inside in if inside { armZapListTimer() } }
+        #endif
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Liste des chaînes")
+    }
+    private var zapHint: String {
+        #if os(tvOS)
+        "Haut, bas : choisir  ·  OK : regarder  ·  Gauche, droite : catégorie  ·  Retour : fermer"
+        #else
+        "↑ ↓ choisir  ·  Entrée regarder  ·  ← → catégorie  ·  Échap fermer"
+        #endif
     }
 
     private func zapHeaderButton(_ symbol: String, title: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            Image(systemName: symbol).font(.system(size: 13, weight: .bold))
-                .frame(width: 32, height: 32)
+            Image(systemName: symbol).font(Desk.system(13, .bold))
+                .frame(width: Desk.pt(32), height: Desk.pt(32))
                 .background(.white.opacity(0.12), in: Circle())
                 .contentShape(Circle())
         }
@@ -2096,8 +2182,8 @@ struct ContentView: View {
                              favorite: library.isFavorite(item), highlighted: highlighted, accent: themeAccent)
                 .overlay(alignment: .trailing) {
                     if playing {
-                        Image(systemName: "play.fill").font(.caption2).foregroundStyle(themeAccent)
-                            .padding(6).background(.black.opacity(0.55), in: Circle()).padding(.trailing, 34)
+                        Image(systemName: "play.fill").font(Desk.font(.caption2)).foregroundStyle(themeAccent)
+                            .padding(Desk.pt(6)).background(.black.opacity(0.55), in: Circle()).padding(.trailing, Desk.pt(34))
                     }
                 }
         }
@@ -2105,13 +2191,24 @@ struct ContentView: View {
         .id("zap-\(item.id)")
         .zIndex(highlighted ? 1 : 0)
         .animation(reduceMotion ? nil : .spring(response: 0.24, dampingFraction: 0.82), value: highlighted)
+        #if os(tvOS)
+        // The remote walks the list; Left and Right, which lead nowhere in
+        // it, change the category.
+        .focused($systemFocus, equals: "zap-\(item.id)").focusEffectDisabled()
+        .onMoveCommand { direction in
+            if direction == .left { cycleZapCategory(-1) } else if direction == .right { cycleZapCategory(1) }
+        }
+        #else
         .onHover { inside in
             if inside { zapKeyboard = false; zapFocusID = item.id; armZapListTimer() }
         }
+        #endif
         .accessibilityLabel(item.name).accessibilityValue(playing ? "En cours" : "")
         .accessibilityIdentifier("zap-channel-\(item.id)")
+        #if os(tvOS) && FLUX_CATALOG_UI_TESTING
+        .background(TVCatalogControlFrameProbe(identifier: "zap-channel-\(item.id)").allowsHitTesting(false))
+        #endif
     }
-    #endif
 
     private var playerControlsVisible: Bool {
         cinemaControls || playback.opening || !playback.isPlaying || playback.playbackError != nil || voiceOverEnabled
@@ -2361,7 +2458,7 @@ struct ContentView: View {
     private func updateColumns(_ width: CGFloat) {
         let usable = width - (showRemote && width >= 800 ? 215 : 0)
         compactChrome = usable < 900
-        #if os(macOS)
+        #if os(macOS) || os(tvOS)
         updateDeskColumns(usable)
         #else
         updateLegacyColumns(usable)
@@ -2548,7 +2645,7 @@ struct ContentView: View {
         if page != .catalogue { home() } else { dismissCaseImmediately() }
         liveGroupSearchFocus = false
         showingSearch = !usesDesk && (televisionLayout || library.contentKind != .live); searchFocus = true
-        #if os(macOS)
+        #if os(macOS) || os(tvOS)
         // The field may only mount with this update, after leaving the settings.
         sidebarCountries = false
         Task { @MainActor in
@@ -2678,7 +2775,7 @@ struct ContentView: View {
             // A Back during restored-search filtering must stay closed when
             // those results arrive; the saved query itself remains unchanged.
             cancelBrowsingRestore()
-            #if os(macOS)
+            #if os(macOS) || os(tvOS)
             deskBack()
             #else
             if showingSearch { showingSearch = false; searchFocus = false }
@@ -2738,7 +2835,7 @@ struct ContentView: View {
             // Rows above the grid, from the controls along the top of the
             // window. The navigation column, the actions beside the preview
             // and the dock have their own zones.
-            rows.append([DeskZone.backID, DeskZone.homeID, DeskZone.searchID]
+            rows.append(deskHeaderIDs + [DeskZone.searchID]
                         + (library.selectedSourceID != nil && !library.isLoading ? ["reload"] : []))
             if library.credentialIssue != nil { rows.append(["reconnect-source"]) }
             if visible.isEmpty && library.credentialIssue == nil && library.contentKind == .live { rows.append(["live-reset"]) }
@@ -2798,17 +2895,15 @@ struct ContentView: View {
             caseRemoteEvent=MediaDetailRemoteEvent(action:action)
             return
         }
-        #if os(macOS)
+        #if os(macOS) || os(tvOS)
         if zoneMode { handleZones(action); return }
         #endif
-        #if !os(tvOS)
         if page == .player, zapListVisible { handleZapList(action); return }
         // In live television a jump back has no meaning: Left and OK bring the
         // channel list, Up and Down keep changing channel directly.
         if page == .player, !playerControlsVisible, zapListAvailable, action == .left || action == .select {
             openZapList(keyboard: true); return
         }
-        #endif
         if page == .player && !playerControlsVisible {
             switch action {
             case .left: playback.skip(seconds: -Double(playback.settings.skipSeconds))
@@ -2842,7 +2937,7 @@ struct ContentView: View {
         case .select: activateFocus()
         case .back: back()
         case .home:
-            #if os(macOS)
+            #if os(macOS) || os(tvOS)
             showHome()
             #else
             home()
@@ -2869,7 +2964,7 @@ struct ContentView: View {
     }
     private func activateFocus() {
         guard let id = focusID else { focusID = focusRows.first?.first; return }
-        #if os(macOS)
+        #if os(macOS) || os(tvOS)
         if deskActivate(id) { return }
         #endif
         if page == .catalogue, let item = visibleSlice.item(id:id) { openItem(item); return }
@@ -2962,7 +3057,7 @@ private extension View {
     }
 }
 
-#if os(macOS)
+#if os(macOS) || os(tvOS)
 // MARK: - Desk layout (Mac): dock, screens and panels drawn in the window
 
 extension ContentView {
@@ -2972,7 +3067,13 @@ extension ContentView {
     }
     /// The home screen is the bar itself, in the middle of the window.
     var showsHome: Bool { page == .home && !library.sources.isEmpty }
-    private var dockVisible: Bool { page != .player && !cinema && entranceItem == nil && !showsHome }
+    private var dockVisible: Bool {
+        #if os(tvOS)
+        // A fiche takes the whole screen of a television.
+        if heldItem != nil { return false }
+        #endif
+        return page != .player && !cinema && entranceItem == nil && !showsHome
+    }
     private var dockAlignment: Alignment {
         switch dockPosition {
         case .bottom: .bottom
@@ -3040,7 +3141,21 @@ extension ContentView {
             }
             if dockVisible { deskDock.transition(.opacity) }
             if page == .player, let request = playerSettings { deskPlayerSettings(request) }
-            if zoneMode { zoneCaption }
+            if zoneMode {
+                Color.black.opacity(0.34).ignoresSafeArea().allowsHitTesting(false).transition(.opacity)
+                zoneCaption
+            }
+            #if os(tvOS)
+            if zoneMode { zoneCompassCatcher }
+            #if FLUX_CATALOG_UI_TESTING
+            // Read the drawn selection independently from UIKit focus
+            // without adding a focusable control to the fixture.
+            Color.clear.frame(width: 1, height: 1).allowsHitTesting(false)
+                .accessibilityElement().accessibilityLabel("Flux IPTV")
+                .accessibilityIdentifier("flux-catalog-logical-focus")
+                .accessibilityValue(zoneMode ? Self.compassID : focusID ?? "none")
+            #endif
+            #endif
             if let item = itemOptions { deskItemPanel(item) }
             if let message = library.alertMessage { deskNotice(message) }
         }
@@ -3068,22 +3183,107 @@ extension ContentView {
     }
 
     private var deskDock: some View {
-        FluxDock(selection: dockSelection, focusedID: focusID, showsFocus: remoteNavigationActive,
+        Group {
+            if barFlanks { deskBar } else {
+                dockItself
+                    .padding(dockEdge, FluxDockMetrics.edgeMargin)
+                    .padding(.leading, dockPosition == .corner ? Desk.pt(24) : 0)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: dockAlignment)
+    }
+
+    private var dockItself: some View {
+        FluxDock(selection: dockSelection, focusedID: focusID, showsFocus: focusShown,
                  accent: themeAccent, second: themeSecond,
                  zoneRing: zoneMode && deskZoneEntry(.dock) != nil ? zoneFocus == .dock : nil,
                  systemFocus: $systemFocus,
                  activate: { item in pointerSelect(item.focusID); dockAction(item) },
                  openSettings: { openSettings(.dock) })
-            .padding(dockEdge, FluxDockMetrics.edgeMargin)
-            .padding(.leading, dockPosition == .corner ? 24 : 0)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: dockAlignment)
+    }
+
+    /// At the bottom the bar is the Dock of a Mac, in the middle of the
+    /// window. Back and Home stand on its left and the clock on its right:
+    /// nothing of its strip is lost, and the columns need no header for them.
+    var barFlanks: Bool { dockPosition == .bottom }
+    /// Controls of the bar that stand before its destinations.
+    var barLeadIDs: [String] {
+        guard barFlanks, dockVisible else { return [] }
+        return [DeskZone.backID] + (deskBackPlace == nil ? [] : [DeskZone.homeID])
+    }
+
+    /// The two flanks have the same width: the dock stays in the middle.
+    private var deskBar: some View {
+        let metrics = FluxDockMetrics(.bottom)
+        let plate = metrics.cell.height + metrics.platePadding * 2
+        return HStack(alignment: .bottom, spacing: 0) {
+            HStack(spacing: Desk.pt(10)) {
+                barButton(DeskZone.backID, symbol: "chevron.backward", title: deskBackTarget, help: deskBackTitle,
+                          fills: deskBackPlace == nil) { deskLeaveScreen() }
+                if deskBackPlace != nil {
+                    barButton(DeskZone.homeID, symbol: "house.fill", title: nil, help: "Accueil", fills: true) { showHome() }
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading).frame(height: plate)
+            .padding(.leading, Desk.pt(24))
+            #if os(tvOS)
+            // The whole flank guides the remote to its buttons.
+            .focusSection()
+            #endif
+            dockItself
+                #if os(tvOS)
+                .focusSection()
+                #endif
+            TimelineView(.everyMinute) { context in
+                HStack(spacing: Desk.pt(10)) {
+                    if deskWidth >= Desk.pt(1240) {
+                        Text(context.date.formatted(.dateTime.weekday(.wide).day().month(.wide)))
+                            .font(Desk.font(.callout, .medium)).foregroundStyle(.white.opacity(0.72))
+                    }
+                    Text(context.date.formatted(.dateTime.hour().minute()))
+                        .font(Desk.font(.callout, .bold).monospacedDigit())
+                }
+                .padding(.horizontal, Desk.pt(15)).frame(height: Desk.pt(40))
+                .fluxGlass(radius: Desk.pt(20))
+            }
+            .accessibilityHidden(true)
+            .frame(maxWidth: .infinity, alignment: .trailing).frame(height: plate)
+            .padding(.trailing, Desk.pt(24))
+        }
+        .padding(.bottom, FluxDockMetrics.edgeMargin)
+    }
+
+    /// `fills`: on a television the remote goes to the nearest control, and
+    /// the list above the dock is nearer than a small button far on the left.
+    /// The last button of the flank answers for the whole of it, up to the dock.
+    private func barButton(_ id: String, symbol: String, title: String?, help: String, fills: Bool,
+                           action: @escaping () -> Void) -> some View {
+        let focused = focusShown && focusID == id
+        return Button { pointerSelect(id); action() } label: {
+            HStack(spacing: 0) {
+                HStack(spacing: Desk.pt(7)) {
+                    Image(systemName: symbol).font(Desk.font(.callout, .bold))
+                    if let title { Text(title).font(Desk.font(.callout, .semibold)).lineLimit(1) }
+                }
+                .padding(.horizontal, Desk.pt(title == nil ? 12 : 15)).frame(minWidth: Desk.pt(40), minHeight: Desk.pt(40))
+                .fluxGlass(radius: Desk.pt(20))
+                .overlay(Capsule().strokeBorder(.white.opacity(focused ? 0.9 : 0), lineWidth: 2).allowsHitTesting(false))
+                .scaleEffect(focused && !reduceMotion ? 1.06 : 1)
+            }
+            #if os(tvOS)
+            .frame(maxWidth: fills ? .infinity : nil, alignment: .leading)
+            .contentShape(Rectangle())
+            #endif
+        }
+        .buttonStyle(FluxBareButtonStyle()).fluxFocus($systemFocus, id: id).id(id)
+        .fluxHelp(help).accessibilityLabel(help).accessibilityIdentifier(id)
     }
 
     private var deskSettings: some View {
         PlaybackSettingsView(playback: playback, inline: true, initialPage: settingsRequest.page,
                              initialSourceEditor: settingsRequest.sourceEditor, remoteVisible: $showRemote,
                              navigationFootRoom: navigationFootRoom, backTitle: deskBackTitle,
-                             goBack: { back() }, goHome: { showHome() },
+                             goBack: barFlanks ? nil : { back() }, goHome: barFlanks ? nil : { showHome() },
                              close: { leaveSettings() }, sourceSaved: { home() })
             .environmentObject(library)
             .id(settingsRequest.revision)
@@ -3095,8 +3295,8 @@ extension ContentView {
             Color.black.opacity(0.45).ignoresSafeArea()
                 .contentShape(Rectangle()).onTapGesture { itemOptions = nil }
             itemPanel(item)
-                .fluxGlass(radius: 28)
-                .shadow(color: .black.opacity(0.45), radius: 30, y: 16)
+                .fluxGlass(radius: Desk.pt(28))
+                .shadow(color: .black.opacity(0.45), radius: Desk.pt(30), y: 16)
         }
         .transition(.opacity)
     }
@@ -3105,25 +3305,26 @@ extension ContentView {
     private func deskNotice(_ message: String) -> some View {
         ZStack {
             Color.black.opacity(0.45).ignoresSafeArea().contentShape(Rectangle())
-            VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: Desk.pt(16)) {
                 Label("Flux IPTV", systemImage: "exclamationmark.bubble.fill")
-                    .font(.headline).foregroundStyle(themeAccent)
-                Text(message).font(.title3).fixedSize(horizontal: false, vertical: true)
+                    .font(Desk.font(.headline)).foregroundStyle(themeAccent)
+                Text(message).font(Desk.font(.title3)).fixedSize(horizontal: false, vertical: true)
                 HStack {
                     Spacer()
                     Button { library.alertMessage = nil } label: {
-                        Text("OK").font(.headline).padding(.horizontal, 28).padding(.vertical, 10)
-                            .fluxNavigationGlass(selected: true, tint: themeAccent, radius: 15)
+                        Text("OK").font(Desk.font(.headline)).padding(.horizontal, Desk.pt(28)).padding(.vertical, Desk.pt(10))
+                            .fluxNavigationGlass(selected: true, tint: themeAccent, radius: Desk.pt(15))
                     }.buttonStyle(FluxBareButtonStyle()).accessibilityIdentifier("desk-notice-ok")
                 }
             }
-            .padding(24).frame(maxWidth: 540).fluxGlass(radius: 26)
-            .shadow(color: .black.opacity(0.45), radius: 30, y: 16)
+            .padding(Desk.pt(24)).frame(maxWidth: Desk.pt(540)).fluxGlass(radius: Desk.pt(26))
+            .shadow(color: .black.opacity(0.45), radius: Desk.pt(30), y: 16)
         }
         .transition(.opacity)
         .accessibilityElement(children: .contain).accessibilityAddTraits(.isModal)
     }
 
+    #if os(macOS)
     func deskDismissWithKey(_ key: KeyEquivalent) -> Bool {
         if library.alertMessage != nil {
             // Nothing under the message moves until it is acknowledged.
@@ -3133,6 +3334,7 @@ extension ContentView {
         if playerSettings != nil, key == .escape { playerSettings = nil; return true }
         return false
     }
+    #endif
 
     /// Settings of the player, asked for during playback: the same glass
     /// panels as the settings screen, above the picture that keeps playing.
@@ -3144,8 +3346,8 @@ extension ContentView {
                                  close: { playerSettings = nil })
                 .environmentObject(library)
                 .id(request.revision)
-                .frame(maxWidth: 1180, maxHeight: 780)
-                .padding(.vertical, 44)
+                .frame(maxWidth: Desk.pt(1180), maxHeight: Desk.pt(780))
+                .padding(.vertical, Desk.pt(44))
         }
         .transition(.opacity)
         .accessibilityAddTraits(.isModal)
@@ -3179,12 +3381,13 @@ extension ContentView {
     /// before this one, down to the home screen.
     func deskBack() {
         if page == .catalogue {
-            if sidebarCountries { sidebarCountries = false; focusID = "countries"; return }
+            if sidebarCountries { sidebarCountries = false; focusID = "countries"; systemFocus = "countries"; return }
             if newListKind != nil || renamingList || confirmingListDeletion {
                 newListKind = nil; renamingList = false; confirmingListDeletion = false
                 return
             }
-            if backShowsZones, !zoneMode, deskZones.count > 1, deskZone(of: focusID) != .dock {
+            if zoneMode { deskLeaveScreen(); return }
+            if backShowsZones, deskZones.count > 1, deskZone(of: focusID) != .dock {
                 openZones(); return
             }
         }
@@ -3198,12 +3401,11 @@ extension ContentView {
         if let previous = deskHistory.leave(current) { dockAction(previous) } else { showHome() }
     }
 
-    /// Screen that Back shows, and the name of the control that performs it.
-    private var deskBackTarget: String {
-        guard let current = FluxDockItem(focusID: currentDockID),
-              let previous = deskHistory.previous(from: current) else { return "Accueil" }
-        return previous.title
+    /// Screen that Back shows — nil is the home screen — and its name.
+    private var deskBackPlace: FluxDockItem? {
+        FluxDockItem(focusID: currentDockID).flatMap { deskHistory.previous(from: $0) }
     }
+    private var deskBackTarget: String { deskBackPlace?.title ?? "Accueil" }
     var deskBackTitle: String { "Retour : \(deskBackTarget)" }
 
     // MARK: Zones
@@ -3225,7 +3427,7 @@ extension ContentView {
     private var deskZones: [DeskZone] { DeskZone.allCases.filter { deskZoneEntry($0) != nil } }
     private func deskZone(of id: String?) -> DeskZone? {
         guard let id else { return nil }
-        if FluxDockItem(focusID: id) != nil { return .dock }
+        if FluxDockItem(focusID: id) != nil || barLeadIDs.contains(id) { return .dock }
         if deskSidebarIDs.contains(id) { return .column }
         if deskTrailingIDs.contains(id) { return .actions }
         if focusRows.contains(where: { $0.contains(id) }) { return .top }
@@ -3236,28 +3438,77 @@ extension ContentView {
         let zones = deskZones
         zoneFocus = deskZone(of: focusID).flatMap { zones.contains($0) ? $0 : nil }
             ?? (zones.contains(.content) ? .content : zones.first ?? .dock)
+        zoneReturnFocus = focusID
         zoneMode = true
+        #if os(tvOS)
+        // The compass takes the focus of the remote: no control under it moves.
+        Task { @MainActor in
+            await Task.yield()
+            guard zoneMode else { return }
+            systemFocus = Self.compassID
+        }
+        #endif
+    }
+
+    /// Leaves the compass where the selection was.
+    func closeZones() {
+        zoneMode = false
+        #if os(tvOS)
+        guard let id = zoneReturnFocus else { return }
+        focusID = id
+        if id == DeskZone.searchID { searchFocus = true } else { systemFocus = id }
+        #endif
     }
 
     private func enterZone(_ zone: DeskZone) {
         zoneMode = false
         guard let id = deskZoneEntry(zone) else { return }
         if zone == .content, let item = visibleSlice.item(id: id) { revealCatalogItem(id); setPreview(item) }
+        #if os(tvOS)
+        // The search field is a native control of the television.
+        if zone == .top { focusID = id; searchFocus = true; return }
+        #endif
         focusID = id
         systemFocus = id
     }
 
+    /// One arrow jumps into the neighbouring zone; OK stays; Back leaves the screen.
     func handleZones(_ action: RemoteAction) {
         switch action {
         case .up, .down, .left, .right:
-            zoneFocus = DeskZoneMap.move(from: zoneFocus, action: action, available: deskZones, dock: dockPosition)
-        case .select, .playPause: enterZone(zoneFocus)
+            let target = DeskZoneMap.move(from: zoneFocus, action: action, available: deskZones, dock: dockPosition)
+            if target != zoneFocus { enterZone(target) }
+        case .select, .playPause: closeZones()
         case .back: deskLeaveScreen()
         case .home: zoneMode = false; showHome()
         case .search: zoneMode = false; search()
-        default: zoneMode = false
+        default: closeZones()
         }
     }
+    static let compassID = "zone-compass"
+
+    #if os(tvOS)
+    /// The compass holds the focus of the remote while the zones are shown:
+    /// with nothing beyond its edges, every arrow reaches `handleZones`.
+    private var zoneCompassCatcher: some View {
+        Button { closeZones() } label: { Color.clear.contentShape(Rectangle()) }
+            .buttonStyle(FluxBareButtonStyle())
+            .focusEffectDisabled()
+            .focused($systemFocus, equals: Self.compassID)
+            .onMoveCommand { direction in
+                switch direction {
+                case .up: handleZones(.up)
+                case .down: handleZones(.down)
+                case .left: handleZones(.left)
+                case .right: handleZones(.right)
+                @unknown default: break
+                }
+            }
+            .ignoresSafeArea()
+            .accessibilityLabel("Zones de l’écran")
+            .accessibilityIdentifier(Self.compassID)
+    }
+    #endif
 
     /// Tab enters the next zone of the screen without the overview.
     func cycleZone(forward: Bool) -> Bool {
@@ -3276,12 +3527,12 @@ extension ContentView {
             let shape = RoundedRectangle(cornerRadius: radius + outset, style: .continuous)
             shape.strokeBorder(active ? themeAccent : Color.white.opacity(0.30), lineWidth: active ? 3 : 1)
                 .background(themeAccent.opacity(active ? 0.10 : 0), in: shape)
-                .shadow(color: active ? themeAccent.opacity(0.7) : .clear, radius: 10)
+                .shadow(color: active ? themeAccent.opacity(0.7) : .clear, radius: Desk.pt(10))
                 .overlay(alignment: .topTrailing) {
                     if active && labelled {
-                        Text(zone.title.uppercased()).font(.caption2.weight(.heavy)).tracking(1.2)
-                            .foregroundStyle(.black).padding(.horizontal, 9).padding(.vertical, 4)
-                            .background(themeAccent, in: Capsule()).padding(8)
+                        Text(zone.title.uppercased()).font(Desk.font(.caption2, .heavy)).tracking(1.2)
+                            .foregroundStyle(.black).padding(.horizontal, Desk.pt(9)).padding(.vertical, Desk.pt(4))
+                            .background(themeAccent, in: Capsule()).padding(Desk.pt(8))
                     }
                 }
                 .padding(-outset)
@@ -3290,20 +3541,30 @@ extension ContentView {
         }
     }
 
-    /// What the keys do while the zones are shown.
+    /// The compass of the zones: where each arrow leads, and where Back returns.
     private var zoneCaption: some View {
-        HStack(spacing: 14) {
-            Label("Zone : \(zoneFocus.title)", systemImage: "rectangle.3.group")
-                .font(.callout.weight(.bold)).foregroundStyle(themeAccent)
-            Text("Flèches : choisir  ·  OK : entrer  ·  Retour : \(deskBackTarget)").font(.callout.weight(.medium))
+        let zones = deskZones
+        let moves: [(RemoteAction, String)] = [(.up, "arrow.up"), (.left, "arrow.left"), (.right, "arrow.right"), (.down, "arrow.down")]
+        let reachable = moves.compactMap { action, symbol -> (String, String)? in
+            let target = DeskZoneMap.move(from: zoneFocus, action: action, available: zones, dock: dockPosition)
+            return target == zoneFocus ? nil : (symbol, target.title)
         }
-        .padding(.horizontal, 20).frame(height: 44)
-        .fluxGlass(radius: 22)
+        return HStack(spacing: Desk.pt(18)) {
+            ForEach(reachable, id: \.0) { symbol, name in
+                Label(name, systemImage: symbol).font(Desk.font(.callout, .semibold))
+            }
+            Rectangle().fill(.white.opacity(0.25)).frame(width: 1, height: Desk.pt(20))
+            Label("Retour : \(deskBackTarget)", systemImage: "chevron.backward")
+                .font(Desk.font(.callout, .medium)).foregroundStyle(themeAccent)
+        }
+        .padding(.horizontal, Desk.pt(22)).frame(height: Desk.pt(46))
+        .fluxGlass(radius: Desk.pt(23))
         .shadow(color: .black.opacity(0.4), radius: 16, y: 8)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom).padding(.bottom, 22)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
         .allowsHitTesting(false)
         .transition(.opacity)
-        .accessibilityLabel("Zones de l’écran. Flèches pour choisir, OK pour entrer, Retour pour \(deskBackTarget).")
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Zones de l’écran. " + reachable.map { "\($0.1)" }.joined(separator: ", ") + ". Retour pour \(deskBackTarget).")
     }
 
     func showHome() {
@@ -3428,7 +3689,7 @@ extension ContentView {
             return DeskNavigation.move(from: current, action: action, items: visibleSlice, columns: columns,
                                        sidebarIDs: deskSidebarIDs, preferredSidebarID: deskScopeID,
                                        preferredItemID: previewID, toolbar: focusRows, trailingIDs: deskTrailingIDs,
-                                       headerIDs: [DeskZone.backID, DeskZone.homeID])
+                                       headerIDs: deskHeaderIDs)
         case .series, .player:
             return RemoteNavigation.move(from: current, action: action, rows: focusRows)
         case .settings, .home:
@@ -3444,7 +3705,7 @@ extension ContentView {
             return FluxDockNavigation.move(from: focusID, action: action, position: .bottom, dockIDs: ids,
                                            preferredDockID: currentDockID, entryID: nil) { current, _ in current }
         }
-        let dockIDs = dockVisible ? FluxDockItem.order(from: dockOrder).map(\.focusID) : []
+        let dockIDs = dockVisible ? barLeadIDs + FluxDockItem.order(from: dockOrder).map(\.focusID) : []
         let wasInDock = focusID.map(dockIDs.contains) ?? false
         let remembered = dockReturnFocus.flatMap { id -> String? in
             if visibleSlice.item(id: id) != nil || deskSidebarIDs.contains(id) || deskTrailingIDs.contains(id) { return id }
@@ -3462,24 +3723,24 @@ extension ContentView {
         liveSidebarVisible = true
         let dock = dockPosition.isVertical ? FluxDockMetrics.thickness(dockPosition) : 0
         deskWidth = usable - dock
-        let content = usable - dock - 48 - liveSidebarWidth - 18
+        let content = usable - dock - Desk.pt(48) - liveSidebarWidth - Desk.pt(18)
         if library.contentKind == .live {
             // One list of channels; the picture takes the width that remains,
             // as long as its panel keeps the height for what is written below.
-            let list = min(460, max(330, content * 0.34))
+            let list = min(Desk.pt(460), max(Desk.pt(330), content * 0.34))
             let strip = dockPosition.isVertical || dockPosition == .corner ? 0 : FluxDockMetrics.thickness(dockPosition)
-            let byHeight = (browserHeight - 52 - 310 - strip) * 16 / 9 + 28
-            deskPreviewWidth = max(380, min(content - list - 18, byHeight))
+            let byHeight = (browserHeight - Desk.pt(52) - Desk.pt(310) - strip) * 16 / 9 + Desk.pt(28)
+            deskPreviewWidth = max(Desk.pt(380), min(content - list - Desk.pt(18), byHeight))
             columns = 1
         } else {
-            let estimated = (content - 32 + 4) / (cardWidth + 4)
+            let estimated = (content - Desk.pt(32) + 4) / (cardWidth + 4)
             columns = estimated.isFinite ? Int(max(2, min(10, estimated))) : 5
         }
     }
 }
 #endif
 
-#if os(macOS)
+#if os(macOS) || os(tvOS)
 // MARK: - Home screen (Mac): the destinations in the middle of the window
 
 extension ContentView {
@@ -3563,7 +3824,7 @@ extension ContentView {
             ZStack {
                 // The plate of the bar is in the middle of the window; the
                 // name of the destination stands above it.
-                FluxDock(selection: [], focusedID: focusID, showsFocus: remoteNavigationActive,
+                FluxDock(selection: [], focusedID: focusID, showsFocus: focusShown,
                          accent: themeAccent, second: themeSecond, hero: scale, hover: { homeHover = $0 },
                          systemFocus: $systemFocus,
                          activate: { item in pointerSelect(item.focusID); dockAction(item) },
@@ -3578,7 +3839,7 @@ extension ContentView {
                                     .font(.system(size: 21 * scale, weight: .medium)).foregroundStyle(.white.opacity(0.82))
                             }
                             .lineLimit(1).fixedSize()
-                            .shadow(color: .black.opacity(0.6), radius: 16, y: 4)
+                            .shadow(color: .black.opacity(0.6), radius: Desk.pt(16), y: 4)
                             .id(item).transition(.opacity)
                         }
                         .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: item)
@@ -3594,36 +3855,37 @@ extension ContentView {
             if let kind = item.mediaKind { homeKind = kind }
         }
         .accessibilityElement(children: .contain).accessibilityLabel("Accueil")
+        .accessibilityIdentifier("desk-home-screen")
     }
 
     /// Name of the application and of its source, then the date and the time.
     private var homeBar: some View {
-        HStack(spacing: 12) {
-            HStack(spacing: 10) {
+        HStack(spacing: Desk.pt(12)) {
+            HStack(spacing: Desk.pt(10)) {
                 Image(systemName: "play.tv.fill").foregroundStyle(themeAccent)
-                Text("FLUX").font(.callout.weight(.heavy)).tracking(4)
+                Text("FLUX").font(Desk.font(.callout, .heavy)).tracking(4)
                 if let source = library.selectedSource {
-                    Text(source.name).font(.callout.weight(.medium)).foregroundStyle(.white.opacity(0.72)).lineLimit(1)
+                    Text(source.name).font(Desk.font(.callout, .medium)).foregroundStyle(.white.opacity(0.72)).lineLimit(1)
                 }
             }
-            .padding(.horizontal, 16).frame(height: 38).fluxGlass(radius: 19)
-            Spacer(minLength: 12)
+            .padding(.horizontal, Desk.pt(16)).frame(height: Desk.pt(38)).fluxGlass(radius: Desk.pt(19))
+            Spacer(minLength: Desk.pt(12))
             TimelineView(.everyMinute) { context in
-                HStack(spacing: 12) {
+                HStack(spacing: Desk.pt(12)) {
                     Text(context.date.formatted(.dateTime.weekday(.wide).day().month(.wide)))
-                        .font(.callout.weight(.medium)).foregroundStyle(.white.opacity(0.72))
+                        .font(Desk.font(.callout, .medium)).foregroundStyle(.white.opacity(0.72))
                     Text(context.date.formatted(.dateTime.hour().minute()))
-                        .font(.callout.weight(.bold).monospacedDigit())
+                        .font(Desk.font(.callout, .bold).monospacedDigit())
                 }
-                .padding(.horizontal, 16).frame(height: 38).fluxGlass(radius: 19)
+                .padding(.horizontal, Desk.pt(16)).frame(height: Desk.pt(38)).fluxGlass(radius: Desk.pt(19))
             }
         }
-        .padding(.horizontal, 24).padding(.top, 14).frame(height: 58, alignment: .top)
+        .padding(.horizontal, Desk.pt(24)).padding(.top, Desk.pt(14)).frame(height: Desk.pt(58), alignment: .top)
     }
 }
 #endif
 
-#if os(macOS)
+#if os(macOS) || os(tvOS)
 // MARK: - Desk screens (Mac): navigation column, channels, preview, catalogue
 
 extension ContentView {
@@ -3632,33 +3894,54 @@ extension ContentView {
     /// The same column in every section: scopes and categories, the countries
     /// of the channels, or the favourite lists of the three kinds.
     private var deskSidebar: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: Desk.pt(12)) {
             if favoritesMode { favoritesSidebar }
             else if sidebarCountries && facetAvailable { countriesSidebar }
             else { scopeSidebar }
         }
-        .padding(14).frame(width: liveSidebarWidth)
+        .padding(Desk.pt(14)).frame(width: liveSidebarWidth)
         .frame(maxHeight: .infinity, alignment: .top)
         // A frame drawn after the glass would be sampled by it: the frames
         // of the zones belong to what each glass panel shows.
-        .overlay { zoneFrame(.column, radius: 25) }
-        .fluxGlass(radius: 25)
+        .overlay { zoneFrame(.column, radius: Desk.pt(25)) }
+        .fluxGlass(radius: Desk.pt(25))
         .padding(.bottom, navigationFootRoom)
     }
 
     /// Back and the home screen are at the top of every navigation column.
     /// With the search, the reload and the pages they form the top zone.
     private func sidebarHeading(_ title: String) -> some View {
-        DeskColumnHeader(title: title, backTitle: deskBackTitle, back: { deskLeaveScreen() }, home: { showHome() },
-                         focusedID: remoteNavigationActive ? focusID : nil, systemFocus: $systemFocus)
-            .overlay { zoneFrame(.top, radius: 14, outset: 6, labelled: false) }
+        DeskColumnHeader(title: title, backTitle: deskBackTitle,
+                         back: barFlanks ? nil : { deskLeaveScreen() }, home: barFlanks ? nil : { showHome() },
+                         focusedID: focusShown ? focusID : nil, systemFocus: $systemFocus)
+            .overlay { if !barFlanks { zoneFrame(.top, radius: Desk.pt(14), outset: 6, labelled: false) } }
     }
 
     @ViewBuilder private var scopeSidebar: some View {
         let kind = library.contentKind
         sidebarHeading(kind == .live ? "TÉLÉVISION" : kind == .movie ? "FILMS" : "SÉRIES")
         if facetAvailable { liveCountryButton }
-        HStack(spacing: 8) {
+        #if os(tvOS)
+        // The field of the television opens its own keyboard.
+        HStack(spacing: Desk.pt(8)) {
+            Image(systemName: "magnifyingglass").font(Desk.font(.callout)).foregroundStyle(.secondary)
+            TextField("Filtrer les catégories", text: $library.groupSearch)
+                .textFieldStyle(.plain).font(Desk.font(.callout))
+                .focused($liveGroupSearchFocus)
+                .onSubmit {
+                    liveGroupSearchFocus = false
+                    focusID = liveGroups.first.map { "live-category-\($0)" } ?? "group-all"
+                    systemFocus = focusID
+                }
+        }
+        .padding(.leading, Desk.pt(12)).padding(.trailing, Desk.pt(4)).padding(.vertical, Desk.pt(4))
+        .background(.black.opacity(0.18), in: RoundedRectangle(cornerRadius: Desk.pt(14)))
+        .overlay {
+            RoundedRectangle(cornerRadius: Desk.pt(14))
+                .strokeBorder(.white.opacity(liveGroupSearchFocus ? 0.8 : 0), lineWidth: 2).allowsHitTesting(false)
+        }
+        #else
+        HStack(spacing: Desk.pt(8)) {
             Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
             TextField("Filtrer les catégories", text: $library.groupSearch)
                 .textFieldStyle(.plain)
@@ -3673,11 +3956,12 @@ extension ContentView {
                     .buttonStyle(.plain).accessibilityLabel("Effacer la recherche de catégories")
             }
         }
-        .font(.callout).padding(11)
-        .background(.black.opacity(0.15), in: RoundedRectangle(cornerRadius: 13))
+        .font(Desk.font(.callout)).padding(Desk.pt(11))
+        .background(.black.opacity(0.15), in: RoundedRectangle(cornerRadius: Desk.pt(13)))
+        #endif
         ScrollViewReader { reader in
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: 5) {
+                LazyVStack(alignment: .leading, spacing: Desk.pt(5)) {
                     liveScopeButton(kind == .live ? "Toutes les chaînes" : kind == .movie ? "Tous les films" : "Toutes les séries",
                                     symbol: "square.grid.2x2", id: "group-all",
                                     count: library.catalogResults.all.items.count) { showAllCatalog() }
@@ -3692,17 +3976,17 @@ extension ContentView {
                         liveScopeButton("À reprendre", symbol: "clock.arrow.circlepath", id: "continue-only") { toggleResumeFilter() }
                     }
                     liveScopeButton("Gérer les listes", symbol: "slider.horizontal.3", id: "live-manage-lists") { presentLists() }
-                    Text("CATÉGORIES").font(.caption2.weight(.semibold)).tracking(1.5).foregroundStyle(.secondary)
-                        .padding(.horizontal, 12).padding(.top, 18).padding(.bottom, 5)
+                    Text("CATÉGORIES").font(Desk.font(.caption2, .semibold)).tracking(1.5).foregroundStyle(.secondary)
+                        .padding(.horizontal, Desk.pt(12)).padding(.top, Desk.pt(18)).padding(.bottom, Desk.pt(5))
                     ForEach(liveGroups, id: \.self) { name in
                         liveScopeButton(name, symbol: "folder", id: "live-category-\(name)",
                                         count: library.catalogResults.slice(group: name).items.count) { toggleCategory(name) }
                     }
                     if liveGroups.isEmpty {
                         Text(groupSearch.isEmpty ? "Les catégories apparaîtront avec votre catalogue." : "Aucune catégorie correspondante.")
-                            .font(.caption).foregroundStyle(.secondary).padding(12)
+                            .font(Desk.font(.caption)).foregroundStyle(.secondary).padding(Desk.pt(12))
                     }
-                }.padding(.vertical, 3)
+                }.padding(.vertical, Desk.pt(3))
             }
             .onChange(of: focusID) { _, id in
                 if let id, remoteNavigationActive, deskSidebarIDs.contains(id) { reader.scrollTo(id, anchor: .center) }
@@ -3746,28 +4030,28 @@ extension ContentView {
     @ViewBuilder private var countriesSidebar: some View {
         let focusedBack = focusID == "countries-back"
         Button { pointerSelect("countries"); sidebarCountries = false } label: {
-            HStack(spacing: 8) {
-                Image(systemName: "chevron.left").font(.caption.weight(.bold))
+            HStack(spacing: Desk.pt(8)) {
+                Image(systemName: "chevron.left").font(Desk.font(.caption, .bold))
                 Text(library.contentKind == .live ? "Pays des chaînes" : library.contentKind == .movie ? "Langue des films" : "Langue des séries")
-                    .font(.callout.weight(.semibold))
+                    .font(Desk.font(.callout, .semibold))
                 Spacer(minLength: 0)
             }
-            .padding(.horizontal, 12).padding(.vertical, 11)
-            .background(.white.opacity(focusedBack ? 0.14 : 0.06), in: RoundedRectangle(cornerRadius: 13))
-            .overlay { RoundedRectangle(cornerRadius: 13).strokeBorder(focusedBack ? .white.opacity(0.75) : .clear, lineWidth: 2).allowsHitTesting(false) }
-            .contentShape(RoundedRectangle(cornerRadius: 13))
+            .padding(.horizontal, Desk.pt(12)).padding(.vertical, Desk.pt(11))
+            .background(.white.opacity(focusedBack ? 0.14 : 0.06), in: RoundedRectangle(cornerRadius: Desk.pt(13)))
+            .overlay { RoundedRectangle(cornerRadius: Desk.pt(13)).strokeBorder(focusedBack ? .white.opacity(0.75) : .clear, lineWidth: 2).allowsHitTesting(false) }
+            .contentShape(RoundedRectangle(cornerRadius: Desk.pt(13)))
         }
         .buttonStyle(FluxBareButtonStyle()).fluxFocus($systemFocus, id: "countries-back").id("countries-back")
         .accessibilityLabel("Revenir aux catégories")
         ScrollViewReader { reader in
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: 5) {
+                LazyVStack(alignment: .leading, spacing: Desk.pt(5)) {
                     countryRow(code: nil, name: library.contentKind == .live ? "Tous les pays" : "Toutes les langues",
                                count: facetEntries.reduce(0) { $0 + $1.count })
                     ForEach(facetEntries, id: \.code) { entry in
                         countryRow(code: entry.code, name: entry.name, count: entry.count)
                     }
-                }.padding(.vertical, 3)
+                }.padding(.vertical, Desk.pt(3))
             }
             .onAppear { reader.scrollTo(library.countryCode.map { "country-\($0)" } ?? "country-all", anchor: .center) }
             .onChange(of: focusID) { _, id in
@@ -3781,47 +4065,53 @@ extension ContentView {
         let selected = library.countryCode == code
         let focused = focusID == id
         return Button { pointerSelect(id); selectLiveCountry(code) } label: {
-            HStack(spacing: 10) {
+            HStack(spacing: Desk.pt(10)) {
                 if library.contentKind == .live {
-                    Text(flag(code)).font(.title3).frame(width: 30)
+                    Text(flag(code)).font(Desk.font(.title3)).frame(width: Desk.pt(30))
                 } else {
                     // A language has no flag: its code, as playlists write it.
                     Text(code == nil ? "•" : code == MediaLanguage.unknownCode ? "?" : code == MediaLanguage.multipleCode ? "MULTI" : (code ?? "").uppercased())
-                        .font(.system(size: 10, weight: .bold)).lineLimit(1).minimumScaleFactor(0.7)
-                        .frame(width: 30, height: 20)
-                        .background(.white.opacity(0.12), in: RoundedRectangle(cornerRadius: 5))
+                        .font(Desk.system(10, .bold)).lineLimit(1).minimumScaleFactor(0.7)
+                        .frame(width: Desk.pt(30), height: Desk.pt(20))
+                        .background(.white.opacity(0.12), in: RoundedRectangle(cornerRadius: Desk.pt(5)))
                 }
-                Text(name).font(.callout.weight(selected ? .semibold : .regular))
+                Text(name).font(Desk.font(.callout, selected ? .semibold : .regular))
                     .lineLimit(2).frame(maxWidth: .infinity, alignment: .leading)
-                Text("\(count)").font(.caption.monospacedDigit()).foregroundStyle(.secondary)
-                if selected { Image(systemName: "checkmark").font(.caption.weight(.bold)).foregroundStyle(themeAccent) }
+                Text("\(count)").font(Desk.font(.caption).monospacedDigit()).foregroundStyle(.secondary)
+                if selected { Image(systemName: "checkmark").font(Desk.font(.caption, .bold)).foregroundStyle(themeAccent) }
             }
-            .padding(.horizontal, 12).padding(.vertical, 10)
-            .background(selected ? themeAccent.opacity(0.16) : .white.opacity(focused ? 0.09 : 0), in: RoundedRectangle(cornerRadius: 13))
-            .overlay { RoundedRectangle(cornerRadius: 13).strokeBorder(focused ? .white.opacity(0.75) : .clear, lineWidth: 2).allowsHitTesting(false) }
-            .contentShape(RoundedRectangle(cornerRadius: 13))
+            .padding(.horizontal, Desk.pt(12)).padding(.vertical, Desk.pt(10))
+            .background(selected ? themeAccent.opacity(0.16) : .white.opacity(focused ? 0.09 : 0), in: RoundedRectangle(cornerRadius: Desk.pt(13)))
+            .overlay { RoundedRectangle(cornerRadius: Desk.pt(13)).strokeBorder(focused ? .white.opacity(0.75) : .clear, lineWidth: 2).allowsHitTesting(false) }
+            .contentShape(RoundedRectangle(cornerRadius: Desk.pt(13)))
         }
+        // The focus binding belongs to the button itself: nothing may stand
+        // between them, or the remote cannot be sent to the row.
         .buttonStyle(FluxBareButtonStyle()).fluxFocus($systemFocus, id: id).id(id)
+        .accessibilityIdentifier("live-country-option-\(code ?? "all")")
         .accessibilityLabel(name)
         .accessibilityValue("\(count) \(library.contentKind == .live ? "chaînes" : "titres")\(selected ? ", sélectionné" : "")")
+        #if os(tvOS) && FLUX_CATALOG_UI_TESTING
+        .background(TVCatalogControlFrameProbe(identifier: "live-country-option-\(code ?? "all")").allowsHitTesting(false))
+        #endif
     }
 
     @ViewBuilder private var favoritesSidebar: some View {
         sidebarHeading("FAVORIS")
         ScrollViewReader { reader in
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: 5) {
+                LazyVStack(alignment: .leading, spacing: Desk.pt(5)) {
                     ForEach(IPTVMediaKind.allCases, id: \.self) { kind in
                         Text(kind.frenchTitle.uppercased())
-                            .font(.caption2.weight(.semibold)).tracking(1.5).foregroundStyle(.secondary)
-                            .padding(.horizontal, 12).padding(.top, kind == .live ? 8 : 18).padding(.bottom, 5)
+                            .font(Desk.font(.caption2, .semibold)).tracking(1.5).foregroundStyle(.secondary)
+                            .padding(.horizontal, Desk.pt(12)).padding(.top, kind == .live ? 8 : 18).padding(.bottom, Desk.pt(5))
                         ForEach(library.presets.lists(for: kind)) { preset in
                             liveScopeButton(preset.name, symbol: preset.isDefault ? "star.fill" : "text.badge.star",
                                             id: "favorite-list-\(preset.id)", count: preset.itemIDs.count) { selectFavoriteList(preset) }
                         }
                         newListRow(kind)
                     }
-                }.padding(.vertical, 3)
+                }.padding(.vertical, Desk.pt(3))
             }
             .onChange(of: focusID) { _, id in
                 if let id, remoteNavigationActive, deskSidebarIDs.contains(id) { reader.scrollTo(id, anchor: .center) }
@@ -3831,8 +4121,8 @@ extension ContentView {
 
     @ViewBuilder private func newListRow(_ kind: IPTVMediaKind) -> some View {
         if newListKind == kind {
-            VStack(alignment: .leading, spacing: 5) {
-                HStack(spacing: 7) {
+            VStack(alignment: .leading, spacing: Desk.pt(5)) {
+                HStack(spacing: Desk.pt(7)) {
                     TextField("Nom de la liste", text: $newListName)
                         .textFieldStyle(.plain).focused($listNameFocus)
                         .onSubmit { commitNewList(kind) }
@@ -3843,10 +4133,10 @@ extension ContentView {
                     Button { newListKind = nil } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary) }
                         .buttonStyle(.plain).accessibilityLabel("Annuler la nouvelle liste")
                 }
-                .font(.callout).padding(.horizontal, 12).padding(.vertical, 10)
-                .background(.black.opacity(0.22), in: RoundedRectangle(cornerRadius: 13))
+                .font(Desk.font(.callout)).padding(.horizontal, Desk.pt(12)).padding(.vertical, Desk.pt(10))
+                .background(.black.opacity(0.22), in: RoundedRectangle(cornerRadius: Desk.pt(13)))
                 if listNameInvalid {
-                    Text("Nom déjà utilisé ou trop long.").font(.caption2).foregroundStyle(.orange).padding(.horizontal, 12)
+                    Text("Nom déjà utilisé ou trop long.").font(Desk.font(.caption2)).foregroundStyle(.orange).padding(.horizontal, Desk.pt(12))
                 }
             }
         } else {
@@ -3878,13 +4168,13 @@ extension ContentView {
                     .textFieldStyle(.plain).focused($listNameFocus)
                     .onSubmit { renameList(preset) }
                     .onExitCommand { renamingList = false }
-                    .padding(.horizontal, 12).padding(.vertical, 9).frame(width: 220)
-                    .background(.black.opacity(0.25), in: RoundedRectangle(cornerRadius: 12))
-                    .overlay { RoundedRectangle(cornerRadius: 12).strokeBorder(listNameInvalid ? Color.orange : .white.opacity(0.12), lineWidth: 1) }
+                    .padding(.horizontal, Desk.pt(12)).padding(.vertical, Desk.pt(9)).frame(width: Desk.pt(220))
+                    .background(.black.opacity(0.25), in: RoundedRectangle(cornerRadius: Desk.pt(12)))
+                    .overlay { RoundedRectangle(cornerRadius: Desk.pt(12)).strokeBorder(listNameInvalid ? Color.orange : .white.opacity(0.12), lineWidth: 1) }
                 navButton("Enregistrer", icon: "checkmark", id: "favorite-rename-save") { renameList(preset) }
                 navButton("Annuler", icon: "xmark", id: "favorite-rename-cancel", iconOnly: true) { renamingList = false }
             } else if confirmingListDeletion {
-                Text("Supprimer cette liste ?").font(.callout.weight(.semibold))
+                Text("Supprimer cette liste ?").font(Desk.font(.callout, .semibold))
                 navButton("Annuler", icon: "xmark", id: "favorite-delete-cancel") { confirmingListDeletion = false }
                 navButton("Supprimer", icon: "trash", id: "favorite-delete-confirm", active: true) {
                     let kind = preset.kind
@@ -3931,19 +4221,19 @@ extension ContentView {
     }
 
     private var deskTitleRow: some View {
-        HStack(alignment: .center, spacing: 10) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(deskTitle).font(.title2.weight(.bold)).lineLimit(1)
-                    .shadow(color: .black.opacity(0.5), radius: 6, y: 1)
-                Text(deskSubtitle).font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                    .shadow(color: .black.opacity(0.5), radius: 4, y: 1)
+        HStack(alignment: .center, spacing: Desk.pt(10)) {
+            VStack(alignment: .leading, spacing: Desk.pt(4)) {
+                Text(deskTitle).font(Desk.font(.title2, .bold)).lineLimit(1)
+                    .shadow(color: .black.opacity(0.5), radius: Desk.pt(6), y: 1)
+                Text(deskSubtitle).font(Desk.font(.caption)).foregroundStyle(.secondary).lineLimit(1)
+                    .shadow(color: .black.opacity(0.5), radius: Desk.pt(4), y: 1)
             }
             Spacer(minLength: 0)
             favoriteListActions
             navButton("Actualiser", icon: "arrow.clockwise", id: "reload", iconOnly: true) { library.reloadSelected() }
                 .disabled(library.selectedSourceID == nil || library.isLoading)
-                .fluxNavigationGlass(radius: 18)
-        }.padding(.horizontal, 3)
+                .fluxNavigationGlass(radius: Desk.pt(18))
+        }.padding(.horizontal, Desk.pt(3))
     }
 
     private var deskSearchField: some View {
@@ -3953,8 +4243,26 @@ extension ContentView {
         case .movie: prompt = "Rechercher un film"
         case .series: prompt = "Rechercher une série"
         }
-        let selected = focusID == DeskZone.searchID && remoteNavigationActive && !searchFocus
-        return HStack(spacing: 10) {
+        #if os(tvOS)
+        // The field of the television opens its own keyboard; the glass
+        // around it marks it on the decor and shows when the remote is on it.
+        return HStack(spacing: Desk.pt(10)) {
+            Image(systemName: "magnifyingglass").font(Desk.font(.body, .semibold))
+                .foregroundStyle(searchFocus ? .primary : .secondary)
+            TextField(prompt, text: $library.search)
+                .textFieldStyle(.plain).font(Desk.font(.body))
+                .focused($searchFocus).onSubmit { searchFocus = false; focusFirstItem() }
+        }
+        .padding(.leading, Desk.pt(16)).padding(.trailing, Desk.pt(6)).padding(.vertical, Desk.pt(5))
+        .fluxGlass(radius: Desk.pt(22))
+        .overlay {
+            RoundedRectangle(cornerRadius: Desk.pt(22), style: .continuous)
+                .strokeBorder(.white.opacity(searchFocus ? 0.85 : 0), lineWidth: 2).allowsHitTesting(false)
+        }
+        .accessibilityIdentifier("desk-search")
+        #else
+        let selected = focusID == DeskZone.searchID && focusShown && !searchFocus
+        return HStack(spacing: Desk.pt(10)) {
             // A remote selects the field as a control; OK then places the cursor in it.
             Image(systemName: "magnifyingglass").foregroundStyle(selected ? .primary : .secondary)
                 .fluxFocus($systemFocus, id: DeskZone.searchID).id(DeskZone.searchID)
@@ -3966,22 +4274,23 @@ extension ContentView {
                     .buttonStyle(.plain).accessibilityLabel("Effacer la recherche")
             }
         }
-        .font(.body).padding(.horizontal, 16).padding(.vertical, 12)
-        .fluxGlass(radius: 20)
+        .font(Desk.font(.body)).padding(.horizontal, Desk.pt(16)).padding(.vertical, Desk.pt(12))
+        .fluxGlass(radius: Desk.pt(20))
         .overlay {
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
+            RoundedRectangle(cornerRadius: Desk.pt(20), style: .continuous)
                 .strokeBorder(.white.opacity(selected ? 0.85 : 0), lineWidth: 2).allowsHitTesting(false)
         }
         .accessibilityIdentifier("desk-search")
+        #endif
     }
 
     /// Title, reload and search: with Back and Home, the top zone.
     private var deskTopBand: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: Desk.pt(12)) {
             deskTitleRow
             deskSearchField
         }
-        .overlay { zoneFrame(.top, radius: 20, outset: 6, labelled: false) }
+        .overlay { zoneFrame(.top, radius: Desk.pt(20), outset: 6, labelled: false) }
     }
 
     // MARK: Television
@@ -3990,9 +4299,9 @@ extension ContentView {
     /// the selected channel.
     var liveDeskCatalogue: some View {
         FluxGlassGroup {
-            HStack(alignment: .top, spacing: 18) {
+            HStack(alignment: .top, spacing: Desk.pt(18)) {
                 deskSidebar
-                VStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: Desk.pt(12)) {
                     deskTopBand
                     liveNotices
                     liveDeskChannels
@@ -4001,7 +4310,7 @@ extension ContentView {
                 liveDeskPreviewPanel.frame(width: deskPreviewWidth)
             }
         }
-        .padding(.horizontal, 24)
+        .padding(.horizontal, Desk.pt(24))
     }
 
     private var liveDeskChannels: some View {
@@ -4010,33 +4319,33 @@ extension ContentView {
                 ProgressView(library.isLoading ? "Chargement des chaînes…" : "Recherche…")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if visible.isEmpty {
-                VStack(spacing: 16) {
-                    Image(systemName: "tv").font(.system(size: 48, weight: .light)).foregroundStyle(themeAccent)
+                VStack(spacing: Desk.pt(16)) {
+                    Image(systemName: "tv").font(Desk.system(48, .light)).foregroundStyle(themeAccent)
                     Text(favoritesMode ? "Cette liste est vide" : "Aucune chaîne dans cette sélection")
-                        .font(.title3.weight(.semibold)).multilineTextAlignment(.center)
+                        .font(Desk.font(.title3, .semibold)).multilineTextAlignment(.center)
                     if favoritesMode {
-                        Text("Ajoutez une chaîne depuis son étoile.").font(.callout).foregroundStyle(.secondary)
+                        Text("Ajoutez une chaîne depuis son étoile.").font(Desk.font(.callout)).foregroundStyle(.secondary)
                     } else if library.credentialIssue == nil {
                         navButton("Toutes les chaînes", icon: "square.grid.2x2", id: "live-reset") { showAllCatalog() }
                     }
-                }.padding(24).frame(maxWidth: .infinity, maxHeight: .infinity)
+                }.padding(Desk.pt(24)).frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 VStack(spacing: 0) {
                     if catalogPageCount > 1 {
-                        livePagination.padding(.horizontal, 14).padding(.top, 10).padding(.bottom, 2)
+                        livePagination.padding(.horizontal, Desk.pt(14)).padding(.top, Desk.pt(10)).padding(.bottom, Desk.pt(2))
                     }
                     ScrollView {
-                        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: max(1, columns)), spacing: 8) {
+                        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: Desk.pt(10)), count: max(1, columns)), spacing: Desk.pt(8)) {
                             ForEach(displayedItems) { item in liveDeskChannel(item) }
-                        }.padding(12)
+                        }.padding(Desk.pt(12))
                     }
                 }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .overlay { zoneFrame(.content, radius: 25) }
-        .clipShape(RoundedRectangle(cornerRadius: 25, style: .continuous))
-        .fluxGlass(radius: 25)
+        .overlay { zoneFrame(.content, radius: Desk.pt(25)) }
+        .clipShape(RoundedRectangle(cornerRadius: Desk.pt(25), style: .continuous))
+        .fluxGlass(radius: Desk.pt(25))
     }
 
     private func liveDeskChannel(_ item: IPTVItem) -> some View {
@@ -4056,14 +4365,25 @@ extension ContentView {
         .accessibilityIdentifier("live-channel-\(item.id)")
         .zIndex(focusID == item.id ? 1 : 0)
         .animation(reduceMotion ? nil : .spring(response: 0.26, dampingFraction: 0.8), value: focusID == item.id)
+        #if os(tvOS)
+        // The remote selects a channel by resting on it; a long press opens its lists.
+        .simultaneousGesture(LongPressGesture(minimumDuration: 0.65).onEnded { _ in chooseFavorites(item) })
+        .onAppear { browseFocusTargetAppeared(item.id) }
+        .onDisappear { mountedBrowseFocusTargets.remove(item.id) }
+        #if FLUX_CATALOG_UI_TESTING
+        .background(TVCatalogControlFrameProbe(identifier: "live-channel-\(item.id)").allowsHitTesting(false))
+        #endif
+        #else
         .contextMenu {
             Button("Regarder", systemImage: "play.fill") { selectCard(item) }
             Button("Favoris et listes", systemImage: "star") { chooseFavorites(item) }
         }
         .onLongPressGesture(minimumDuration: 0.65, maximumDistance: 12) { chooseFavorites(item) }
         .onHover { inside in if inside { deskHover(item) } }
+        #endif
     }
 
+    #if os(macOS)
     /// The row or sleeve under the pointer becomes the selection. During
     /// keyboard navigation the list scrolls under a pointer that has not
     /// moved: that pointer selects nothing.
@@ -4073,14 +4393,15 @@ extension ContentView {
         guard focusID != item.id || previewID != item.id else { return }
         pointerSelect(item.id); setPreview(item)
     }
+    #endif
 
     private var liveDeskPreviewPanel: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: Desk.pt(14)) {
             if let item = previewItem, item.kind == .live, visibleSlice.index(of: item.id) != nil {
                 Button { playItem(item) } label: {
                     LiveTVPreviewScreen(preview: livePreview, item: item, delay: livePreviewDelay,
                                         automatic: automaticLivePreview, large: true)
-                        .overlay { Color.clear.contentShape(RoundedRectangle(cornerRadius: 20)) }
+                        .overlay { Color.clear.contentShape(RoundedRectangle(cornerRadius: Desk.pt(20))) }
                 }
                 .buttonStyle(FluxBareButtonStyle())
                 .accessibilityLabel("Regarder \(item.name)")
@@ -4091,49 +4412,49 @@ extension ContentView {
                 ZStack {
                     LinearGradient(colors: [Color(red: 0.08, green: 0.12, blue: 0.18), .black.opacity(0.55)],
                                    startPoint: .topLeading, endPoint: .bottomTrailing)
-                    VStack(spacing: 12) {
-                        Image(systemName: "tv").font(.system(size: 46, weight: .light)).foregroundStyle(themeAccent)
-                        Text("Choisissez une chaîne").font(.title3.weight(.semibold))
+                    VStack(spacing: Desk.pt(12)) {
+                        Image(systemName: "tv").font(Desk.system(46, .light)).foregroundStyle(themeAccent)
+                        Text("Choisissez une chaîne").font(Desk.font(.title3, .semibold))
                         Text("Son aperçu démarre ici, puis un clic l’ouvre en grand.")
-                            .font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center)
-                    }.padding(20)
+                            .font(Desk.font(.callout)).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                    }.padding(Desk.pt(20))
                 }
                 .aspectRatio(16.0 / 9.0, contentMode: .fit)
-                .clipShape(RoundedRectangle(cornerRadius: 20))
-                .overlay { RoundedRectangle(cornerRadius: 20).strokeBorder(.white.opacity(0.30), lineWidth: 1).allowsHitTesting(false) }
+                .clipShape(RoundedRectangle(cornerRadius: Desk.pt(20)))
+                .overlay { RoundedRectangle(cornerRadius: Desk.pt(20)).strokeBorder(.white.opacity(0.30), lineWidth: 1).allowsHitTesting(false) }
             }
             Spacer(minLength: 0)
         }
-        .padding(14)
+        .padding(Desk.pt(14))
         .frame(maxHeight: .infinity, alignment: .top)
-        .overlay { zoneFrame(.actions, radius: 27) }
-        .fluxGlass(radius: 27)
+        .overlay { zoneFrame(.actions, radius: Desk.pt(27)) }
+        .fluxGlass(radius: Desk.pt(27))
         .accessibilityElement(children: .contain)
     }
 
     private func liveDeskDetails(_ item: IPTVItem) -> some View {
         let number = (visibleSlice.index(of: item.id) ?? 0) + 1
         let country = LiveCountry.detectCode(in: item.group)
-        return VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 10) {
-                HStack(spacing: 6) {
-                    Circle().fill(.red.opacity(0.95)).frame(width: 7, height: 7)
-                    Text("EN DIRECT").font(.caption2.weight(.bold)).tracking(1.2)
+        return VStack(alignment: .leading, spacing: Desk.pt(12)) {
+            HStack(spacing: Desk.pt(10)) {
+                HStack(spacing: Desk.pt(6)) {
+                    Circle().fill(.red.opacity(0.95)).frame(width: Desk.pt(7), height: Desk.pt(7))
+                    Text("EN DIRECT").font(Desk.font(.caption2, .bold)).tracking(1.2)
                 }
-                .padding(.horizontal, 9).padding(.vertical, 5)
+                .padding(.horizontal, Desk.pt(9)).padding(.vertical, Desk.pt(5))
                 .background(.black.opacity(0.35), in: Capsule())
-                Text("N° \(number)").font(.caption.monospacedDigit().weight(.medium)).foregroundStyle(.secondary)
+                Text("N° \(number)").font(Desk.font(.caption, .medium).monospacedDigit()).foregroundStyle(.secondary)
                 Spacer(minLength: 0)
-                if library.isFavorite(item) { Image(systemName: "star.fill").font(.callout).foregroundStyle(.yellow) }
+                if library.isFavorite(item) { Image(systemName: "star.fill").font(Desk.font(.callout)).foregroundStyle(.yellow) }
             }
-            Text(item.name).font(.title2.weight(.bold)).lineLimit(2).fixedSize(horizontal: false, vertical: true)
-            HStack(spacing: 8) {
+            Text(item.name).font(Desk.font(.title2, .bold)).lineLimit(2).fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: Desk.pt(8)) {
                 Button { playItem(item) } label: {
-                    Label("Regarder", systemImage: "play.fill").font(.callout.weight(.semibold))
-                        .padding(.horizontal, 18).padding(.vertical, 11)
-                        .fluxNavigationGlass(selected: true, tint: themeAccent, radius: 17)
+                    Label("Regarder", systemImage: "play.fill").font(Desk.font(.callout, .semibold))
+                        .padding(.horizontal, Desk.pt(18)).padding(.vertical, Desk.pt(11))
+                        .fluxNavigationGlass(selected: true, tint: themeAccent, radius: Desk.pt(17))
                         .overlay {
-                            RoundedRectangle(cornerRadius: 17).strokeBorder(focusID == "live-watch" && remoteNavigationActive ? .white.opacity(0.9) : .clear, lineWidth: 2)
+                            RoundedRectangle(cornerRadius: Desk.pt(17)).strokeBorder(focusID == "live-watch" && focusShown ? .white.opacity(0.9) : .clear, lineWidth: 2)
                                 .allowsHitTesting(false)
                         }
                 }.buttonStyle(FluxBareButtonStyle()).fluxFocus($systemFocus, id: "live-watch").id("live-watch")
@@ -4154,15 +4475,15 @@ extension ContentView {
             Text(automaticLivePreview
                  ? "L’aperçu démarre après \(livePreviewDelay.title), sans le son. Un clic sur l’image ou sur la chaîne l’ouvre en plein écran."
                  : "L’aperçu automatique est désactivé dans Réglages › Interface.")
-                .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                .font(Desk.font(.caption)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
         }
-        .padding(.horizontal, 4)
+        .padding(.horizontal, Desk.pt(4))
     }
 
     private func detailRow(_ label: String, _ value: String) -> some View {
         GridRow {
-            Text(label).font(.callout).foregroundStyle(.secondary)
-            Text(value).font(.callout.weight(.medium)).lineLimit(2).frame(maxWidth: .infinity, alignment: .leading)
+            Text(label).font(Desk.font(.callout)).foregroundStyle(.secondary)
+            Text(value).font(Desk.font(.callout, .medium)).lineLimit(2).frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
@@ -4170,9 +4491,9 @@ extension ContentView {
 
     var mediaDeskCatalogue: some View {
         FluxGlassGroup {
-            HStack(alignment: .top, spacing: 18) {
+            HStack(alignment: .top, spacing: Desk.pt(18)) {
                 deskSidebar
-                VStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: Desk.pt(12)) {
                     deskTopBand
                     liveNotices
                     mediaDeskContent
@@ -4180,7 +4501,7 @@ extension ContentView {
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             }
         }
-        .padding(.horizontal, 24)
+        .padding(.horizontal, Desk.pt(24))
     }
 
     @ViewBuilder private var mediaDeskContent: some View {
@@ -4188,18 +4509,18 @@ extension ContentView {
             ProgressView(library.isLoading ? "Chargement du catalogue…" : "Recherche…")
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if visible.isEmpty {
-            VStack(spacing: 16) {
+            VStack(spacing: Desk.pt(16)) {
                 Image(systemName: library.contentKind == .movie ? "film" : "square.stack.3d.up")
-                    .font(.system(size: 48, weight: .light)).foregroundStyle(themeAccent)
+                    .font(Desk.system(48, .light)).foregroundStyle(themeAccent)
                 Text(library.credentialIssue != nil ? "Source à reconnecter" : favoritesMode ? "Cette liste est vide" : "Aucun titre dans cette sélection")
-                    .font(.title3.weight(.semibold))
+                    .font(Desk.font(.title3, .semibold))
                 if favoritesMode {
-                    Text("Ajoutez un titre depuis son étoile.").font(.callout).foregroundStyle(.secondary)
+                    Text("Ajoutez un titre depuis son étoile.").font(Desk.font(.callout)).foregroundStyle(.secondary)
                 }
             }.frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
-            if catalogPageCount > 1 { livePagination.padding(.horizontal, 4) }
-            mediaCatalogGrid().overlay { zoneFrame(.content, radius: 22) }
+            if catalogPageCount > 1 { livePagination.padding(.horizontal, Desk.pt(4)) }
+            mediaCatalogGrid().overlay { zoneFrame(.content, radius: Desk.pt(22)) }
         }
     }
 }

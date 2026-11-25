@@ -272,14 +272,15 @@ private enum CatalogUIFailure: Error, CustomStringConvertible {
             Scenario(kind: .live, filename: "player-zapping.png", zapList: true),
             Scenario(kind: .live, filename: "zones-tv.png", zone: .content),
             Scenario(kind: .movie, filename: "zones-dock.png", zone: .dock),
-            // Back shows the zones; the arrows reach the dock under a list,
-            // the controls above it, and a second Back the home screen.
-            Scenario(kind: .live, filename: "keys-dock.png", actions: [.back, .left, .down, .select],
+            // Back shows the compass of the zones: one arrow then jumps into
+            // the dock under a list or to the controls above it, the arrows
+            // walk the bar down to Back, and a second Back shows the home screen.
+            Scenario(kind: .live, filename: "keys-dock.png", actions: [.back, .down],
                      expectedFocus: FluxDockItem.live.focusID),
-            Scenario(kind: .movie, filename: "keys-top.png", actions: [.back, .up, .select, .right],
+            Scenario(kind: .movie, filename: "keys-top.png", actions: [.back, .up, .right],
                      expectedFocus: "reload"),
-            Scenario(kind: .movie, filename: "keys-header.png", actions: [.back, .up, .select, .left],
-                     expectedFocus: DeskZone.homeID),
+            Scenario(kind: .movie, filename: "keys-bar.png", actions: [.back, .down, .left, .left],
+                     expectedFocus: DeskZone.backID),
             Scenario(kind: .movie, filename: "keys-home.png", actions: [.back, .back],
                      expectedFocus: FluxDockItem.movie.focusID)
         ]

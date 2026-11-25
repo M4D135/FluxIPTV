@@ -112,6 +112,11 @@ final class TVCatalogControlProbeView: UIView {
                         fixtureSearchObservation: { searchObservations.snapshots.append($0) },
                         fixtureOpenCountries: fixture.opensCountryPicker,
                         fixtureRestoreBrowsing: fixture.usesPersistedSelection || fixture.scenario == "live-error",
+                        fixtureSettingsPage: fixture.settingsPage,
+                        fixtureHome: fixture.scenario == "home",
+                        fixturePlayerSettings: fixture.scenario == "player-settings",
+                        fixtureZone: fixture.zone,
+                        fixtureZapList: fixture.scenario == "zapping",
                         fixtureAddSource: fixture.scenario == "add-source")
                 .environmentObject(library)
                 .environmentObject(playback)
@@ -154,17 +159,27 @@ final class TVCatalogControlProbeView: UIView {
         case "search-result": return "catalog-card-fixture-movie-0"
         case "welcome": return "welcome-load-source"
         case "add-source": return "source-server"
+        // The desk: the bar of the home screen, the destination of the
+        // settings, the channel on screen in the list of the player.
+        case "home": return "navigation-tab-live"
+        // Without a catalogue the remote starts on the first control of the column.
         case "live-error": return "navigation-countries"
+        case "settings": return "navigation-settings"
+        case "zapping": return "zap-channel-fixture-live-0"
         default: return "media-detail-play"
         }
     }
 
     var minimumFocusSize: CGSize {
         switch scenario {
-        case "live", "live-fr", "live-es", "live-restored": return CGSize(width: 300, height: 230)
+        // A channel is a row of the list, not a tile.
+        case "live", "live-fr", "live-es", "live-restored", "zapping": return CGSize(width: 300, height: 60)
+        case "home": return CGSize(width: 150, height: 150)
+        case "settings": return CGSize(width: 90, height: 90)
+        case "live-error": return CGSize(width: 150, height: 50)
         case "country-picker": return CGSize(width: 240, height: 54)
         case "movies", "search-result": return CGSize(width: 240, height: 350)
-        case "search-empty": return CGSize(width: 150, height: 112)
+        case "search-empty": return CGSize(width: 90, height: 90)
         case "welcome": return CGSize(width: 300, height: 72)
         case "add-source": return CGSize(width: 500, height: 50)
         default: return CGSize(width: 180, height: 64)
@@ -201,6 +216,23 @@ final class TVCatalogControlProbeView: UIView {
         }
     }
 
+    /// Screens of the desk shown over the catalogue of the live scenario.
+    static let deskScenarios = ["home", "zones", "zones-dock", "settings", "settings-dock", "zapping", "player-settings"]
+    var settingsPage: PlaybackSettingsView.Page? {
+        switch scenario {
+        case "settings": return .sources
+        case "settings-dock": return .dock
+        default: return nil
+        }
+    }
+    var zone: DeskZone? {
+        switch scenario {
+        case "zones": return .content
+        case "zones-dock": return .dock
+        default: return nil
+        }
+    }
+
     var opensCountryPicker: Bool { scenario == "country-picker" }
     var restoresBrowsing: Bool { scenario == "live-restored" }
     var usesPersistedSelection: Bool { restoresBrowsing || scenario == "live-fr" || scenario == "live-es" }
@@ -216,8 +248,10 @@ final class TVCatalogControlProbeView: UIView {
 
     static func make() throws -> TVCatalogFixture {
         let scenario = ProcessInfo.processInfo.environment["FLUX_UI_SCENARIO"] ?? ""
-        try TVCatalogCapture.require(["movie", "movies", "series", "live", "welcome", "add-source", "search-empty", "search-result",
-                                      "live-fr", "live-es", "country-picker", "live-restored", "live-error"].contains(scenario),
+        // A screen of the desk reuses the catalogue of the live scenario.
+        let content = deskScenarios.contains(scenario) ? "live" : scenario
+        try TVCatalogCapture.require((["movie", "movies", "series", "live", "welcome", "add-source", "search-empty", "search-result",
+                                       "live-fr", "live-es", "country-picker", "live-restored", "live-error"] + deskScenarios).contains(scenario),
                                      "FLUX_UI_SCENARIO must name a supported catalogue, detail, welcome or search scenario.")
         let source = IPTVSource(id: UUID(uuidString: "00000000-0000-0000-0000-000000000003")!,
                                 name: "Catalogue local de démonstration", kind: scenario == "live-error" ? .xtream : .m3uFile)
@@ -257,7 +291,7 @@ final class TVCatalogControlProbeView: UIView {
             return TVCatalogFixture(scenario: scenario, source: source, items: channels, kind: .live,
                                     selection: selected, seasons: [], openSeason: nil, episodeID: nil)
         }
-        if scenario == "live" {
+        if content == "live" {
             let categories = ["Généralistes", "Cinéma", "Documentaires", "Jeunesse", "Musique", "Sports"]
             let channelNames = ["Horizon", "Panorama", "Grand écran", "Découverte", "Évasion", "Scène"]
             let channels = try (0..<18).map { (index: Int) in
@@ -367,10 +401,9 @@ final class TVCatalogControlProbeView: UIView {
         // A separate bundle in a newly created simulator has no user profiles.
         // Volatile overrides leave even that disposable persistent domain alone.
         UserDefaults.standard.setVolatileDomain([
-            // The focus and geometry checks were qualified on the plain dark
-            // surfaces. Liquid Glass changes no layout; it is compiled by the
-            // tvOS builds and left out of these timing-sensitive captures.
-            FluxAppearance.glassKey: false,
+            // Liquid Glass is what the application shows by default: the
+            // captures and the focus checks run on it.
+            FluxAppearance.glassKey: true,
             FluxAppearance.artworkKey: true,
             FluxAppearance.wallpaperKey: false,
             FluxAppearance.densityKey: "cinema",

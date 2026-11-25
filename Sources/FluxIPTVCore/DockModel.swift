@@ -7,7 +7,7 @@ public enum FluxDockPosition: String, CaseIterable, Identifiable, Sendable {
     /// window, to its bottom edge, belongs to the content.
     case bottom, corner, top, leading, trailing
     public static let storageKey = "fluxiptv.dock.position.v1"
-    public static let defaultValue: Self = .corner
+    public static let defaultValue: Self = .bottom
     public var id: String { rawValue }
     public var isVertical: Bool { self == .leading || self == .trailing }
     /// Icons without labels, sized to the navigation column.

@@ -17,17 +17,19 @@ final class TVRemoteNavigationTests: XCTestCase {
         let spain = element("live-country-option-ES", in: app)
         assertFocus(firstFrance, logical: "fixture-country-fr-0", in: app)
 
-        XCUIRemote.shared.press(.up)
+        // The navigation column is one press to the left of the list.
+        XCUIRemote.shared.press(.left)
         assertCondition("hasFocus == false", on: firstFrance, in: app)
-        move(.left, to: countries, maximumPresses: 6, in: app)
+        move(.up, to: countries, maximumPresses: 8, in: app)
         assertFocus(countries, logical: "countries", in: app)
         XCUIRemote.shared.press(.select)
-        assertFocus(france, in: app)
+        // The countries are listed in the column itself, on the one in use.
+        assertFocus(france, logical: "country-FR", in: app)
         XCTAssertTrue((france.value as? String ?? "").contains("sélectionné"))
-        retainScreenshot("country-01-picker-france-focused", in: app)
+        retainScreenshot("country-01-column-france-focused", in: app)
 
         XCUIRemote.shared.press(.up)
-        assertFocus(spain, in: app)
+        assertFocus(spain, logical: "country-ES", in: app)
         XCUIRemote.shared.press(.select)
         assertCondition("exists == false", on: spain, in: app)
         assertSpanishResults(in: app)
@@ -36,12 +38,12 @@ final class TVRemoteNavigationTests: XCTestCase {
         print("PASS: TV_REMOTE country FR -> ES through Up and Select")
 
         XCUIRemote.shared.press(.select)
-        assertFocus(spain, in: app)
+        assertFocus(spain, logical: "country-ES", in: app)
         XCTAssertTrue((spain.value as? String ?? "").contains("sélectionné"))
         XCTAssertFalse((france.value as? String ?? "").contains("sélectionné"))
         retainScreenshot("country-03-reopened-spain-focused", in: app)
         XCUIRemote.shared.press(.down)
-        assertFocus(france, in: app)
+        assertFocus(france, logical: "country-FR", in: app)
         // Moving the highlight is not selecting a country. Menu must cancel.
         retainScreenshot("country-04-france-highlight-before-menu", in: app)
         XCUIRemote.shared.press(.menu)
@@ -51,18 +53,28 @@ final class TVRemoteNavigationTests: XCTestCase {
         retainScreenshot("country-05-menu-preserved-spain", in: app)
         print("PASS: TV_REMOTE reopened ES, moved to FR, Menu preserved ES and returned focus to Pays")
 
-        // Returning to the top-level tab must preserve the catalogue's view
-        // identity; the next Menu belongs to tvOS when no Back action remains.
+        // Menu shows the compass of the zones; Down jumps into the dock.
+        let compass = element("zone-compass", in: app)
         let liveTab = element("navigation-tab-live", in: app)
         XCUIRemote.shared.press(.menu)
+        assertFocus(compass, logical: "zone-compass", in: app)
+        retainScreenshot("country-06-compass", in: app)
+        XCUIRemote.shared.press(.down)
+        assertCondition("exists == false", on: compass, in: app)
         assertFocus(liveTab, logical: "tab-live", in: app)
+        // From the dock, Menu returns to the home screen, which is the first
+        // one: the next Menu belongs to tvOS.
+        XCUIRemote.shared.press(.menu)
+        XCTAssertTrue(element("desk-home-screen", in: app).waitForExistence(timeout: 10))
+        assertFocus(liveTab, logical: "tab-live", in: app)
+        retainScreenshot("country-07-home", in: app)
         XCUIRemote.shared.press(.menu)
         // A crash/termination is not evidence that tvOS received Menu.
         assertCondition(NSPredicate(format: "state == %lu OR state == %lu",
                                     XCUIApplication.State.runningBackground.rawValue,
                                     XCUIApplication.State.runningBackgroundSuspended.rawValue),
                         on: app, in: app)
-        print("PASS: TV_REMOTE Menu returned to TV, then Menu backgrounded the app without terminating it")
+        print("PASS: TV_REMOTE Menu showed the compass, Down reached the dock, Menu the home screen, then Menu backgrounded the app")
     }
 
     @MainActor
@@ -74,18 +86,20 @@ final class TVRemoteNavigationTests: XCTestCase {
         assertFocus(channel, logical: "fixture-country-fr-1", in: app)
         retainScreenshot("restored-01-remembered-channel", in: app)
 
-        XCUIRemote.shared.press(.up)
+        XCUIRemote.shared.press(.left)
         assertCondition("hasFocus == false", on: channel, in: app)
-        move(.left, to: countries, maximumPresses: 6, in: app)
+        move(.up, to: countries, maximumPresses: 8, in: app)
         assertFocus(countries, logical: "countries", in: app)
         retainScreenshot("restored-02-focus-away-on-pays", in: app)
-        XCUIRemote.shared.press(.down)
+        // The list is on the right of the column, under the search field.
+        XCUIRemote.shared.press(.right)
+        move(.down, to: channel, maximumPresses: 4, in: app)
         assertFocus(channel, logical: "fixture-country-fr-1", in: app)
         XCTAssertEqual(countries.label, "Pays : France · FR")
         XCTAssertTrue(app.textFields.matching(NSPredicate(format: "value == %@", "Grand écran")).firstMatch.exists)
         XCTAssertFalse(element("live-channel-fixture-country-fr-0", in: app).exists)
         retainScreenshot("restored-03-returned-to-remembered-channel", in: app)
-        print("PASS: TV_REMOTE saved FR/Grand écran channel released native focus and accepted Down reentry")
+        print("PASS: TV_REMOTE saved FR/Grand écran channel released native focus and accepted reentry from the column")
     }
 
     @MainActor
@@ -97,17 +111,75 @@ final class TVRemoteNavigationTests: XCTestCase {
         assertFocus(countries, logical: "countries", in: app)
         XCTAssertTrue(reconnect.waitForExistence(timeout: 10))
 
-        XCUIRemote.shared.press(.down)
+        // The button stands on the right of the column, under the search field.
+        XCUIRemote.shared.press(.right)
+        move(.down, to: reconnect, maximumPresses: 4, in: app)
         assertFocus(reconnect, logical: "reconnect-source", in: app)
         retainScreenshot("error-01-reconnect-native-and-logical-focus", in: app)
-        XCUIRemote.shared.press(.up)
-        assertFocus(countries, logical: "countries", in: app)
-        XCTAssertFalse(reconnect.hasFocus)
+        XCUIRemote.shared.press(.left)
+        assertCondition("hasFocus == false", on: reconnect, in: app)
         retainScreenshot("error-02-reconnect-highlight-released", in: app)
-        XCUIRemote.shared.press(.down)
+        move(.right, to: reconnect, maximumPresses: 3, in: app)
         assertFocus(reconnect, logical: "reconnect-source", in: app)
         retainScreenshot("error-03-reconnect-highlight-restored", in: app)
-        print("PASS: TV_REMOTE failed source reconnect highlight followed native Down/Up/Down without a loaded catalogue")
+        print("PASS: TV_REMOTE failed source reconnect highlight followed the remote from the column, away and back, without a loaded catalogue")
+    }
+
+    @MainActor
+    func testZonesCompassReachesEveryZoneWithOneArrow() {
+        let app = launch("live")
+        defer { app.terminate() }
+        // A simulator that has just been created shows a system tip that
+        // takes the first Menu. This test runs after the others, and waits.
+        sleep(3)
+        let channel = element("live-channel-fixture-live-0", in: app)
+        let compass = element("zone-compass", in: app)
+        let search = element("desk-search", in: app)
+        let logical = element("flux-catalog-logical-focus", in: app)
+        assertFocus(channel, logical: "fixture-live-0", in: app)
+
+        // Up: the search field, which no arrow reaches from the foot of a long list.
+        XCUIRemote.shared.press(.menu)
+        assertFocus(compass, logical: "zone-compass", in: app)
+        retainScreenshot("compass-01-from-the-list", in: app)
+        XCUIRemote.shared.press(.up)
+        assertCondition("exists == false", on: compass, in: app)
+        assertCondition("hasFocus == true", on: search, in: app)
+        retainScreenshot("compass-02-search-field", in: app)
+
+        // Down from the top: back in the list, on the channel that was selected.
+        XCUIRemote.shared.press(.menu)
+        assertFocus(compass, logical: "zone-compass", in: app)
+        XCUIRemote.shared.press(.down)
+        assertFocus(channel, logical: "fixture-live-0", in: app)
+
+        // Left: the navigation column, on the scope in use.
+        XCUIRemote.shared.press(.menu)
+        assertFocus(compass, logical: "zone-compass", in: app)
+        XCUIRemote.shared.press(.left)
+        assertCondition("exists == false", on: compass, in: app)
+        assertCondition(NSPredicate(format: "value == %@", "group-all"), on: logical, in: app)
+        retainScreenshot("compass-03-column", in: app)
+
+        // OK keeps the selection where it was.
+        XCUIRemote.shared.press(.menu)
+        assertFocus(compass, logical: "zone-compass", in: app)
+        XCUIRemote.shared.press(.select)
+        assertCondition("exists == false", on: compass, in: app)
+        assertCondition(NSPredicate(format: "value == %@", "group-all"), on: logical, in: app)
+
+        // Down: the dock, then its neighbours with the arrows.
+        XCUIRemote.shared.press(.menu)
+        assertFocus(compass, logical: "zone-compass", in: app)
+        XCUIRemote.shared.press(.down)
+        assertFocus(element("navigation-tab-live", in: app), logical: "tab-live", in: app)
+        XCUIRemote.shared.press(.right)
+        assertFocus(element("navigation-tab-movie", in: app), logical: "tab-movie", in: app)
+        XCUIRemote.shared.press(.left)
+        XCUIRemote.shared.press(.left)
+        assertFocus(element("desk-back", in: app), logical: "desk-back", in: app)
+        retainScreenshot("compass-04-dock-and-back", in: app)
+        print("PASS: TV_REMOTE Menu then one arrow reached the search field, the list, the column and the dock; OK kept the selection; the arrows walked the bar to Back")
     }
 
     @MainActor

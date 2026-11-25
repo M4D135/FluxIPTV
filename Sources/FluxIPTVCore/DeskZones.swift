@@ -2,7 +2,7 @@ import Foundation
 
 /// Parts of a desk screen that a remote reaches as a whole. A long list keeps
 /// what stands above and below it out of reach of the arrows alone: Back
-/// first shows the zones, the arrows choose one, OK enters it.
+/// first shows the zones, then one arrow enters the neighbouring one.
 public enum DeskZone: String, CaseIterable, Sendable {
     /// Back, home, search, reload and pages, along the top of the window.
     case top

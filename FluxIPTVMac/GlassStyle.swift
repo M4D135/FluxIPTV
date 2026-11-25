@@ -197,6 +197,53 @@ extension View {
     }
 }
 
+/// Sizes of the desk. Text styles do not keep their proportions between a
+/// Mac and a television: a title is 1.3 times the body on one and twice on
+/// the other. The Mac and the phone keep the system styles; the television
+/// uses sizes that are read from a sofa and keep the layout of the Mac.
+enum Desk {
+    /// Factor of the lengths: paddings, frames, radii.
+    static var unit: CGFloat {
+        #if os(tvOS)
+        1.35
+        #else
+        1
+        #endif
+    }
+    static func pt(_ value: CGFloat) -> CGFloat { value * unit }
+
+    static func font(_ style: Font.TextStyle, _ weight: Font.Weight? = nil) -> Font {
+        #if os(tvOS)
+        let size: CGFloat
+        switch style {
+        case .largeTitle: size = 42
+        case .title: size = 36
+        case .title2: size = 30
+        case .title3: size = 26
+        case .headline, .body: size = 23
+        case .callout: size = 22
+        case .subheadline: size = 21
+        case .footnote, .caption: size = 19
+        case .caption2: size = 18
+        @unknown default: size = 23
+        }
+        return .system(size: size, weight: weight ?? (style == .headline ? .semibold : .regular))
+        #else
+        let font = Font.system(style)
+        return weight.map { font.weight($0) } ?? font
+        #endif
+    }
+
+    /// A size stated for the Mac layout.
+    static func system(_ size: CGFloat, _ weight: Font.Weight = .regular) -> Font {
+        #if os(tvOS)
+        return .system(size: max(17, size * 1.6), weight: weight)
+        #else
+        return .system(size: size, weight: weight)
+        #endif
+    }
+}
+
 /// Static scene with broad color fields so the system glass has visible depth.
 struct FluxBackdrop: View {
     var theme: VideoClubTheme = .neo90
