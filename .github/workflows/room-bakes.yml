@@ -1,0 +1,88 @@
+name: Render 18 original 4K interiors
+
+on:
+  push:
+    branches: [work/room-bakes-0.8.6]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: room-bakes-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  render:
+    name: ${{ matrix.kind }} / ${{ matrix.theme }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      max-parallel: 18
+      matrix:
+        kind: [cinema, videoClub, livingRoom]
+        theme: [neo90, midnight, vintage70, artDeco, zen, future]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install pinned official Blender 4.3.2
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/flux-blender"
+          cd "$RUNNER_TEMP/flux-blender"
+          curl --fail --location --retry 3 -O https://download.blender.org/release/Blender4.3/blender-4.3.2-linux-x64.tar.xz
+          curl --fail --location --retry 3 -O https://download.blender.org/release/Blender4.3/blender-4.3.2.sha256
+          awk '$2 == "blender-4.3.2-linux-x64.tar.xz" {print}' blender-4.3.2.sha256 > selected.sha256
+          test -s selected.sha256
+          sha256sum --check selected.sha256
+          tar -xf blender-4.3.2-linux-x64.tar.xz
+          echo "$RUNNER_TEMP/flux-blender/blender-4.3.2-linux-x64" >> "$GITHUB_PATH"
+      - name: Render native 4K with Cycles and OpenImageDenoise
+        shell: bash
+        run: |
+          set -euo pipefail
+          blender -b -t 4 --python scripts/rooms/bake_rooms.py -- \
+            --kind '${{ matrix.kind }}' --theme '${{ matrix.theme }}' \
+            --width 3840 --height 2160 --samples 24 \
+            --output-dir build/room
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          entry=json.loads(next(Path('build/room').glob('*.render.json')).read_text())['files'][0]
+          assert entry['engine']=='CYCLES' and entry['denoising']=='OpenImageDenoise', entry
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: room-${{ matrix.kind }}-${{ matrix.theme }}
+          path: build/room/*
+          if-no-files-found: error
+          retention-days: 7
+  assemble:
+    name: Verify and package eighteen 4K rooms
+    needs: render
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: room-*
+          merge-multiple: true
+          path: build/parts
+      - name: Assemble matching geometry and settings
+        run: |
+          python3 scripts/rooms/assemble_rooms.py --input-dir build/parts --output-dir build/RoomBakes
+          python3 scripts/rooms/verify_rooms.py --directory build/RoomBakes
+      - name: Render contact sheet
+        run: |
+          python3 -m pip install pillow
+          python3 scripts/rooms/make_preview.py --assets-dir build/RoomBakes --output build/room-previews.jpg
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FluxIPTV-4K-RoomBakes
+          path: |
+            build/RoomBakes
+            build/room-previews.jpg
+          if-no-files-found: error
+          retention-days: 30

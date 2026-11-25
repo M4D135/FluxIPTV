@@ -1,11 +1,16 @@
 #!/usr/bin/env python3
 """Create a labelled contact sheet of the delivered room renders (Pillow)."""
+import argparse
 from pathlib import Path
 from PIL import Image,ImageDraw,ImageFont
 
 ROOT=Path(__file__).resolve().parents[2]
 ASSETS=ROOT/'FluxIPTVMac'/'RoomBakes'
 OUT=Path(__file__).with_name('room-previews.jpg')
+parser=argparse.ArgumentParser()
+parser.add_argument('--assets-dir',type=Path,default=ASSETS)
+parser.add_argument('--output',type=Path,default=OUT)
+args=parser.parse_args();ASSETS=args.assets_dir;OUT=args.output
 THEMES=[('neo90','Néo 80–90'),('midnight','Cinéma de minuit'),('vintage70','Années 70'),('artDeco','Art déco'),('zen','Scandinave'),('future','Futur néon')]
 KINDS=[('cinema','FILMS · CINÉMA'),('videoClub','SÉRIES · VIDÉOCLUB'),('livingRoom','TV · SALON')]
 
@@ -16,7 +21,7 @@ def font(size):
 
 canvas=Image.new('RGB',(1488,2024),'#13151b');draw=ImageDraw.Draw(canvas)
 draw.text((24,20),'FLUX · LES TROIS ESPACES',font=font(32),fill='#f3f0e8')
-draw.text((24,62),'Rendus procéduraux livrés avec la version 0.8.2',font=font(18),fill='#a7a9b4')
+draw.text((24,62),'Dix-huit décors 3D · Six architectures · Sources 4K · Version 0.8.6',font=font(18),fill='#a7a9b4')
 for col,(_,label) in enumerate(KINDS):draw.text((24+col*488,108),label,font=font(20),fill='#f3f0e8')
 for row,(theme,title) in enumerate(THEMES):
     y=150+row*306
