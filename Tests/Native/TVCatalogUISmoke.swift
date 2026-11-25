@@ -470,11 +470,16 @@ final class TVCatalogControlProbeView: UIView {
         return visible
     }
 
-    /// UIFocusItem.frame belongs to the containing focus item's coordinate
-    /// space, not necessarily the window. Resolve the real container by object
-    /// identity before converting; never assume the raw rectangle is global.
+    /// UIFocusItem.frame belongs to its containing UIFocusItemContainer, not
+    /// necessarily the window. The parent focus environment supplies that
+    /// container for its child items. SwiftUI can expose different responder
+    /// proxies through focusedItem and focusItems(in:), so proxy identity is
+    /// not a valid way to discover the coordinate space.
+    /// Resolve the nearest parent container and require its ancestry to reach
+    /// this window. Never select a space by comparing with the expected probe.
     /// https://developer.apple.com/documentation/uikit/uifocusitem/frame
-    /// https://developer.apple.com/documentation/uikit/uifocusitemcontainer
+    /// https://developer.apple.com/documentation/uikit/uifocusenvironment/focusitemcontainer
+    /// https://developer.apple.com/documentation/uikit/uifocusenvironment/parentfocusenvironment
     private static func nativeFrame(_ focused: any UIFocusItem, in window: UIWindow)
         -> (frame: CGRect, method: String, trace: [String]) {
         if let view = focused as? UIView, view.window === window {
@@ -483,22 +488,38 @@ final class TVCatalogControlProbeView: UIView {
         var environment = focused.parentFocusEnvironment
         var visited: Set<ObjectIdentifier> = []
         var trace: [String] = []
+        var owningContainer: (any UIFocusItemContainer)?
+        var owningEnvironmentType = ""
+        var belongsToWindow = false
         for _ in 0..<24 {
             guard let ancestor = environment, visited.insert(ObjectIdentifier(ancestor)).inserted else { break }
+            if let view = ancestor as? UIView, view.window === window { belongsToWindow = true }
             if let container = ancestor.focusItemContainer {
-                let children = container.focusItems(in: container.coordinateSpace.bounds)
-                let containsFocusedItem = children.contains { ObjectIdentifier($0) == ObjectIdentifier(focused) }
-                trace.append("\(type(of: ancestor)): \(type(of: container)), children=\(children.count), contains focused item=\(containsFocusedItem)")
-                if containsFocusedItem {
-                    return (window.convert(focused.frame, from: container.coordinateSpace),
-                            "UIFocusItemContainer.coordinateSpace converted to the active UIWindow", trace)
+                let isOwner = owningContainer == nil
+                trace.append("\(type(of: ancestor)): \(type(of: container)), nearest parent container=\(isOwner)")
+                if isOwner {
+                    owningContainer = container
+                    owningEnvironmentType = String(describing: type(of: ancestor))
                 }
             } else {
                 trace.append("\(type(of: ancestor)): no child focus container")
             }
+            if ObjectIdentifier(ancestor) == ObjectIdentifier(window) {
+                belongsToWindow = true
+                break
+            }
             environment = ancestor.parentFocusEnvironment
         }
-        return (.null, "Unresolved native focus coordinate space; cannot pass", trace)
+        guard belongsToWindow, let container = owningContainer else {
+            return (.null, "No parent focus container attached to the active UIWindow; cannot pass", trace)
+        }
+        let space = container.coordinateSpace
+        let frame = window.convert(focused.frame, from: space)
+        trace.append("Owning environment: \(owningEnvironmentType); coordinate space: \(type(of: space)); bounds=\(space.bounds); bounds in window=\(window.convert(space.bounds, from: space)); converted focus=\(frame)")
+        guard valid(frame) else {
+            return (.null, "The parent focus container produced an invalid native frame; cannot pass", trace)
+        }
+        return (frame, "Nearest parentFocusEnvironment.focusItemContainer.coordinateSpace converted to the active UIWindow", trace)
     }
 
     private static func valid(_ frame: CGRect) -> Bool {
