@@ -1291,9 +1291,21 @@ struct ContentView: View {
                 if library.contentKind == .live { previewHero }
                 LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 4), count: columns), spacing: 8) {
                     ForEach(displayedItems) { item in card(item, height: cardHeight) }
-                }.padding(.horizontal, 16).padding(.vertical, 12)
+                }
+                #if !os(tvOS)
+                .padding(.horizontal, 16)
+                #endif
+                .padding(.vertical, 12)
             }
         }
+        #if os(tvOS)
+        // Keep the scroll container itself inside the TV safe area. Placing
+        // this existing gap only on the grid lets ScrollView expand its
+        // backing container across the leading safe-area inset, separating
+        // native focus geometry from the visible cards. The usable grid width
+        // and card positions stay the same; no coordinate offset is needed.
+        .padding(.horizontal, 16)
+        #endif
     }
 
     private var catalogPagination: some View {
