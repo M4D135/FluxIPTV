@@ -9,7 +9,25 @@ fi
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"
 capture_root="${1:-$repo_root/build/logs/catalog-ui}"
 smoke_root="$(mktemp -d "${TMPDIR:-/tmp}/flux-catalog-ui.XXXXXX")"
-trap 'rm -rf "$smoke_root"' EXIT
+capture_accessibility_changed=false
+capture_previous_transparency=""
+capture_previous_motion=""
+cleanup() {
+  if [[ "$capture_accessibility_changed" == true ]]; then
+    if [[ -n "$capture_previous_transparency" ]]; then
+      defaults write com.apple.universalaccess reduceTransparency -bool "$capture_previous_transparency"
+    else
+      defaults delete com.apple.universalaccess reduceTransparency >/dev/null 2>&1 || true
+    fi
+    if [[ -n "$capture_previous_motion" ]]; then
+      defaults write com.apple.universalaccess reduceMotion -bool "$capture_previous_motion"
+    else
+      defaults delete com.apple.universalaccess reduceMotion >/dev/null 2>&1 || true
+    fi
+  fi
+  rm -rf "$smoke_root"
+}
+trap cleanup EXIT
 smoke_app="$smoke_root/CatalogUISmoke.app"
 mkdir -p "$smoke_app/Contents/MacOS" "$smoke_app/Contents/Resources/RoomBakes" "$capture_root"
 cat > "$smoke_app/Contents/Info.plist" <<'PLIST'
@@ -46,5 +64,20 @@ xcrun swiftc -parse-as-library -swift-version 5 -D FLUX_CATALOG_UI_TESTING \
   "${production_sources[@]}" \
   "$repo_root/Tests/Native/CatalogUISmoke.swift" \
   -o "$smoke_app/Contents/MacOS/CatalogUISmoke"
+
+# Hosted images explicitly disable graphic effects. The fixture's SwiftUI
+# environment selects the normal app branches; the native AppKit material also
+# needs the temporary CI user's system preferences restored to normal before
+# this new process starts. A developer's personal settings are never changed.
+if [[ "${GITHUB_ACTIONS:-false}" == true ]]; then
+  capture_previous_transparency="$(defaults read com.apple.universalaccess reduceTransparency 2>/dev/null || true)"
+  capture_previous_motion="$(defaults read com.apple.universalaccess reduceMotion 2>/dev/null || true)"
+  printf 'CI accessibility before capture: reduceTransparency=%s reduceMotion=%s\n' "${capture_previous_transparency:-unset}" "${capture_previous_motion:-unset}"
+  capture_accessibility_changed=true
+  defaults write com.apple.universalaccess reduceTransparency -bool false
+  defaults write com.apple.universalaccess reduceMotion -bool false
+  printf 'CI accessibility for native capture: reduceTransparency=%s reduceMotion=%s\n' \
+    "$(defaults read com.apple.universalaccess reduceTransparency)" "$(defaults read com.apple.universalaccess reduceMotion)"
+fi
 
 "$smoke_app/Contents/MacOS/CatalogUISmoke" "$capture_root"

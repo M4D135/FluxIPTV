@@ -31,6 +31,12 @@ private enum CatalogUIFailure: Error, CustomStringConvertible {
                 try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
                 configureDefaults()
                 defer { UserDefaults.standard.removePersistentDomain(forName: bundleID) }
+                print("System accessibility: reduced transparency=\(NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency), reduced motion=\(NSWorkspace.shared.accessibilityDisplayShouldReduceMotion).")
+                print("Capture environment: transparency and motion reductions are disabled only in this SwiftUI fixture; native glass available=\(FluxAppearance.nativeAvailable).")
+                if ProcessInfo.processInfo.environment["GITHUB_ACTIONS"] == "true" {
+                    try require(!NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency,
+                                "The CI process still sees Reduce Transparency; native glass cannot be assessed.")
+                }
                 try await run(output: output)
                 print("PASS: real ContentView TV and DVD/VHS catalogue windows rendered nonempty native captures.")
                 print("Fixture artwork and catalogue only; no accounts, streams, remote images or video playback were used.")
@@ -67,6 +73,17 @@ private enum CatalogUIFailure: Error, CustomStringConvertible {
     }
 
     @MainActor private static func run(output: URL) async throws {
+        for room in ["livingRoom-neo90", "cinema-neo90"] {
+            guard let url = Bundle.main.url(forResource: room, withExtension: "jpg", subdirectory: "RoomBakes"),
+                  let source = CGImageSourceCreateWithURL(url as CFURL, nil),
+                  let metadata = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+                  let width = metadata[kCGImagePropertyPixelWidth] as? Int,
+                  let height = metadata[kCGImagePropertyPixelHeight] as? Int else {
+                throw CatalogUIFailure.assertion("Missing or unreadable production room resource: \(room).")
+            }
+            try require(width == 3840 && height == 2160, "Unexpected room resource dimensions for \(room).")
+            print("Bundled room: \(room).jpg (\(width)×\(height)).")
+        }
         let source = IPTVSource(id: UUID(uuidString: "00000000-0000-0000-0000-000000000002")!,
                                 name: "Catalogue local de démonstration", kind: .m3uFile)
         let artworkRoot = FileManager.default.temporaryDirectory.appendingPathComponent("FluxCatalogFixtures-\(UUID().uuidString)")
@@ -105,6 +122,12 @@ private enum CatalogUIFailure: Error, CustomStringConvertible {
                 .environmentObject(library).environmentObject(playback)
                 .preferredColorScheme(.dark)
                 .environment(\.scenePhase, .active)
+                // Hosted macOS runners deliberately enable Reduce Transparency,
+                // which hides decorative rooms and selects the opaque fallback.
+                // Capture the normal production appearance without changing the
+                // machine's or a developer's accessibility preferences.
+                .environment(\.accessibilityReduceTransparency, false)
+                .environment(\.accessibilityReduceMotion, false)
             let host = NSHostingView(rootView: root)
             let size = CGSize(width: 1440, height: 900)
             let window = NSWindow(contentRect: CGRect(origin: CGPoint(x: 30, y: 30), size: size),
