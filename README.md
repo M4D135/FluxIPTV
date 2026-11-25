@@ -1,4 +1,4 @@
-# FLUX IPTV 0.8.9 — Pays TV et filtres mémorisés
+# FLUX IPTV 0.8.9 — build 30 — Pays TV et filtres mémorisés
 
 Application native SwiftUI pour macOS, iOS et tvOS.
 
@@ -83,7 +83,7 @@ L’archive contient les sources et l’installateur Mac, pas un binaire Apple p
 
 1. Sur Mac, quitter l’ancienne app et arrêter le lancement depuis Xcode.
 2. Décompresser, puis ouvrir **Installer Flux IPTV.command**. L’installateur compile sur ce Mac et vérifie le démarrage ; cette vérification ne remplace pas un essai de lecture.
-3. Vérifier **0.8.8** dans la barre FLUX. Les réglages se trouvent dans Interface.
+3. Vérifier **0.8.9** dans la barre FLUX et le **build 30** dans Réglages. Les réglages d’apparence se trouvent dans Interface.
 
 Prérequis de déploiement : macOS 14, iOS 17 ou tvOS 17. Installer Xcode complet pour compiler ; le verre système natif est réservé aux contrôles Mac/iOS compatibles ; tvOS privilégie des surfaces sombres légères. Sur iPhone/iPad ou Apple TV, ouvrir `FluxIPTV.xcodeproj`, choisir **FluxIPTViOS** ou **FluxIPTVTV**, puis renseigner l’équipe de signature pour un appareil physique.
 
@@ -97,7 +97,7 @@ Ouvrir **`FluxIPTV-AppleTV.xcodeproj`**, ou lancer **`Ouvrir Flux IPTV Apple TV.
 
 ## Validation
 
-Le périmètre des vérifications de cette livraison est dans [docs/VALIDATION-0.8.8.md](docs/VALIDATION-0.8.8.md). Les tests unitaires du cœur ne démontrent ni la compilation des frameworks Apple, ni la fluidité réelle, ni la lecture des flux du fournisseur. Aucun EPG n’a été ajouté dans cette version.
+Le périmètre des vérifications de cette livraison est dans [docs/VALIDATION-0.8.9.md](docs/VALIDATION-0.8.9.md). Le build 30 réunit les filtres par pays et leur mémoire avec les dernières corrections du focus natif de recherche et de la grille Apple TV. Les tests unitaires du cœur ne démontrent ni la compilation des frameworks Apple, ni la fluidité réelle, ni la lecture des flux du fournisseur. Aucun EPG n’a été ajouté dans cette version.
 
 ## GitHub Actions et pack complet
 

@@ -1,4 +1,13 @@
-# Validation de FLUX IPTV 0.8.9 — build 29
+# Validation de FLUX IPTV 0.8.9 — build 30
+
+## Finalisation du build 30
+
+- Réunion de la branche pays/mémoire et de la branche principale, sans abandonner les corrections de focus de recherche, la grille dans la zone sûre ou les contrôles natifs stricts.
+- La sélection logique est publiée dès la fin du filtrage, puis réaffirmée avec le focus natif après le montage des résultats. Une transition du moteur de focus vers l’en-tête ne peut plus annuler ce transfert.
+- Le test de recherche Mac observe ensemble sélection logique et focus natif, avec quatre observations stables. Les onze scénarios tvOS conservent leurs exigences géométriques et de visibilité.
+- Les couleurs de sélection restent au-dessus du fond sombre. Le calcul des colonnes conserve l’espacement final prévu.
+- Le sélecteur de pays déclare le pays mémorisé comme focus par défaut dans son propre scope tvOS. Le build 29 avait révélé que l’affectation dans `onAppear` pouvait être remplacée par le premier bouton lors de la présentation de la feuille. La correction ne retarde pas arbitrairement le focus et conserve le contrôle géométrique du scénario `country-picker` ; un pays disparu se replie sur « Tous les pays ».
+- Les projets Xcode affichent 0.8.9 / 30 ; le centre de contrôle lit la version et le build du bundle pour éviter les anciens numéros figés dans l’interface.
 
 ## Pays des chaînes TV
 

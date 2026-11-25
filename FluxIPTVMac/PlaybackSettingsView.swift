@@ -30,11 +30,17 @@ struct PlaybackSettingsView: View {
     @AppStorage("fluxiptv.appearance.stage") private var stage: ProceduralCinema.Style = .orbit
     @AppStorage("fluxiptv.remoteAppearance") private var remoteAppearance: RemoteAppearance = .black
 
+    private var versionLabel: String {
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? ""
+        let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? ""
+        return "FLUX \(version)\(build.isEmpty ? "" : " · build \(build)")  ·  Centre de contrôle"
+    }
+
     var body: some View {
         GeometryReader { geo in
             let wide = geo.size.width >= 740
             VStack(alignment:.leading,spacing:14) {
-                HStack { VStack(alignment:.leading,spacing:4) { Text("Réglages").font(.largeTitle.bold()); Text("FLUX 0.8.8  ·  Centre de contrôle").font(.caption).foregroundStyle(.secondary) }; Spacer(); Button("Fermer",action:close).buttonStyle(.bordered) }
+                HStack { VStack(alignment:.leading,spacing:4) { Text("Réglages").font(.largeTitle.bold()); Text(versionLabel).font(.caption).foregroundStyle(.secondary) }; Spacer(); Button("Fermer",action:close).buttonStyle(.bordered) }
                 if wide {
                     HStack(alignment:.top,spacing:22) {
                         VStack(alignment:.leading,spacing:8) { ForEach(Page.allCases) { destination in pageButton(destination) }; Spacer(minLength:0) }.frame(width:230)
@@ -174,7 +180,7 @@ struct PlaybackSettingsView: View {
                 }
                 #if os(tvOS)
                 Toggle("Transparence légère",isOn:$glass)
-                Text("Décors conservés, surfaces sombres et animations fluides. Les effets de flou sont allégés sur Apple TV.").font(.caption).foregroundStyle(.secondary)
+                Text("Décors conservés, surfaces sombres et transitions animées. Les effets de flou sont allégés sur Apple TV.").font(.caption).foregroundStyle(.secondary)
                 #else
                 Toggle("Liquid Glass",isOn:$glass)
                 Text(FluxAppearance.nativeAvailable ? "Effet Apple natif disponible." : "Matériau translucide système sur cette version d’OS.").font(.caption).foregroundStyle(.secondary)

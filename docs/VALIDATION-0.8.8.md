@@ -24,13 +24,25 @@
 - Les commandes du lecteur principal utilisent aussi le style nu au plus près des boutons, pour ne pas réintroduire le socle blanc derrière leurs cercles de focus.
 - Le catalogue Films/Séries tvOS borne chaque carte à la hauteur réelle restant sous les commandes, le champ de recherche et la pagination. Les textes conservent leur taille ; la jaquette utilise l’espace restant, avec ses animations. Cela évite que le titre et les métadonnées de la carte sélectionnée sortent du bas de l’écran 1080p.
 - Les contrôles tvOS ne valident plus un focus dont l’identifiant manque par sa seule taille : ils doivent observer le rectangle réel du contrôle attendu et sa correspondance avec le focus natif. Les scénarios incluent désormais une recherche avec résultat et une recherche vide, en plus des cinq écrans précédents. Ils exercent le gestionnaire de validation et le filtre réels, sans prétendre reproduire une saisie à la télécommande physique.
-- Build 27 : correction du contrôle Trousseau iOS avec le Bash livré sur macOS. Le tableau d'arguments du compilateur n'est plus vide sur iOS et la CI exige le marqueur de réussite exact ; un journal contenant seulement une erreur de script ne suffit plus à valider cette étape. Les corrections de présentation et de navigation du build 26 sont conservées.
-- La mesure native du focus tvOS utilise le repère du conteneur fourni par l’ascendance `parentFocusEnvironment`, reliée à la fenêtre active. Les objets relais SwiftUI de `focusedItem` et de `focusItems(in:)` n’avaient pas la même identité dans les sept scénarios du build 26 ; cette égalité d’objets n’est plus exigée pour identifier le repère. La conversion reste indépendante de la commande attendue et les exigences de correspondance, taille, visibilité et stabilité sont conservées.
-- Build 28 : sur tvOS, la marge horizontale de 16 points de la grille Films/Séries encadre désormais le défilement au lieu de son contenu. Le défilement reste ainsi à l’intérieur de la zone sûre, comme celui des chaînes. Le build 27 avait révélé un écart de 80 points entre le repère natif des cartes et leur position affichée lorsque ce défilement touchait le bord de la zone sûre. La largeur utile et la marge visuelle prévues des cartes sont conservées ; le contrôle du focus ne reçoit aucun décalage compensatoire.
 - La garde SwiftParser rejette maintenant les erreurs de syntaxe, y compris dans les branches de compilation conditionnelle, en plus des déclarations SwiftUI invalides.
 - Conservation de la sourdine demandée pendant le chargement asynchrone d’une bande-annonce ; retour à la fiche et commande de son partagent le même état que le lecteur.
 - Nouvelle tentative après une erreur de session YouTube depuis le bouton Lire, en conservant la préférence de son.
 - Validation de la recherche après la fin du filtrage, pour éviter de focaliser ou d’ouvrir un ancien résultat.
+- Rétablissement conjoint de la sélection et du focus natif après une recherche vide, même si le système sélectionne brièvement une autre rubrique.
+- Suppression du fond blanc de focus natif sur les commandes personnalisées : un seul style de bouton, contour fin et animation de la vignette conservés.
+
+## Qualification du build 28
+
+- Réunion des corrections de focus de la branche principale et des cartes tvOS adaptées au viewport, avec conservation des observations logiques et natives après recherche.
+- Les couleurs de sélection restent au-dessus de la surface sombre ; le mode compact tient compte du dernier espacement pour conserver sa densité propre.
+- Le smoke convertit le rectangle du focus natif par le conteneur déclaré le plus proche dans son ascendance, dont le rattachement à la fenêtre active est vérifié. Il le compare ensuite à la sonde du contrôle attendu ; aucune coordonnée attendue ne sert à choisir cet espace.
+- Sur tvOS, la marge horizontale existante de 16 points encadre le ScrollView des jaquettes. Le conteneur de défilement reste ainsi dans la zone sûre et son repère de focus coïncide avec la position affichée. La largeur utile et les positions prévues des cartes restent inchangées. Les sept scénarios conservent les mêmes exigences géométriques, sans compensation de coordonnées ni preuve de substitution.
+- Le contrôle du Trousseau iOS/tvOS exige le marqueur de succès et utilise un tableau d’arguments compatible avec le Bash macOS.
+
+## Qualification du build 29
+
+- Recherche sans résultat sur tvOS : la destination logique est fixée dès la fin du filtrage, avant de céder au prochain rendu. Cela empêche le champ de saisie de reprendre le focus pendant la disparition des anciennes cartes ; les deux états de focus sont ensuite réaffirmés et acquittés après montage.
+- Cette correction conserve les sept scénarios et leurs exigences de focus natif. Elle ne modifie pas les décors, la disposition ni les dimensions des vignettes.
 
 ## Garde-fous exécutés par la CI
 

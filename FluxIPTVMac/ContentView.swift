@@ -21,6 +21,7 @@ private struct CatalogFocusRequest: Equatable {
 #if FLUX_CATALOG_UI_TESTING
 struct CatalogSearchFocusSnapshot {
     let focusID: String?
+    let nativeFocusID: String?
     let query: String
     let filtering: Bool
     let pending: Bool
@@ -367,6 +368,9 @@ struct ContentView: View {
                 #endif
             }
             if heldItem == nil, let id, focusID != id { focusID = id }
+            #if FLUX_CATALOG_UI_TESTING
+            reportSearchFocusFixture()
+            #endif
         }
     }
 
@@ -1873,7 +1877,7 @@ struct ContentView: View {
             let estimated = (channelWidth + gap) / (minimumTile + gap)
             columns = estimated.isFinite ? Int(max(1, min(televisionLayout ? 4 : 6, estimated))) : 3
         } else {
-            let estimated = (usable - 32) / (cardWidth + 4)
+            let estimated = (usable - 32 + 4) / (cardWidth + 4)
             columns = estimated.isFinite ? Int(max(2, min(10, estimated))) : 5
         }
     }
@@ -1937,17 +1941,23 @@ struct ContentView: View {
         }
         guard !library.isFiltering else { return }
         let target = visible.first?.id ?? "tab-\(library.contentKind.rawValue)"
+        // Publish the destination in the results transaction. In particular,
+        // an empty list must move toward its existing header before the native
+        // engine can fall back to the search field and cancel this handoff.
         focusID = target
         Task { @MainActor in
             await Task.yield()
             guard pendingCatalogFocus == request else { return }
             guard request == catalogFocusContext, page == .catalogue, heldItem == nil,
-                  !library.isFiltering, focusID == target, !modalOpen,
+                  !library.isFiltering, !modalOpen,
                   !searchFocus, !liveGroupSearchFocus else {
                 pendingCatalogFocus = nil
                 return
             }
+            // The native engine may briefly choose a header while the new
+            // result mounts. Apply both focus states after that view update.
             let alreadyFocused = systemFocus == target
+            focusID = target
             systemFocus = target
             // A changed binding is acknowledged by onChange(systemFocus).
             // If it already names the target, there will be no change event.
@@ -1961,7 +1971,7 @@ struct ContentView: View {
     }
     #if FLUX_CATALOG_UI_TESTING
     private func reportSearchFocusFixture() {
-        fixtureSearchObservation?(CatalogSearchFocusSnapshot(focusID: focusID, query: library.search,
+        fixtureSearchObservation?(CatalogSearchFocusSnapshot(focusID: focusID, nativeFocusID: systemFocus, query: library.search,
             filtering: library.isFiltering, pending: pendingCatalogFocus != nil, heldItemID: heldItem?.id))
     }
     #endif
@@ -2290,9 +2300,7 @@ struct ContentView: View {
 private extension View {
     @ViewBuilder func fluxFocus(_ binding: FocusState<String?>.Binding, id: String) -> some View {
         #if os(tvOS)
-        // A style applied closer to Button takes precedence over this default.
-        // Custom controls must also avoid PlainButtonStyle at their call site.
-        self.buttonStyle(FluxBareButtonStyle()).focused(binding, equals: id).focusEffectDisabled()
+        self.focused(binding, equals: id).focusEffectDisabled()
         #else
         self.focusable().focused(binding, equals: id)
         #endif

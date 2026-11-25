@@ -1,4 +1,4 @@
-# GitHub Actions — FLUX IPTV 0.8.9
+# GitHub Actions — FLUX IPTV 0.8.9 — build 30
 
 Le workflow [Swift / Apple platforms](https://github.com/M4D135/FluxIPTV/actions/workflows/ci.yml) vérifie le commit indiqué en tête de chaque exécution. Il fonctionne sur `main`, sur les branches `work/three-rooms-*`, sur les pull requests et par lancement manuel.
 
@@ -25,9 +25,9 @@ Le job macOS exécute aussi `scripts/test-youtube-session.sh` : une vraie fenêt
 
 `scripts/test-keychain-interaction.sh` vérifie le pont de compatibilité Mac sans accéder aux identifiants. `scripts/check-keychain-platform.sh` type-vérifie le code réel avec les SDK iOS/tvOS et les avertissements traités comme erreurs. tvOS utilise le petit pont C vers la constante publique de refus d’interaction ; iOS utilise LAContext. La dépréciation est isolée à la fonction de compatibilité, jamais masquée sur tout le projet.
 
-Pour les éléments de focus SwiftUI qui ne sont pas des `UIView`, le rectangle natif est converti depuis le premier `focusItemContainer` de leur ascendance publique, rattachée à la fenêtre active. Ce repère est choisi avant toute comparaison avec la commande attendue : les proxys SwiftUI n’ont pas besoin de conserver leur identité entre deux API. Les journaux conservent l’ascendance et les coordonnées avant/après conversion.
+Quatre scénarios tvOS supplémentaires couvrent France, Espagne, le sélecteur de pays et la restauration du catalogue : onze captures au total. Ils vérifient le filtrage du modèle réel, la séparation des préférences par section et leur relecture par une nouvelle bibliothèque. Le scénario de restauration ouvre ContentView sans sélection injectée et exige le retour du focus natif sur la chaîne mémorisée.
 
-Le contrôle des SDK exige son marqueur de réussite exact dans le journal. Son tableau d'arguments est non vide sur toutes les plateformes pour rester compatible avec le Bash livré sur macOS et `set -u` ; l'erreur d'expansion d'un tableau vide ne peut plus laisser un contrôle iOS apparemment réussi.
+Le contrôle des SDK exige son marqueur de réussite exact dans le journal. Son tableau d’arguments reste non vide sur toutes les plateformes pour être compatible avec le Bash livré sur macOS et `set -u` ; une erreur d’expansion ne peut plus laisser le contrôle iOS apparemment réussi.
 
 Toutes les vérifications natives restent des étapes séparées après compilation. Leur échec bloque la livraison du job. Aucun score de fluidité sur Apple TV physique n’est déduit d’une capture ou d’un build.
 

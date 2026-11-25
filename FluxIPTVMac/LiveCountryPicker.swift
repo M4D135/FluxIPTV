@@ -8,8 +8,15 @@ struct LiveCountryPicker: View {
     let select: (String?) -> Void
     let close: () -> Void
     @FocusState private var focusedCountry: String?
+    #if os(tvOS)
+    @Namespace private var countryFocusScope
+    #endif
 
     private var allCount: Int { countries.reduce(0) { $0 + $1.channelCount } }
+    private var initialFocusKey: String {
+        guard let selection, countries.contains(where: { $0.code == selection }) else { return "all" }
+        return selection
+    }
     private var rowFont: Font {
         #if os(tvOS)
         .system(size: 27, weight: .semibold)
@@ -36,15 +43,17 @@ struct LiveCountryPicker: View {
                                     in: RoundedRectangle(cornerRadius: 15))
                         .overlay(RoundedRectangle(cornerRadius: 15)
                             .strokeBorder(focusedCountry == "close" ? Color.white : .clear, lineWidth: 2))
-                        .focused($focusedCountry, equals: "close")
+                        .focused($focusedCountry, equals: "close").id("close")
                         #if os(tvOS)
                         .focusEffectDisabled()
                         #endif
                 }.padding(32)
             }
             .onAppear {
-                let target = selection ?? "all"
+                let target = initialFocusKey
+                #if !os(tvOS)
                 focusedCountry = target
+                #endif
                 reader.scrollTo(target, anchor: .center)
             }
             .onChange(of: focusedCountry) { _, code in
@@ -53,6 +62,9 @@ struct LiveCountryPicker: View {
         }
         .fluxSheetSize(width: 820, height: 650)
         #if os(tvOS)
+        // The sheet enters native focus after onAppear. A declared preference
+        // survives that transition, unlike an early FocusState assignment.
+        .focusScope(countryFocusScope)
         .onExitCommand(perform: close)
         #endif
     }
@@ -86,6 +98,7 @@ struct LiveCountryPicker: View {
         .buttonStyle(FluxBareButtonStyle())
         .focused($focusedCountry, equals: key).id(key)
         #if os(tvOS)
+        .prefersDefaultFocus(key == initialFocusKey, in: countryFocusScope)
         .focusEffectDisabled()
         #if FLUX_CATALOG_UI_TESTING
         .background(TVCatalogControlFrameProbe(identifier: "live-country-option-\(code ?? "all")"))
