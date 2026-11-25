@@ -38,7 +38,7 @@ private enum CatalogUIFailure: Error, CustomStringConvertible {
                                 "The CI process still sees Reduce Transparency; native glass cannot be assessed.")
                 }
                 try await run(output: output)
-                print("PASS: real ContentView TV, DVD/VHS catalogue, twelve-season shelf and open-season Dock rendered nonempty native captures.")
+                print("PASS: real ContentView TV, DVD/VHS catalogue, twelve-season shelf and full-screen film/episode details rendered nonempty native captures.")
                 print("Fixture artwork and catalogue only; no accounts, streams, remote images or video playback were used.")
                 print("Review the PNGs for spacing, clipping and header appearance; this is not a pixel-perfect visual assertion.")
                 exit(0)
@@ -110,14 +110,14 @@ private enum CatalogUIFailure: Error, CustomStringConvertible {
             items.append(IPTVItem(id: "fixture-movie-\(index)", sourceID: source.id, name: titles[index],
                                   group: index % 2 == 0 ? "Cinéma · Aventure" : "Cinéma · Classiques", logoURL: url,
                                   kind: .movie, directURL: nil, xtreamStreamID: nil, fileExtension: nil,
-                                  details: IPTVDetails(year: year)))
+                                  details: IPTVDetails(synopsis: "Une équipe rejoint un observatoire isolé pour une dernière nuit sous les étoiles. Les souvenirs des voyageurs se croisent et font naître une nouvelle aventure. Le synopsis reste lisible à distance dans cette fiche plein écran.", year: year, genre: "Aventure · Drame", duration: "1 h 48")))
         }
         let seriesArtwork = artworkRoot.appendingPathComponent("series.png")
         cache(try fixtureArtwork(width: 360, height: 540, index: 7, title: "LES SAISONS", subtitle: "JAQUETTE LOCALE · 2014"), at: seriesArtwork)
         let collection = IPTVItem(id: "fixture-series", sourceID: source.id, name: "Les saisons", group: "Séries · Drame",
                                   logoURL: seriesArtwork, kind: .series, directURL: nil, xtreamStreamID: nil, fileExtension: nil,
                                   isSeriesCollection: true,
-                                  details: IPTVDetails(synopsis: "Une description IPTV locale accompagne ce rayon de douze saisons. Chaque boîtier ouvre les épisodes de la saison choisie.", year: "2014", genre: "Drame"))
+                                  details: IPTVDetails(synopsis: "Une description IPTV locale accompagne cette série de douze saisons. Chaque saison ouvre une fiche plein écran avec ses épisodes et sa bande-annonce.", year: "2014", genre: "Drame"))
         items.append(collection)
         let seasons = (1...12).map { (number: Int) in
             IPTVSeason(number: number, episodes: (1...16).map { (episode: Int) in
@@ -133,11 +133,12 @@ private enum CatalogUIFailure: Error, CustomStringConvertible {
                     "The requested S12/E15 restoration fixture is missing or has an unexpected identifier.")
         let playback = PlaybackController()
         defer { playback.stop(); ArtworkLoader.cache.removeAllObjects() }
-        let scenarios: [(kind: IPTVMediaKind, filename: String, season: Int?)] = [
-            (.live, "catalog-tv.png", nil),
-            (.movie, "catalog-dvd-vhs.png", nil),
-            (.series, "series-seasons.png", nil),
-            (.series, "series-season-dock.png", 12)
+        let scenarios: [(kind: IPTVMediaKind, filename: String, season: Int?, detail: Bool)] = [
+            (.live, "catalog-tv.png", nil, false),
+            (.movie, "catalog-dvd-vhs.png", nil, false),
+            (.movie, "movie-detail.png", nil, true),
+            (.series, "series-seasons.png", nil, false),
+            (.series, "series-episode-detail.png", 12, true)
         ]
         var captureFailures: [String] = []
         for scenario in scenarios {
@@ -146,7 +147,7 @@ private enum CatalogUIFailure: Error, CustomStringConvertible {
             let selected = library.catalogResults.all.items.first
             try require(selected != nil && !library.isLoading && !library.isFiltering, "Fixture catalogue was not installed synchronously.")
             let root = ContentView(fixtureSelection: selected, fixtureSeasons: kind == .series ? seasons : [],
-                                   fixtureOpenSeason: scenario.season, fixtureEpisodeID: scenario.season == nil ? nil : restoredEpisodeID)
+                                   fixtureOpenSeason: scenario.season, fixtureEpisodeID: scenario.season == nil ? nil : restoredEpisodeID, fixtureOpenItem: scenario.detail)
                 .environmentObject(library).environmentObject(playback)
                 .preferredColorScheme(.dark)
                 .environment(\.scenePhase, .active)
@@ -155,7 +156,7 @@ private enum CatalogUIFailure: Error, CustomStringConvertible {
             let window = NSWindow(contentRect: CGRect(origin: CGPoint(x: 30, y: 30), size: size),
                                   styleMask: [.titled], backing: .buffered, defer: false)
             window.isReleasedWhenClosed = false
-            window.title = kind == .live ? "FluxIPTV — catalogue TV local" : kind == .movie ? "FluxIPTV — rayon DVD/VHS local" : scenario.season == nil ? "FluxIPTV — douze saisons" : "FluxIPTV — saison 12, épisode 15 et Dock"
+            window.title = kind == .live ? "FluxIPTV — catalogue TV local" : kind == .movie ? (scenario.detail ? "FluxIPTV — fiche film plein écran" : "FluxIPTV — rayon DVD/VHS local") : scenario.season == nil ? "FluxIPTV — douze saisons" : "FluxIPTV — fiche saison 12, épisode 15"
             window.appearance = NSAppearance(named: .darkAqua)
             window.contentView = host
             host.frame = CGRect(origin: .zero, size: size)

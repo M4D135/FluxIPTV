@@ -6,8 +6,8 @@ import AppKit
 import UIKit
 #endif
 
-/// Compact channel content. The surrounding button owns selection/focus; the
-/// catalogue creates these only for its bounded, currently displayed page.
+/// Large television tiles and compact desktop rows share the same channel
+/// data. The surrounding button owns focus; only its selected tile gets video.
 struct LiveTVChannelLabel: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let item: IPTVItem
@@ -15,6 +15,9 @@ struct LiveTVChannelLabel: View {
     let favorite: Bool
     let highlighted: Bool
     let accent: Color
+    var preview: LiveTVPreviewController? = nil
+    var delay: LiveTVPreviewDelay = .three
+    var automaticPreview = true
 
     private var logoSize: CGFloat {
         #if os(tvOS)
@@ -25,6 +28,9 @@ struct LiveTVChannelLabel: View {
     }
 
     var body: some View {
+        #if os(tvOS)
+        televisionTile
+        #else
         HStack(spacing: 14) {
             ArtworkView(url: item.logoURL, fit: true) {
                 Image(systemName: "tv").font(.title2).foregroundStyle(.secondary)
@@ -61,7 +67,78 @@ struct LiveTVChannelLabel: View {
         .scaleEffect(highlighted && !reduceMotion ? 1.018 : 1)
         .offset(y: highlighted && !reduceMotion ? -2 : 0)
         .shadow(color: .black.opacity(highlighted ? 0.32 : 0), radius: 12, x: 0, y: 9)
+        #endif
     }
+
+    #if os(tvOS)
+    private var televisionTile: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            ZStack(alignment: .topTrailing) {
+                if let preview {
+                    // ContentView passes its single preview controller only to
+                    // the focused tile. Other channels retain static artwork.
+                    LiveTVPreviewScreen(preview: preview, item: item, delay: delay, automatic: automaticPreview)
+                } else {
+                    channelArtwork
+                }
+                HStack(spacing: 9) {
+                    Text(String(format: "%02d", number)).font(.system(size: 18, weight: .semibold, design: .monospaced))
+                    if favorite { Image(systemName: "star.fill").font(.system(size: 18)).foregroundStyle(.yellow) }
+                }
+                .foregroundStyle(.white.opacity(0.88))
+                .padding(.horizontal, 10).padding(.vertical, 6)
+                .background(.black.opacity(0.70), in: Capsule())
+                .padding(13)
+            }
+            Text(item.name)
+                .font(.system(size: 27, weight: .semibold)).lineLimit(2, reservesSpace: true)
+                .foregroundStyle(.white)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            Text(item.group)
+                .font(.system(size: 20, weight: .medium)).lineLimit(1)
+                .foregroundStyle(.white.opacity(0.57))
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(highlighted ? Color(red: 0.10, green: 0.13, blue: 0.17) : Color(red: 0.035, green: 0.045, blue: 0.065),
+                    in: RoundedRectangle(cornerRadius: 24))
+        .overlay {
+            RoundedRectangle(cornerRadius: 24)
+                .strokeBorder(highlighted ? .white.opacity(0.95) : .white.opacity(0.08), lineWidth: highlighted ? 3 : 1)
+                .allowsHitTesting(false)
+        }
+        .contentShape(RoundedRectangle(cornerRadius: 24))
+        .scaleEffect(highlighted && !reduceMotion ? 1.025 : 1)
+        .offset(y: highlighted && !reduceMotion ? -3 : 0)
+    }
+
+    private var channelArtwork: some View {
+        GeometryReader { geometry in
+            ZStack(alignment: .bottomLeading) {
+                Color(red: 0.065, green: 0.080, blue: 0.11)
+                if let backdrop = item.backdropURL {
+                    ArtworkView(url: backdrop, fit: false) { Color.clear }
+                        .frame(width: geometry.size.width, height: geometry.size.height).clipped()
+                } else {
+                    ArtworkView(url: item.logoURL, fit: true) {
+                        Image(systemName: "tv.fill").font(.system(size: 64, weight: .light)).foregroundStyle(.white.opacity(0.5))
+                    }
+                    .frame(width: geometry.size.width * 0.66, height: geometry.size.height * 0.64)
+                    .frame(width: geometry.size.width, height: geometry.size.height)
+                }
+                Label("EN DIRECT", systemImage: "circle.fill")
+                    .font(.system(size: 15, weight: .bold)).tracking(0.5)
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 10).padding(.vertical, 7)
+                    .background(.black.opacity(0.72), in: Capsule())
+                    .padding(13)
+            }
+        }
+        .aspectRatio(16.0 / 9.0, contentMode: .fit)
+        .clipShape(RoundedRectangle(cornerRadius: 20))
+    }
+    #endif
 }
 
 struct LiveTVPreviewScreen: View {
@@ -71,34 +148,70 @@ struct LiveTVPreviewScreen: View {
     let delay: LiveTVPreviewDelay
     let automatic: Bool
 
+    private var showPlaceholder: Bool {
+        #if os(tvOS)
+        preview.phase != .playing
+        #else
+        true
+        #endif
+    }
+
     var body: some View {
         ZStack {
             LinearGradient(colors: [Color(red: 0.08, green: 0.12, blue: 0.18), .black.opacity(0.55)], startPoint: .topLeading, endPoint: .bottomTrailing)
-            GeometryReader { geometry in
-                VStack(spacing: geometry.size.height < 100 ? 4 : 10) {
-                    ArtworkView(url: item.logoURL, fit: true) {
-                        Image(systemName: "tv").font(.title2).foregroundStyle(.secondary)
-                    }.frame(width: min(78, geometry.size.width * 0.5), height: min(64, geometry.size.height * 0.5))
-                    if preview.phase == .loading { ProgressView().controlSize(.small) }
-                    else if geometry.size.height >= 100 {
-                        Text(status).font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.center).lineLimit(2)
+            if showPlaceholder {
+                GeometryReader { geometry in
+                    VStack(spacing: geometry.size.height < 100 ? 4 : 10) {
+                        ArtworkView(url: item.logoURL, fit: true) {
+                            Image(systemName: "tv").font(.title2).foregroundStyle(.secondary)
+                        }
+                        #if os(tvOS)
+                        .frame(width: geometry.size.width * 0.66, height: geometry.size.height * 0.56)
+                        #else
+                        .frame(width: min(78, geometry.size.width * 0.5), height: min(64, geometry.size.height * 0.5))
+                        #endif
+                        if preview.phase == .loading { ProgressView().controlSize(.small) }
+                        else if geometry.size.height >= 100 {
+                            #if os(tvOS)
+                            Text(status).font(.system(size: 18, weight: .medium)).foregroundStyle(.white.opacity(0.7)).multilineTextAlignment(.center).lineLimit(2)
+                            #else
+                            Text(status).font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.center).lineLimit(2)
+                            #endif
+                        }
                     }
+                    .padding(geometry.size.height < 100 ? 4 : 14)
+                    .frame(width: geometry.size.width, height: geometry.size.height)
                 }
-                .padding(geometry.size.height < 100 ? 4 : 14)
-                .frame(width: geometry.size.width, height: geometry.size.height)
             }
             if let player = preview.player {
                 LiveTVNativePreview(player: player)
                     .opacity(preview.phase == .playing ? 1 : 0)
                     .animation(reduceMotion ? nil : .easeOut(duration: 0.25), value: preview.phase == .playing)
             }
+            #if os(tvOS)
+            if preview.phase == .playing {
+                VStack {
+                    Spacer()
+                    HStack {
+                        Label("EN DIRECT", systemImage: "circle.fill")
+                            .font(.system(size: 15, weight: .bold)).tracking(0.5)
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 10).padding(.vertical, 7)
+                            .background(.black.opacity(0.72), in: Capsule())
+                        Spacer(minLength: 0)
+                    }
+                }.padding(13)
+            }
+            #endif
         }
         .aspectRatio(16.0 / 9.0, contentMode: .fit)
         .clipShape(RoundedRectangle(cornerRadius: 20))
         .overlay {
             RoundedRectangle(cornerRadius: 20).strokeBorder(.white.opacity(0.30), lineWidth: 1).allowsHitTesting(false)
         }
+        #if !os(tvOS)
         .shadow(color: .black.opacity(0.45), radius: 20, x: 0, y: 12)
+        #endif
         .allowsHitTesting(false).accessibilityHidden(true)
     }
     private var status: String {

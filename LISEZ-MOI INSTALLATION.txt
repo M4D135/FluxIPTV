@@ -1,4 +1,4 @@
-FLUX IPTV 0.8.7 — CINÉMA, VIDÉOCLUB ET SALON TV - Installation sur votre Mac
+FLUX IPTV 0.8.8 — CINÉMA, VIDÉOCLUB ET SALON TV - Installation sur votre Mac
 
 1. Quittez FLUX IPTV et arrêtez le projet s'il tourne dans Xcode.
 2. Décompressez l'archive et double-cliquez sur « Installer Flux IPTV.command ».
@@ -9,7 +9,7 @@ FLUX IPTV 0.8.7 — CINÉMA, VIDÉOCLUB ET SALON TV - Installation sur votre Mac
    L'installateur contrôle que le processus reste actif et restaure l'ancien
    bundle en cas d'échec du démarrage. Ce contrôle ne valide pas la lecture.
 4. Ensuite ouvrez uniquement FluxIPTV.app depuis le Finder ou le Dock.
-   Ne relancez pas l'installateur à chaque utilisation. Vérifiez le numéro 0.8.7
+   Ne relancez pas l'installateur à chaque utilisation. Vérifiez le numéro 0.8.8
    dans la barre FLUX et les thèmes dans Réglages > Interface.
 
 Sur Mac, VLC intégré est désactivé. En cas de format incompatible, installez le
@@ -34,37 +34,30 @@ Journal : ~/Library/Logs/FluxIPTV/installation-*.log
 La compilation est effectuée sur votre Mac. Cette archive ne contient pas un
 binaire macOS précompilé ; l'installateur n'a pas été exécuté sous macOS ici.
 
-Nouveau : dans Sources > Modifier, vous pouvez choisir « Sur ce Mac, sans Trousseau » puis vérifier et enregistrer vos accès. Cette option conserve les identifiants dans un fichier privé non chiffré (permissions 600), le Trousseau demeure plus sûr. Les listes de favoris sont conservées. Réglages > Interface : choisir la qualité des pochettes 3D.
+Sources > Modifier permet de choisir « Sur ce Mac, sans Trousseau ». Les identifiants sont alors dans un fichier privé non chiffré (permissions 600) ; le Trousseau demeure plus sûr. Les favoris sont conservés.
 
-Pochette ouverte : glisser deux doigts sur le trackpad, sans clic. Horizontal = tourner, vertical = incliner. Clics sur les boutons imprimés et flèches clavier conservés.
+NOUVEAUTÉS 0.8.8
 
-Nouveautés 0.8.7 : rayons rapprochés, prise en main de boîtes plus grandes,
-DVD dès 2000 / VHS avant 2000, rayon complet des saisons pour chaque série.
-La caméra et les voisins restent fixes pendant la manipulation de la boîte.
-Le synopsis IPTV est conservé ; Wikipédia et Allociné sont retirés.
-Boîte : Gauche/Droite = tourner ; double appui = titre précédent/suivant.
-Haut sélectionne l’aperçu, Valider l’agrandit ; Haut encore sélectionne Lire.
-Lecture (Espace sur Mac) lance directement le film ou l’épisode.
-Bas rejoint le Dock : Reposer à gauche, actions visibles, Favoris à droite.
-Choisir une série entre dans son rayon de saisons. Choisir une saison ouvre
-les épisodes. Retour/Menu remonte au rayon de saisons, puis au catalogue.
-La recherche a sa propre icône loupe à côté de TV, Films et Séries.
-Une aide contextuelle reste affichée.
-La bande-annonce continue en tournant et se met en pause sur le recto.
+Sans liste enregistrée, le démarrage affiche « Charger une liste ».
+TV, Films, Séries et Recherche ont de grandes icônes avec une sélection nette.
+Sélectionner un film ouvre sa fiche plein écran : description, bande-annonce,
+lecture et favoris. Les boîtes tournantes et leurs voisins sont retirés.
+Une série ouvre son rayon de saisons ; une saison affiche ses épisodes.
+Retour remonte au niveau précédent. Les directions déplacent le focus,
+Entrée valide et Espace lit le film ou l’épisode choisi.
 
-TV : catégories à gauche, recherche visible, vignette qui se détache lors de
-la sélection. Aperçu en sourdine après 3 secondes par défaut ; délai propre
-à la TV 1/3/5/10 s, indépendant des films/séries (5 s par défaut).
-Réglages > Interface permet de changer les délais et chacun des trois thèmes.
-Les 18 décors sont précalculés en 4K avec des structures et meubles distincts.
+Les décors FLUX et les animations de focus/transition sont conservés.
+Sur Apple TV, catégories horizontales et grandes vignettes 16:9 ; la seule
+vignette sélectionnée contient l’aperçu. Le rendu des effets est allégé.
+Délai TV : 1/3/5/10 s (3 s par défaut), distinct des bandes-annonces (5 s).
+Réglages > Interface conserve les thèmes propres à chaque espace.
 
-Bandes-annonces YouTube intégrées sur macOS/iOS ; vidéos directes natives.
-Sur tvOS, YouTube s’ouvre explicitement sur iPhone via un QR code.
-La navigation générale disparaît pendant la lecture principale. Les commandes
-flottantes et le bandeau utilisent Liquid Glass avec Xcode et systèmes 26.
-Les systèmes précédents conservent un matériau translucide compatible.
+YouTube utilise le lecteur intégré sur Mac/iOS et une résolution locale de
+vidéo publique sur tvOS. Les refus de lecture sont affichés dans l’app ;
+aucun QR code ni transfert sur iPhone. La disponibilité distante dépend
+du fournisseur vidéo. La lecture principale garde ses commandes flottantes.
 
-Voir README.md et docs/VALIDATION-0.8.7.md pour les comportements et les limites.
+Voir README.md et docs/VALIDATION-0.8.8.md pour les comportements et les limites.
 
 APPLE TV : ouvrez FluxIPTV-AppleTV.xcodeproj (schéma FluxIPTVTV), puis
 choisissez la destination Apple TV. Voir LISEZ-MOI APPLE TV.txt.

@@ -61,17 +61,12 @@ struct ContentView: View {
     @State private var previewID: String?
     @State private var previewItem: IPTVItem?
     @State private var heldItem: IPTVItem?
-    @State private var heldSlice: CatalogSlice?
     @State private var heldDetails = IPTVDetails()
     @State private var caseExpanded = false
     @State private var caseToken = UUID()
-    @State private var caseYaw = 0.0
-    @State private var casePitch = 0.0
-    @State private var caseRemoteEvent: CaseRemoteEvent?
-    @State private var casePadSignal: CasePadSignal?
+    @State private var caseRemoteEvent: MediaDetailRemoteEvent?
     @State private var heldSeasonNumber: Int?
     @State private var heldEpisodeID: String?
-    @State private var cardFrames = CaseFrameCache()
     @State private var catalogPage = 0
     @State private var resumeSlice = CatalogSlice()
     @State private var caseDetailTask: Task<Void, Never>?
@@ -106,10 +101,15 @@ struct ContentView: View {
     #if FLUX_CATALOG_UI_TESTING
     /// Seed only the initial selection; layout, controls and artwork remain the
     /// same production views used by the application.
-    init(fixtureSelection: IPTVItem? = nil, fixtureSeasons: [IPTVSeason] = [], fixtureOpenSeason: Int? = nil, fixtureEpisodeID: String? = nil) {
+    init(fixtureSelection: IPTVItem? = nil, fixtureSeasons: [IPTVSeason] = [], fixtureOpenSeason: Int? = nil, fixtureEpisodeID: String? = nil, fixtureOpenItem: Bool = false) {
         _previewID = State(initialValue: fixtureSelection?.id)
         _previewItem = State(initialValue: fixtureSelection)
         _focusID = State(initialValue: fixtureSelection?.id ?? "tab-live")
+        if let fixtureSelection, !fixtureSelection.isSeriesCollection, fixtureOpenItem {
+            _heldItem = State(initialValue: fixtureSelection)
+            _heldDetails = State(initialValue: fixtureSelection.details)
+            _caseExpanded = State(initialValue: true)
+        }
         if let fixtureSelection,fixtureSelection.isSeriesCollection,let first=fixtureSeasons.first {
             _page=State(initialValue:.series)
             _series=State(initialValue:fixtureSelection)
@@ -127,8 +127,6 @@ struct ContentView: View {
     }
     #endif
 
-    private var heldSeasonIndex: Int? { heldSeasonNumber.flatMap { number in seasons.firstIndex { $0.number == number } } }
-    private var heldSourceID: String? { heldSeasonNumber.map { "season-\($0)" } ?? heldItem?.id }
     private var visibleSlice: CatalogSlice {
         continueOnly ? resumeSlice : library.catalogResults.slice(group:group)
     }
@@ -138,8 +136,13 @@ struct ContentView: View {
     private var catalogPageCount: Int { visibleSlice.pageCount(size:catalogPageSize) }
     private var displayedItems: ArraySlice<IPTVItem> { visibleSlice.window(page:catalogPage,size:catalogPageSize) }
     private var livePreviewAllowed: Bool {
-        page == .catalogue && library.contentKind == .live && heldItem == nil && entranceItem == nil
+        let browsing = page == .catalogue && library.contentKind == .live && heldItem == nil && entranceItem == nil
             && !modalOpen && scenePhase == .active
+        #if os(tvOS)
+        return browsing && focusID == previewItem?.id && !searchFocus
+        #else
+        return browsing
+        #endif
     }
     private var livePreviewKey: String {
         "\(livePreviewAllowed)|\(previewItem?.id ?? "")|\(automaticLivePreview)|\(livePreviewDelay.rawValue)|\(library.selectedSourceID?.uuidString ?? "")"
@@ -166,7 +169,7 @@ struct ContentView: View {
     }
     private var cardWidth: CGFloat {
         #if os(tvOS)
-        return density == "compact" ? 185 : (library.contentKind == .live ? 280 : (clubProfile.isEditorial ? 200 : 225))
+        return density == "compact" ? 260 : 300
         #elseif os(iOS)
         return sizeClass == .compact ? 124 : (library.contentKind == .live ? 174 : 150)
         #else
@@ -176,25 +179,12 @@ struct ContentView: View {
     private var currentClubItem: IPTVItem? {
         visibleSlice.item(id:previewID) ?? visibleSlice.item(id:focusID) ?? visible.first
     }
-    // A COW snapshot of the selected catalogue order. Filter/history refreshes
-    // must not change the neighbors of a case already in the user's hands.
-    private var inspectionSlice: CatalogSlice { heldSlice ?? visibleSlice }
-    private func clubNeighbors(_ item:IPTVItem)->(IPTVItem?,IPTVItem?) {
-        (caseNeighbor(item,offset:-1),caseNeighbor(item,offset:1))
-    }
-    private func caseNeighbor(_ item:IPTVItem,offset:Int)->IPTVItem? {
-        if let index=heldSeasonIndex {
-            guard seasons.indices.contains(index+offset) else{return nil}
-            return SeriesSeasonShelf.sleeve(series:item,season:seasons[index+offset])
-        }
-        return inspectionSlice.adjacent(to:item.id,offset:offset)
-    }
     private var showingAllCatalog: Bool {
         CatalogScope.isAll(group:group,search:library.search,presetID:library.selectedPresetID,resumeOnly:continueOnly)
     }
     private func showAllCatalog() {
         continueOnly=false;group=nil;library.selectedPresetID=nil;library.search=""
-        clearPreview();resetCatalogWindow();focusID = library.contentKind == .live && !liveSidebarVisible ? "categories" : "group-all"
+        clearPreview();resetCatalogWindow();focusID = library.contentKind == .live && !televisionLayout && !liveSidebarVisible ? "categories" : "group-all"
     }
     private func toggleResumeFilter() {
         if !continueOnly {library.selectedPresetID=nil}
@@ -216,27 +206,28 @@ struct ContentView: View {
         GeometryReader { geometry in
             HStack(spacing: 0) {
                 ScrollViewReader { reader in
-                    VStack(spacing: 0) {
-                        if page != .player && !cinema {
-                            if library.contentKind == .live && page == .catalogue { liveHeader }
-                            else { header }
-                        }
-                        switch page {
-                        case .catalogue: catalogue
-                        case .series: seriesDetail
-                        case .player: playerPage
+                    ZStack {
+                        if library.sources.isEmpty {
+                            firstSourceWelcome
+                        } else if let heldItem {
+                            heldOverlay(heldItem, reader: reader)
+                        } else {
+                            VStack(spacing: 0) {
+                                if page != .player && !cinema {
+                                    if library.contentKind == .live && page == .catalogue { liveHeader }
+                                    else { header }
+                                }
+                                switch page {
+                                case .catalogue: catalogue
+                                case .series: seriesDetail
+                                case .player: playerPage
+                                }
+                            }
+                            .opacity(entranceItem == nil ? 1 : 0)
                         }
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .opacity((heldItem != nil && caseExpanded) || entranceItem != nil ? 0 : 1)
-                    .allowsHitTesting(heldItem == nil)
-                    .disabled(heldItem != nil)
-                    .accessibilityHidden(heldItem != nil)
-                    .overlay {
-                        if let heldItem { heldOverlay(heldItem, reader: reader) }
-                    }
                     .coordinateSpace(name: "club-pane")
-                    .onPreferenceChange(CaseFrameKey.self) { frames in cardFrames.update(frames) }
                     .onChange(of: page) { previous, destination in
                         guard previous == .series,destination == .catalogue,let target=focusID,visibleSlice.item(id:target) != nil else{return}
                         revealCatalogItem(target)
@@ -307,7 +298,13 @@ struct ContentView: View {
                 }
             }
             .allowsHitTesting(entranceItem == nil)
-            .onAppear { browserHeight = geometry.size.height; updateColumns(geometry.size.width) }
+            .onAppear {
+                browserHeight = geometry.size.height; updateColumns(geometry.size.width)
+                if library.sources.isEmpty { focusID = "add-source"; systemFocus = "add-source" }
+                #if FLUX_CATALOG_UI_TESTING
+                else if heldItem == nil { systemFocus = focusID }
+                #endif
+            }
             .onChange(of: geometry.size.height) { _, height in browserHeight = height }
             .onChange(of: geometry.size.width) { _, width in updateColumns(width) }
             .onChange(of: library.contentKind) { _, _ in continueOnly = false; group = nil; groupSearch = ""; liveGroupSearchFocus = false; clearPreview(); updateColumns(geometry.size.width) }
@@ -346,8 +343,6 @@ struct ContentView: View {
                 if press.key == .escape { liveGroupSearchFocus = false; return .handled }
                 return .ignored
             }
-            if heldItem != nil, press.phase == .repeat,
-               press.key == .leftArrow || press.key == .rightArrow { return .handled }
             if press.key == "f" && press.modifiers.contains([.command, .shift]) { dispatch(.fullscreen) }
             else if press.key == "f" && press.modifiers.contains(.command) { search() }
             else if press.key == .upArrow { dispatch(.up) }
@@ -393,6 +388,9 @@ struct ContentView: View {
             Button("OK", role: .cancel) { library.alertMessage = nil }
         } message: { Text(library.alertMessage ?? "") }
         .onChange(of: library.selectedSourceID) { _, _ in home(); group = nil; clearPreview() }
+        .onChange(of: library.sources.isEmpty) { _, empty in
+            if empty { home(); focusID = "add-source"; systemFocus = "add-source" }
+        }
         .onChange(of: library.selectedPresetID) { _, id in if id != nil {continueOnly=false};if library.contentKind != .live {group=nil};clearPreview() }
         .onChange(of: library.search) { _, _ in if library.contentKind != .live {group=nil};clearPreview() }
         .onChange(of: group) { _, _ in clearPreview(); resetCatalogWindow() }
@@ -417,9 +415,7 @@ struct ContentView: View {
 
     #if !os(tvOS)
     private var remotePanel: some View {
-        RemotePad(appearance: $remoteAppearance, send: dispatch, caseSwipe: heldItem == nil ? nil : { input in
-            casePadSignal=CasePadSignal(input:input)
-        }, close: {
+        RemotePad(appearance: $remoteAppearance, send: dispatch, caseSwipe: nil, close: {
             showRemote = false; remoteNavigationActive = false
         }, volume: playback.localVolume, muted: playback.muted)
     }
@@ -429,13 +425,14 @@ struct ContentView: View {
     // No decorative render passes or backdrop downloads behind video.
     private var background: some View {
         ZStack {
-            if page == .player || caseTrailerVisible {
+            if page == .player || caseTrailerVisible || heldItem != nil {
                 Color.black.ignoresSafeArea()
+            } else if library.sources.isEmpty {
+                Color(red: 0.025, green: 0.035, blue: 0.065).ignoresSafeArea()
             } else {
                 FluxBackdrop(theme: theme)
                 ProceduralStage(kind: library.contentKind)
-                    .scaleEffect(entranceExpanded ? 1.85 : 1, anchor: .center)
-                LinearGradient(colors:[.black.opacity(0.12),.black.opacity(heldItem != nil ? 0.22 : 0.52)],startPoint:.top,endPoint:.bottom)
+                LinearGradient(colors:[.black.opacity(televisionLayout ? 0.52 : 0.12),.black.opacity(televisionLayout ? 0.72 : 0.52)],startPoint:.top,endPoint:.bottom)
                     .ignoresSafeArea().allowsHitTesting(false)
             }
         }.accessibilityHidden(true)
@@ -470,7 +467,7 @@ struct ContentView: View {
     private func requestCaseDetails(_ item: IPTVItem, token: UUID) {
         caseDetailTask?.cancel()
         caseDetailTask = Task { @MainActor in
-            // Holding next/previous should not queue dozens of API requests.
+            // A quick return cancels metadata loading before opening a connection.
             try? await Task.sleep(nanoseconds:160_000_000)
             guard !Task.isCancelled,caseToken==token else {return}
             let details=await library.details(for:item)
@@ -483,28 +480,13 @@ struct ContentView: View {
         caseTransitionTask?.cancel()
         let token=UUID(); caseToken=token
         searchFocus=false
-        heldSlice=season == nil ? visibleSlice.inspection(containing:item,fallback:library.catalogResults.all):nil
         heldSeasonNumber=season;heldEpisodeID=episodeID
-        heldDetails=item.details;caseYaw=0;casePitch=0;caseExpanded=false;caseRemoteEvent=nil;casePadSignal=nil;heldItem=item
+        heldDetails=item.details;caseExpanded=false;caseRemoteEvent=nil;heldItem=item
         caseTransitionTask = Task { @MainActor in
             await Task.yield()
             guard !Task.isCancelled,caseToken==token else {return}
-            withAnimation(reduceMotion ? nil : .spring(response:0.38,dampingFraction:0.86)) {caseExpanded=true}
+            withAnimation(reduceMotion ? nil : .easeOut(duration:0.20)) {caseExpanded=true}
         }
-        requestCaseDetails(item,token:token)
-    }
-    private func moveCase(_ delta:Int) {
-        if let index=heldSeasonIndex {
-            guard seasons.indices.contains(index+delta) else{return}
-            let season=seasons[index+delta]
-            heldSeasonNumber=season.number;heldEpisodeID=nil;seasonNumber=season.number;focusID=SeriesSeasonShelf.focusID(season)
-            return
-        }
-        guard let current=heldItem, let item=inspectionSlice.adjacent(to:current.id,offset:delta) else{return}
-        let token=UUID();caseToken=token
-        caseTransitionTask?.cancel();caseExpanded=true
-        // Preserve orientation and use the catalogue index, even across pages.
-        heldDetails=item.details;heldItem=item;setPreview(item);focusID=item.id;library.selectedItemID=item.id
         requestCaseDetails(item,token:token)
     }
     private func putCaseBack(reader:ScrollViewProxy?=nil) {
@@ -514,18 +496,18 @@ struct ContentView: View {
         let destination=heldSeasonNumber.map{"season-\($0)"} ?? visibleSlice.item(id:item.id)?.id ?? visible.first?.id ?? "group-all"
         if heldSeasonNumber == nil {revealCatalogItem(destination)}
         caseTransitionTask=Task { @MainActor in
-            // Let the paginated grid lay out the return slot before shrinking.
+            withAnimation(reduceMotion ? nil : .easeOut(duration:0.16)) {caseExpanded=false}
+            if !reduceMotion {try? await Task.sleep(nanoseconds:180_000_000)}
+            guard !Task.isCancelled,caseToken==token else{return}
+            focusID=destination;heldItem=nil;heldSeasonNumber=nil;heldEpisodeID=nil
+            // Recreate only the catalogue being returned to, then restore its
+            // selected poster. No hidden grid or neighboring cases stay mounted.
             await Task.yield()
-            guard !Task.isCancelled,caseToken==token else{return}
-            reader?.scrollTo(destination,anchor:.center)
-            if !reduceMotion {try? await Task.sleep(nanoseconds:40_000_000)}
-            guard !Task.isCancelled,caseToken==token else{return}
-            withAnimation(reduceMotion ? nil : .easeInOut(duration:0.28)) {caseExpanded=false}
-            if !reduceMotion {try? await Task.sleep(nanoseconds:300_000_000)}
-            guard !Task.isCancelled,caseToken==token else{return};focusID=destination;systemFocus=destination;heldItem=nil;heldSlice=nil;heldSeasonNumber=nil;heldEpisodeID=nil
+            guard !Task.isCancelled,caseToken==token,heldItem == nil else{return}
+            reader?.scrollTo(destination,anchor:.center);systemFocus=destination
         }
     }
-    private func dismissCaseImmediately() {caseDetailTask?.cancel();caseTransitionTask?.cancel();caseToken=UUID();heldItem=nil;heldSlice=nil;heldSeasonNumber=nil;heldEpisodeID=nil;caseExpanded=false}
+    private func dismissCaseImmediately() {caseDetailTask?.cancel();caseTransitionTask?.cancel();caseToken=UUID();heldItem=nil;heldSeasonNumber=nil;heldEpisodeID=nil;caseExpanded=false}
     private func playHeld() {
         guard let item=heldItem else{return}
         guard !item.isSeriesCollection else {return}
@@ -537,21 +519,15 @@ struct ContentView: View {
         playItem(episode)
     }
     private func heldOverlay(_ item:IPTVItem,reader:ScrollViewProxy)->some View {
-        GeometryReader { geo in
-            let source=cardFrames.frame(for:heldSourceID ?? item.id) ?? CGRect(x:geo.size.width*(clubProfile.isEditorial ? 0.65:0.5)-80,y:geo.size.height*0.62-120,width:160,height:240)
-            let targetWidth=max(1,geo.size.width)
-            let targetHeight=max(1,geo.size.height)
-            let sourceScale=max(0.12,min(0.42,source.height/max(1,targetHeight*0.78)))
-            ZStack {
-                Color.black.opacity(caseExpanded ? 0.12:0).ignoresSafeArea().contentShape(Rectangle())
-                    .onTapGesture {putCaseBack(reader:reader)}
-                CasePresentation(item:item,details:heldDetails,position:heldSeasonIndex ?? inspectionSlice.index(of:item.id) ?? 0,count:heldSeasonNumber == nil ? inspectionSlice.items.count:seasons.count,yaw:$caseYaw,pitch:$casePitch,previous:{moveCase(-1)},next:{moveCase(1)},close:{putCaseBack(reader:reader)},play:{playHeld()},playEpisode:{playHeldEpisode($0,$1)},favorite:{chooseFavorites(item)},isFavorite:library.isFavorite(item),startEpisodes:heldSeasonNumber != nil,remoteEvent:caseRemoteEvent,padSignal:casePadSignal,initialSeasons:heldSeasonNumber == nil ? []:seasons,initialSeasonNumber:heldSeasonNumber,initialEpisodeID:heldEpisodeID,previousItem:clubNeighbors(item).0,nextItem:clubNeighbors(item).1,previousFarItem:caseNeighbor(item,offset:-2),nextFarItem:caseNeighbor(item,offset:2),jumpBy:{moveCase($0)},selectedTheme:theme(for:item.kind),concept:clubProfile,suspended:modalOpen,onTrailerPresentation:{caseTrailerVisible=$0})
-                    .frame(width:targetWidth,height:targetHeight)
-                    .scaleEffect(caseExpanded ? 1 : sourceScale)
-                    .opacity(caseExpanded ? 1 : 0.68)
-                    .position(x:caseExpanded ? geo.size.width/2 : source.midX,y:caseExpanded ? geo.size.height/2 : source.midY)
-            }.frame(maxWidth:.infinity,maxHeight:.infinity)
-        }
+        MediaDetailPresentation(item:item,details:heldDetails,
+            close:{putCaseBack(reader:reader)},play:{playHeld()},
+            playEpisode:{playHeldEpisode($0,$1)},favorite:{chooseFavorites(item)},
+            isFavorite:library.isFavorite(item),remoteEvent:caseRemoteEvent,
+            initialSeasons:heldSeasonNumber == nil ? []:seasons,
+            initialSeasonNumber:heldSeasonNumber,initialEpisodeID:heldEpisodeID,
+            suspended:modalOpen,onTrailerPresentation:{caseTrailerVisible=$0})
+        .frame(maxWidth:.infinity,maxHeight:.infinity)
+        .opacity(caseExpanded ? 1 : 0)
     }
     private var previewHero: some View {
         HStack(alignment:.center,spacing:18) {
@@ -561,7 +537,7 @@ struct ContentView: View {
                     Text(item.name).font(.system(.largeTitle,design:.default).weight(.heavy)).lineLimit(2)
                     Text(item.group).font(.callout).foregroundStyle(.secondary).lineLimit(1)
                     HStack(spacing:9) {
-                        navButton(item.kind == .live ? "Regarder" : item.isSeriesCollection ? "Voir les saisons":"Prendre le boîtier",icon:item.kind == .live ? "play.fill":"film.stack",id:"hero-play",active:true) { openItem(item) }
+                        navButton(item.kind == .live ? "Regarder" : item.isSeriesCollection ? "Voir les saisons":"Voir la fiche",icon:item.kind == .live ? "play.fill":"film.stack",id:"hero-play",active:true) { openItem(item) }
                         navButton("Favoris et listes",icon:library.isFavorite(item) ? "star.fill" : "star",id:"hero-favorite") { chooseFavorites(item) }
                     }
                 } else {
@@ -587,6 +563,50 @@ struct ContentView: View {
         false
         #endif
     }
+    private var televisionLayout: Bool {
+        #if os(tvOS)
+        true
+        #else
+        false
+        #endif
+    }
+
+    /// Saved sources are restored synchronously by IPTVLibrary. An empty
+    /// library starts here, without reopening an import sheet after dismissal.
+    private var firstSourceWelcome: some View {
+        VStack(spacing: televisionLayout ? 30 : 22) {
+            Image(systemName: "play.tv.fill")
+                .font(.system(size: televisionLayout ? 92 : 58, weight: .light))
+                .foregroundStyle(.cyan)
+            Text("Bienvenue dans FLUX")
+                .font(.system(size: televisionLayout ? 48 : 32, weight: .bold))
+                .multilineTextAlignment(.center)
+            Text("Chargez votre liste pour retrouver vos chaînes, films et séries.")
+                .font(.system(size: televisionLayout ? 28 : 18))
+                .foregroundStyle(.white.opacity(0.78))
+                .multilineTextAlignment(.center).frame(maxWidth: 850)
+            let sourceLayout = compactNavigation ? AnyLayout(VStackLayout(spacing: 10)) : AnyLayout(HStackLayout(spacing: 20))
+            sourceLayout {
+                Label("Xtream Codes", systemImage: "server.rack")
+                Label("Lien M3U", systemImage: "link")
+                #if !os(tvOS)
+                Label("Fichier M3U", systemImage: "doc")
+                #endif
+            }.font(.system(size: televisionLayout ? 23 : 14)).foregroundStyle(.secondary)
+            Button { addingSource = true } label: {
+                Label("Charger une liste", systemImage: "plus.rectangle.fill")
+                    .font(.system(size: televisionLayout ? 29 : 20, weight: .semibold))
+                    .padding(.horizontal, televisionLayout ? 34 : 24)
+                    .padding(.vertical, televisionLayout ? 23 : 16)
+                    .fluxNavigationGlass(selected: true, tint: .cyan, radius: 24)
+                    .overlay(RoundedRectangle(cornerRadius: 24)
+                        .strokeBorder(focusID == "add-source" ? .white : .clear, lineWidth: 3))
+            }.buttonStyle(FluxBareButtonStyle()).fluxFocus($systemFocus, id: "add-source")
+                .id("add-source").accessibilityIdentifier("welcome-load-source")
+                .padding(.top, 10)
+        }.padding(36).frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
     private var liveHeader: some View { header }
     private var header: some View {
         FluxGlassGroup {
@@ -602,7 +622,7 @@ struct ContentView: View {
                         }
                 }.accessibilityElement(children: .combine).accessibilityLabel("Flux IPTV") }
                 Spacer(minLength: 0)
-                HStack(spacing: compactNavigation ? 5:8) {
+                HStack(spacing: televisionLayout ? 20 : compactNavigation ? 5 : 10) {
                     ForEach(IPTVMediaKind.allCases, id: \.self) { kind in modeButton(kind) }
                     headerDestination("Recherche",symbol:"magnifyingglass",id:"search",selected:showingSearch || searchFocus,tint:.cyan) {search()}
                 }
@@ -616,7 +636,7 @@ struct ContentView: View {
                         #if !os(tvOS)
                         navButton("Télécommande", icon: "appletvremote.gen1", id: "remote", active: showRemote, iconOnly: true) { showRemote.toggle() }
                         #endif
-                        if library.contentKind != .live || (browserHeight < 580 && !liveSidebarVisible) {
+                        if televisionLayout || library.contentKind != .live || (browserHeight < 580 && !liveSidebarVisible) {
                             navButton("Listes", icon: "star", id: "lists", active: library.selectedPresetID != nil, iconOnly: true) { showingLists = true }
                         }
                         navButton("Réglages", icon: "gearshape", id: "settings", iconOnly: true) { showingEngines = true }
@@ -624,7 +644,8 @@ struct ContentView: View {
                 }
             }
         }
-        .padding(.horizontal, compactNavigation ? 12 : 24).padding(.top, 10).padding(.bottom, 12)
+        .padding(.horizontal, televisionLayout ? 36 : compactNavigation ? 12 : 24)
+        .padding(.top, televisionLayout ? 16 : 10).padding(.bottom, televisionLayout ? 22 : 12)
     }
     private func modeButton(_ kind: IPTVMediaKind) -> some View {
         let selected = library.contentKind == kind && page != .player
@@ -635,24 +656,29 @@ struct ContentView: View {
         return headerDestination(title,symbol:symbol,id:id,selected:selected,tint:tint) {changeKind(kind)}
     }
     private func headerDestination(_ title:String,symbol:String,id:String,selected:Bool,tint:Color,action:@escaping ()->Void)->some View {
-        Button { pointerSelect(id); action() } label: {
+        let focused = focusID == id
+        return Button { pointerSelect(id); action() } label: {
             let layout = browserHeight < 580 ? AnyLayout(HStackLayout(spacing: 6)) : AnyLayout(VStackLayout(spacing: 4))
             layout {
                 Image(systemName: symbol).symbolRenderingMode(.hierarchical)
-                    .font(.system(size: browserHeight < 580 ? 20 : compactNavigation ? 22 : 27, weight: .medium))
-                Text(title).font(.caption.weight(.semibold)).lineLimit(1)
+                    .font(.system(size: televisionLayout ? 52 : browserHeight < 580 ? 25 : compactNavigation ? 29 : 38, weight: .medium))
+                Text(title).font(.system(size: televisionLayout ? 25 : compactNavigation ? 12 : 15, weight: .semibold)).lineLimit(1)
             }
             .foregroundStyle(selected ? tint : .white.opacity(0.92))
-            .frame(minWidth: compactNavigation ? 40 : 72)
-            .padding(.horizontal, compactNavigation ? 6:8).padding(.vertical, 9)
+            .frame(minWidth: televisionLayout ? 130 : compactNavigation ? 48 : 88, minHeight: televisionLayout ? 94 : nil)
+            .padding(.horizontal, televisionLayout ? 16 : compactNavigation ? 5 : 12)
+            .padding(.vertical, televisionLayout ? 16 : 12)
             .fluxNavigationGlass(selected: selected, tint: tint, radius: 21)
             .overlay {
                 RoundedRectangle(cornerRadius: 21)
-                    .strokeBorder(focusID == id ? .white.opacity(0.85) : .clear, lineWidth: 2)
+                    .strokeBorder(focused ? .white.opacity(0.95) : .clear, lineWidth: televisionLayout ? 3 : 2)
                     .allowsHitTesting(false)
             }
         }.buttonStyle(.plain).fluxFocus($systemFocus, id: id).id(id)
+            .scaleEffect(focused && !reduceMotion ? 1.045 : 1)
+            .animation(reduceMotion ? nil : .spring(response: 0.25, dampingFraction: 0.88), value: focused)
             .accessibilityLabel(title).accessibilityValue(selected ? "Sélectionné" : "")
+            .accessibilityIdentifier("navigation-\(id)")
     }
 
     private func navButton(_ title: String, icon: String, id: String, active: Bool = false, iconOnly: Bool = false, action: @escaping () -> Void) -> some View {
@@ -667,7 +693,8 @@ struct ContentView: View {
                 if !iconOnly { Text(title).lineLimit(1) }
                 #endif
             }
-            .font(.callout.weight(.semibold)).padding(.vertical, 10).padding(.horizontal, 12)
+            .font(televisionLayout ? .system(size: 25, weight: .semibold) : .callout.weight(.semibold))
+            .padding(.vertical, televisionLayout ? 16 : 10).padding(.horizontal, televisionLayout ? 18 : 12)
             .foregroundStyle(active ? .white : .primary)
             .background(active ? themeAccent.opacity(0.20) : Color.white.opacity(focusID == id ? 0.13 : 0.035), in: RoundedRectangle(cornerRadius: 16))
             .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(focusID == id ? Color.white.opacity(0.8) : .white.opacity(active ? 0.18 : 0.04), lineWidth: focusID == id ? 2 : 1).allowsHitTesting(false))
@@ -785,7 +812,88 @@ struct ContentView: View {
                 .fluxNavigationGlass(radius: 17)
         }
     }
-    private var liveCatalogue: some View {
+    @ViewBuilder private var liveCatalogue: some View {
+        #if os(tvOS)
+        liveTelevisionCatalogue
+        #else
+        liveDesktopCatalogue
+        #endif
+    }
+
+    #if os(tvOS)
+    private var televisionScopeIDs: [String] {
+        ["favorites-quick", "group-all"] + groups.map { "live-category-\($0)" } + ["categories"]
+    }
+
+    /// Horizontal channel categories leave the full width for large 16:9 tiles.
+    /// Only the selected tile mounts a video layer; the room remains a still image.
+    private var liveTelevisionCatalogue: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(alignment: .center, spacing: 18) {
+                Text("En direct").font(.system(size: 34, weight: .bold))
+                Text(library.isFiltering ? "Recherche…" : "\(visible.count) chaînes")
+                    .font(.system(size: 22)).foregroundStyle(.white.opacity(0.7))
+                Spacer(minLength: 10)
+                Text("OK Regarder · Appui long Favoris")
+                    .font(.system(size: 20)).foregroundStyle(.white.opacity(0.65))
+                navButton("Actualiser", icon: "arrow.clockwise", id: "reload", iconOnly: true) { library.reloadSelected() }
+                    .disabled(library.selectedSourceID == nil || library.isLoading)
+            }
+            if showingSearch {
+                HStack(spacing: 16) {
+                    Image(systemName: "magnifyingglass")
+                    TextField("Rechercher une chaîne", text: $library.search)
+                        .focused($searchFocus).onSubmit { searchFocus = false; focusFirstItem() }
+                    Button("Fermer") { showingSearch = false; searchFocus = false; focusFirstItem() }
+                }.font(.system(size: 25)).padding(18).fluxGlass(radius: 20)
+            }
+            ScrollViewReader { categoryReader in
+                ScrollView(.horizontal, showsIndicators: false) {
+                    LazyHStack(spacing: 18) {
+                        televisionCategory("Favoris", id: "favorites-quick", selected: library.selectedPresetID == FavoritePresets.defaultID(for: .live)) {
+                            if library.selectedPresetID == FavoritePresets.defaultID(for: .live) { showAllCatalog() }
+                            else { selectLivePreset(FavoritePresets.defaultID(for: .live)) }
+                        }
+                        televisionCategory("Toutes les chaînes", id: "group-all", selected: showingAllCatalog) { showAllCatalog() }
+                        ForEach(groups, id: \.self) { name in
+                            televisionCategory(name, id: "live-category-\(name)", selected: group == name) { selectLiveGroup(name) }
+                        }
+                        televisionCategory("Toutes les catégories", id: "categories", selected: false) {
+                            groupSearch = ""; showingGroups = true
+                        }
+                    }.padding(.horizontal, 6).padding(.vertical, 8)
+                }
+                .frame(height: 82)
+                .onChange(of: focusID) { _, id in
+                    if let id, televisionScopeIDs.contains(id) {
+                        withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) { categoryReader.scrollTo(id, anchor: .center) }
+                    }
+                }
+            }
+            liveNotices
+            liveChannelContent
+        }.padding(.horizontal, 36).padding(.bottom, 20)
+    }
+
+    private func televisionCategory(_ title: String, id: String, selected: Bool, action: @escaping () -> Void) -> some View {
+        let focused = focusID == id
+        return Button { pointerSelect(id); action() } label: {
+            Text(title).font(.system(size: 25, weight: focused || selected ? .semibold : .medium))
+                .lineLimit(1).frame(maxWidth: 330)
+                .padding(.horizontal, 24).padding(.vertical, 17)
+                .foregroundStyle(focused ? Color.black : .white)
+                .background(focused ? Color.white : Color.white.opacity(selected ? 0.19 : 0.045), in: RoundedRectangle(cornerRadius: 16))
+                .overlay(alignment: .bottom) {
+                    if selected { Capsule().fill(themeAccent).frame(height: 4).padding(.horizontal, 20) }
+                }
+        }.buttonStyle(FluxBareButtonStyle()).fluxFocus($systemFocus, id: id).id(id)
+            .scaleEffect(focused && !reduceMotion ? 1.035 : 1)
+            .animation(reduceMotion ? nil : .spring(response: 0.24, dampingFraction: 0.9), value: focused)
+            .accessibilityValue(selected ? "Sélectionné" : "")
+    }
+    #endif
+
+    private var liveDesktopCatalogue: some View {
         FluxGlassGroup {
             HStack(alignment: .top, spacing: 18) {
                 if liveSidebarVisible { liveSidebar }
@@ -870,9 +978,9 @@ struct ContentView: View {
             if catalogPageCount > 1 && browserHeight >= 700 { livePagination }
             ScrollView {
                 if catalogPageCount > 1 && browserHeight < 700 { livePagination }
-                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: max(1, columns)), spacing: 12) {
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: televisionLayout ? 24 : 12), count: max(1, columns)), spacing: televisionLayout ? 26 : 12) {
                     ForEach(displayedItems) { item in liveChannel(item) }
-                }.padding(3).padding(.bottom, 12)
+                }.padding(televisionLayout ? 10 : 3).padding(.bottom, 12)
             }
         }
     }
@@ -897,12 +1005,15 @@ struct ContentView: View {
             #endif
         } label: {
             LiveTVChannelLabel(item: item, number: (visibleSlice.index(of: item.id) ?? 0) + 1,
-                               favorite: library.isFavorite(item), highlighted: focusID == item.id || previewID == item.id,
-                               accent: themeAccent)
+                               favorite: library.isFavorite(item), highlighted: focusID == item.id,
+                               accent: themeAccent,
+                               preview: televisionLayout && focusID == item.id ? livePreview : nil,
+                               delay: livePreviewDelay, automaticPreview: automaticLivePreview)
         }.buttonStyle(.plain).fluxFocus($systemFocus, id: item.id).id(item.id)
-            .accessibilityLabel(item.name).accessibilityHint("Sélectionner pour afficher l’aperçu. Regarder ouvre la chaîne. Appui long pour les favoris.")
-            .zIndex(previewID == item.id ? 1 : 0)
-            .animation(reduceMotion ? nil : .spring(response: 0.28, dampingFraction: 0.84), value: focusID == item.id || previewID == item.id)
+            .accessibilityLabel(item.name).accessibilityHint(televisionLayout ? "L’aperçu démarre dans cette vignette. Valider pour regarder. Appui long pour les favoris." : "Sélectionner pour afficher l’aperçu. Regarder ouvre la chaîne. Appui long pour les favoris.")
+            .accessibilityIdentifier("live-channel-\(item.id)")
+            .zIndex(focusID == item.id ? 1 : 0)
+            .animation(reduceMotion ? nil : .spring(response: 0.28, dampingFraction: 0.84), value: focusID == item.id)
             .contextMenu {
                 Button("Regarder", systemImage: "play.fill") { selectCard(item) }
                 Button("Favoris et listes", systemImage: "star") { chooseFavorites(item) }
@@ -1048,22 +1159,20 @@ struct ContentView: View {
     }
 
     private func card(_ item: IPTVItem) -> some View {
-        let focused = focusID == item.id || previewID == item.id
+        let focused = focusID == item.id
         let favorite = library.isFavorite(item)
         return ZStack(alignment: .topTrailing) {
             Button { selectCard(item) } label: {
                 VStack(alignment: .leading, spacing: 8) {
                     CatalogSleeveArtwork(item: item)
                     .aspectRatio(2.0/3.0, contentMode: .fit)
-                    .background { if item.kind != .live { GeometryReader { proxy in Color.clear.preference(key:CaseFrameKey.self,value:[item.id:proxy.frame(in:.named("club-pane"))]) } } }
-                    .opacity(heldItem?.id == item.id && caseExpanded ? 0.18 : 1)
                     .rotation3DEffect(.degrees(focused && !reduceMotion ? -4 : 0),axis:(x:0,y:1,z:0),perspective:0.6)
                     .scaleEffect(focused && !reduceMotion ? 1.025 : 1)
                     .offset(y: focused && !reduceMotion ? -3 : 0)
                     Text(item.name).font(.callout.weight(.semibold)).lineLimit(2, reservesSpace: true).frame(maxWidth: .infinity, alignment: .leading)
                     HStack(spacing: 5) {
                         Text(CasePackageFormat.resolve(year: item.details.year).title)
-                            .font(.system(size: 9, weight: .semibold, design: .rounded))
+                            .font(.system(size: televisionLayout ? 18 : 9, weight: .semibold, design: .rounded))
                             .padding(.horizontal, 5).padding(.vertical, 2)
                             .background(.white.opacity(0.09), in: RoundedRectangle(cornerRadius: 3))
                         Text(item.group).font(.caption).lineLimit(1)
@@ -1113,7 +1222,7 @@ struct ContentView: View {
                 navButton("Retour aux séries", icon: "chevron.backward", id: "series-back") { back() }
                 VStack(alignment: .leading, spacing: 4) {
                     Text(series?.name ?? "Série").font(.title2.bold()).lineLimit(2)
-                    Text(episodesLoading ? "Chargement des saisons…" : "\(seasons.count) saisons · Choisissez un boîtier")
+                    Text(episodesLoading ? "Chargement des saisons…" : "\(seasons.count) saisons · Choisissez une saison")
                         .font(.callout).foregroundStyle(.secondary)
                 }.frame(maxWidth: .infinity, alignment: .leading)
                 if let series {
@@ -1166,7 +1275,7 @@ struct ContentView: View {
                     Button { revealPlayerControls(focus: true) } label: {
                         Color.clear.contentShape(Rectangle())
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(FluxBareButtonStyle())
                     .focusEffectDisabled()
                     .focused($systemFocus, equals: "cinema-controls")
                     .id("cinema-controls")
@@ -1460,16 +1569,22 @@ struct ContentView: View {
     private func updateColumns(_ width: CGFloat) {
         let usable = width - (showRemote && width >= 800 ? 215 : 0)
         compactChrome = usable < 900
+        #if os(tvOS)
+        liveSidebarVisible = false
+        #else
         liveSidebarVisible = library.contentKind == .live && usable >= 920
+        #endif
         if library.contentKind == .live {
-            let channelWidth = usable - 48 - (liveSidebarVisible ? liveSidebarWidth + 18 : 0)
+            let channelWidth = usable - (televisionLayout ? 92 : 48) - (liveSidebarVisible ? liveSidebarWidth + 18 : 0)
             #if os(tvOS)
-            let minimumTile: CGFloat = 410
+            let minimumTile: CGFloat = 360
+            let gap: CGFloat = 24
             #else
             let minimumTile: CGFloat = 274
+            let gap: CGFloat = 12
             #endif
-            let estimated = (channelWidth + 12) / (minimumTile + 12)
-            columns = estimated.isFinite ? Int(max(1, min(6, estimated))) : 3
+            let estimated = (channelWidth + gap) / (minimumTile + gap)
+            columns = estimated.isFinite ? Int(max(1, min(televisionLayout ? 4 : 6, estimated))) : 3
         } else {
             let estimated = (usable - 32) / (cardWidth + 4)
             columns = estimated.isFinite ? Int(max(2, min(10, estimated))) : 5
@@ -1496,7 +1611,7 @@ struct ContentView: View {
         cancelEntrance()
         if page != .catalogue { home() } else { dismissCaseImmediately() }
         liveGroupSearchFocus = false
-        showingSearch = library.contentKind != .live; searchFocus = true
+        showingSearch = televisionLayout || library.contentKind != .live; searchFocus = true
     }
     private func openItem(_ item: IPTVItem) {
         library.selectedItemID = item.id
@@ -1641,13 +1756,14 @@ struct ContentView: View {
         #endif
     }
     private var focusRows: [[String]] {
+        if library.sources.isEmpty { return [["add-source"]] }
         var rows: [[String]] = []
         if page != .player && !cinema {
             if compactNavigation {
                 rows.append(["navigation-more"])
             } else {
             #if os(tvOS)
-                rows.append(["sources"] + (library.contentKind != .live || (browserHeight < 580 && !liveSidebarVisible) ? ["lists"] : []) + ["settings"])
+                rows.append(["sources", "lists", "settings"])
             #else
                 rows.append(["sources", "remote"] + (library.contentKind != .live || (browserHeight < 580 && !liveSidebarVisible) ? ["lists"] : []) + ["settings"])
             #endif
@@ -1659,14 +1775,18 @@ struct ContentView: View {
             if library.selectedSourceID != nil && !library.isLoading { rows.append(["reload"]) }
             if library.credentialIssue != nil { rows.append(["reconnect-source"]) }
             if library.contentKind == .live {
+                #if os(tvOS)
+                rows.append(televisionScopeIDs)
+                #else
                 if !liveSidebarVisible { rows.append(browserHeight < 580 ? ["categories"] : ["categories", "favorites-quick", "lists"]) }
+                #endif
                 if visible.isEmpty && !library.sources.isEmpty && library.credentialIssue == nil { rows.append(["live-reset"]) }
             } else {
                 rows.append(["group-all", "categories"] + (library.contentKind == .movie ? ["continue-only"] : []) + (library.sources.isEmpty ? [] : ["favorites-quick"]))
             }
             if library.sources.isEmpty { rows.append(["add-source"]) }
             else if !visible.isEmpty {
-                if library.contentKind == .live, let item = previewItem, visibleSlice.index(of: item.id) != nil {
+                if !televisionLayout, library.contentKind == .live, let item = previewItem, visibleSlice.index(of: item.id) != nil {
                     rows.append(["live-watch"] + (!compactNavigation && browserHeight >= 580 ? ["live-favorite"] : []) + (livePreview.player == nil ? [] : ["live-preview-mute"]))
                 }
                 if catalogPageCount>1 {rows.append((catalogPage>0 ? ["page-prev"] : []) + (catalogPage+1<catalogPageCount ? ["page-next"] : []))}
@@ -1701,7 +1821,7 @@ struct ContentView: View {
         remoteNavigationActive = true
         #endif
         if heldItem != nil {
-            caseRemoteEvent=CaseRemoteEvent(action:action)
+            caseRemoteEvent=MediaDetailRemoteEvent(action:action)
             return
         }
         if page == .player && !playerControlsVisible {
@@ -1809,7 +1929,7 @@ struct ContentView: View {
 private extension View {
     @ViewBuilder func fluxFocus(_ binding: FocusState<String?>.Binding, id: String) -> some View {
         #if os(tvOS)
-        self.focused(binding, equals: id)
+        self.buttonStyle(FluxBareButtonStyle()).focused(binding, equals: id).focusEffectDisabled()
         #else
         self.focusable().focused(binding, equals: id)
         #endif

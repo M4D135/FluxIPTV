@@ -19,7 +19,6 @@ struct PlaybackSettingsView: View {
     @AppStorage(FluxAppearance.glassKey) private var glass = true
     @AppStorage(FluxAppearance.artworkKey) private var artwork = true
     @AppStorage(FluxAppearance.densityKey) private var density = "cinema"
-    @AppStorage("fluxiptv.appearance.caseQuality") private var caseQuality: CaseRenderQuality = .balanced
     @AppStorage(TrailerPreviewDelay.storageKey) private var trailerPreviewDelay: TrailerPreviewDelay = .five
     @AppStorage(TrailerPreviewDelay.automaticKey) private var automaticTrailerPreview = true
     @AppStorage(LiveTVPreviewDelay.storageKey) private var livePreviewDelay: LiveTVPreviewDelay = .three
@@ -35,7 +34,7 @@ struct PlaybackSettingsView: View {
         GeometryReader { geo in
             let wide = geo.size.width >= 740
             VStack(alignment:.leading,spacing:14) {
-                HStack { VStack(alignment:.leading,spacing:4) { Text("Réglages").font(.largeTitle.bold()); Text("FLUX 0.8.7  ·  Centre de contrôle").font(.caption).foregroundStyle(.secondary) }; Spacer(); Button("Fermer",action:close).buttonStyle(.bordered) }
+                HStack { VStack(alignment:.leading,spacing:4) { Text("Réglages").font(.largeTitle.bold()); Text("FLUX 0.8.8  ·  Centre de contrôle").font(.caption).foregroundStyle(.secondary) }; Spacer(); Button("Fermer",action:close).buttonStyle(.bordered) }
                 if wide {
                     HStack(alignment:.top,spacing:22) {
                         VStack(alignment:.leading,spacing:8) { ForEach(Page.allCases) { destination in pageButton(destination) }; Spacer(minLength:0) }.frame(width:230)
@@ -146,26 +145,26 @@ struct PlaybackSettingsView: View {
                 Text("Un seul aperçu à la fois, muet au départ. Le bouton Son active son audio ; Regarder ouvre la chaîne. Changer de chaîne, de catégorie ou d’espace arrête l’aperçu précédent.")
                     .font(.caption).foregroundStyle(.secondary)
             }
-            section("Verso des pochettes","Un cadre montre une image du film ou du fournisseur, puis la bande-annonce disponible.") {
+            section("Bandes-annonces","La fiche plein écran présente le synopsis et une grande vidéo intégrée.") {
                 Toggle("Bande-annonce automatique dans le cadre",isOn:$automaticTrailerPreview)
                 Picker("Délai avant la bande-annonce",selection:$trailerPreviewDelay) {
                     ForEach(TrailerPreviewDelay.allCases) {delay in Text(delay.title).tag(delay)}
                 }.disabled(!automaticTrailerPreview)
-                Text("L’aperçu automatique est muet. Sélectionnez le cadre pour ouvrir la bande-annonce en plein écran. Retour ramène au boîtier.").font(.caption).foregroundStyle(.secondary)
+                Text("L’aperçu automatique est muet. Bande-annonce agrandit la vidéo ; Retour retrouve la fiche du titre.").font(.caption).foregroundStyle(.secondary)
                 #if os(tvOS)
-                Text("Les flux vidéo directs se lisent dans le cadre. Les bandes-annonces YouTube peuvent s’ouvrir sur iPhone avec le QR code.").font(.caption).foregroundStyle(.secondary)
+                Text("Les bandes-annonces disponibles se lisent dans cette application. Une vidéo refusée ou indisponible est signalée dans la fiche.").font(.caption).foregroundStyle(.secondary)
                 #else
-                Text("Les bandes-annonces YouTube et les flux vidéo directs se lisent dans l’application. Sur une petite pochette, sélectionnez Agrandir. Une vidéo dont l’intégration est refusée peut s’ouvrir sur YouTube.").font(.caption).foregroundStyle(.secondary)
+                Text("Les bandes-annonces YouTube et les flux vidéo directs se lisent dans l’application. Sélectionnez Plein écran pour agrandir la vidéo.").font(.caption).foregroundStyle(.secondary)
                 #endif
             }
-            section("Présentation et commandes","La disposition des cartes et des pochettes s’applique aux films et aux séries.") {
+            section("Présentation et commandes","Les films et les séries partagent une fiche lisible, avec lecture et favoris.") {
                 ForEach(ClubInterfaceProfile.allCases) { concept in
                     Button {clubProfile=concept} label: {
                         HStack(alignment:.center,spacing:14) {
                             Image(systemName:concept.symbol).font(.title2).frame(width:40)
                             VStack(alignment:.leading,spacing:4) {
                                 Text(concept == .neoVideoClub ? "Néo rétro" : "Épurée").font(.headline)
-                                Text(concept == .neoVideoClub ? "Cadres marqués, grandes pochettes et détails rétro." : "Cartes aérées et commandes discrètes.").font(.caption).foregroundStyle(.secondary)
+                                Text(concept == .neoVideoClub ? "Grandes jaquettes rapprochées et décor rétro." : "Cartes aérées et commandes discrètes.").font(.caption).foregroundStyle(.secondary)
                             }
                             Spacer(minLength:8)
                             if clubProfile == concept {Image(systemName:"checkmark.circle.fill").foregroundStyle(.cyan)}
@@ -173,18 +172,21 @@ struct PlaybackSettingsView: View {
                             .background(.white.opacity(clubProfile == concept ? 0.16:0.04),in:RoundedRectangle(cornerRadius:12))
                     }.buttonStyle(.bordered)
                 }
+                #if os(tvOS)
+                Toggle("Transparence légère",isOn:$glass)
+                Text("Décors conservés, surfaces sombres et animations fluides. Les effets de flou sont allégés sur Apple TV.").font(.caption).foregroundStyle(.secondary)
+                #else
                 Toggle("Liquid Glass",isOn:$glass)
                 Text(FluxAppearance.nativeAvailable ? "Effet Apple natif disponible." : "Matériau translucide système sur cette version d’OS.").font(.caption).foregroundStyle(.secondary)
+                #endif
                 Toggle("Afficher les jaquettes",isOn:$artwork)
-                Picker("Matières et pochettes 3D",selection:$caseQuality) {ForEach(CaseRenderQuality.allCases){Text($0.title).tag($0)}}
-                Text("\(caseQuality.sleeveWidth) × \(caseQuality.sleeveHeight) par face · jusqu’à \(caseQuality.fps) images/s pendant la manipulation · aucun rendu continu à l’arrêt.").font(.caption).foregroundStyle(.secondary)
                 Picker("Taille des cartes",selection:$density) {Text("Grand écran").tag("cinema");Text("Compacte").tag("compact")}
                 #if !os(tvOS)
                 Picker("Télécommande virtuelle",selection:$remoteAppearance) {Text("Noire tactile").tag(RemoteAppearance.black);Text("Aluminium").tag(RemoteAppearance.silver)}
                 #endif
                 Button("Apparence par défaut") {
                     glass=true;artwork=true;density="cinema"
-                    clubProfile = .neoVideoClub;caseQuality = .balanced;stage = .orbit
+                    clubProfile = .neoVideoClub;stage = .orbit
                     cinemaTheme = .neo90;seriesTheme = .neo90;tvTheme = .neo90
                     trailerPreviewDelay = .five;automaticTrailerPreview = true
                     livePreviewDelay = .three;automaticLivePreview = true

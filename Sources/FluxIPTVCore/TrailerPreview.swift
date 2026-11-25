@@ -8,8 +8,9 @@ public enum TrailerPreviewDelay: Int, CaseIterable, Identifiable, Codable, Senda
     public var title: String { rawValue == 1 ? "1 seconde" : "\(rawValue) secondes" }
 }
 
-/// A validated public YouTube identifier. The embedded player consumes this ID;
-/// the watch page is never handed to AVPlayer or scraped for media URLs.
+/// A validated public YouTube identifier. Desktop/mobile embeds consume this
+/// ID; Apple TV resolves a supported public stream locally before AVPlayer.
+/// An arbitrary watch page is never handed directly to the native decoder.
 public struct YouTubeTrailer: Equatable, Sendable {
     public let videoID: String
 
@@ -57,8 +58,8 @@ public struct YouTubeTrailer: Equatable, Sendable {
     }
 }
 
-/// Provider links designate a native stream, an official YouTube embed, or an
-/// unsupported web page that can be opened explicitly by the user.
+/// Provider links designate a native stream, a validated YouTube video, or an
+/// unsupported web page. The detail view reports unsupported pages in place.
 public enum TrailerPreviewRoute: Equatable, Sendable {
     case unavailable
     case native(URL)

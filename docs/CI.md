@@ -1,4 +1,4 @@
-# GitHub Actions — FLUX IPTV 0.8.7
+# GitHub Actions — FLUX IPTV 0.8.8
 
 Le workflow [Swift / Apple platforms](https://github.com/M4D135/FluxIPTV/actions/workflows/ci.yml) vérifie le commit indiqué en tête de chaque exécution. Il fonctionne sur `main`, sur les branches `work/three-rooms-*`, sur les pull requests et par lancement manuel.
 
@@ -10,7 +10,7 @@ Le workflow [Swift / Apple platforms](https://github.com/M4D135/FluxIPTV/actions
 | macOS | Compilation Xcode de `FluxIPTV`, signature désactivée | Journal, résultat `.xcresult`, application compressée si la compilation réussit |
 | iOS | Compilation Xcode de `FluxIPTViOS` pour simulateur | Journal, résultat `.xcresult`, application de simulateur compressée si la compilation réussit |
 | tvOS | Compilation de `FluxIPTV-AppleTV.xcodeproj`, schéma `FluxIPTVTV`, pour simulateur | Journal, résultat `.xcresult`, application de simulateur compressée si la compilation réussit |
-| tvOS pour appareil | Compilation ARM64 du même projet Apple TV, signature désactivée | Journal, résultat `.xcresult`, application non signée |
+| tvOS pour appareil | Compilation ARM64 Release optimisée du même projet Apple TV, signature désactivée | Journal, résultat `.xcresult`, application non signée |
 | Pack des sources | Archive de tous les fichiers suivis par Git dans le commit exécuté | ZIP complet, SHA-256 et identifiant du commit |
 
 Les quatre compilations Apple sont indépendantes : l’échec de l’une n’annule pas les autres. Le job du pack des sources est lui aussi indépendant. Un pack disponible ne signifie donc pas que tous les tests ou toutes les compilations sont réussis.
@@ -19,9 +19,13 @@ Les jobs Apple utilisent l’image `macos-26` et Xcode **26.3** explicitement s�
 
 Le job macOS exécute aussi `scripts/test-youtube-session.sh` : une vraie fenêtre AppKit et une vraie WKWebView chargent le document du lecteur avec une API IFrame locale contrôlée. Le test couvre les états, la sourdine, le démarrage plein écran avec son, les commandes, les erreurs, la conservation du lecteur entre deux hôtes SwiftUI et sa libération. Il ne contacte pas YouTube et ne prouve pas la lecture d’une vidéo distante.
 
-Deux autres vérifications natives s’exécutent sur macOS : `scripts/test-live-preview.sh` crée une vidéo locale avec AVFoundation et vérifie délai, sélection stable, annulation, repli d’URL, sourdine et nettoyage de l’aperçu TV. `scripts/test-case-scene.sh` utilise le vrai renderer SceneKit pour vérifier le recto/verso, les UV du cadre vidéo, la caméra fixe, la profondeur du rayon et le couvercle d’une saison ouverte pendant une animation. Les captures sont enregistrées dans les diagnostics du job. Elles ne constituent pas un test de flux distant ni de télécommande physique.
+`scripts/test-live-preview.sh` crée une vraie vidéo locale avec AVFoundation et vérifie délai, sélection stable, annulation, repli d’URL, sourdine et nettoyage de l’aperçu TV. `scripts/test-native-youtube.sh --live` exécute les fixtures du paquet local, compile le résolveur utilisé sur tvOS et sonde deux vidéos publiques avec AVURLAsset. Un refus réseau/distant est signalé comme indisponible ; il ne devient pas une preuve de lecture. Le probe distingue résolution, readiness et lecture effective.
 
-Le catalogue complet est aussi capturé par `scripts/test-catalog-ui.sh` dans une fenêtre SwiftUI native, avec des chaînes et jaquettes locales. Deux captures TV/rayon permettent de vérifier visuellement les espacements, les catégories et l’en-tête. Le test `scripts/test-keychain-interaction.sh` compile le pont de compatibilité avec les avertissements traités comme erreurs et vérifie le réglage silencieux, les appels imbriqués et la restauration après succès ou erreur, sans lire ni écrire de secret. Les cinq vérifications natives restent indépendantes après une compilation Mac réussie : l’échec d’un test ne masque pas les diagnostics des suivants, mais empêche la livraison de l’application comme validée.
+`scripts/test-catalog-ui.sh` capture le catalogue Mac et les fiches film/épisodes dans une vraie fenêtre SwiftUI avec jaquettes locales. `scripts/test-tvos-catalog-ui.sh` construit une copie isolée de l’app avec un catalogue local, crée son propre simulateur Apple TV et capture le direct, l’accueil sans liste, la fiche film et la saison 12 / épisode 15. Le test attend un focus natif stable, vérifie ses bornes et l’absence de SCNView. Les PNG et rapports sont conservés dans les diagnostics tvOS, y compris en cas d’échec. Ce test ne contient ni flux IPTV ni lecture YouTube et n’injecte pas une fausse navigation de télécommande.
+
+`scripts/test-keychain-interaction.sh` vérifie le pont de compatibilité Mac sans accéder aux identifiants. `scripts/check-keychain-platform.sh` type-vérifie le code réel avec les SDK iOS/tvOS et les avertissements traités comme erreurs. tvOS utilise le petit pont C vers la constante publique de refus d’interaction ; iOS utilise LAContext. La dépréciation est isolée à la fonction de compatibilité, jamais masquée sur tout le projet.
+
+Toutes les vérifications natives restent des étapes séparées après compilation. Leur échec bloque la livraison du job. Aucun score de fluidité sur Apple TV physique n’est déduit d’une capture ou d’un build.
 
 Le workflow dispose uniquement de la permission GitHub `contents: read`. Il ne publie pas de release, ne modifie pas le dépôt et n’emploie aucun certificat de signature Apple. Une nouvelle exécution sur la même branche annule celle qui serait encore en cours.
 

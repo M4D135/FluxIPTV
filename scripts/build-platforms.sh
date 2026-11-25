@@ -17,11 +17,12 @@ mkdir -p build/logs build/results
 build_id="$(date -u +%Y%m%dT%H%M%SZ)-$$"
 for target in macOS iOS tvOS tvOS-device; do
   project=FluxIPTV.xcodeproj
+  configuration=Debug
   case "$target" in
     macOS) scheme=FluxIPTV; destination='platform=macOS';;
     iOS) scheme=FluxIPTViOS; destination='generic/platform=iOS Simulator';;
     tvOS) project=FluxIPTV-AppleTV.xcodeproj; scheme=FluxIPTVTV; destination='generic/platform=tvOS Simulator';;
-    tvOS-device) project=FluxIPTV-AppleTV.xcodeproj; scheme=FluxIPTVTV; destination='generic/platform=tvOS';;
+    tvOS-device) project=FluxIPTV-AppleTV.xcodeproj; scheme=FluxIPTVTV; destination='generic/platform=tvOS'; configuration=Release;;
   esac
   if [[ $# -gt 0 && "$1" != "$target" ]]; then continue; fi
   log="$PWD/build/logs/$target-$build_id.log"
@@ -29,7 +30,7 @@ for target in macOS iOS tvOS tvOS-device; do
   if xcodebuild \
     -project "$project" \
     -scheme "$scheme" \
-    -configuration Debug \
+    -configuration "$configuration" \
     -destination "$destination" \
     -derivedDataPath "$PWD/build/$target" \
     -resultBundlePath "$result" \

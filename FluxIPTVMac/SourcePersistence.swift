@@ -1,5 +1,8 @@
 import Foundation
 import Security
+#if os(iOS)
+import LocalAuthentication
+#endif
 
 struct IPTVSource: Codable, Identifiable, Hashable, Sendable {
     let id: UUID
@@ -48,12 +51,22 @@ struct IPTVSecret: Codable, Sendable {
     private static func query(_ sourceID: UUID, interactive: Bool) -> [String: Any] {
         let base: [String: Any] = [kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service, kSecAttrAccount as String: sourceID.uuidString]
-        #if os(macOS)
-        return base
-        #else
+        #if os(tvOS)
         var q = base
-        if !interactive { q[kSecUseAuthenticationUI as String] = kSecUseAuthenticationUIFail }
+        // LAContext is unavailable on tvOS. Keep the canonical deny-UI value
+        // behind the narrow compatibility bridge rather than allowing prompts.
+        if !interactive { q[kSecUseAuthenticationUI as String] = FluxTVKeychainAuthenticationUIFail() }
         return q
+        #elseif os(iOS)
+        var q = base
+        if !interactive {
+            let context = LAContext()
+            context.interactionNotAllowed = true
+            q[kSecUseAuthenticationContext as String] = context
+        }
+        return q
+        #else
+        return base
         #endif
     }
 

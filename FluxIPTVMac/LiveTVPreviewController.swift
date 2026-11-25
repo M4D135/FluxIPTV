@@ -71,6 +71,9 @@ import Foundation
         let item = AVPlayerItem(url: request.urls[index])
         item.preferredPeakBitRate = 2_000_000
         item.preferredForwardBufferDuration = 2
+        // A tile does not need a 4K adaptive rendition. This is an AVPlayer
+        // preference, not a transcode; the main player keeps its full quality.
+        item.preferredMaximumResolution = CGSize(width: 1280, height: 720)
         let candidate = AVPlayer()
         candidate.isMuted = isMuted
         candidate.preventsDisplaySleepDuringVideoPlayback = false

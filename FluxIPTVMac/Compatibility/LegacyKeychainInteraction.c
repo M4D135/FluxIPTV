@@ -1,6 +1,7 @@
 #include "LegacyKeychainInteraction.h"
 #include <Security/Security.h>
 
+#if TARGET_OS_OSX
 // Existing credentials use the file-based macOS keychain. Authentication-UI
 // options for the data-protection keychain do not replace this process setting
 // for legacy ACLs (Apple TN3137). Keep these two compatibility calls isolated;
@@ -21,3 +22,13 @@ int32_t FluxLegacyKeychainSetInteractionAllowed(bool allowed) {
 }
 
 #pragma clang diagnostic pop
+#elif TARGET_OS_TV
+// The recommended LAContext replacement is not available on tvOS. Limit the
+// deprecation exemption to the still-required deny-UI constant, not the target.
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+CFStringRef FluxTVKeychainAuthenticationUIFail(void) {
+    return kSecUseAuthenticationUIFail;
+}
+#pragma clang diagnostic pop
+#endif

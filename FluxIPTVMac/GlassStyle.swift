@@ -1,5 +1,14 @@
 import SwiftUI
 
+/// tvOS PlainButtonStyle can add a focus platter. Controls that draw their own
+/// focus treatment use this explicit label-only style, including the invisible
+/// Select target above a playing video.
+struct FluxBareButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label.opacity(configuration.isPressed ? 0.82 : 1)
+    }
+}
+
 /// System glass is reserved for navigation and transient playback controls.
 enum FluxAppearance {
     static let glassKey = "fluxiptv.appearance.glass.v2"
@@ -8,10 +17,15 @@ enum FluxAppearance {
     static let intensityKey = "fluxiptv.appearance.wallpaperIntensity"
     static let densityKey = "fluxiptv.appearance.density"
     static var nativeAvailable: Bool {
+        #if os(tvOS)
+        // Television prioritises a predictable, inexpensive dark surface.
+        return false
+        #else
         #if compiler(>=6.2)
         if #available(macOS 26.0, iOS 26.0, tvOS 26.0, *) { return true }
         #endif
         return false
+        #endif
     }
 }
 
@@ -21,6 +35,9 @@ private struct FluxGlassChrome: ViewModifier {
     let radius: CGFloat
 
     @ViewBuilder func body(content: Content) -> some View {
+        #if os(tvOS)
+        content.fluxTelevisionGlass(radius: radius, translucent: richGlass && !reduceTransparency)
+        #else
         if richGlass && !reduceTransparency {
             #if compiler(>=6.2)
             if #available(macOS 26.0, iOS 26.0, tvOS 26.0, *) {
@@ -30,6 +47,7 @@ private struct FluxGlassChrome: ViewModifier {
             content.fluxMaterial(radius: radius)
             #endif
         } else { content.fluxFrosted(radius: radius) }
+        #endif
     }
 }
 
@@ -42,6 +60,9 @@ private struct FluxMediaGlass: ViewModifier {
     let radius: CGFloat
 
     @ViewBuilder func body(content: Content) -> some View {
+        #if os(tvOS)
+        content.fluxTelevisionGlass(radius: radius, translucent: richGlass && !reduceTransparency)
+        #else
         let shape = RoundedRectangle(cornerRadius: radius, style: .continuous)
         if richGlass && !reduceTransparency {
             #if compiler(>=6.2)
@@ -60,6 +81,7 @@ private struct FluxMediaGlass: ViewModifier {
                 .overlay(shape.strokeBorder(.white.opacity(0.18), lineWidth: 0.7).allowsHitTesting(false))
             #endif
         } else { content.fluxFrosted(radius: radius) }
+        #endif
     }
 }
 
@@ -73,6 +95,10 @@ private struct FluxNavigationGlass: ViewModifier {
     let radius: CGFloat
 
     @ViewBuilder func body(content: Content) -> some View {
+        #if os(tvOS)
+        content.fluxTelevisionGlass(radius: radius, tint: selected ? tint : .clear,
+                                   translucent: richGlass && !reduceTransparency)
+        #else
         let shape = RoundedRectangle(cornerRadius: radius, style: .continuous)
         if richGlass && !reduceTransparency {
             #if compiler(>=6.2)
@@ -88,6 +114,7 @@ private struct FluxNavigationGlass: ViewModifier {
             content.fluxMaterial(radius: radius)
             #endif
         } else { content.fluxFrosted(radius: radius) }
+        #endif
     }
 }
 
@@ -97,6 +124,9 @@ struct FluxGlassGroup<Content: View>: View {
     private let content: Content
     init(@ViewBuilder content: () -> Content) { self.content = content() }
     @ViewBuilder var body: some View {
+        #if os(tvOS)
+        content
+        #else
         #if compiler(>=6.2)
         if #available(macOS 26.0, iOS 26.0, tvOS 26.0, *) {
             GlassEffectContainer(spacing: 12) { content }
@@ -104,10 +134,22 @@ struct FluxGlassGroup<Content: View>: View {
         #else
         content
         #endif
+        #endif
     }
 }
 
 extension View {
+    /// No backdrop sampling or blur passes on Apple TV. A static dark tint and
+    /// a thin highlight retain depth while focus/press/transition animations
+    /// remain independent of the surface treatment.
+    func fluxTelevisionGlass(radius: CGFloat, tint: Color = .clear, translucent: Bool = true) -> some View {
+        let shape = RoundedRectangle(cornerRadius: radius, style: .continuous)
+        return background(Color(red: 0.07, green: 0.085, blue: 0.12).opacity(translucent ? 0.9 : 1), in: shape)
+            .background(tint.opacity(0.18), in: shape)
+            .overlay(shape.strokeBorder(LinearGradient(colors: [.white.opacity(0.32), .white.opacity(0.08)],
+                                                        startPoint: .topLeading, endPoint: .bottomTrailing), lineWidth: 1)
+                .allowsHitTesting(false))
+    }
     func fluxNavigationGlass(selected: Bool = false, tint: Color = .cyan, radius: CGFloat = 22) -> some View {
         modifier(FluxNavigationGlass(selected: selected, tint: tint, radius: radius))
     }
@@ -130,9 +172,13 @@ extension View {
 
     /// Older OS: real system translucency with a restrained rim, not faux blur.
     func fluxMaterial(radius: CGFloat = 20) -> some View {
+        #if os(tvOS)
+        return fluxTelevisionGlass(radius: radius)
+        #else
         let shape = RoundedRectangle(cornerRadius: radius, style: .continuous)
         return background(.regularMaterial, in: shape)
             .overlay(shape.strokeBorder(.white.opacity(0.17), lineWidth: 1).allowsHitTesting(false))
+        #endif
     }
 
     /// Opaque treatment when transparency is disabled or for diagnostic content.

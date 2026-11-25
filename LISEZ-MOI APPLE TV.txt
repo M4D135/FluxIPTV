@@ -1,4 +1,4 @@
-FLUX IPTV 0.8.7 — PROJET APPLE TV
+FLUX IPTV 0.8.8 — PROJET APPLE TV
 
 1. Décompressez tout le dossier, en conservant Sources et FluxIPTVMac à côté
    des fichiers .xcodeproj. Les sources et les 18 décors 4K sont partagés.
@@ -7,6 +7,7 @@ FLUX IPTV 0.8.7 — PROJET APPLE TV
 3. Le seul schéma de ce projet est « FluxIPTVTV ».
 4. Dans la destination, choisissez un simulateur Apple TV 4K ou votre
    Apple TV jumelée, puis cliquez sur Exécuter (triangle / ⌘R).
+   Le schéma Apple TV lance Release, optimisé et sans débogueur, par défaut.
 
 LE MESSAGE « MISMATCHED PLATFORM »
 
@@ -28,21 +29,36 @@ sur un appareil ; ils ne sont pas inclus dans cette archive.
 PRÉREQUIS ET CONTENU
 
 Xcode 26 ou plus récent, avec la prise en charge de tvOS installée.
-Cible minimale : tvOS 17. Liquid Glass est utilisé sur tvOS 26 et plus récent ;
-les systèmes précédents conservent une matière translucide compatible.
-La dépendance VLCKit est fixée à une révision précise et Xcode la résout
-au premier lancement. Un accès Internet est nécessaire pour cette étape.
+Cible minimale : tvOS 17. Apple TV HD et Apple TV 4K, dont la 4K 3e génération.
+L’ancienne Apple TV 3e génération (sans tvOS/App Store) ne peut pas installer
+ce projet. Voir https://support.apple.com/fr-fr/102348.
+Les effets de matière tvOS sont sombres et légers ; les animations restent.
+La dépendance VLCKit est fixée à une révision précise ; Xcode la résout au
+premier lancement. Le sous-ensemble YouTubeKit est fourni dans Vendor/.
+Conservez tout ce dossier avec le projet, sans déplacer le .xcodeproj seul.
 
-La télécommande pilote les rayons avec les directions et Valider. Choisir
-une série ouvre son rayon de saisons ; choisir une saison ouvre ses épisodes.
-Sur un boîtier tenu : gauche/droite tournent ; double appui change le titre ;
-haut rejoint l'aperçu ; Valider l'agrandit ; Lecture lit le titre sélectionné.
-Le Dock inférieur garde toutes ses actions visibles. Retour/Menu remonte
-d'un niveau : saison ouverte, rayon de saisons, catalogue des séries.
+Au démarrage sans source, « Charger une liste » permet de saisir un compte
+Xtream Codes ou une URL M3U. Les sources déjà enregistrées sont conservées.
 
-Les vidéos directes sont intégrées sur tvOS. Les bandes-annonces YouTube
-utilisent une ouverture explicite sur iPhone par QR code : tvOS n'offre pas
-le lecteur WebView employé sur Mac et iPhone.
+NAVIGATION
+
+TV / Films / Séries / Recherche : grandes icônes dans la barre supérieure.
+TV : catégories horizontales, grandes vignettes et aperçu dans la sélection.
+Rester sur la chaîne lance un aperçu muet après 3 s par défaut (1/3/5/10 s
+réglables séparément des films/séries). Valider ouvre la chaîne.
+Film : Valider ouvre une fiche plein écran avec synopsis et bande-annonce.
+Série : Valider ouvre les saisons ; choisir une saison affiche les épisodes.
+Les directions déplacent le focus ; Valider active le bouton visible.
+Lecture/Pause lit le film ou l’épisode choisi depuis sa fiche.
+Retour/Menu remonte d’un niveau et retrouve la sélection.
+Appui long sur une carte ouvre les favoris. Les décors restent visibles dans
+le catalogue ; la fiche ne rend aucune scène de boîtes ni voisin.
+
+Les bandes-annonces compatibles se lisent directement dans l’app, y compris
+les formats YouTube publics pris en charge par le résolveur local. Aucun QR
+code ni iPhone requis. Une vidéo qui exige une connexion, une vérification
+d’âge ou une protection est refusée avec un message. La disponibilité réelle
+des bandes-annonces dépend aussi de YouTube et du réseau.
 
 Les archives CI « tvOS-simulator » sont destinées au simulateur uniquement.
 Le build « tvOS-device-unsigned » vérifie la compilation pour Apple TV ARM64,

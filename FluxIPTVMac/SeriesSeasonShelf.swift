@@ -49,18 +49,19 @@ struct SeriesSeasonShelf: View {
             .padding(.horizontal, 3).padding(.bottom, 9)
             .background(.white.opacity(selected ? 0.12 : 0.025), in: RoundedRectangle(cornerRadius: 8))
             .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(selected ? .white.opacity(0.9) : .white.opacity(0.08), lineWidth: selected ? 2 : 0.7))
+            #if os(tvOS)
+            // Only the focused sleeve casts a small shadow. All existing lift
+            // and spring animations remain attached to this individual item.
+            .shadow(color: .black.opacity(selected ? 0.30 : 0), radius: selected ? 6 : 0, y: selected ? 4 : 0)
+            #else
             .shadow(color: .black.opacity(selected ? 0.42 : 0.18), radius: selected ? 14 : 3, y: selected ? 9 : 2)
+            #endif
             .scaleEffect(!reduceMotion && selected ? 1.035 : 1, anchor: .bottom)
             .offset(y: !reduceMotion && selected ? -7 : 0)
             .animation(reduceMotion ? nil : .spring(response: 0.28, dampingFraction: 0.85), value: selected)
-        }.buttonStyle(.plain)
+        }.buttonStyle(FluxBareButtonStyle())
          .id(id)
          .zIndex(selected ? 1 : 0)
-         .background {
-             GeometryReader { geometry in
-                 Color.clear.preference(key: CaseFrameKey.self, value: [id: geometry.frame(in: .named("club-pane"))])
-             }
-         }
          .accessibilityLabel("\(title), \(season.episodes.count) épisodes")
          .accessibilityHint("Ouvrir cette saison pour choisir un épisode.")
         #if os(tvOS)

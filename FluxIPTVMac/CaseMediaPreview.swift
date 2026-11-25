@@ -3,8 +3,9 @@ import Combine
 import CoreGraphics
 import Foundation
 
-/// One trailer session for the visible case back and its expanded presentation.
-/// Native streams use AVPlayer; YouTube uses its official embedded player.
+/// One trailer session for the detail page and its expanded presentation.
+/// tvOS resolves public YouTube streams locally into the same AVPlayer. Mac
+/// and iOS retain the official embedded player.
 @MainActor final class CaseMediaPreviewController: ObservableObject {
     enum Phase: Equatable { case idle, preparing, still, waiting, loading, playing, paused, blocked, ended, external, unavailable, failed }
     enum StillSource: Equatable { case none, filmFrame, trailerFrame, providerImage, trailerThumbnail }
@@ -69,13 +70,7 @@ import Foundation
     }
     var hasInlineTrailer: Bool {
         switch TrailerPreviewRoute.resolve(configuration?.trailerURL) {
-        case .native: return true
-        case .youtube:
-            #if os(macOS) || os(iOS)
-            return true
-            #else
-            return false
-            #endif
+        case .native, .youtube: return true
         default: return false
         }
     }
@@ -103,13 +98,7 @@ import Foundation
         case .paused: "Bande-annonce en pause"
         case .blocked: "Sélectionnez Lire pour démarrer la bande-annonce"
         case .ended: "Revoir la bande-annonce"
-        case .external:
-            #if os(tvOS)
-            if case .youtube = TrailerPreviewRoute.resolve(configuration?.trailerURL) { "YouTube · ouvrir sur iPhone" }
-            else { "Bande-annonce sur le site du fournisseur" }
-            #else
-            "Bande-annonce sur le site du fournisseur"
-            #endif
+        case .external: "Format de bande-annonce non pris en charge"
         case .unavailable: "Aucune bande-annonce fournie pour ce titre"
         case .failed: failureMessage ?? "Lecture indisponible · réessayer la bande-annonce"
         }
@@ -140,14 +129,7 @@ import Foundation
         switch TrailerPreviewRoute.resolve(next.trailerURL) {
         case .unavailable: phase = .unavailable
         case .external: phase = .external
-        case .youtube:
-            #if os(macOS) || os(iOS)
-            phase = automatic && backFacing ? .preparing : .still
-            if automatic && backFacing { queueAutomaticStart(token: token) }
-            #else
-            phase = .external
-            #endif
-        case .native:
+        case .youtube, .native:
             phase = automatic && backFacing ? .preparing : .still
             if automatic && backFacing { queueAutomaticStart(token: token) }
         }
@@ -224,6 +206,11 @@ import Foundation
         #if os(macOS) || os(iOS)
         if youtubeSession == nil, eligible, backVisible, backFacing, configuration?.automatic == true, delayTask == nil,
                   case .youtube = TrailerPreviewRoute.resolve(configuration?.trailerURL), phase == .still {
+            queueAutomaticStart(token: generation)
+        }
+        #elseif os(tvOS)
+        if player == nil, eligible, backVisible, backFacing, configuration?.automatic == true, delayTask == nil,
+           case .youtube = TrailerPreviewRoute.resolve(configuration?.trailerURL), phase == .still {
             queueAutomaticStart(token: generation)
         }
         #endif
@@ -350,6 +337,9 @@ import Foundation
             }
         }
 
+        #if !os(tvOS)
+        // Apple TV uses the supplied still/thumbnail while its one trailer
+        // decoder loads. Do not open the feature film merely for a preview.
         let frameURL: URL?
         let frameSource: StillSource
         if let filmURL = request.filmURL, ["https", "http", "file"].contains(filmURL.scheme?.lowercased() ?? "") {
@@ -398,6 +388,7 @@ import Foundation
             Self.frameCache.setObject(bitmap, forKey: cacheKey, cost: image.bytesPerRow * image.height)
             self.still = image; self.source = frameSource
         }
+        #endif
     }
 
     private func handoffToPlayer(token: UUID, unmute: Bool) async {
@@ -413,8 +404,20 @@ import Foundation
         case .youtube(let video):
             #if os(macOS) || os(iOS)
             startYouTube(video, token: token, unmute: unmute)
-            #else
-            phase = .external
+            #elseif os(tvOS)
+            phase = .loading
+            do {
+                let url = try await NativeYouTubeTrailerResolver.resolve(video)
+                guard isCurrent(token), backFacing else { return }
+                startPlayer(url: url, token: token, unmute: unmute)
+            } catch is CancellationError {
+                return
+            } catch {
+                guard isCurrent(token), backFacing else { return }
+                failureMessage = (error as? NativeYouTubeTrailerResolver.Failure)?.message
+                    ?? "La bande-annonce est momentanément indisponible. Réessayez."
+                phase = .failed
+            }
             #endif
         default: break
         }
@@ -469,6 +472,7 @@ import Foundation
         let item = AVPlayerItem(url: url)
         item.preferredForwardBufferDuration = 2
         item.preferredPeakBitRate = 4_000_000
+        item.preferredMaximumResolution = CGSize(width: 1920, height: 1080)
         let candidate = AVPlayer()
         candidate.isMuted = !unmute
         candidate.actionAtItemEnd = .pause

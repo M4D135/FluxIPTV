@@ -61,7 +61,7 @@ struct AddSourceSheet: View {
                 Image(systemName: "server.rack")
                     .font(.system(size: 28, weight: .medium)).foregroundStyle(.cyan)
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(existing == nil ? "Ajouter une source" : "Modifier la source").font(.title2.weight(.semibold))
+                    Text(existing == nil ? "Charger une liste" : "Modifier la source").font(.title2.weight(.semibold))
                     Text("Connectez votre propre abonnement ou playlist IPTV.")
                         .font(.callout).foregroundStyle(.secondary)
                 }
@@ -187,9 +187,10 @@ struct AddSourceSheet: View {
                     .fluxShortcut().buttonStyle(.borderedProminent).disabled(saving || !valid)
             }
         }
-        .padding(26)
+        .padding(sourcePadding)
         }
-        .fluxSheetSize(width: 680, height: 650)
+        .fluxSheetSize(width: sourceWidth, height: 650)
+        .preferredColorScheme(.dark)
         #if !os(tvOS)
         .fileImporter(isPresented: $importingFile, allowedContentTypes: [UTType(filenameExtension: "m3u") ?? .plainText, UTType(filenameExtension: "m3u8") ?? .plainText, .plainText]) { result in
             switch result {
@@ -214,6 +215,21 @@ struct AddSourceSheet: View {
             Text(title).font(.callout.weight(.medium))
             content()
         }
+    }
+
+    private var sourceWidth: CGFloat {
+        #if os(tvOS)
+        1080
+        #else
+        680
+        #endif
+    }
+    private var sourcePadding: CGFloat {
+        #if os(tvOS)
+        42
+        #else
+        26
+        #endif
     }
 
     private func initialize() {

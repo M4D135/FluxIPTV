@@ -48,6 +48,11 @@ final class IPTVLibrary: ObservableObject {
     }
 
     #if FLUX_CATALOG_UI_TESTING
+    /// Empty first-run state without reading or modifying real saved sources.
+    init(emptyCatalogFixture kind: IPTVMediaKind) {
+        contentKind = kind
+    }
+
     /// Isolated local catalogue for the native UI capture harness. This path
     /// neither loads saved accounts nor starts a source refresh.
     init(catalogFixture source: IPTVSource, items: [IPTVItem], kind: IPTVMediaKind) {

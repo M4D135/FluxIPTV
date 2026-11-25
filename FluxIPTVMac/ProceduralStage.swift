@@ -11,12 +11,26 @@ private final class StageBitmap: NSObject, @unchecked Sendable {
 }
 
 private enum StageRaster {
-    // Two 4K scenes fit in this budget. Smaller displays decode smaller images;
-    // settings thumbnails share the cache without retaining every full scene.
+    // Decorative tvOS rooms use a 1080p raster; text, covers and video retain
+    // their own native resolution. The room never needs a 4K offscreen layer
+    // while the focus animation moves a foreground card.
+    static func pixelBudget(_ requested: Int) -> Int {
+        #if os(tvOS)
+        max(320, min(1920, requested))
+        #else
+        max(320, min(3840, requested))
+        #endif
+    }
+
+    // Settings thumbnails share this bounded cache with the visible scene.
     static let cache: NSCache<NSString, StageBitmap> = {
         let result = NSCache<NSString, StageBitmap>()
         result.countLimit = 4
+        #if os(tvOS)
+        result.totalCostLimit = 32 * 1024 * 1024
+        #else
         result.totalCostLimit = 64 * 1024 * 1024
+        #endif
         return result
     }()
 
@@ -30,7 +44,7 @@ private enum StageRaster {
             let options: [CFString: Any] = [
                 kCGImageSourceCreateThumbnailFromImageAlways: true,
                 kCGImageSourceCreateThumbnailWithTransform: true,
-                kCGImageSourceThumbnailMaxPixelSize: max(320, min(3840, maxPixels)),
+                kCGImageSourceThumbnailMaxPixelSize: pixelBudget(maxPixels),
                 kCGImageSourceShouldCacheImmediately: true
             ]
             if let image = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary), !Task.isCancelled {
@@ -70,7 +84,7 @@ private struct RoomStageImage: View {
     var cachedOnly = false
     @State private var bitmap: StageBitmap?
     @State private var displayedKey = ""
-    private var key: String { "\(environment.assetName(theme: theme))-\(maxPixels)" }
+    private var key: String { "\(environment.assetName(theme: theme))-\(StageRaster.pixelBudget(maxPixels))" }
 
     var body: some View {
         GeometryReader { geometry in
@@ -88,7 +102,7 @@ private struct RoomStageImage: View {
             }
             bitmap = nil; displayedKey = ""
             guard !cachedOnly else { return }
-            let selectedEnvironment = environment, selectedTheme = theme, pixelLimit = maxPixels
+            let selectedEnvironment = environment, selectedTheme = theme, pixelLimit = StageRaster.pixelBudget(maxPixels)
             let worker = Task.detached(priority: .utility) {
                 StageRaster.load(environment: selectedEnvironment, theme: selectedTheme, maxPixels: pixelLimit)
             }
