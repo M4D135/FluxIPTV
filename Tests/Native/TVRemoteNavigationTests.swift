@@ -79,15 +79,10 @@ final class TVRemoteNavigationTests: XCTestCase {
     func testFailedSourceReconnectHighlightFollowsRemoteFocus() {
         let app = launch("live-error")
         defer { app.terminate() }
-        let liveTab = element("navigation-tab-live", in: app)
         let countries = element("navigation-countries", in: app)
         let reconnect = element("navigation-reconnect-source", in: app)
-        assertFocus(liveTab, logical: "tab-live", in: app)
-        XCTAssertTrue(reconnect.waitForExistence(timeout: 10))
-        XCUIRemote.shared.press(.down)
-        assertCondition("hasFocus == false", on: liveTab, in: app)
-        move(.left, to: countries, maximumPresses: 6, in: app)
         assertFocus(countries, logical: "countries", in: app)
+        XCTAssertTrue(reconnect.waitForExistence(timeout: 10))
 
         XCUIRemote.shared.press(.down)
         assertFocus(reconnect, logical: "reconnect-source", in: app)

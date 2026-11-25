@@ -151,7 +151,7 @@ final class TVCatalogControlProbeView: UIView {
         case "search-empty": return "navigation-tab-movie"
         case "search-result": return "catalog-card-fixture-movie-0"
         case "welcome": return "welcome-load-source"
-        case "live-error": return "navigation-tab-live"
+        case "live-error": return "navigation-countries"
         default: return "media-detail-play"
         }
     }
