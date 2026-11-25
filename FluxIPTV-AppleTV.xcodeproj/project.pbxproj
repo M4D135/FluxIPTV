@@ -144,7 +144,7 @@
 		34C60569D211C4BD688A56D5 /* target-tv */ = {isa = PBXNativeTarget; buildConfigurationList = 0E248EB62620FC60AE33244C; buildPhases = (32BE9FB3579D1DC06702422D, 2FDA18EEA001EF1971430EA0, 45886F944F9835C186DBF83E,); buildRules = (); dependencies = (); packageProductDependencies = (72A03C283374DE0506B2F201, E1D529480504C276FDA059B3,); name = FluxIPTVTV; productName = FluxIPTVTV; productReference = 952A4F8FB81691F9EB3DB324; productType = "com.apple.product-type.application"; };
 		19F77E6636126856E997D07E /* target-Debug-tv */ = {isa = XCBuildConfiguration; buildSettings = {
             CODE_SIGN_STYLE = Automatic;
-            CURRENT_PROJECT_VERSION = 30;
+            CURRENT_PROJECT_VERSION = 31;
             GENERATE_INFOPLIST_FILE = NO;
             INFOPLIST_FILE = FluxIPTVMac/Info-tvOS.plist;
             SDKROOT = appletvos;
@@ -163,7 +163,7 @@
             }; name = Debug; };
 		6685DDB375A03C1CB9440E00 /* target-Release-tv */ = {isa = XCBuildConfiguration; buildSettings = {
             CODE_SIGN_STYLE = Automatic;
-            CURRENT_PROJECT_VERSION = 30;
+            CURRENT_PROJECT_VERSION = 31;
             GENERATE_INFOPLIST_FILE = NO;
             INFOPLIST_FILE = FluxIPTVMac/Info-tvOS.plist;
             SDKROOT = appletvos;
