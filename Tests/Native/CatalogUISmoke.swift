@@ -37,6 +37,69 @@ final class CatalogDetailControlProbeView: NSView {
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
 }
 
+/// A local run can keep its windows off every display and leave the user's
+/// foreground application alone. Hosted runs keep the activated, visible window.
+private final class CatalogCaptureWindow: NSWindow {
+    var staysOffscreen = false
+    override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect {
+        staysOffscreen ? frameRect : super.constrainFrameRect(frameRect, to: screen)
+    }
+}
+
+private enum CatalogCaptureOptions {
+    static let environment = ProcessInfo.processInfo.environment
+    /// FLUX_CATALOG_UI_BACKGROUND=1: no activation, off-screen windows, and no
+    /// scenario that needs the key window's native focus.
+    static let background = environment["FLUX_CATALOG_UI_BACKGROUND"] == "1"
+    /// FLUX_CATALOG_UI_ONLY=catalog-tv.png,movie-detail.png keeps those captures.
+    static let only: Set<String>? = environment["FLUX_CATALOG_UI_ONLY"].map {
+        Set($0.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty })
+    }
+    /// FLUX_CATALOG_UI_SIZE=1728x1040 overrides the 1440 × 900 capture window.
+    static let size: CGSize = {
+        let parts = (environment["FLUX_CATALOG_UI_SIZE"] ?? "").lowercased().split(separator: "x").compactMap { Double($0) }
+        guard parts.count == 2, parts[0] >= 860, parts[1] >= 540 else { return CGSize(width: 1440, height: 900) }
+        return CGSize(width: parts[0], height: parts[1])
+    }()
+    static func window(title: String) -> CatalogCaptureWindow {
+        let origin = background ? CGPoint(x: -12_000, y: -12_000) : CGPoint(x: 30, y: 30)
+        let window = CatalogCaptureWindow(contentRect: CGRect(origin: origin, size: size),
+                                          styleMask: [.titled], backing: .buffered, defer: false)
+        window.staysOffscreen = background
+        window.isReleasedWhenClosed = false
+        window.title = title
+        window.appearance = NSAppearance(named: .darkAqua)
+        if background { window.setFrameOrigin(origin) }
+        return window
+    }
+    static func show(_ window: NSWindow) {
+        if background {
+            let origin = window.frame.origin
+            window.orderFrontRegardless()
+            // Ordering a window in may bring it back to a display.
+            window.setFrameOrigin(origin)
+        } else { window.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true) }
+    }
+    /// FLUX_CATALOG_UI_GALLERY=1 adds the dock themes and positions.
+    static let gallery = environment["FLUX_CATALOG_UI_GALLERY"] == "1"
+    /// FLUX_CATALOG_UI_SCALE=1 stores point-sized images for a quick local look.
+    static let nominalScale = environment["FLUX_CATALOG_UI_SCALE"] == "1"
+
+    private typealias WindowImageFunction = @convention(c) (CGRect, UInt32, UInt32, UInt32) -> Unmanaged<CGImage>?
+    /// A process may read its own window from the WindowServer without the
+    /// Screen Recording permission, including glass and materials that a view
+    /// cache cannot draw. The entry point left the Swift SDK; resolve it at run
+    /// time and fall back to the other capture paths when it is missing.
+    @MainActor static func ownWindowImage(_ window: NSWindow) -> CGImage? {
+        guard window.windowNumber > 0,
+              let symbol = dlsym(UnsafeMutableRawPointer(bitPattern: -2), "CGWindowListCreateImage") else { return nil }
+        let capture = unsafeBitCast(symbol, to: WindowImageFunction.self)
+        let includingWindow: UInt32 = 1 << 3, ignoreFraming: UInt32 = 1
+        let resolution: UInt32 = nominalScale ? 1 << 4 : 1 << 3
+        return capture(.null, includingWindow, UInt32(window.windowNumber), ignoreFraming | resolution)?.takeRetainedValue()
+    }
+}
+
 private enum CatalogUIFailure: Error, CustomStringConvertible {
     case assertion(String)
     var description: String { switch self { case .assertion(let message): return message } }
@@ -66,6 +129,10 @@ private enum CatalogUIFailure: Error, CustomStringConvertible {
                                 "The CI process still sees Reduce Transparency; native glass cannot be assessed.")
                 }
                 try await run(output: output)
+                if CatalogCaptureOptions.background || CatalogCaptureOptions.only != nil {
+                    print("PARTIAL: local captures only; run without FLUX_CATALOG_UI_BACKGROUND/ONLY for the complete check.")
+                    exit(0)
+                }
                 print("PASS: real ContentView TV, DVD/VHS catalogue, twelve-season shelf and full-screen film/episode details rendered nonempty native captures.")
                 print("Fixture artwork and catalogue only; no accounts, streams, remote images or video playback were used.")
                 print("Review the PNGs for spacing, clipping and header appearance; this is not a pixel-perfect visual assertion.")
@@ -76,17 +143,17 @@ private enum CatalogUIFailure: Error, CustomStringConvertible {
             }
         }
         Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 60_000_000_000)
-            fputs("FAIL: catalogue UI smoke exceeded its 60-second rendering deadline.\n", stderr)
+            try? await Task.sleep(nanoseconds: CatalogCaptureOptions.gallery ? 300_000_000_000 : 150_000_000_000)
+            fputs("FAIL: catalogue UI smoke exceeded its rendering deadline.\n", stderr)
             exit(1)
         }
         application.run()
     }
 
-    @MainActor private static func configureDefaults() {
+    @MainActor private static func configureDefaults(_ overrides: [String: Any] = [:]) {
         // This dedicated bundle has a separate preferences domain from FluxIPTV.
         UserDefaults.standard.removePersistentDomain(forName: bundleID)
-        UserDefaults.standard.setVolatileDomain([
+        let base: [String: Any] = [
             FluxAppearance.glassKey: true,
             FluxAppearance.artworkKey: true,
             FluxAppearance.wallpaperKey: false,
@@ -98,7 +165,37 @@ private enum CatalogUIFailure: Error, CustomStringConvertible {
             LiveTVPreviewDelay.automaticKey: false,
             LiveTVPreviewDelay.storageKey: LiveTVPreviewDelay.three.rawValue,
             TrailerPreviewDelay.automaticKey: false
-        ], forName: UserDefaults.argumentDomain)
+        ]
+        UserDefaults.standard.setVolatileDomain(base.merging(overrides) { _, scenario in scenario },
+                                                forName: UserDefaults.argumentDomain)
+    }
+
+    /// One capture of the real ContentView. Gallery scenarios are further
+    /// looks of the same screens and are captured on request only.
+    private struct Scenario {
+        let kind: IPTVMediaKind
+        let filename: String
+        var season: Int? = nil
+        var detail = false
+        var settings: PlaybackSettingsView.Page? = nil
+        var favorites = false
+        /// The home screen, with its bar in the middle of the window.
+        var home = false
+        /// The settings asked for during playback, above a stand-in picture.
+        var playerSettings = false
+        /// The zones of the screen, as Back shows them, with this one chosen.
+        var zone: DeskZone? = nil
+        /// The channel list of the player, above a stand-in picture.
+        var zapList = false
+        /// Keys of a remote sent to the screen, and the control that must
+        /// hold the selection after them.
+        var actions: [RemoteAction] = []
+        var expectedFocus: String? = nil
+        /// Titles relabelled the way playlists mark a language, with the
+        /// language list open in the navigation column.
+        var languages = false
+        var defaults: [String: Any] = [:]
+        var gallery = false
     }
 
     @MainActor private static func run(output: URL) async throws {
@@ -161,35 +258,92 @@ private enum CatalogUIFailure: Error, CustomStringConvertible {
                     "The requested S12/E15 restoration fixture is missing or has an unexpected identifier.")
         let playback = PlaybackController()
         defer { playback.stop(); ArtworkLoader.cache.removeAllObjects() }
-        let scenarios: [(kind: IPTVMediaKind, filename: String, season: Int?, detail: Bool)] = [
-            (.live, "catalog-tv.png", nil, false),
-            (.movie, "catalog-dvd-vhs.png", nil, false),
-            (.movie, "movie-detail.png", nil, true),
-            (.series, "series-seasons.png", nil, false),
-            (.series, "series-episode-detail.png", 12, true)
+        var scenarios = [
+            Scenario(kind: .live, filename: "home.png", home: true),
+            Scenario(kind: .live, filename: "catalog-tv.png"),
+            Scenario(kind: .movie, filename: "catalog-dvd-vhs.png"),
+            Scenario(kind: .movie, filename: "movie-detail.png", detail: true),
+            Scenario(kind: .series, filename: "series-seasons.png"),
+            Scenario(kind: .series, filename: "series-episode-detail.png", season: 12, detail: true),
+            Scenario(kind: .live, filename: "favorites.png", favorites: true),
+            Scenario(kind: .live, filename: "settings-sources.png", settings: .sources),
+            Scenario(kind: .live, filename: "settings-dock.png", settings: .dock),
+            Scenario(kind: .live, filename: "player-settings.png", playerSettings: true),
+            Scenario(kind: .live, filename: "player-zapping.png", zapList: true),
+            Scenario(kind: .live, filename: "zones-tv.png", zone: .content),
+            Scenario(kind: .movie, filename: "zones-dock.png", zone: .dock),
+            // Back shows the zones; the arrows reach the dock under a list,
+            // the controls above it, and a second Back the home screen.
+            Scenario(kind: .live, filename: "keys-dock.png", actions: [.back, .left, .down, .select],
+                     expectedFocus: FluxDockItem.live.focusID),
+            Scenario(kind: .movie, filename: "keys-top.png", actions: [.back, .up, .select, .right],
+                     expectedFocus: "reload"),
+            Scenario(kind: .movie, filename: "keys-header.png", actions: [.back, .up, .select, .left],
+                     expectedFocus: DeskZone.homeID),
+            Scenario(kind: .movie, filename: "keys-home.png", actions: [.back, .back],
+                     expectedFocus: FluxDockItem.movie.focusID)
         ]
+        for theme in FluxDockTheme.allCases {
+            scenarios.append(Scenario(kind: .live, filename: "dock-theme-\(theme.rawValue).png",
+                                      defaults: [FluxDockTheme.storageKey: theme.rawValue, FluxDockPosition.storageKey: FluxDockPosition.bottom.rawValue,
+                                                 "fluxiptv.fixture.dockPointer": 1], gallery: true))
+        }
+        scenarios.append(Scenario(kind: .movie, filename: "languages.png", languages: true, gallery: true))
+        scenarios.append(Scenario(kind: .live, filename: "zones-top.png", zone: .top, gallery: true))
+        // The pointer on Films and on Séries: each brings its own room forward.
+        scenarios.append(Scenario(kind: .live, filename: "home-films.png", home: true,
+                                  defaults: ["fluxiptv.fixture.dockPointer": 1], gallery: true))
+        scenarios.append(Scenario(kind: .live, filename: "home-series.png", home: true,
+                                  defaults: ["fluxiptv.fixture.dockPointer": 2], gallery: true))
+        let labelled = items.enumerated().map { offset, item in
+            item.kind == .live ? item : IPTVItem(id: item.id, sourceID: item.sourceID,
+                name: (offset.isMultiple(of: 3) ? "EN - " : "FR - ") + item.name, group: item.group, logoURL: item.logoURL,
+                kind: item.kind, directURL: nil, xtreamStreamID: nil, fileExtension: nil,
+                isSeriesCollection: item.isSeriesCollection, details: item.details)
+        }
+        for position in FluxDockPosition.allCases where position != FluxDockPosition.defaultValue {
+            scenarios.append(Scenario(kind: .movie, filename: "dock-\(position.rawValue).png",
+                                      defaults: [FluxDockPosition.storageKey: position.rawValue], gallery: true))
+        }
         var captureFailures: [String] = []
-        for scenario in scenarios {
+        for scenario in scenarios where CatalogCaptureOptions.only?.contains(scenario.filename) ?? (!scenario.gallery || CatalogCaptureOptions.gallery) {
             let kind = scenario.kind
-            let library = IPTVLibrary(catalogFixture: source, items: items, kind: kind)
+            configureDefaults(scenario.defaults)
+            let library = IPTVLibrary(catalogFixture: source, items: scenario.languages ? labelled : items, kind: kind)
+            try require(library.catalogResults.all.items.first != nil && !library.isLoading && !library.isFiltering, "Fixture catalogue was not installed synchronously.")
+            if scenario.languages {
+                try require(library.mediaLanguages.map(\.code) == ["en", "fr"], "The labelled fixture did not yield its two languages: \(library.mediaLanguages.map(\.code)).")
+                library.countryCode = "fr"
+                for _ in 0..<100 where library.isFiltering { try await Task.sleep(nanoseconds: 20_000_000) }
+                try require(library.catalogResults.all.items.allSatisfy { $0.name.hasPrefix("FR - ") } && !library.catalogResults.all.items.isEmpty,
+                            "The language filter did not keep the French titles only.")
+            }
+            if scenario.favorites {
+                // A favourites list with content, through the production model.
+                for item in library.catalogResults.all.items.prefix(5) { library.toggleFavorite(item) }
+                library.selectedPresetID = FavoritePresets.defaultID(for: kind)
+                for _ in 0..<100 where library.isFiltering { try await Task.sleep(nanoseconds: 20_000_000) }
+                try require(library.catalogResults.all.items.count == 5, "The favourites fixture did not filter the catalogue.")
+            }
             let selected = library.catalogResults.all.items.first
-            try require(selected != nil && !library.isLoading && !library.isFiltering, "Fixture catalogue was not installed synchronously.")
+            var observedFocus: String?
             let root = ContentView(fixtureSelection: selected, fixtureSeasons: kind == .series ? seasons : [],
-                                   fixtureOpenSeason: scenario.season, fixtureEpisodeID: scenario.season == nil ? nil : restoredEpisodeID, fixtureOpenItem: scenario.detail)
+                                   fixtureOpenSeason: scenario.season, fixtureEpisodeID: scenario.season == nil ? nil : restoredEpisodeID, fixtureOpenItem: scenario.detail,
+                                   fixtureSearchObservation: scenario.expectedFocus == nil ? nil : { observedFocus = $0.focusID },
+                                   fixtureOpenCountries: scenario.languages,
+                                   fixtureSettingsPage: scenario.settings, fixtureFavorites: scenario.favorites,
+                                   fixtureHome: scenario.home, fixturePlayerSettings: scenario.playerSettings,
+                                   fixtureZone: scenario.zone, fixtureActions: scenario.actions,
+                                   fixtureZapList: scenario.zapList)
                 .environmentObject(library).environmentObject(playback)
                 .preferredColorScheme(.dark)
                 .environment(\.scenePhase, .active)
             let host = NSHostingView(rootView: root)
-            let size = CGSize(width: 1440, height: 900)
-            let window = NSWindow(contentRect: CGRect(origin: CGPoint(x: 30, y: 30), size: size),
-                                  styleMask: [.titled], backing: .buffered, defer: false)
-            window.isReleasedWhenClosed = false
-            window.title = kind == .live ? "FluxIPTV — catalogue TV local" : kind == .movie ? (scenario.detail ? "FluxIPTV — fiche film plein écran" : "FluxIPTV — rayon DVD/VHS local") : scenario.season == nil ? "FluxIPTV — douze saisons" : "FluxIPTV — fiche saison 12, épisode 15"
-            window.appearance = NSAppearance(named: .darkAqua)
+            let size = CatalogCaptureOptions.size
+            let window = CatalogCaptureOptions.window(title: "FluxIPTV — \(scenario.filename.replacingOccurrences(of: ".png", with: ""))")
             window.contentView = host
             host.frame = CGRect(origin: .zero, size: size)
-            window.makeKeyAndOrderFront(nil)
-            NSApp.activate(ignoringOtherApps: true)
+            CatalogCaptureOptions.show(window)
             // Let actual SwiftUI tasks fill artwork and the bundled room image,
             // then let the native compositor settle before caching the view.
             try await Task.sleep(nanoseconds: 1_500_000_000)
@@ -200,6 +354,11 @@ private enum CatalogUIFailure: Error, CustomStringConvertible {
             try await Task.sleep(nanoseconds: 300_000_000)
             try require(playback.playingItem == nil && playback.player.currentItem == nil, "A visual capture unexpectedly started main playback.")
             let filename = scenario.filename
+            if let expected = scenario.expectedFocus {
+                try require(observedFocus == expected,
+                            "\(filename): the keys \(scenario.actions) left the selection on \(observedFocus ?? "nothing"), not on \(expected).")
+                print("Keys \(scenario.actions.map { "\($0)" }.joined(separator: " ")) → \(expected).")
+            }
             do {
                 try await capture(host, window: window, to: output.appendingPathComponent(filename))
                 if scenario.detail {
@@ -213,6 +372,10 @@ private enum CatalogUIFailure: Error, CustomStringConvertible {
             await Task.yield()
         }
         try require(captureFailures.isEmpty, captureFailures.joined(separator: "\n"))
+        if CatalogCaptureOptions.background || CatalogCaptureOptions.only != nil {
+            print("Local capture run: the native search-focus scenarios need the key window and were not exercised.")
+            return
+        }
         try await verifySearchSubmission(source: source, items: items, playback: playback)
     }
 
@@ -343,7 +506,26 @@ private enum CatalogUIFailure: Error, CustomStringConvertible {
         print("Existing WindowServer capture permission: \(canCaptureWindow)")
         var image: CGImage?
         var method = "NSView cacheDisplay"
-        if canCaptureWindow, FileManager.default.isExecutableFile(atPath: "/usr/sbin/screencapture") {
+        // A busy machine may not have composited a window that was just
+        // ordered in: ask again before falling back to a lesser capture.
+        var ownImage = CatalogCaptureOptions.ownWindowImage(window)
+        for _ in 0..<4 where ownImage == nil {
+            try await Task.sleep(nanoseconds: 500_000_000)
+            window.displayIfNeeded()
+            CATransaction.flush()
+            ownImage = CatalogCaptureOptions.ownWindowImage(window)
+        }
+        if let own = ownImage,
+           let destination = CGImageDestinationCreateWithURL(url as CFURL, UTType.png.identifier as CFString, 1, nil) {
+            CGImageDestinationAddImage(destination, own, nil)
+            if CGImageDestinationFinalize(destination) {
+                image = own
+                method = "own-window WindowServer image"
+            }
+        }
+        if image != nil {
+            // The composited window is the reference; nothing else to try.
+        } else if canCaptureWindow, FileManager.default.isExecutableFile(atPath: "/usr/sbin/screencapture") {
             let status = try await captureWindow(window.windowNumber, to: url)
             if status == 0, let source = CGImageSourceCreateWithURL(url as CFURL, nil) {
                 image = CGImageSourceCreateImageAtIndex(source, 0, nil)
@@ -359,7 +541,8 @@ private enum CatalogUIFailure: Error, CustomStringConvertible {
         }
         guard let image else { throw CatalogUIFailure.assertion("Native ContentView capture is missing.") }
         print("Capture: \(url.path) (\(image.width)×\(image.height), \(method))")
-        try require(image.width >= 1400 && image.height >= 850, "Native ContentView capture is too small.")
+        try require(image.width >= Int(CatalogCaptureOptions.size.width) - 40 && image.height >= Int(CatalogCaptureOptions.size.height) - 50, "Native ContentView capture is too small.")
+        print("Capture window frame: \(window.frame)")
         let headerHasDetail = hasDetail(image, region: CGRect(x: 0, y: 0, width: image.width, height: max(100, image.height / 6)))
         let catalogueHasDetail = hasDetail(image, region: CGRect(x: 0, y: image.height / 3, width: image.width, height: image.height / 2))
         print("Capture detail: header=\(headerHasDetail), catalogue=\(catalogueHasDetail). PNG retained regardless of result.")

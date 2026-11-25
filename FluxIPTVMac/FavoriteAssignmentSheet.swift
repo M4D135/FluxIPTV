@@ -5,6 +5,9 @@ struct FavoriteAssignmentSheet: View {
     let item: IPTVItem
     let open: () -> Void
     let saved: () -> Void
+    /// Set when the panel is drawn inside the window. Dismissing a view that
+    /// no sheet presents would close the window itself.
+    var inlineClose: (() -> Void)? = nil
     @EnvironmentObject private var library: IPTVLibrary
     @Environment(\.dismiss) private var dismiss
     @State private var selectedIDs: Set<String> = []
@@ -56,15 +59,15 @@ struct FavoriteAssignmentSheet: View {
             Divider()
             HStack(spacing: 12) {
                 Button(item.isSeriesCollection ? "Voir les saisons" : "Lire") {
-                    dismiss(); open()
+                    finish(); open()
                 }.buttonStyle(.bordered)
                 Spacer(minLength: 8)
-                Button("Annuler", role: .cancel) { dismiss() }.fluxShortcut(cancel: true)
+                Button("Annuler", role: .cancel) { finish() }.fluxShortcut(cancel: true)
                 Button("Enregistrer", action: commit)
                     .buttonStyle(.borderedProminent)
                     .disabled(creating && newName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
-        }.padding(26).fluxSheetSize(width: 620, height: 570)
+        }.padding(26).fluxSheetSize(width: inlineClose == nil ? 620 : 540, height: inlineClose == nil ? 570 : 540)
             .onAppear {
                 guard !initialized else { return }
                 selectedIDs = Set(lists.filter { $0.itemIDs.contains(item.id) }.map(\.id))
@@ -77,6 +80,10 @@ struct FavoriteAssignmentSheet: View {
             validationError = "Choisissez un nom unique de 1 à 60 caractères. Si une liste a changé, fermez puis rouvrez ce panneau."
             return
         }
-        saved(); dismiss()
+        saved(); finish()
+    }
+
+    private func finish() {
+        if let inlineClose { inlineClose() } else { dismiss() }
     }
 }

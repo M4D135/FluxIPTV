@@ -130,13 +130,22 @@ final class LiveCountryTests: XCTestCase {
         XCTAssertTrue(try index.matching(kind: .live, search: "", membership: [], countryCode: "FR").all.items.isEmpty)
     }
 
-    func testCountryNeverFiltersFilmsOrSeriesAndCountsAsAnActiveScope() throws {
-        let film = channel("film", group: "ES Films", name: "Film", kind: .movie),
-            series = channel("series", group: "US Series", name: "Série", kind: .series)
-        let index = CatalogIndex([film, series])
+    func testFilmsAndSeriesAreFilteredByLanguageNotByChannelCountryAndCountAsAnActiveScope() throws {
+        let films = (1...3).map { channel("film-\($0)", group: "ES Films", name: "Film \($0)", kind: .movie) },
+            series = (1...3).map { channel("series-\($0)", group: "US Series", name: "Série \($0)", kind: .series) }
+        let index = CatalogIndex(films + series)
+        // Films and series never enter the channel countries; their own
+        // filter is the language read from their labels (see MediaLanguageTests).
         XCTAssertTrue(index.liveCountries.isEmpty)
-        XCTAssertEqual(try index.matching(kind: .movie, search: "", countryCode: "FR").all.items, [film])
-        XCTAssertEqual(try index.matching(kind: .series, search: "", countryCode: "FR").all.items, [series])
+        XCTAssertEqual(index.languages(for: .movie).map(\.code), ["es"])
+        XCTAssertEqual(index.languages(for: .series).map(\.code), ["en"])
+        XCTAssertEqual(try index.matching(kind: .movie, search: "", countryCode: "es").all.items, films)
+        XCTAssertEqual(try index.matching(kind: .series, search: "", countryCode: "en").all.items, series)
+        XCTAssertEqual(try index.matching(kind: .movie, search: "").all.items, films)
+        // A channel country is not a language of the catalogue: it matches no
+        // title, and a remembered one is dropped when the catalogue is known.
+        XCTAssertTrue(try index.matching(kind: .movie, search: "", countryCode: "FR").all.items.isEmpty)
+        XCTAssertNil(CatalogBrowsingState(countryCode: "FR").validated(kind: .movie, index: index, presets: FavoritePresets()).countryCode)
         XCTAssertTrue(CatalogScope.isAll(group: nil, search: "", presetID: nil, resumeOnly: false))
         XCTAssertFalse(CatalogScope.isAll(group: nil, search: "", presetID: nil, resumeOnly: false, countryCode: "FR"))
         XCTAssertFalse(CatalogScope.isAll(group: nil, search: "", presetID: nil, resumeOnly: false, countryCode: LiveCountry.unknownCode))

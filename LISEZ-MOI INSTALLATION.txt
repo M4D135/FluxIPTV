@@ -1,4 +1,4 @@
-FLUX IPTV 0.8.9 — BUILD 37 — CINÉMA, VIDÉOCLUB ET SALON TV - Installation sur votre Mac
+FLUX IPTV 0.9.0 — BUILD 38 — BUREAU MAC : DOCK, COLONNES ET VERRE - Installation sur votre Mac
 
 1. Quittez FLUX IPTV et arrêtez le projet s'il tourne dans Xcode.
 2. Décompressez l'archive et double-cliquez sur « Installer Flux IPTV.command ».
@@ -9,8 +9,8 @@ FLUX IPTV 0.8.9 — BUILD 37 — CINÉMA, VIDÉOCLUB ET SALON TV - Installation 
    L'installateur contrôle que le processus reste actif et restaure l'ancien
    bundle en cas d'échec du démarrage. Ce contrôle ne valide pas la lecture.
 4. Ensuite ouvrez uniquement FluxIPTV.app depuis le Finder ou le Dock.
-   Ne relancez pas l'installateur à chaque utilisation. Vérifiez le numéro 0.8.9
-   dans la barre FLUX, le build 37 dans Réglages et les thèmes dans Interface.
+   Ne relancez pas l'installateur à chaque utilisation. Vérifiez « FLUX 0.9.0 ·
+   build 38 » en bas de la colonne de Réglages, et les thèmes dans Interface.
 
 Sur Mac, VLC intégré est désactivé. En cas de format incompatible, installez le
 lecteur VLC officiel et utilisez le bouton « Ouvrir dans VLC externe ».
@@ -34,13 +34,37 @@ Journal : ~/Library/Logs/FluxIPTV/installation-*.log
 La compilation est effectuée sur votre Mac. Cette archive ne contient pas un
 binaire macOS précompilé ; l'installateur n'a pas été exécuté sous macOS ici.
 
-Sources > Modifier permet de choisir « Sur ce Mac, sans Trousseau ». Les identifiants sont alors dans un fichier privé non chiffré (permissions 600) ; le Trousseau demeure plus sûr. Les favoris sont conservés.
+Réglages > Sources > Modifier permet de choisir « Sur ce Mac, sans Trousseau ». Les identifiants sont alors dans un fichier privé non chiffré (permissions 600) ; le Trousseau demeure plus sûr. Les favoris sont conservés.
 
-NOUVEAUTÉS DU BUILD 37
+NOUVEAUTÉS DE LA 0.9.0 SUR MAC
+L'application s'ouvre sur un accueil : TV, Films, Séries, Recherche, Favoris
+et Réglages forment un grand dock au milieu de la fenêtre. Retour (Échap, ou le
+chevron en haut de la colonne) revient à l'écran précédent jusqu'à cet accueil.
+Hors de l'accueil, le dock se range sous la colonne de navigation, en bas à
+gauche, avec les mêmes icônes. Il peut aussi se placer en bas, en haut, à
+gauche ou à droite ; ses icônes grossissent sous le pointeur, se déplacent par
+glissement et changent de thème dans Réglages > Dock. Les sources se gèrent
+dans Réglages > Sources.
+Une colonne de navigation à gauche donne le catalogue, les listes et les
+catégories de chaque espace, sans fenêtre surgissante.
+TV : catégories, chaînes en une seule liste, puis l'aperçu et les informations
+de la chaîne. Le pointeur sélectionne, l'aperçu démarre après une seconde, un
+clic ouvre la chaîne.
+Pendant un direct, la liste des chaînes se pose à gauche de l'image (bord
+gauche au pointeur, bouton Liste des chaînes, ou flèche gauche) pour zapper
+sans revenir au catalogue. Les réglages s'y ouvrent en panneaux de verre.
+Au clavier ou à la télécommande, Retour encadre d'abord les zones de l'écran
+(haut, colonne, contenu, aperçu, dock) : les flèches choisissent, OK entre,
+Retour une seconde fois revient à l'écran précédent. Tab change de zone.
+Films et séries : filtre par langue reconnue dans les titres et catégories.
+Fiche d'un film : panneau de verre sur le catalogue flouté, boîtier à gauche.
+Fiche d'une série : saisons, épisodes en liste, visuel de l'épisode.
+
+FICHES
 La fiche film/série présente la description et une unique grande boîte du
 titre sélectionné, avec sa jaquette VHS/DVD. Lecture, Description complète,
 Favoris, Retour et les épisodes restent disponibles. Aucune bande-annonce
-n’est chargée ni proposée dans la fiche ; ses anciens réglages ont été retirés.
+n’est chargée ni proposée dans la fiche.
 
 PAYS ET MÉMOIRE DE NAVIGATION 0.8.9
 TV : menu pays détectés dans les catégories (FR, ES, UK, noms ou drapeaux),
@@ -51,7 +75,6 @@ fermeture de l’application. Retour et changement de section conservent ces cho
 NAVIGATION ET PRÉSENTATION
 
 Sans liste enregistrée, le démarrage affiche « Charger une liste ».
-TV, Films, Séries et Recherche ont de grandes icônes avec une sélection nette.
 Sélectionner un film ouvre sa fiche plein écran : description, grande boîte,
 lecture et favoris. La fiche montre uniquement le titre sélectionné.
 Une série ouvre son rayon de saisons ; une saison affiche ses épisodes.
@@ -60,13 +83,14 @@ Entrée valide et Espace lit le film ou l’épisode choisi.
 
 Les décors FLUX et les animations de focus/transition sont conservés.
 Sur Apple TV, catégories horizontales et grandes vignettes 16:9 ; la seule
-vignette sélectionnée contient l’aperçu. Le rendu des effets est allégé.
-Délai de l’aperçu TV : 1/3/5/10 s (3 s par défaut).
+vignette sélectionnée contient l’aperçu. Le Liquid Glass s'active ou se
+désactive dans Réglages > Interface.
+Délai de l’aperçu TV : 1/3/5/10 s (1 s par défaut sur Mac, 3 s sur Apple TV).
 Réglages > Interface conserve les thèmes propres à chaque espace.
 
 La lecture principale garde ses commandes flottantes.
 
-Voir README.md et docs/VALIDATION-0.8.9.md pour les comportements et les limites.
+Voir README.md et docs/VALIDATION-0.9.0.md pour les comportements et les limites.
 
 APPLE TV : ouvrez FluxIPTV-AppleTV.xcodeproj (schéma FluxIPTVTV), puis
 choisissez la destination Apple TV. Voir LISEZ-MOI APPLE TV.txt.

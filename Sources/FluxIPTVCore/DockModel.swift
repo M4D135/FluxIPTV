@@ -1,0 +1,235 @@
+import Foundation
+
+/// Edge of the window that carries the destination bar. The leading and
+/// trailing edges present the same destinations as a column.
+public enum FluxDockPosition: String, CaseIterable, Identifiable, Sendable {
+    /// `corner` is a compact bar under the navigation column: the rest of the
+    /// window, to its bottom edge, belongs to the content.
+    case bottom, corner, top, leading, trailing
+    public static let storageKey = "fluxiptv.dock.position.v1"
+    public static let defaultValue: Self = .corner
+    public var id: String { rawValue }
+    public var isVertical: Bool { self == .leading || self == .trailing }
+    /// Icons without labels, sized to the navigation column.
+    public var isCompact: Bool { self == .corner }
+    public var title: String {
+        switch self {
+        case .bottom: "En bas"
+        case .corner: "Sous la colonne"
+        case .top: "En haut"
+        case .leading: "À gauche"
+        case .trailing: "À droite"
+        }
+    }
+    /// Direction that leaves the bar toward the screen it serves.
+    public var inward: RemoteAction {
+        switch self {
+        case .bottom, .corner: .up
+        case .top: .down
+        case .leading: .right
+        case .trailing: .left
+        }
+    }
+    /// Direction that reaches the bar from the matching edge of the screen.
+    public var outward: RemoteAction {
+        switch self {
+        case .bottom, .corner: .down
+        case .top: .up
+        case .leading: .left
+        case .trailing: .right
+        }
+    }
+}
+
+public enum FluxDockTheme: String, CaseIterable, Identifiable, Sendable {
+    case glass, vivid, smoked, neon, floating
+    public static let storageKey = "fluxiptv.dock.theme.v1"
+    public static let defaultValue: Self = .glass
+    public var id: String { rawValue }
+    public var title: String {
+        switch self {
+        case .glass: "Verre"
+        case .vivid: "Couleurs"
+        case .smoked: "Fumé"
+        case .neon: "Néon"
+        case .floating: "Sans fond"
+        }
+    }
+    public var subtitle: String {
+        switch self {
+        case .glass: "Plaque translucide, icônes teintées."
+        case .vivid: "Pastilles pleines, couleurs franches."
+        case .smoked: "Plaque sombre et sobre."
+        case .neon: "Contour lumineux aux couleurs du décor."
+        case .floating: "Icônes séparées, sans plaque."
+        }
+    }
+}
+
+/// Destinations of the bar. Their order is a user preference; a destination
+/// added by a later version joins the end of a saved order.
+public enum FluxDockItem: String, CaseIterable, Identifiable, Sendable {
+    case live, movie, series, search, favorites, settings
+    public static let orderKey = "fluxiptv.dock.order.v1"
+    public static let magnifyKey = "fluxiptv.dock.magnify.v1"
+    public var id: String { rawValue }
+
+    public var title: String {
+        switch self {
+        case .live: "TV"
+        case .movie: "Films"
+        case .series: "Séries"
+        case .search: "Recherche"
+        case .favorites: "Favoris"
+        case .settings: "Réglages"
+        }
+    }
+    /// Identifier shared with the keyboard and remote focus model.
+    public var focusID: String {
+        switch self {
+        case .live: "tab-live"
+        case .movie: "tab-movie"
+        case .series: "tab-series"
+        case .search: "search"
+        case .favorites: "tab-favorites"
+        case .settings: "settings"
+        }
+    }
+    public var mediaKind: IPTVMediaKind? {
+        switch self {
+        case .live: .live
+        case .movie: .movie
+        case .series: .series
+        default: nil
+        }
+    }
+    public init?(focusID: String) {
+        guard let match = Self.allCases.first(where: { $0.focusID == focusID }) else { return nil }
+        self = match
+    }
+    public init(kind: IPTVMediaKind) {
+        switch kind {
+        case .live: self = .live
+        case .movie: self = .movie
+        case .series: self = .series
+        }
+    }
+
+    /// Unknown and repeated entries are dropped; missing destinations follow.
+    public static func order(from stored: String) -> [FluxDockItem] {
+        var result: [FluxDockItem] = []
+        for token in stored.split(separator: ",") {
+            guard let item = FluxDockItem(rawValue: token.trimmingCharacters(in: .whitespaces)),
+                  !result.contains(item) else { continue }
+            result.append(item)
+        }
+        for item in allCases where !result.contains(item) { result.append(item) }
+        return result
+    }
+    public static func stored(_ order: [FluxDockItem]) -> String {
+        order.map(\.rawValue).joined(separator: ",")
+    }
+    /// Places `item` at `index` of the complete order; an index outside the
+    /// bar is clamped to its ends.
+    public static func moving(_ item: FluxDockItem, to index: Int, in order: [FluxDockItem]) -> [FluxDockItem] {
+        var result = order.filter { $0 != item }
+        guard result.count == order.count - 1 else { return order }
+        result.insert(item, at: max(0, min(result.count, index)))
+        return result
+    }
+}
+
+/// macOS-style magnification of equally sized cells along one axis. Positions
+/// are measured from the start of the first cell, before any magnification.
+public struct FluxDockMagnifier: Equatable, Sendable {
+    public struct Layout: Equatable, Sendable {
+        /// Scale of each cell.
+        public let scales: [Double]
+        /// Displacement of each cell centre along the axis.
+        public let offsets: [Double]
+        /// Displacement of the bar's first edge (zero or negative).
+        public let leading: Double
+        /// Displacement of the bar's last edge (zero or positive).
+        public let trailing: Double
+    }
+
+    public var count: Int
+    public var cell: Double
+    public var spacing: Double
+    public var maximumScale: Double
+    public var radius: Double
+
+    public init(count: Int, cell: Double, spacing: Double, maximumScale: Double, radius: Double) {
+        self.count = max(0, count)
+        self.cell = max(1, cell)
+        self.spacing = max(0, spacing)
+        self.maximumScale = max(1, maximumScale)
+        self.radius = max(1, radius)
+    }
+
+    public var pitch: Double { cell + spacing }
+    public var length: Double { count == 0 ? 0 : Double(count) * cell + Double(count - 1) * spacing }
+    public func center(_ index: Int) -> Double { Double(index) * pitch + cell / 2 }
+
+    /// Index of the cell nearest to an unmagnified position.
+    public func index(at position: Double) -> Int? {
+        guard count > 0, position.isFinite else { return nil }
+        return Int(max(0, min(Double(count - 1), (position / pitch).rounded(.down))))
+    }
+
+    /// The point under the pointer keeps its place: cells before it move
+    /// toward the start, cells after it toward the end, as the system Dock does.
+    public func layout(pointer: Double?, intensity: Double = 1) -> Layout {
+        let rest = Layout(scales: Array(repeating: 1, count: count), offsets: Array(repeating: 0, count: count),
+                          leading: 0, trailing: 0)
+        guard count > 0, let pointer, pointer.isFinite, intensity.isFinite, intensity > 0 else { return rest }
+        let strength = min(1, intensity) * (maximumScale - 1)
+        var scales: [Double] = []
+        scales.reserveCapacity(count)
+        for index in 0..<count {
+            let distance = abs(center(index) - pointer) / radius
+            // Raised cosine: full size under the pointer, at rest at the radius,
+            // with no visible step at either end.
+            let falloff = distance >= 1 ? 0 : (cos(distance * .pi) + 1) / 2
+            scales.append(1 + strength * falloff)
+        }
+        let growth = scales.map { cell * ($0 - 1) }
+        var before: [Double] = []
+        before.reserveCapacity(count)
+        var total = 0.0
+        for value in growth { before.append(total); total += value }
+        // Growth accumulated up to the pointer itself, linear inside a cell.
+        let anchor: Double
+        if pointer <= 0 { anchor = 0 }
+        else if pointer >= length { anchor = total }
+        else {
+            let index = min(count - 1, Int(pointer / pitch))
+            let inside = min(1, (pointer - Double(index) * pitch) / cell)
+            anchor = before[index] + growth[index] * inside
+        }
+        let offsets = (0..<count).map { before[$0] + growth[$0] / 2 - anchor }
+        return Layout(scales: scales, offsets: offsets, leading: -anchor, trailing: total - anchor)
+    }
+}
+
+public enum FluxDockNavigation {
+    /// Routes one direction between the bar and the screen it serves.
+    /// `content` performs the screen's own move and returns the identifier it
+    /// received when the selection already sits on that edge.
+    public static func move(from current: String?, action: RemoteAction, position: FluxDockPosition,
+                            dockIDs: [String], preferredDockID: String?, entryID: String?,
+                            content: (String?, RemoteAction) -> String?) -> String? {
+        guard !dockIDs.isEmpty else { return content(current, action) }
+        if let current, let index = dockIDs.firstIndex(of: current) {
+            let previous: RemoteAction = position.isVertical ? .up : .left
+            let next: RemoteAction = position.isVertical ? .down : .right
+            if action == previous { return dockIDs[max(0, index - 1)] }
+            if action == next { return dockIDs[min(dockIDs.count - 1, index + 1)] }
+            if action == position.inward { return entryID ?? content(nil, action) ?? current }
+            return current
+        }
+        let target = content(current, action)
+        guard action == position.outward, target == nil || target == current else { return target }
+        return preferredDockID.flatMap { dockIDs.contains($0) ? $0 : nil } ?? dockIDs.first
+    }
+}

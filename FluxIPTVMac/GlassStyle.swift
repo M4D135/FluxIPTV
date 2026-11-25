@@ -16,16 +16,13 @@ enum FluxAppearance {
     static let wallpaperKey = "fluxiptv.appearance.wallpaper"
     static let intensityKey = "fluxiptv.appearance.wallpaperIntensity"
     static let densityKey = "fluxiptv.appearance.density"
+    /// Liquid Glass exists on the three platforms from version 26. On Apple
+    /// TV the same setting returns to the inexpensive dark surfaces.
     static var nativeAvailable: Bool {
-        #if os(tvOS)
-        // Television prioritises a predictable, inexpensive dark surface.
-        return false
-        #else
         #if compiler(>=6.2)
         if #available(macOS 26.0, iOS 26.0, tvOS 26.0, *) { return true }
         #endif
         return false
-        #endif
     }
 }
 
@@ -35,9 +32,6 @@ private struct FluxGlassChrome: ViewModifier {
     let radius: CGFloat
 
     @ViewBuilder func body(content: Content) -> some View {
-        #if os(tvOS)
-        content.fluxTelevisionGlass(radius: radius, translucent: richGlass && !reduceTransparency)
-        #else
         if richGlass && !reduceTransparency {
             #if compiler(>=6.2)
             if #available(macOS 26.0, iOS 26.0, tvOS 26.0, *) {
@@ -46,8 +40,7 @@ private struct FluxGlassChrome: ViewModifier {
             #else
             content.fluxMaterial(radius: radius)
             #endif
-        } else { content.fluxFrosted(radius: radius) }
-        #endif
+        } else { content.fluxOpaque(radius: radius) }
     }
 }
 
@@ -60,9 +53,6 @@ private struct FluxMediaGlass: ViewModifier {
     let radius: CGFloat
 
     @ViewBuilder func body(content: Content) -> some View {
-        #if os(tvOS)
-        content.fluxTelevisionGlass(radius: radius, translucent: richGlass && !reduceTransparency)
-        #else
         let shape = RoundedRectangle(cornerRadius: radius, style: .continuous)
         if richGlass && !reduceTransparency {
             #if compiler(>=6.2)
@@ -70,18 +60,11 @@ private struct FluxMediaGlass: ViewModifier {
                 content
                     .glassEffect(.clear, in: shape)
                     .background(.black.opacity(0.30), in: shape)
-            } else {
-                content.background(.ultraThinMaterial, in: shape)
-                    .background(.black.opacity(0.22), in: shape)
-                    .overlay(shape.strokeBorder(.white.opacity(0.18), lineWidth: 0.7).allowsHitTesting(false))
-            }
+            } else { content.fluxLegacyMediaMaterial(shape: shape, radius: radius) }
             #else
-            content.background(.ultraThinMaterial, in: shape)
-                .background(.black.opacity(0.22), in: shape)
-                .overlay(shape.strokeBorder(.white.opacity(0.18), lineWidth: 0.7).allowsHitTesting(false))
+            content.fluxLegacyMediaMaterial(shape: shape, radius: radius)
             #endif
-        } else { content.fluxFrosted(radius: radius) }
-        #endif
+        } else { content.fluxOpaque(radius: radius) }
     }
 }
 
@@ -95,26 +78,37 @@ private struct FluxNavigationGlass: ViewModifier {
     let radius: CGFloat
 
     @ViewBuilder func body(content: Content) -> some View {
-        #if os(tvOS)
-        content.fluxTelevisionGlass(radius: radius, tint: selected ? tint : .clear,
-                                   translucent: richGlass && !reduceTransparency)
-        #else
         let shape = RoundedRectangle(cornerRadius: radius, style: .continuous)
         if richGlass && !reduceTransparency {
             #if compiler(>=6.2)
             if #available(macOS 26.0, iOS 26.0, tvOS 26.0, *) {
+                #if os(tvOS)
+                // The focus engine, not a touch, animates a control on Apple TV.
+                if selected {
+                    content.glassEffect(.regular.tint(tint.opacity(0.38)), in: shape)
+                } else {
+                    content.glassEffect(.clear, in: shape)
+                        .background(.black.opacity(0.16), in: shape)
+                }
+                #else
                 if selected {
                     content.glassEffect(.regular.tint(tint.opacity(0.38)).interactive(), in: shape)
                 } else {
                     content.glassEffect(.clear.interactive(), in: shape)
                         .background(.black.opacity(0.16), in: shape)
                 }
+                #endif
             } else { content.fluxMaterial(radius: radius) }
             #else
             content.fluxMaterial(radius: radius)
             #endif
-        } else { content.fluxFrosted(radius: radius) }
-        #endif
+        } else {
+            #if os(tvOS)
+            content.fluxTelevisionGlass(radius: radius, tint: selected ? tint : .clear, translucent: false)
+            #else
+            content.fluxFrosted(radius: radius)
+            #endif
+        }
     }
 }
 
@@ -124,16 +118,12 @@ struct FluxGlassGroup<Content: View>: View {
     private let content: Content
     init(@ViewBuilder content: () -> Content) { self.content = content() }
     @ViewBuilder var body: some View {
-        #if os(tvOS)
-        content
-        #else
         #if compiler(>=6.2)
         if #available(macOS 26.0, iOS 26.0, tvOS 26.0, *) {
             GlassEffectContainer(spacing: 12) { content }
         } else { content }
         #else
         content
-        #endif
         #endif
     }
 }
@@ -149,6 +139,24 @@ extension View {
             .overlay(shape.strokeBorder(LinearGradient(colors: [.white.opacity(0.32), .white.opacity(0.08)],
                                                         startPoint: .topLeading, endPoint: .bottomTrailing), lineWidth: 1)
                 .allowsHitTesting(false))
+    }
+    /// Surface used when Liquid Glass is switched off or unavailable: the
+    /// inexpensive dark plate on Apple TV, the opaque frost elsewhere.
+    @ViewBuilder func fluxOpaque(radius: CGFloat) -> some View {
+        #if os(tvOS)
+        fluxTelevisionGlass(radius: radius, translucent: false)
+        #else
+        fluxFrosted(radius: radius)
+        #endif
+    }
+    @ViewBuilder func fluxLegacyMediaMaterial(shape: RoundedRectangle, radius: CGFloat) -> some View {
+        #if os(tvOS)
+        fluxTelevisionGlass(radius: radius)
+        #else
+        background(.ultraThinMaterial, in: shape)
+            .background(.black.opacity(0.22), in: shape)
+            .overlay(shape.strokeBorder(.white.opacity(0.18), lineWidth: 0.7).allowsHitTesting(false))
+        #endif
     }
     func fluxNavigationGlass(selected: Bool = false, tint: Color = .cyan, radius: CGFloat = 22) -> some View {
         modifier(FluxNavigationGlass(selected: selected, tint: tint, radius: radius))
@@ -215,6 +223,24 @@ extension View {
         self
         #else
         self.textFieldStyle(.roundedBorder)
+        #endif
+    }
+    /// A form takes the whole television screen, where a sheet would cut it
+    /// and make it scroll; elsewhere it stays a sheet.
+    @ViewBuilder func fluxFormCover<Content: View>(isPresented: Binding<Bool>,
+                                                   @ViewBuilder content: @escaping () -> Content) -> some View {
+        #if os(tvOS)
+        fullScreenCover(isPresented: isPresented, content: content)
+        #else
+        sheet(isPresented: isPresented, content: content)
+        #endif
+    }
+    @ViewBuilder func fluxFormCover<Item: Identifiable, Content: View>(item: Binding<Item?>,
+                                                                       @ViewBuilder content: @escaping (Item) -> Content) -> some View {
+        #if os(tvOS)
+        fullScreenCover(item: item, content: content)
+        #else
+        sheet(item: item, content: content)
         #endif
     }
     @ViewBuilder func fluxSheetSize(width: CGFloat, height: CGFloat? = nil) -> some View {

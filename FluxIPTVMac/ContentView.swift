@@ -4,7 +4,17 @@ import AVKit
 import AppKit
 #endif
 
-private enum FluxPage: Equatable { case catalogue, series, player }
+/// `home` is the first screen of the desk: the destinations, in the middle
+/// of the window. Back returns to it, screen after screen.
+private enum FluxPage: Equatable { case home, catalogue, series, player, settings }
+
+/// Settings page requested by the dock, a notice or the welcome screen. A new
+/// revision reopens the page even when the settings are already on screen.
+private struct DeskSettingsRequest: Equatable {
+    var revision = UUID()
+    var page: PlaybackSettingsView.Page?
+    var sourceEditor: PlaybackSettingsView.SourceEditor?
+}
 
 /// A submitted search may still be filtering. Retain its browsing context, not
 /// an item from the previous result set, until the current results are ready.
@@ -47,7 +57,11 @@ struct ContentView: View {
     #if os(iOS)
     @Environment(\.horizontalSizeClass) private var sizeClass
     #endif
+    #if os(macOS) && !FLUX_CATALOG_UI_TESTING
+    @State private var page: FluxPage = .home
+    #else
     @State private var page: FluxPage = .catalogue
+    #endif
     private var group: String? {
         get { library.group }
         nonmutating set { library.group = newValue }
@@ -88,7 +102,7 @@ struct ContentView: View {
     @State private var browserHeight: CGFloat = 900
     @FocusState private var liveGroupSearchFocus: Bool
     @StateObject private var livePreview = LiveTVPreviewController()
-    @AppStorage(LiveTVPreviewDelay.storageKey) private var livePreviewDelay: LiveTVPreviewDelay = .three
+    @AppStorage(LiveTVPreviewDelay.storageKey) private var livePreviewDelay: LiveTVPreviewDelay = LiveTVPreviewDelay.platformDefault
     @AppStorage(LiveTVPreviewDelay.automaticKey) private var automaticLivePreview = true
     @Environment(\.scenePhase) private var scenePhase
     @State private var series: IPTVItem?
@@ -150,20 +164,91 @@ struct ContentView: View {
     @State private var wasFullscreen = false
     @State private var cinemaWindowNumber: Int?
     @StateObject private var remoteInput = RemoteInputBridge()
+    // Desk layout: dock, navigation column and panels drawn inside the window.
+    @AppStorage(FluxDockPosition.storageKey) private var dockPosition: FluxDockPosition = .defaultValue
+    @AppStorage(FluxDockItem.orderKey) private var dockOrder = ""
+    @State private var favoritesMode = false
+    @State private var sidebarCountries = false
+    @State private var dockReturnFocus: String?
+    @State private var settingsRequest = DeskSettingsRequest()
+    @State private var deskPreviewWidth: CGFloat = 520
+    @State private var deskWidth: CGFloat = 0
+    /// Screens opened since the home screen; Back walks them in reverse.
+    @State private var deskHistory = FluxNavigationHistory<FluxDockItem>()
+    @State private var homeHover: FluxDockItem?
+    @State private var homeKind: IPTVMediaKind?
+    /// Settings asked for during playback: glass panels above the picture.
+    @State private var playerSettings: DeskSettingsRequest?
+    /// Zones of the screen, shown by Back for a keyboard or a remote.
+    @State private var zoneMode = false
+    @State private var zoneFocus: DeskZone = .content
+    @AppStorage(DeskZone.backKey) private var backShowsZones = true
+    // Channel list over the picture, to change channel without leaving it.
+    @State private var zapListVisible = false
+    @State private var zapFocusID: String?
+    @State private var zapKeyboard = false
+    @State private var zapListTask: Task<Void, Never>?
+    @State private var keyboardPointer: CGPoint?
+    @State private var newListKind: IPTVMediaKind?
+    @State private var newListName = ""
+    @State private var renamingList = false
+    @State private var confirmingListDeletion = false
+    @State private var listNameInvalid = false
+    @FocusState private var listNameFocus: Bool
+    /// Shared by a sleeve of the catalogue and the case of its fiche.
+    @Namespace private var caseNamespace
 
     #if FLUX_CATALOG_UI_TESTING
     private var fixtureSearchSubmission: String?
     private var fixtureSearchObservation: ((CatalogSearchFocusSnapshot) -> Void)?
     private var fixtureRestoreBrowsing = false
+    /// A capture has no stream: a room stands for the picture under the
+    /// panels drawn above the player.
+    private var fixturePictureStandIn = false
+    /// Keys of a remote, sent once the screen is up.
+    private var fixtureActions: [RemoteAction] = []
+    /// A capture plays nothing: the channel list of the player is drawn as
+    /// if the selected channel were on screen.
+    private var fixtureZapList = false
     /// Seed only the initial selection; layout, controls and artwork remain the
     /// same production views used by the application.
-    init(fixtureSelection: IPTVItem? = nil, fixtureSeasons: [IPTVSeason] = [], fixtureOpenSeason: Int? = nil, fixtureEpisodeID: String? = nil, fixtureOpenItem: Bool = false, fixtureSearchSubmission: String? = nil, fixtureSearchObservation: ((CatalogSearchFocusSnapshot) -> Void)? = nil, fixtureOpenCountries: Bool = false, fixtureRestoreBrowsing: Bool = false) {
+    init(fixtureSelection: IPTVItem? = nil, fixtureSeasons: [IPTVSeason] = [], fixtureOpenSeason: Int? = nil, fixtureEpisodeID: String? = nil, fixtureOpenItem: Bool = false, fixtureSearchSubmission: String? = nil, fixtureSearchObservation: ((CatalogSearchFocusSnapshot) -> Void)? = nil, fixtureOpenCountries: Bool = false, fixtureRestoreBrowsing: Bool = false, fixtureSettingsPage: PlaybackSettingsView.Page? = nil, fixtureFavorites: Bool = false, fixtureHome: Bool = false, fixturePlayerSettings: Bool = false, fixtureZone: DeskZone? = nil, fixtureActions: [RemoteAction] = [], fixtureZapList: Bool = false, fixtureAddSource: Bool = false) {
+        self.fixtureActions = fixtureActions
+        _addingSource = State(initialValue: fixtureAddSource)
+        if fixtureZapList {
+            self.fixtureZapList = true
+            fixturePictureStandIn = true
+            _page = State(initialValue: .player)
+            _zapListVisible = State(initialValue: true)
+            _zapKeyboard = State(initialValue: true)
+            _zapFocusID = State(initialValue: fixtureSelection?.id)
+        }
+        if fixtureHome { _page = State(initialValue: .home) }
+        if let fixtureZone {
+            _zoneMode = State(initialValue: true)
+            _zoneFocus = State(initialValue: fixtureZone)
+        }
+        if fixturePlayerSettings {
+            _page = State(initialValue: .player)
+            _playerSettings = State(initialValue: DeskSettingsRequest())
+            fixturePictureStandIn = true
+        }
+        if let fixtureSettingsPage {
+            _page = State(initialValue: .settings)
+            _settingsRequest = State(initialValue: DeskSettingsRequest(page: fixtureSettingsPage))
+        }
+        _favoritesMode = State(initialValue: fixtureFavorites)
         self.fixtureSearchSubmission = fixtureSearchSubmission
         self.fixtureSearchObservation = fixtureSearchObservation
         self.fixtureRestoreBrowsing = fixtureRestoreBrowsing
         _pendingBrowseRestore = State(initialValue: fixtureRestoreBrowsing)
         _showingSearch = State(initialValue: fixtureSearchSubmission != nil)
+        #if os(macOS)
+        // The desk lists countries and languages in its navigation column.
+        _sidebarCountries = State(initialValue: fixtureOpenCountries)
+        #else
         _showingCountries = State(initialValue: fixtureOpenCountries)
+        #endif
         _previewID = State(initialValue: fixtureSelection?.id)
         _previewItem = State(initialValue: fixtureSelection)
         _focusID = State(initialValue: fixtureSelection?.id ?? "tab-live")
@@ -196,11 +281,14 @@ struct ContentView: View {
         CatalogFocusRequest(sourceID: library.selectedSourceID, kind: library.contentKind,
                             query: library.search, group: group,
                             presetID: library.selectedPresetID, resumeOnly: continueOnly,
-                            countryCode: library.contentKind == .live ? library.countryCode : nil)
+                            countryCode: library.countryCode)
     }
     private var visible: [IPTVItem] { visibleSlice.items }
     private var groups: [String] { library.catalogResults.groups }
-    private var catalogPageSize: Int { max(library.contentKind == .live ? 1 : 2,columns)*12 }
+    private var catalogPageSize: Int {
+        if usesDesk && library.contentKind == .live { return max(1, columns) * 40 }
+        return max(library.contentKind == .live ? 1 : 2,columns)*12
+    }
     private var catalogPageCount: Int { visibleSlice.pageCount(size:catalogPageSize) }
     private var displayedItems: ArraySlice<IPTVItem> { visibleSlice.window(page:catalogPage,size:catalogPageSize) }
     private var livePreviewAllowed: Bool {
@@ -233,7 +321,7 @@ struct ContentView: View {
         if let first = displayedItems.first { focusID=first.id; setPreview(first) }
     }
     private var modalOpen: Bool {
-        addingSource || editingSource != nil || presetEditor != nil || deletingPreset != nil || itemOptions != nil || showingSources || showingLists || showingEngines || showingGroups || showingCountries || showingNavigationMenu || library.alertMessage != nil
+        addingSource || editingSource != nil || presetEditor != nil || deletingPreset != nil || itemOptions != nil || showingSources || showingLists || showingEngines || showingGroups || showingCountries || showingNavigationMenu || library.alertMessage != nil || playerSettings != nil
     }
     private var handlesCatalogueBack: Bool {
         guard page == .catalogue, let id = focusID else { return false }
@@ -256,10 +344,10 @@ struct ContentView: View {
     }
     private var showingAllCatalog: Bool {
         CatalogScope.isAll(group:group,search:library.search,presetID:library.selectedPresetID,resumeOnly:continueOnly,
-                           countryCode: library.contentKind == .live ? library.countryCode : nil)
+                           countryCode: library.countryCode)
     }
     private func showAllCatalog() {
-        if library.contentKind == .live { library.countryCode = nil }
+        library.countryCode = nil
         continueOnly=false;group=nil;library.selectedPresetID=nil;library.search=""
         groupSearch = ""
         clearPreview();resetCatalogWindow();focusID = library.contentKind == .live && !televisionLayout && !liveSidebarVisible ? "categories" : "group-all"
@@ -292,6 +380,9 @@ struct ContentView: View {
 
     private func browserPane(reader: ScrollViewProxy) -> some View {
         ZStack {
+            #if os(macOS)
+            deskPane(reader: reader)
+            #else
             if library.sources.isEmpty {
                 firstSourceWelcome
             } else if let heldItem {
@@ -303,13 +394,14 @@ struct ContentView: View {
                         else { header }
                     }
                     switch page {
-                    case .catalogue: catalogue
+                    case .catalogue, .settings, .home: catalogue
                     case .series: seriesDetail
                     case .player: playerPage
                     }
                 }
                 .opacity(entranceItem == nil ? 1 : 0)
             }
+            #endif
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .coordinateSpace(name: "club-pane")
@@ -456,9 +548,23 @@ struct ContentView: View {
         .onAppear {
             browserHeight = geometry.size.height; updateColumns(geometry.size.width)
             if library.sources.isEmpty { focusID = "add-source"; systemFocus = "add-source" }
+            #if os(macOS)
+            // The home screen starts on the section used last.
+            if showsHome { focusID = currentDockID; systemFocus = focusID }
+            #endif
             #if FLUX_CATALOG_UI_TESTING
             if fixtureRestoreBrowsing { restoreBrowsingContext() }
             else if !library.sources.isEmpty, heldItem == nil { systemFocus = focusID }
+            if !fixtureActions.isEmpty {
+                Task { @MainActor in
+                    try? await Task.sleep(nanoseconds: 500_000_000)
+                    for action in fixtureActions {
+                        dispatch(action)
+                        try? await Task.sleep(nanoseconds: 60_000_000)
+                    }
+                    reportSearchFocusFixture()
+                }
+            }
             if let query = fixtureSearchSubmission {
                 library.search = query
                 focusFirstItem()
@@ -471,13 +577,14 @@ struct ContentView: View {
             restoreBrowsingContext()
             #endif
         }
-        .onChange(of: geometry.size.height) { _, height in browserHeight = height }
+        .onChange(of: geometry.size.height) { _, height in browserHeight = height; updateColumns(geometry.size.width) }
         .onChange(of: geometry.size.width) { _, width in updateColumns(width) }
         .onChange(of: library.contentKind) { _, _ in
             liveGroupSearchFocus = false; clearPreview(); updateColumns(geometry.size.width)
             restoreBrowsingContext()
         }
         .onChange(of: showRemote) { _, _ in updateColumns(geometry.size.width) }
+        .onChange(of: dockPosition) { _, _ in updateColumns(geometry.size.width) }
         .onChange(of: density) { _, _ in updateColumns(geometry.size.width) }
         .onChange(of: clubProfile) { _, _ in updateColumns(geometry.size.width) }
         #if !os(tvOS)
@@ -492,7 +599,8 @@ struct ContentView: View {
     private var platformCatalogue: some View {
         catalogueLayout
         #if os(macOS)
-        .frame(minWidth: page == .player ? 320 : 860, minHeight: page == .player ? 180 : 540)
+        // The desk needs room for its three columns beside the dock.
+        .frame(minWidth: page == .player ? 320 : usesDesk ? 1040 : 860, minHeight: page == .player ? 180 : usesDesk ? 620 : 540)
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.willExitFullScreenNotification)) { notice in
             if (notice.object as? NSWindow)?.windowNumber == cinemaWindowNumber { cinema = false; cinemaWindowNumber = nil }
         }
@@ -509,7 +617,10 @@ struct ContentView: View {
         .fluxExit(heldItem != nil || page != .catalogue || showingSearch || handlesCatalogueBack) { if heldItem != nil { dispatch(.back) } else { back() } }
         .onPlayPauseCommand { dispatch(.playPause) }
         #else
-        .onKeyPress(keys: [.upArrow, .downArrow, .leftArrow, .rightArrow, .return, .escape, .space, "f"], phases: [.down, .repeat]) { press in
+        .onKeyPress(keys: [.upArrow, .downArrow, .leftArrow, .rightArrow, .return, .escape, .space, "f", .tab, "\u{19}"], phases: [.down, .repeat]) { press in
+            #if os(macOS)
+            if deskDismissWithKey(press.key) { return .handled }
+            #endif
             guard !modalOpen else { return .ignored }
             if searchFocus {
                 if press.key == .escape { showingSearch = false; searchFocus = false; return .handled }
@@ -519,6 +630,15 @@ struct ContentView: View {
                 if press.key == .escape { liveGroupSearchFocus = false; return .handled }
                 return .ignored
             }
+            #if os(macOS)
+            if NSApp.keyWindow?.firstResponder is NSText { return .ignored }
+            // Tab walks the zones of the screen; Shift-Tab walks them back.
+            if press.key == .tab || press.key == "\u{19}" {
+                return cycleZone(forward: press.key == .tab && !press.modifiers.contains(.shift)) ? .handled : .ignored
+            }
+            #else
+            if press.key == .tab || press.key == "\u{19}" { return .ignored }
+            #endif
             if press.key == "f" && press.modifiers.contains([.command, .shift]) { dispatch(.fullscreen) }
             else if press.key == "f" && press.modifiers.contains(.command) { search() }
             else if press.key == .upArrow { dispatch(.up) }
@@ -538,8 +658,8 @@ struct ContentView: View {
 
     private var sourceSheets: some View {
         commandCatalogue
-        .sheet(isPresented: $addingSource) { AddSourceSheet(onSaved: { home() }).environmentObject(library) }
-        .sheet(item: $editingSource) { source in AddSourceSheet(existing: source, onSaved: { home() }).environmentObject(library) }
+        .fluxFormCover(isPresented: $addingSource) { AddSourceSheet(onSaved: { home() }).environmentObject(library) }
+        .fluxFormCover(item: $editingSource) { source in AddSourceSheet(existing: source, onSaved: { home() }).environmentObject(library) }
         .sheet(item: $presetEditor) { editor in
             PresetNameSheet(editor: editor) { name in
                 if let existing = editor.existing { return library.renamePreset(existing, name: name) }
@@ -558,7 +678,9 @@ struct ContentView: View {
                               select: selectLiveCountry, close: { showingCountries = false })
         }
         .sheet(isPresented: $showingEngines, onDismiss: { diagnosticSettings = false }) { enginesPanel }
+        #if !os(macOS)
         .sheet(item: $itemOptions) { item in itemPanel(item) }
+        #endif
     }
 
     private var catalogueDialogs: some View {
@@ -576,9 +698,11 @@ struct ContentView: View {
             Button("Supprimer « \(preset.name) »", role: .destructive) { library.deletePreset(preset); deletingPreset = nil; group = nil }
             Button("Annuler", role: .cancel) { deletingPreset = nil }
         }
+        #if !os(macOS)
         .alert("Flux IPTV", isPresented: Binding(get: { library.alertMessage != nil }, set: { if !$0 { library.alertMessage = nil } })) {
             Button("OK", role: .cancel) { library.alertMessage = nil }
         } message: { Text(library.alertMessage ?? "") }
+        #endif
     }
 
     private var sourceObservedCatalogue: some View {
@@ -666,17 +790,40 @@ struct ContentView: View {
     // No decorative render passes or backdrop downloads behind video.
     private var background: some View {
         ZStack {
-            if page == .player || heldItem != nil {
+            if page == .player || (heldItem != nil && !usesDesk) {
                 Color.black.ignoresSafeArea()
-            } else if library.sources.isEmpty {
+            } else if library.sources.isEmpty && !usesDesk {
                 Color(red: 0.025, green: 0.035, blue: 0.065).ignoresSafeArea()
             } else {
-                FluxBackdrop(theme: theme)
-                ProceduralStage(kind: library.contentKind)
+                Group {
+                    #if os(macOS)
+                    if showsHome { homeRooms }
+                    else {
+                        FluxBackdrop(theme: theme)
+                        ProceduralStage(kind: library.contentKind)
+                    }
+                    #else
+                    FluxBackdrop(theme: theme)
+                    ProceduralStage(kind: library.contentKind)
+                    #endif
+                }
+                // A fiche or the settings float over the same room, out of focus.
+                .blur(radius: backdropBlur)
+                .animation(reduceMotion ? nil : .easeOut(duration: 0.22), value: caseExpanded)
                 LinearGradient(colors:[.black.opacity(televisionLayout ? 0.52 : 0.12),.black.opacity(televisionLayout ? 0.72 : 0.52)],startPoint:.top,endPoint:.bottom)
                     .ignoresSafeArea().allowsHitTesting(false)
             }
         }.accessibilityHidden(true)
+    }
+    private var backdropBlur: CGFloat {
+        #if os(macOS)
+        if (heldItem != nil && caseExpanded) || page == .settings { return 26 }
+        // Behind the home screen the room is a wallpaper: its signs and
+        // posters must not compete with the name of the destination.
+        return showsHome ? 9 : 0
+        #else
+        return 0
+        #endif
     }
     private func setPreview(_ item: IPTVItem) {
         if !library.isLoading && !library.isFiltering && !pendingBrowseRestore { library.browseItemID = item.id }
@@ -728,7 +875,7 @@ struct ContentView: View {
         caseTransitionTask = Task { @MainActor in
             await Task.yield()
             guard !Task.isCancelled,caseToken==token else {return}
-            withAnimation(reduceMotion ? nil : .easeOut(duration:0.20)) {caseExpanded=true}
+            withAnimation(reduceMotion ? nil : usesDesk ? .spring(response: 0.5, dampingFraction: 0.84) : .easeOut(duration:0.20)) {caseExpanded=true}
         }
         requestCaseDetails(item,token:token)
     }
@@ -739,8 +886,8 @@ struct ContentView: View {
         let destination=heldSeasonNumber.map{"season-\($0)"} ?? visibleSlice.item(id:item.id)?.id ?? visible.first?.id ?? "group-all"
         if heldSeasonNumber == nil {revealCatalogItem(destination)}
         caseTransitionTask=Task { @MainActor in
-            withAnimation(reduceMotion ? nil : .easeOut(duration:0.16)) {caseExpanded=false}
-            if !reduceMotion {try? await Task.sleep(nanoseconds:180_000_000)}
+            withAnimation(reduceMotion ? nil : usesDesk ? .spring(response: 0.38, dampingFraction: 0.9) : .easeOut(duration:0.16)) {caseExpanded=false}
+            if !reduceMotion {try? await Task.sleep(nanoseconds: usesDesk ? 380_000_000 : 180_000_000)}
             guard !Task.isCancelled,caseToken==token else{return}
             focusID=destination;heldItem=nil;heldSeasonNumber=nil;heldEpisodeID=nil
             // Recreate only the catalogue being returned to, then restore its
@@ -768,9 +915,22 @@ struct ContentView: View {
             isFavorite:library.isFavorite(item),remoteEvent:caseRemoteEvent,
             initialSeasons:heldSeasonNumber == nil ? []:seasons,
             initialSeasonNumber:heldSeasonNumber,initialEpisodeID:heldEpisodeID,
-            suspended:modalOpen)
+            suspended:modalOpen,
+            expanded: usesDesk ? caseExpanded : true, hero: caseHero(item),
+            seasonChanged: { number in heldSeasonNumber = number; heldEpisodeID = nil; seasonNumber = number })
         .frame(maxWidth:.infinity,maxHeight:.infinity)
-        .opacity(caseExpanded ? 1 : 0)
+        .opacity(usesDesk || caseExpanded ? 1 : 0)
+    }
+    /// Identifier shared with the sleeve that opened this fiche.
+    private func sleeveID(_ item: IPTVItem, season: Int? = nil) -> String {
+        season.map { "sleeve-\(item.id)::season::\($0)" } ?? "sleeve-\(item.id)"
+    }
+    private func caseHero(_ item: IPTVItem) -> MediaDetailHero? {
+        usesDesk ? MediaDetailHero(namespace: caseNamespace, id: sleeveID(item, season: heldSeasonNumber)) : nil
+    }
+    /// The sleeve leaves its shelf while its fiche is open.
+    private func sleeveHeld(_ item: IPTVItem) -> Bool {
+        usesDesk && heldItem?.id == item.id && heldSeasonNumber == nil
     }
     private var previewHero: some View {
         HStack(alignment:.center,spacing:18) {
@@ -813,6 +973,77 @@ struct ContentView: View {
         false
         #endif
     }
+    /// The Mac presents the desk layout: a dock for the destinations, a
+    /// navigation column, and panels drawn in the window instead of sheets.
+    private var usesDesk: Bool {
+        #if os(macOS)
+        true
+        #else
+        false
+        #endif
+    }
+    /// Dock destination that stands for the screen being shown.
+    private var currentDockID: String {
+        if page == .settings { return FluxDockItem.settings.focusID }
+        if favoritesMode && page != .home { return FluxDockItem.favorites.focusID }
+        return FluxDockItem(kind: library.contentKind).focusID
+    }
+    private func presentAddSource() {
+        #if os(macOS)
+        openSettings(.sources, editing: .new)
+        #else
+        addingSource = true
+        #endif
+    }
+    private func presentEditSource(_ source: IPTVSource) {
+        #if os(macOS)
+        openSettings(.sources, editing: .existing(source))
+        #else
+        editingSource = source
+        #endif
+    }
+    private func presentSources() {
+        #if os(macOS)
+        openSettings(.sources)
+        #else
+        showingSources = true
+        #endif
+    }
+    private func presentLists() {
+        #if os(macOS)
+        enterFavorites()
+        #else
+        showingLists = true
+        #endif
+    }
+    private func presentCountries() {
+        #if os(macOS)
+        sidebarCountries = true
+        focusID = library.countryCode.map { "country-\($0)" } ?? "country-all"
+        #else
+        showingCountries = true
+        #endif
+    }
+    /// During playback the settings are glass panels above the picture, which
+    /// keeps playing; elsewhere on the Mac they are a screen of the window.
+    private func presentSettings(diagnostic: Bool = false) {
+        #if os(macOS)
+        if page == .player { playerSettings = DeskSettingsRequest(page: diagnostic ? .diagnostic : nil) }
+        else { openSettings(diagnostic ? .diagnostic : nil) }
+        #else
+        diagnosticSettings = diagnostic; showingEngines = true
+        #endif
+    }
+    private func leaveSettings() {
+        guard page == .settings else { return }
+        #if os(macOS)
+        deskBack()
+        #else
+        page = .catalogue
+        focusID = currentDockID
+        systemFocus = focusID
+        #endif
+    }
 
     /// Saved sources are restored synchronously by IPTVLibrary. An empty
     /// library starts here, without reopening an import sheet after dismissal.
@@ -836,7 +1067,7 @@ struct ContentView: View {
                 Label("Fichier M3U", systemImage: "doc")
                 #endif
             }.font(.system(size: televisionLayout ? 23 : 14)).foregroundStyle(.secondary)
-            Button { addingSource = true } label: {
+            Button { presentAddSource() } label: {
                 Label("Charger une liste", systemImage: "plus.rectangle.fill")
                     .font(.system(size: televisionLayout ? 29 : 20, weight: .semibold))
                     .padding(.horizontal, televisionLayout ? 34 : 24)
@@ -974,26 +1205,29 @@ struct ContentView: View {
         return term.isEmpty ? groups : groups.filter { $0.localizedStandardContains(term) }
     }
     private var liveCountryTitle: String {
-        guard let code = library.countryCode else { return "Tous les pays" }
+        guard let code = library.countryCode else { return library.contentKind == .live ? "Tous les pays" : "Toutes les langues" }
+        // Films and series are filtered by the language of their label.
+        if library.contentKind != .live { return MediaLanguage.displayName(for: code) }
         let name = LiveCountry.displayName(for: code)
         return code == LiveCountry.unknownCode ? name : "\(name) · \(code)"
     }
     private var liveCountryButton: some View {
-        navButton(liveCountryTitle, icon: "globe.europe.africa", id: "countries",
-                  active: library.countryCode != nil) { showingCountries = true }
+        navButton(liveCountryTitle, icon: library.contentKind == .live ? "globe.europe.africa" : "character.bubble", id: "countries",
+                  active: library.countryCode != nil) { presentCountries() }
         #if os(tvOS) && FLUX_CATALOG_UI_TESTING
         .background(TVCatalogControlFrameProbe(identifier: "live-country-picker"))
         #endif
-        .accessibilityLabel("Pays : \(liveCountryTitle)")
+        .accessibilityLabel("\(library.contentKind == .live ? "Pays" : "Langue") : \(liveCountryTitle)")
     }
     private func selectLiveCountry(_ code: String?) {
         library.countryCode = code
         showingCountries = false
+        sidebarCountries = false
         clearPreview()
         focusID = "countries"
         Task { @MainActor in
             await Task.yield()
-            guard !showingCountries, page == .catalogue, library.contentKind == .live else { return }
+            guard !showingCountries, page == .catalogue else { return }
             systemFocus = "countries"
         }
     }
@@ -1031,6 +1265,8 @@ struct ContentView: View {
         if id == "group-all" { return showingAllCatalog }
         if id.hasPrefix("live-category-") { return group == String(id.dropFirst("live-category-".count)) }
         if id.hasPrefix("live-preset-") { return library.selectedPresetID == String(id.dropFirst("live-preset-".count)) }
+        if id.hasPrefix("favorite-list-") { return library.selectedPresetID == String(id.dropFirst("favorite-list-".count)) }
+        if id == "continue-only" { return continueOnly }
         return false
     }
     private func liveScopeButton(_ title: String, symbol: String, id: String, count: Int? = nil, action: @escaping () -> Void) -> some View {
@@ -1069,7 +1305,7 @@ struct ContentView: View {
                         ForEach(library.currentPresets) { preset in
                             liveScopeButton(preset.name, symbol: preset.isDefault ? "star.fill" : "text.badge.star", id: "live-preset-\(preset.id)") { selectLivePreset(preset.id) }
                         }
-                        liveScopeButton("Gérer les listes", symbol: "slider.horizontal.3", id: "live-manage-lists") { showingLists = true }
+                        liveScopeButton("Gérer les listes", symbol: "slider.horizontal.3", id: "live-manage-lists") { presentLists() }
                         Text("CATÉGORIES").font(.caption2.weight(.semibold)).tracking(1.5).foregroundStyle(.secondary)
                             .padding(.horizontal, 12).padding(.top, 18).padding(.bottom, 5)
                         ForEach(liveGroups, id: \.self) { name in
@@ -1243,14 +1479,14 @@ struct ContentView: View {
                 Image(systemName: "shield.lefthalf.filled").foregroundStyle(.orange)
                 Text("Lecture Apple activée après une interruption de VLC.").font(.caption)
                 Spacer(minLength: 4)
-                Button("Diagnostic") { diagnosticSettings = true; showingEngines = true }.buttonStyle(.bordered)
+                Button("Diagnostic") { presentSettings(diagnostic: true) }.buttonStyle(.bordered)
             }.padding(12).fluxFrosted(radius: 16)
         }
         if let issue = library.credentialIssue, let source = library.selectedSource, source.kind != .m3uFile {
             VStack(alignment: .leading, spacing: 9) {
                 Label("Reconnecter « \(source.name) »", systemImage: "person.crop.circle.badge.exclamationmark").font(.headline)
                 Text(issue).font(.caption).foregroundStyle(.secondary)
-                navButton("Reconnecter", icon: "arrow.clockwise", id: "reconnect-source") { editingSource = source }
+                navButton("Reconnecter", icon: "arrow.clockwise", id: "reconnect-source") { presentEditSource(source) }
             }.padding(14).frame(maxWidth: .infinity, alignment: .leading).fluxFrosted(radius: 18)
         }
     }
@@ -1266,7 +1502,7 @@ struct ContentView: View {
                 Text(library.sources.isEmpty ? "Votre télévision vous attend" : "Aucune chaîne dans cette sélection")
                     .font(.title3.weight(.semibold)).multilineTextAlignment(.center)
                 if library.sources.isEmpty {
-                    navButton("Ajouter une source", icon: "plus", id: "add-source") { addingSource = true }
+                    navButton("Ajouter une source", icon: "plus", id: "add-source") { presentAddSource() }
                 } else if library.credentialIssue == nil {
                     navButton("Toutes les chaînes", icon: "square.grid.2x2", id: "live-reset") { showAllCatalog() }
                 }
@@ -1371,8 +1607,13 @@ struct ContentView: View {
     }
 
     @ViewBuilder private var catalogue: some View {
+        #if os(macOS)
+        if library.contentKind == .live { liveDeskCatalogue }
+        else { mediaDeskCatalogue }
+        #else
         if library.contentKind == .live { liveCatalogue }
         else { mediaCatalogue }
+        #endif
     }
 
     private var mediaCatalogue: some View {
@@ -1382,7 +1623,7 @@ struct ContentView: View {
                     Image(systemName: "shield.lefthalf.filled").foregroundStyle(.orange)
                     Text("Mode de récupération : lecture Apple uniquement après une session VLC non terminée.").font(.callout)
                     Spacer()
-                    Button("Diagnostic") { diagnosticSettings = true; showingEngines = true }.buttonStyle(.bordered)
+                    Button("Diagnostic") { presentSettings(diagnostic: true) }.buttonStyle(.bordered)
                 }.padding(12).fluxFrosted(radius: 14).padding(.horizontal, 28)
             }
             if showingSearch {
@@ -1423,7 +1664,7 @@ struct ContentView: View {
                         Text("Vos listes et favoris restent intacts.").font(.caption).foregroundStyle(.secondary)
                     }
                     Spacer(minLength: 6)
-                    navButton("Reconnecter", icon: "arrow.clockwise", id: "reconnect-source") { editingSource = source }
+                    navButton("Reconnecter", icon: "arrow.clockwise", id: "reconnect-source") { presentEditSource(source) }
                 }.padding(16).fluxFrosted(radius: 16).padding(.horizontal, 30)
             }
             if library.isLoading && visible.isEmpty { Spacer(); ProgressView("Chargement du catalogue…").frame(maxWidth: .infinity); Spacer() }
@@ -1433,7 +1674,7 @@ struct ContentView: View {
                 VStack(spacing: 18) {
                     Image(systemName: "play.tv").font(.system(size: 54)).foregroundStyle(themeAccent)
                     Text(library.sources.isEmpty ? "Votre télévision vous attend" : library.credentialIssue != nil ? "Source à reconnecter" : "Aucun contenu").font(.title.weight(.semibold))
-                    if library.sources.isEmpty { navButton("Ajouter une source", icon: "plus", id: "add-source") { addingSource = true } }
+                    if library.sources.isEmpty { navButton("Ajouter une source", icon: "plus", id: "add-source") { presentAddSource() } }
                 }.frame(maxWidth: .infinity)
                 Spacer()
             } else {
@@ -1496,8 +1737,13 @@ struct ContentView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     CatalogSleeveArtwork(item: item)
                     .aspectRatio(2.0/3.0, contentMode: .fit)
+                    #if os(macOS)
+                    .matchedGeometryEffect(id: sleeveID(item), in: caseNamespace, properties: .frame, anchor: .center,
+                                           isSource: !(sleeveHeld(item) && caseExpanded))
+                    .opacity(sleeveHeld(item) ? 0 : 1)
+                    #endif
                     .rotation3DEffect(.degrees(focused && !reduceMotion ? -4 : 0),axis:(x:0,y:1,z:0),perspective:0.6)
-                    .scaleEffect(focused && !reduceMotion ? 1.025 : 1)
+                    .scaleEffect(focused && !reduceMotion ? (usesDesk ? 1.05 : 1.025) : 1)
                     .offset(y: focused && !reduceMotion ? -3 : 0)
                     #if os(tvOS)
                     .frame(maxWidth: .infinity)
@@ -1547,6 +1793,7 @@ struct ContentView: View {
                 .simultaneousGesture(LongPressGesture(minimumDuration: 0.65, maximumDistance: 14).onEnded { _ in chooseFavorites(item) })
                 #endif
                 #if os(macOS)
+                .onHover { inside in if inside { deskHover(item) } }
                 .contextMenu {
                     Button("Favoris et listes…") { chooseFavorites(item) }
                     if playback.history.entries[item.id] != nil {
@@ -1602,7 +1849,10 @@ struct ContentView: View {
             } else if let series {
                 SeriesSeasonShelf(series: series, seasons: seasons, columns: columns,
                                   focusedID: focusID, systemFocus: $systemFocus,
-                                  focus: focusSeason, open: {showSeason($0)})
+                                  focus: focusSeason, open: {showSeason($0)},
+                                  heroNamespace: usesDesk ? caseNamespace : nil,
+                                  heldSeason: heldItem?.id == series.id ? heldSeasonNumber : nil,
+                                  heroExpanded: caseExpanded)
                 Text("Choisissez une saison pour voir ses épisodes · Retour : catalogue des séries")
                     .font(.caption).foregroundStyle(.secondary).frame(maxWidth: .infinity).padding(.bottom, 10)
             }
@@ -1616,6 +1866,9 @@ struct ContentView: View {
             ZStack {
                 PlayerSurface(playback: playback, immersive: cinema)
                     .contentShape(Rectangle())
+                    #if FLUX_CATALOG_UI_TESTING
+                    .overlay { if fixturePictureStandIn { ProceduralStage(kind: .movie) } }
+                    #endif
                     #if !os(tvOS)
                     .focusable().focused($systemFocus, equals: "cinema-controls")
                     .id("cinema-controls").focusEffectDisabled()
@@ -1647,7 +1900,7 @@ struct ContentView: View {
                     }
                 }
                 #endif
-                if playerControlsVisible {
+                if playerChromeShown {
                     FluxGlassGroup {
                         VStack(spacing: 12) {
                             playerHeading
@@ -1662,12 +1915,24 @@ struct ContentView: View {
                     VStack { Spacer(); liveBanner.padding(.bottom, playerControlsVisible ? 104 : 0) }
                         .allowsHitTesting(false).transition(.opacity)
                 }
+                #if !os(tvOS)
+                if zapListVisible, zapListAvailable {
+                    zapList
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+                        .transition(.move(edge: .leading).combined(with: .opacity))
+                }
+                #endif
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(.black)
             #if !os(tvOS)
+            .animation(reduceMotion ? nil : .spring(response: 0.32, dampingFraction: 0.88), value: zapListVisible)
             .onContinuousHover { phase in
-                if case .active = phase { revealPlayerControls() }
+                if case .active(let location) = phase {
+                    revealPlayerControls()
+                    // The left edge of the picture calls the channel list.
+                    if location.x < 14, !zapListVisible { openZapList() }
+                }
             }
             #endif
             .onAppear { playerWidth = geometry.size.width; revealPlayerControls() }
@@ -1685,8 +1950,168 @@ struct ContentView: View {
         }
         .onChange(of: modalOpen) { _, _ in if page == .player { revealPlayerControls() } }
         .onChange(of: voiceOverEnabled) { _, _ in if page == .player { revealPlayerControls() } }
-        .onDisappear { playerControlsTask?.cancel(); playerControlsTask = nil; hoveredPlayerControls.removeAll() }
+        .onDisappear {
+            playerControlsTask?.cancel(); playerControlsTask = nil; hoveredPlayerControls.removeAll()
+            zapListTask?.cancel(); zapListTask = nil; zapListVisible = false
+            playerSettings = nil
+        }
     }
+
+    // MARK: Zapping: the channel list over the picture
+
+    /// The commands leave the picture to the settings drawn above it.
+    private var playerChromeShown: Bool {
+        #if FLUX_CATALOG_UI_TESTING
+        if fixtureZapList { return false }
+        #endif
+        return playerControlsVisible && playerSettings == nil
+    }
+    /// Live television only; an episode keeps its own previous and next.
+    private var zapListAvailable: Bool {
+        #if FLUX_CATALOG_UI_TESTING
+        if fixtureZapList { return page == .player }
+        #endif
+        return page == .player && playback.playingItem?.kind == .live && series == nil
+    }
+    private var zapPlayingID: String? {
+        #if FLUX_CATALOG_UI_TESTING
+        if fixtureZapList { return previewID }
+        #endif
+        return playback.playingItem?.id
+    }
+    private func openZapList(keyboard: Bool = false) {
+        guard zapListAvailable else { return }
+        zapKeyboard = keyboard
+        zapFocusID = visibleSlice.item(id: playback.playingItem?.id)?.id ?? visible.first?.id
+        zapListVisible = true
+        armZapListTimer()
+    }
+    private func closeZapList() {
+        zapListTask?.cancel(); zapListTask = nil
+        zapListVisible = false
+    }
+    /// The list leaves by itself when nothing is done with it.
+    private func armZapListTimer() {
+        zapListTask?.cancel()
+        zapListTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 12_000_000_000)
+            guard !Task.isCancelled else { return }
+            zapListVisible = false; zapListTask = nil
+        }
+    }
+    private func zap(to item: IPTVItem) {
+        zapFocusID = item.id
+        if item.id != playback.playingItem?.id { playItem(item) }
+        armZapListTimer()
+    }
+    /// "Toutes les chaînes" comes before the first category, and the cycle wraps.
+    private func cycleZapCategory(_ delta: Int) {
+        let names = groups
+        guard !names.isEmpty else { return }
+        let count = names.count + 1
+        let current = group.flatMap { names.firstIndex(of: $0) }.map { $0 + 1 } ?? 0
+        let next = ((current + delta) % count + count) % count
+        if next == 0 { group = nil; clearPreview(); resetCatalogWindow() }
+        else { selectLiveGroup(names[next - 1]) }
+        zapFocusID = visibleSlice.item(id: playback.playingItem?.id)?.id ?? visible.first?.id
+        armZapListTimer()
+    }
+    private func handleZapList(_ action: RemoteAction) {
+        zapKeyboard = true
+        switch action {
+        case .up, .down:
+            let current = zapFocusID ?? playback.playingItem?.id
+            let target = visibleSlice.adjacent(to: current, offset: action == .down ? 1 : -1)
+                ?? visibleSlice.item(id: current) ?? visible.first
+            zapFocusID = target?.id
+        case .left: cycleZapCategory(-1)
+        case .right: cycleZapCategory(1)
+        case .select, .playPause:
+            if let item = visibleSlice.item(id: zapFocusID) { zap(to: item) }
+        case .back, .home: closeZapList(); return
+        default: break
+        }
+        armZapListTimer()
+    }
+
+    #if !os(tvOS)
+    private var zapList: some View {
+        let playingID = zapPlayingID
+        let anchor = zapFocusID ?? playingID
+        let size = 60
+        let pageIndex = anchor.flatMap { visibleSlice.page(for: $0, size: size) } ?? 0
+        let window = visibleSlice.window(page: pageIndex, size: size)
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 6) {
+                zapHeaderButton("chevron.left", title: "Catégorie précédente") { cycleZapCategory(-1) }
+                VStack(spacing: 2) {
+                    Text(group ?? library.selectedPreset?.name ?? "Toutes les chaînes").font(.headline).lineLimit(1)
+                    Text("\(visible.count) \(visible.count == 1 ? "chaîne" : "chaînes")").font(.caption).foregroundStyle(.secondary)
+                }.frame(maxWidth: .infinity)
+                zapHeaderButton("chevron.right", title: "Catégorie suivante") { cycleZapCategory(1) }
+                zapHeaderButton("xmark", title: "Fermer la liste des chaînes") { closeZapList() }
+            }
+            ScrollViewReader { reader in
+                ScrollView {
+                    LazyVStack(spacing: 6) {
+                        ForEach(window) { item in zapRow(item, playing: item.id == playingID) }
+                    }.padding(.horizontal, 10).padding(.vertical, 6)
+                }
+                .onAppear { if let anchor { reader.scrollTo("zap-\(anchor)", anchor: .center) } }
+                .onChange(of: pageIndex) { _, _ in if let anchor { reader.scrollTo("zap-\(anchor)", anchor: .center) } }
+                .onChange(of: zapFocusID) { _, id in
+                    // A pointer never moves the list under itself.
+                    guard zapKeyboard, let id else { return }
+                    withAnimation(reduceMotion ? nil : .easeOut(duration: 0.16)) { reader.scrollTo("zap-\(id)", anchor: .center) }
+                }
+                .onChange(of: group) { _, _ in if let id = zapFocusID { reader.scrollTo("zap-\(id)", anchor: .center) } }
+            }
+            Text("↑ ↓ choisir  ·  Entrée regarder  ·  ← → catégorie  ·  Échap fermer")
+                .font(.caption2).foregroundStyle(.white.opacity(0.6)).frame(maxWidth: .infinity)
+        }
+        .padding(12).frame(width: 400)
+        .frame(maxHeight: .infinity)
+        .fluxMediaGlass(radius: 28)
+        .padding(playerChromeInset)
+        .onHover { inside in if inside { armZapListTimer() } }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Liste des chaînes")
+    }
+
+    private func zapHeaderButton(_ symbol: String, title: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol).font(.system(size: 13, weight: .bold))
+                .frame(width: 32, height: 32)
+                .background(.white.opacity(0.12), in: Circle())
+                .contentShape(Circle())
+        }
+        .buttonStyle(FluxBareButtonStyle()).foregroundStyle(.white)
+        .accessibilityLabel(title).fluxHelp(title)
+    }
+
+    private func zapRow(_ item: IPTVItem, playing: Bool) -> some View {
+        let highlighted = zapFocusID == item.id
+        return Button { zap(to: item) } label: {
+            LiveTVChannelRow(item: item, number: (visibleSlice.index(of: item.id) ?? 0) + 1,
+                             favorite: library.isFavorite(item), highlighted: highlighted, accent: themeAccent)
+                .overlay(alignment: .trailing) {
+                    if playing {
+                        Image(systemName: "play.fill").font(.caption2).foregroundStyle(themeAccent)
+                            .padding(6).background(.black.opacity(0.55), in: Circle()).padding(.trailing, 34)
+                    }
+                }
+        }
+        .buttonStyle(FluxBareButtonStyle())
+        .id("zap-\(item.id)")
+        .zIndex(highlighted ? 1 : 0)
+        .animation(reduceMotion ? nil : .spring(response: 0.24, dampingFraction: 0.82), value: highlighted)
+        .onHover { inside in
+            if inside { zapKeyboard = false; zapFocusID = item.id; armZapListTimer() }
+        }
+        .accessibilityLabel(item.name).accessibilityValue(playing ? "En cours" : "")
+        .accessibilityIdentifier("zap-channel-\(item.id)")
+    }
+    #endif
 
     private var playerControlsVisible: Bool {
         cinemaControls || playback.opening || !playback.isPlaying || playback.playbackError != nil || voiceOverEnabled
@@ -1710,7 +2135,13 @@ struct ContentView: View {
     }
     private var playerTransportIDs: [String] {
         var ids: [String]
-        if playback.playingItem?.kind == .live { ids = ["previous", "playpause", "next"] }
+        if playback.playingItem?.kind == .live {
+            #if os(tvOS)
+            ids = ["previous", "playpause", "next"]
+            #else
+            ids = (series == nil ? ["zap-list"] : []) + ["previous", "playpause", "next"]
+            #endif
+        }
         else if narrowPlayer { ids = ["rewind", "playpause", "forward"] }
         else { ids = ["previous", "rewind", "playpause", "forward", "next"] }
         #if !os(tvOS)
@@ -1804,6 +2235,7 @@ struct ContentView: View {
         case "forward": return ("Avancer de \(playback.settings.skipSeconds) secondes", "goforward")
         case "playpause": return playback.isPlaying ? ("Pause", "pause.fill") : ("Lecture", "play.fill")
         case "mute": return playback.muted ? ("Rétablir le son", "speaker.slash.fill") : ("Couper le son", "speaker.wave.2.fill")
+        case "zap-list": return ("Liste des chaînes", "list.bullet")
         default: return ("Audio, sous-titres et réglages", "gearshape")
         }
     }
@@ -1916,7 +2348,7 @@ struct ContentView: View {
     private func itemPanel(_ item: IPTVItem) -> some View {
         FavoriteAssignmentSheet(item: item, open: {
             itemOptions = nil; openItem(item)
-        }, saved: favoritesSaved).environmentObject(library)
+        }, saved: favoritesSaved, inlineClose: usesDesk ? { itemOptions = nil } : nil).environmentObject(library)
     }
     private var enginesPanel: some View {
         PlaybackSettingsView(playback: playback, startAtDiagnostic: diagnosticSettings) { showingEngines = false }
@@ -1929,6 +2361,13 @@ struct ContentView: View {
     private func updateColumns(_ width: CGFloat) {
         let usable = width - (showRemote && width >= 800 ? 215 : 0)
         compactChrome = usable < 900
+        #if os(macOS)
+        updateDeskColumns(usable)
+        #else
+        updateLegacyColumns(usable)
+        #endif
+    }
+    private func updateLegacyColumns(_ usable: CGFloat) {
         #if os(tvOS)
         liveSidebarVisible = false
         #else
@@ -1955,6 +2394,7 @@ struct ContentView: View {
         #if !os(tvOS)
         remoteNavigationActive = false
         #endif
+        zoneMode = false
         focusID = id
     }
     private func changeKind(_ kind: IPTVMediaKind) {
@@ -2107,7 +2547,16 @@ struct ContentView: View {
         cancelEntrance()
         if page != .catalogue { home() } else { dismissCaseImmediately() }
         liveGroupSearchFocus = false
-        showingSearch = televisionLayout || library.contentKind != .live; searchFocus = true
+        showingSearch = !usesDesk && (televisionLayout || library.contentKind != .live); searchFocus = true
+        #if os(macOS)
+        // The field may only mount with this update, after leaving the settings.
+        sidebarCountries = false
+        Task { @MainActor in
+            await Task.yield()
+            guard page == .catalogue, heldItem == nil else { return }
+            searchFocus = true
+        }
+        #endif
     }
     private func openItem(_ item: IPTVItem) {
         // While a query is filtering, visibleSlice can still contain the old
@@ -2216,17 +2665,28 @@ struct ContentView: View {
     private func home() { playerControlsTask?.cancel(); seriesTask?.cancel(); seriesTask=nil; cancelEntrance(); dismissCaseImmediately(); if cinema { toggleCinema(restoringPreviousWindow: true) }; playback.stop(); page = .catalogue; series = nil; seasons = []; seasonNumber=nil; episodesLoading=false; episodesFailed=false; seriesRequest = UUID(); focusID = "tab-\(library.contentKind.rawValue)" }
     private func back() {
         if entranceItem != nil { cancelEntrance(); return }
+        if page == .player, playerSettings != nil { playerSettings = nil; return }
+        if page == .player, zapListVisible { closeZapList(); return }
         if heldItem != nil {putCaseBack();return}
         switch page {
         case .player: stopPlayback()
         case .series:
             let id = series?.id; home(); focusID = id ?? "tab-series"
+        case .settings:
+            leaveSettings()
         case .catalogue:
             // A Back during restored-search filtering must stay closed when
             // those results arrive; the saved query itself remains unchanged.
             cancelBrowsingRestore()
+            #if os(macOS)
+            deskBack()
+            #else
             if showingSearch { showingSearch = false; searchFocus = false }
             else { focusID = "tab-\(library.contentKind.rawValue)" }
+            #endif
+        case .home:
+            // Nothing is behind the home screen.
+            break
         }
     }
     private func stopPlayback() {
@@ -2260,7 +2720,7 @@ struct ContentView: View {
     private var focusRows: [[String]] {
         if library.sources.isEmpty { return [["add-source"]] }
         var rows: [[String]] = []
-        if page != .player && !cinema {
+        if page != .player && !cinema && !usesDesk {
             if compactNavigation {
                 rows.append(["navigation-more"])
             } else {
@@ -2273,6 +2733,18 @@ struct ContentView: View {
             rows.append(["tab-live", "tab-movie", "tab-series", "search"])
         }
         switch page {
+        case .settings, .home: break
+        case .catalogue where usesDesk:
+            // Rows above the grid, from the controls along the top of the
+            // window. The navigation column, the actions beside the preview
+            // and the dock have their own zones.
+            rows.append([DeskZone.backID, DeskZone.homeID, DeskZone.searchID]
+                        + (library.selectedSourceID != nil && !library.isLoading ? ["reload"] : []))
+            if library.credentialIssue != nil { rows.append(["reconnect-source"]) }
+            if visible.isEmpty && library.credentialIssue == nil && library.contentKind == .live { rows.append(["live-reset"]) }
+            if !visible.isEmpty && catalogPageCount > 1 {
+                rows.append((catalogPage > 0 ? ["page-prev"] : []) + (catalogPage + 1 < catalogPageCount ? ["page-next"] : []))
+            }
         case .catalogue:
             if library.selectedSourceID != nil && !library.isLoading { rows.append(["reload"]) }
             if library.credentialIssue != nil { rows.append(["reconnect-source"]) }
@@ -2326,6 +2798,17 @@ struct ContentView: View {
             caseRemoteEvent=MediaDetailRemoteEvent(action:action)
             return
         }
+        #if os(macOS)
+        if zoneMode { handleZones(action); return }
+        #endif
+        #if !os(tvOS)
+        if page == .player, zapListVisible { handleZapList(action); return }
+        // In live television a jump back has no meaning: Left and OK bring the
+        // channel list, Up and Down keep changing channel directly.
+        if page == .player, !playerControlsVisible, zapListAvailable, action == .left || action == .select {
+            openZapList(keyboard: true); return
+        }
+        #endif
         if page == .player && !playerControlsVisible {
             switch action {
             case .left: playback.skip(seconds: -Double(playback.settings.skipSeconds))
@@ -2342,6 +2825,12 @@ struct ContentView: View {
         }
         switch action {
         case .up, .down, .left, .right:
+            #if os(macOS)
+            // Rows scroll under a still pointer during keyboard navigation;
+            // remember where it rests so that only a real move selects a row.
+            keyboardPointer = NSEvent.mouseLocation
+            focusID = deskMove(action)
+            #else
             if page == .catalogue, library.contentKind == .live {
                 focusID = LiveTVNavigation.move(from: focusID, action: action, channels: visibleSlice,
                                                columns: columns, sidebarIDs: liveSidebarVisible ? liveSidebarIDs : [],
@@ -2349,9 +2838,15 @@ struct ContentView: View {
             }
             else if page == .catalogue { focusID=visibleSlice.move(from:focusID,action:action,prefix:focusRows,columns:columns) }
             else { focusID = RemoteNavigation.move(from: focusID, action: action, rows: focusRows) }
+            #endif
         case .select: activateFocus()
         case .back: back()
-        case .home: home()
+        case .home:
+            #if os(macOS)
+            showHome()
+            #else
+            home()
+            #endif
         case .search: search()
         case .playPause:
             if page == .player { playback.togglePause() }
@@ -2366,14 +2861,17 @@ struct ContentView: View {
         case .volumeDown: playback.adjustVolume(-0.1)
         case .mute: playback.toggleMute()
         case .options:
-            if page == .player { showingEngines = true }
+            if page == .player { presentSettings() }
             else if let item = visibleSlice.item(id:focusID) ?? (page == .series ? series : nil) { itemOptions = item }
-            else { showingLists = true }
+            else { presentLists() }
         }
         if page == .player { revealPlayerControls() }
     }
     private func activateFocus() {
         guard let id = focusID else { focusID = focusRows.first?.first; return }
+        #if os(macOS)
+        if deskActivate(id) { return }
+        #endif
         if page == .catalogue, let item = visibleSlice.item(id:id) { openItem(item); return }
         if id.hasPrefix("tab-"), let kind = IPTVMediaKind(rawValue: String(id.dropFirst(4))) { changeKind(kind); return }
         if page == .series,id.hasPrefix("season-"),let n=Int(id.dropFirst(7)),let season=seasons.first(where:{$0.number == n}) {showSeason(season);return}
@@ -2382,22 +2880,23 @@ struct ContentView: View {
         if id == "group-all" { showAllCatalog(); return }
         if id.hasPrefix("group-") { group = String(id.dropFirst(6)); return }
         switch id {
+        case "zap-list": if zapListVisible { closeZapList() } else { openZapList(keyboard: remoteNavigationActive) }
         case "live-watch": if let item = previewItem { playItem(item) }
         case "live-favorite": if let item = previewItem { chooseFavorites(item) }
         case "live-preview-mute": livePreview.toggleMuted()
         case "navigation-more": showingNavigationMenu = true
-        case "live-manage-lists": showingLists = true
+        case "live-manage-lists": presentLists()
         case "live-reset": showAllCatalog()
         case "page-prev": changeCatalogPage(-1)
         case "page-next": changeCatalogPage(1)
         case "hero-play": if let item=previewItem { openItem(item) }
         case "hero-favorite": if let item=previewItem { chooseFavorites(item) }
-        case "sources": showingSources = true
+        case "sources": presentSources()
         case "search": search()
         case "remote": showRemote.toggle()
-        case "lists": showingLists = true
+        case "lists": presentLists()
         case "categories": showingGroups = true
-        case "countries": showingCountries = true
+        case "countries": presentCountries()
         case "continue-only": toggleResumeFilter()
         case "favorites-quick":
             if library.contentKind == .live {
@@ -2406,9 +2905,9 @@ struct ContentView: View {
         case "volume-down": playback.adjustVolume(-0.1)
         case "volume-up": playback.adjustVolume(0.1)
         case "mute": playback.toggleMute()
-        case "reconnect-source": editingSource = library.selectedSource
+        case "reconnect-source": if let source = library.selectedSource { presentEditSource(source) }
         case "reload": library.reloadSelected()
-        case "add-source": addingSource = true
+        case "add-source": presentAddSource()
         case "series-back", "player-back": back()
         case "stop": stopPlayback()
         case "cinema-controls": revealPlayerControls(focus: true)
@@ -2422,7 +2921,7 @@ struct ContentView: View {
         case "rewind": playback.skip(seconds: -Double(playback.settings.skipSeconds))
         case "forward": playback.skip(seconds: Double(playback.settings.skipSeconds))
         case "playpause": playback.togglePause()
-        case "engine", "settings": showingEngines = true
+        case "engine", "settings": presentSettings()
         default: if cinema { playback.togglePause() }
         }
     }
@@ -2433,7 +2932,9 @@ private extension View {
         #if os(tvOS)
         self.focused(binding, equals: id).focusEffectDisabled()
         #else
-        self.focusable().focused(binding, equals: id)
+        // Every focusable control draws its own highlight; the system ring
+        // would add a rectangle around rounded cards and rows.
+        self.focusable().focused(binding, equals: id).focusEffectDisabled()
         #endif
     }
 }
@@ -2460,3 +2961,1246 @@ private extension View {
         #endif
     }
 }
+
+#if os(macOS)
+// MARK: - Desk layout (Mac): dock, screens and panels drawn in the window
+
+extension ContentView {
+    private var themeSecond: Color {
+        let p = theme.palette.second
+        return Color(red: p.x, green: p.y, blue: p.z)
+    }
+    /// The home screen is the bar itself, in the middle of the window.
+    var showsHome: Bool { page == .home && !library.sources.isEmpty }
+    private var dockVisible: Bool { page != .player && !cinema && entranceItem == nil && !showsHome }
+    private var dockAlignment: Alignment {
+        switch dockPosition {
+        case .bottom: .bottom
+        case .corner: .bottomLeading
+        case .top: .top
+        case .leading: .leading
+        case .trailing: .trailing
+        }
+    }
+    private var dockEdge: Edge.Set {
+        switch dockPosition {
+        case .bottom, .corner: .bottom
+        case .top: .top
+        case .leading: .leading
+        case .trailing: .trailing
+        }
+    }
+    private var dockRoom: CGFloat { dockVisible ? FluxDockMetrics.thickness(dockPosition) : 0 }
+
+    private var deskHasColumns: Bool { page == .settings || (page == .catalogue && !library.sources.isEmpty) }
+    /// The compact dock sits under the navigation column, which stops above
+    /// it: the other columns reach the bottom of the window. A dock on an
+    /// edge keeps a strip of its own, whose corners stay empty.
+    private var dockInNavigation: Bool { dockVisible && dockPosition == .corner && deskHasColumns }
+    private var navigationFootRoom: CGFloat { dockInNavigation ? dockRoom - 10 : 0 }
+
+    private func edgeInsets(strip: Bool) -> EdgeInsets {
+        guard dockVisible else { return EdgeInsets() }
+        let room = dockRoom
+        switch dockPosition {
+        case .bottom, .corner: return EdgeInsets(top: 14, leading: 0, bottom: strip ? room : 10, trailing: 0)
+        case .top: return EdgeInsets(top: strip ? room : 14, leading: 0, bottom: 8, trailing: 0)
+        case .leading: return EdgeInsets(top: 14, leading: room, bottom: 8, trailing: 0)
+        case .trailing: return EdgeInsets(top: 14, leading: 0, bottom: 8, trailing: room)
+        }
+    }
+    /// Margins of a screen: its columns keep their own room for the dock.
+    private var dockInsets: EdgeInsets { edgeInsets(strip: !dockInNavigation) }
+    /// A fiche never slides under the dock.
+    private var ficheInsets: EdgeInsets { edgeInsets(strip: true) }
+    private var dockSelection: Set<FluxDockItem> {
+        var result: Set<FluxDockItem> = []
+        if let current = FluxDockItem(focusID: currentDockID) { result.insert(current) }
+        if page != .settings && (searchFocus || !library.search.isEmpty) { result.insert(.search) }
+        return result
+    }
+    private var fichePresented: Bool { heldItem != nil && caseExpanded }
+
+    func deskPane(reader: ScrollViewProxy) -> some View {
+        ZStack {
+            if showsHome {
+                deskHome.transition(homeTransition)
+            } else {
+                deskPage
+                    .padding(dockInsets)
+                    // The catalogue stays in place, out of focus, behind a fiche.
+                    .blur(radius: fichePresented ? 22 : 0)
+                    .allowsHitTesting(heldItem == nil && itemOptions == nil && library.alertMessage == nil)
+                    .opacity(entranceItem == nil ? 1 : 0)
+                    .transition(.opacity)
+            }
+            if let heldItem {
+                Color.black.opacity(fichePresented ? 0.36 : 0).ignoresSafeArea().allowsHitTesting(false)
+                heldOverlay(heldItem, reader: reader).padding(ficheInsets)
+            }
+            if dockVisible { deskDock.transition(.opacity) }
+            if page == .player, let request = playerSettings { deskPlayerSettings(request) }
+            if zoneMode { zoneCaption }
+            if let item = itemOptions { deskItemPanel(item) }
+            if let message = library.alertMessage { deskNotice(message) }
+        }
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: playerSettings)
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.16), value: zoneMode)
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.14), value: zoneFocus)
+        .onChange(of: page) { _, _ in zoneMode = false }
+        // The home screen shrinks toward the place its bar takes on the others.
+        .animation(reduceMotion ? nil : .spring(response: 0.46, dampingFraction: 0.88), value: showsHome)
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: fichePresented)
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: itemOptions?.id)
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: library.alertMessage)
+    }
+
+    @ViewBuilder private var deskPage: some View {
+        switch page {
+        case .settings: deskSettings
+        case .player: playerPage
+        case .series:
+            if library.sources.isEmpty { firstSourceWelcome } else { seriesDetail }
+        case .catalogue, .home:
+            // Without a source the home screen has nothing to offer yet.
+            if library.sources.isEmpty { firstSourceWelcome } else { catalogue }
+        }
+    }
+
+    private var deskDock: some View {
+        FluxDock(selection: dockSelection, focusedID: focusID, showsFocus: remoteNavigationActive,
+                 accent: themeAccent, second: themeSecond,
+                 zoneRing: zoneMode && deskZoneEntry(.dock) != nil ? zoneFocus == .dock : nil,
+                 systemFocus: $systemFocus,
+                 activate: { item in pointerSelect(item.focusID); dockAction(item) },
+                 openSettings: { openSettings(.dock) })
+            .padding(dockEdge, FluxDockMetrics.edgeMargin)
+            .padding(.leading, dockPosition == .corner ? 24 : 0)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: dockAlignment)
+    }
+
+    private var deskSettings: some View {
+        PlaybackSettingsView(playback: playback, inline: true, initialPage: settingsRequest.page,
+                             initialSourceEditor: settingsRequest.sourceEditor, remoteVisible: $showRemote,
+                             navigationFootRoom: navigationFootRoom, backTitle: deskBackTitle,
+                             goBack: { back() }, goHome: { showHome() },
+                             close: { leaveSettings() }, sourceSaved: { home() })
+            .environmentObject(library)
+            .id(settingsRequest.revision)
+    }
+
+    /// Favourites and lists of one title, above the dimmed screen.
+    private func deskItemPanel(_ item: IPTVItem) -> some View {
+        ZStack {
+            Color.black.opacity(0.45).ignoresSafeArea()
+                .contentShape(Rectangle()).onTapGesture { itemOptions = nil }
+            itemPanel(item)
+                .fluxGlass(radius: 28)
+                .shadow(color: .black.opacity(0.45), radius: 30, y: 16)
+        }
+        .transition(.opacity)
+    }
+
+    /// A message of the library, shown in the window rather than as an alert.
+    private func deskNotice(_ message: String) -> some View {
+        ZStack {
+            Color.black.opacity(0.45).ignoresSafeArea().contentShape(Rectangle())
+            VStack(alignment: .leading, spacing: 16) {
+                Label("Flux IPTV", systemImage: "exclamationmark.bubble.fill")
+                    .font(.headline).foregroundStyle(themeAccent)
+                Text(message).font(.title3).fixedSize(horizontal: false, vertical: true)
+                HStack {
+                    Spacer()
+                    Button { library.alertMessage = nil } label: {
+                        Text("OK").font(.headline).padding(.horizontal, 28).padding(.vertical, 10)
+                            .fluxNavigationGlass(selected: true, tint: themeAccent, radius: 15)
+                    }.buttonStyle(FluxBareButtonStyle()).accessibilityIdentifier("desk-notice-ok")
+                }
+            }
+            .padding(24).frame(maxWidth: 540).fluxGlass(radius: 26)
+            .shadow(color: .black.opacity(0.45), radius: 30, y: 16)
+        }
+        .transition(.opacity)
+        .accessibilityElement(children: .contain).accessibilityAddTraits(.isModal)
+    }
+
+    func deskDismissWithKey(_ key: KeyEquivalent) -> Bool {
+        if library.alertMessage != nil {
+            // Nothing under the message moves until it is acknowledged.
+            if key == .return || key == .escape || key == .space { library.alertMessage = nil }
+            return true
+        }
+        if playerSettings != nil, key == .escape { playerSettings = nil; return true }
+        return false
+    }
+
+    /// Settings of the player, asked for during playback: the same glass
+    /// panels as the settings screen, above the picture that keeps playing.
+    private func deskPlayerSettings(_ request: DeskSettingsRequest) -> some View {
+        ZStack {
+            Color.black.opacity(0.30).ignoresSafeArea()
+                .contentShape(Rectangle()).onTapGesture { playerSettings = nil }
+            PlaybackSettingsView(playback: playback, inline: true, overPlayback: true, initialPage: request.page,
+                                 close: { playerSettings = nil })
+                .environmentObject(library)
+                .id(request.revision)
+                .frame(maxWidth: 1180, maxHeight: 780)
+                .padding(.vertical, 44)
+        }
+        .transition(.opacity)
+        .accessibilityAddTraits(.isModal)
+    }
+
+    // MARK: Destinations
+
+    private func dockAction(_ item: FluxDockItem) {
+        switch item {
+        case .live, .movie, .series:
+            if let kind = item.mediaKind { showSection(kind) }
+        case .search:
+            // From the home screen the search opens in the section used last.
+            if page == .home { showSection(library.contentKind) }
+            search()
+        case .favorites: enterFavorites()
+        case .settings: openSettings()
+        }
+        recordPlace()
+    }
+
+    /// Remembers the screen being shown, for Back.
+    private func recordPlace() {
+        guard page != .home, let place = FluxDockItem(focusID: currentDockID) else { return }
+        deskHistory.visit(place)
+    }
+
+    /// Back first closes what is open in the screen. From a list it then
+    /// shows the zones of the screen, which the arrows alone do not all
+    /// reach; from there, or from the dock, it shows the screen that came
+    /// before this one, down to the home screen.
+    func deskBack() {
+        if page == .catalogue {
+            if sidebarCountries { sidebarCountries = false; focusID = "countries"; return }
+            if newListKind != nil || renamingList || confirmingListDeletion {
+                newListKind = nil; renamingList = false; confirmingListDeletion = false
+                return
+            }
+            if backShowsZones, !zoneMode, deskZones.count > 1, deskZone(of: focusID) != .dock {
+                openZones(); return
+            }
+        }
+        deskLeaveScreen()
+    }
+
+    /// Shows the screen that came before this one, down to the home screen.
+    func deskLeaveScreen() {
+        zoneMode = false
+        guard let current = FluxDockItem(focusID: currentDockID) else { showHome(); return }
+        if let previous = deskHistory.leave(current) { dockAction(previous) } else { showHome() }
+    }
+
+    /// Screen that Back shows, and the name of the control that performs it.
+    private var deskBackTarget: String {
+        guard let current = FluxDockItem(focusID: currentDockID),
+              let previous = deskHistory.previous(from: current) else { return "Accueil" }
+        return previous.title
+    }
+    var deskBackTitle: String { "Retour : \(deskBackTarget)" }
+
+    // MARK: Zones
+
+    /// Control that receives the selection when a zone is entered; nil when
+    /// the screen does not offer that zone.
+    func deskZoneEntry(_ zone: DeskZone) -> String? {
+        guard page == .catalogue, !library.sources.isEmpty, heldItem == nil else { return nil }
+        switch zone {
+        case .dock: return dockVisible ? currentDockID : nil
+        case .top: return DeskZone.searchID
+        case .column:
+            let ids = deskSidebarIDs
+            return ids.contains(deskScopeID) ? deskScopeID : ids.first
+        case .content: return visibleSlice.item(id: previewID)?.id ?? displayedItems.first?.id
+        case .actions: return deskTrailingIDs.first
+        }
+    }
+    private var deskZones: [DeskZone] { DeskZone.allCases.filter { deskZoneEntry($0) != nil } }
+    private func deskZone(of id: String?) -> DeskZone? {
+        guard let id else { return nil }
+        if FluxDockItem(focusID: id) != nil { return .dock }
+        if deskSidebarIDs.contains(id) { return .column }
+        if deskTrailingIDs.contains(id) { return .actions }
+        if focusRows.contains(where: { $0.contains(id) }) { return .top }
+        return visibleSlice.item(id: id) == nil ? nil : .content
+    }
+
+    private func openZones() {
+        let zones = deskZones
+        zoneFocus = deskZone(of: focusID).flatMap { zones.contains($0) ? $0 : nil }
+            ?? (zones.contains(.content) ? .content : zones.first ?? .dock)
+        zoneMode = true
+    }
+
+    private func enterZone(_ zone: DeskZone) {
+        zoneMode = false
+        guard let id = deskZoneEntry(zone) else { return }
+        if zone == .content, let item = visibleSlice.item(id: id) { revealCatalogItem(id); setPreview(item) }
+        focusID = id
+        systemFocus = id
+    }
+
+    func handleZones(_ action: RemoteAction) {
+        switch action {
+        case .up, .down, .left, .right:
+            zoneFocus = DeskZoneMap.move(from: zoneFocus, action: action, available: deskZones, dock: dockPosition)
+        case .select, .playPause: enterZone(zoneFocus)
+        case .back: deskLeaveScreen()
+        case .home: zoneMode = false; showHome()
+        case .search: zoneMode = false; search()
+        default: zoneMode = false
+        }
+    }
+
+    /// Tab enters the next zone of the screen without the overview.
+    func cycleZone(forward: Bool) -> Bool {
+        guard page == .catalogue, heldItem == nil, !modalOpen else { return false }
+        let current = zoneMode ? zoneFocus : deskZone(of: focusID)
+        guard let next = DeskZoneMap.cycle(from: current, forward: forward, available: deskZones) else { return false }
+        remoteNavigationActive = true
+        enterZone(next)
+        return true
+    }
+
+    /// Frame of a zone while Back shows the zones of the screen.
+    @ViewBuilder func zoneFrame(_ zone: DeskZone, radius: CGFloat, outset: CGFloat = 0, labelled: Bool = true) -> some View {
+        if zoneMode, deskZoneEntry(zone) != nil {
+            let active = zoneFocus == zone
+            let shape = RoundedRectangle(cornerRadius: radius + outset, style: .continuous)
+            shape.strokeBorder(active ? themeAccent : Color.white.opacity(0.30), lineWidth: active ? 3 : 1)
+                .background(themeAccent.opacity(active ? 0.10 : 0), in: shape)
+                .shadow(color: active ? themeAccent.opacity(0.7) : .clear, radius: 10)
+                .overlay(alignment: .topTrailing) {
+                    if active && labelled {
+                        Text(zone.title.uppercased()).font(.caption2.weight(.heavy)).tracking(1.2)
+                            .foregroundStyle(.black).padding(.horizontal, 9).padding(.vertical, 4)
+                            .background(themeAccent, in: Capsule()).padding(8)
+                    }
+                }
+                .padding(-outset)
+                .allowsHitTesting(false)
+                .transition(.opacity)
+        }
+    }
+
+    /// What the keys do while the zones are shown.
+    private var zoneCaption: some View {
+        HStack(spacing: 14) {
+            Label("Zone : \(zoneFocus.title)", systemImage: "rectangle.3.group")
+                .font(.callout.weight(.bold)).foregroundStyle(themeAccent)
+            Text("Flèches : choisir  ·  OK : entrer  ·  Retour : \(deskBackTarget)").font(.callout.weight(.medium))
+        }
+        .padding(.horizontal, 20).frame(height: 44)
+        .fluxGlass(radius: 22)
+        .shadow(color: .black.opacity(0.4), radius: 16, y: 8)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom).padding(.bottom, 22)
+        .allowsHitTesting(false)
+        .transition(.opacity)
+        .accessibilityLabel("Zones de l’écran. Flèches pour choisir, OK pour entrer, Retour pour \(deskBackTarget).")
+    }
+
+    func showHome() {
+        guard !library.sources.isEmpty else { return }
+        cancelEntrance()
+        if page == .series || page == .player || heldItem != nil { home() }
+        searchFocus = false; liveGroupSearchFocus = false; showingSearch = false; sidebarCountries = false
+        newListKind = nil; renamingList = false; confirmingListDeletion = false
+        // A list opened from the favourites belongs to that destination.
+        if favoritesMode { favoritesMode = false; library.selectedPresetID = nil }
+        livePreview.stop()
+        library.flushBrowsingPreferences()
+        deskHistory.reset()
+        homeHover = nil
+        page = .home
+        focusID = currentDockID
+        systemFocus = focusID
+    }
+
+    private func showSection(_ kind: IPTVMediaKind) {
+        let leavingFavorites = favoritesMode, fromHome = page == .home
+        favoritesMode = false
+        sidebarCountries = false
+        if library.contentKind == kind {
+            home()
+            // The section opens where it was left, as it did at launch.
+            if fromHome { restoreBrowsingContext() }
+        } else { changeKind(kind) }
+        // A list opened from the favourites belongs to that destination; the
+        // section itself opens on its whole catalogue.
+        if leavingFavorites { library.selectedPresetID = nil }
+        focusID = currentDockID
+    }
+
+    func openSettings(_ destination: PlaybackSettingsView.Page? = nil, editing: PlaybackSettingsView.SourceEditor? = nil) {
+        cancelEntrance()
+        if page == .series || heldItem != nil { home() }
+        searchFocus = false; liveGroupSearchFocus = false; sidebarCountries = false
+        livePreview.stop()
+        settingsRequest = DeskSettingsRequest(page: destination, sourceEditor: editing)
+        page = .settings
+        // The control that held the keyboard focus leaves with its screen.
+        focusID = FluxDockItem.settings.focusID
+        systemFocus = focusID
+        recordPlace()
+    }
+
+    func enterFavorites() {
+        if page != .catalogue || heldItem != nil { home() }
+        sidebarCountries = false
+        favoritesMode = true
+        if library.selectedPresetID == nil {
+            let kinds = [library.contentKind] + IPTVMediaKind.allCases.filter { $0 != library.contentKind }
+            let filled = kinds.lazy.compactMap { kind in library.presets.lists(for: kind).first(where: { !$0.itemIDs.isEmpty }) }.first
+            if let target = filled ?? library.presets.lists(for: library.contentKind).first { selectFavoriteList(target) }
+        }
+        focusID = currentDockID
+        systemFocus = focusID
+        recordPlace()
+    }
+
+    private func selectFavoriteList(_ preset: FavoritePreset) {
+        newListKind = nil; renamingList = false; confirmingListDeletion = false
+        if library.contentKind != preset.kind { changeKind(preset.kind) }
+        favoritesMode = true
+        continueOnly = false; group = nil
+        library.selectedPresetID = preset.id
+        clearPreview(); resetCatalogWindow()
+    }
+
+    func deskActivate(_ id: String) -> Bool {
+        if let item = FluxDockItem(focusID: id) { dockAction(item); return true }
+        if id.hasPrefix("favorite-list-") {
+            if let preset = library.presets.list(id: String(id.dropFirst("favorite-list-".count))) { selectFavoriteList(preset) }
+            return true
+        }
+        if id == DeskZone.backID { deskLeaveScreen(); return true }
+        if id == DeskZone.homeID { showHome(); return true }
+        if id == DeskZone.searchID { search(); return true }
+        if id == "countries-back" { sidebarCountries = false; focusID = "countries"; return true }
+        if id.hasPrefix("favorite-new-"), let kind = IPTVMediaKind(rawValue: String(id.dropFirst("favorite-new-".count))) {
+            beginNewList(kind); return true
+        }
+        if id == "country-all" { selectLiveCountry(nil); return true }
+        if id.hasPrefix("country-") { selectLiveCountry(String(id.dropFirst("country-".count))); return true }
+        return false
+    }
+
+    // MARK: Keyboard and remote
+
+    private var deskSidebarIDs: [String] {
+        guard page == .catalogue, !library.sources.isEmpty else { return [] }
+        if favoritesMode {
+            return IPTVMediaKind.allCases.flatMap { kind in
+                library.presets.lists(for: kind).map { "favorite-list-\($0.id)" } + ["favorite-new-\(kind.rawValue)"]
+            }
+        }
+        if sidebarCountries && facetAvailable {
+            return ["countries-back", "country-all"] + facetEntries.map { "country-\($0.code)" }
+        }
+        return (facetAvailable ? ["countries"] : []) + ["group-all"]
+            + library.currentPresets.map { "live-preset-\($0.id)" }
+            + (library.contentKind == .movie ? ["continue-only"] : [])
+            + ["live-manage-lists"] + liveGroups.map { "live-category-\($0)" }
+    }
+    /// Row of the navigation column that stands for the current selection.
+    private var deskScopeID: String {
+        if favoritesMode { return library.selectedPresetID.map { "favorite-list-\($0)" } ?? deskSidebarIDs.first ?? "group-all" }
+        if sidebarCountries { return library.countryCode.map { "country-\($0)" } ?? "country-all" }
+        if continueOnly { return "continue-only" }
+        return liveScopeID
+    }
+    private var deskTrailingIDs: [String] {
+        guard page == .catalogue, library.contentKind == .live, let item = previewItem,
+              visibleSlice.index(of: item.id) != nil else { return [] }
+        return ["live-watch", "live-favorite"] + (livePreview.player == nil ? [] : ["live-preview-mute"])
+    }
+
+    private func deskContentMove(from current: String?, _ action: RemoteAction) -> String? {
+        switch page {
+        case .catalogue:
+            return DeskNavigation.move(from: current, action: action, items: visibleSlice, columns: columns,
+                                       sidebarIDs: deskSidebarIDs, preferredSidebarID: deskScopeID,
+                                       preferredItemID: previewID, toolbar: focusRows, trailingIDs: deskTrailingIDs,
+                                       headerIDs: [DeskZone.backID, DeskZone.homeID])
+        case .series, .player:
+            return RemoteNavigation.move(from: current, action: action, rows: focusRows)
+        case .settings, .home:
+            return current
+        }
+    }
+
+    func deskMove(_ action: RemoteAction) -> String? {
+        if showsHome {
+            // The home screen is its bar: Left and Right walk it.
+            let ids = FluxDockItem.order(from: dockOrder).map(\.focusID)
+            guard let focusID, ids.contains(focusID) else { return currentDockID }
+            return FluxDockNavigation.move(from: focusID, action: action, position: .bottom, dockIDs: ids,
+                                           preferredDockID: currentDockID, entryID: nil) { current, _ in current }
+        }
+        let dockIDs = dockVisible ? FluxDockItem.order(from: dockOrder).map(\.focusID) : []
+        let wasInDock = focusID.map(dockIDs.contains) ?? false
+        let remembered = dockReturnFocus.flatMap { id -> String? in
+            if visibleSlice.item(id: id) != nil || deskSidebarIDs.contains(id) || deskTrailingIDs.contains(id) { return id }
+            return focusRows.contains(where: { $0.contains(id) }) ? id : nil
+        }
+        let target = FluxDockNavigation.move(from: focusID, action: action, position: dockPosition, dockIDs: dockIDs,
+                                             preferredDockID: currentDockID, entryID: remembered) { current, direction in
+            deskContentMove(from: current, direction)
+        }
+        if !wasInDock, let target, dockIDs.contains(target) { dockReturnFocus = focusID }
+        return target
+    }
+
+    func updateDeskColumns(_ usable: CGFloat) {
+        liveSidebarVisible = true
+        let dock = dockPosition.isVertical ? FluxDockMetrics.thickness(dockPosition) : 0
+        deskWidth = usable - dock
+        let content = usable - dock - 48 - liveSidebarWidth - 18
+        if library.contentKind == .live {
+            // One list of channels; the picture takes the width that remains,
+            // as long as its panel keeps the height for what is written below.
+            let list = min(460, max(330, content * 0.34))
+            let strip = dockPosition.isVertical || dockPosition == .corner ? 0 : FluxDockMetrics.thickness(dockPosition)
+            let byHeight = (browserHeight - 52 - 310 - strip) * 16 / 9 + 28
+            deskPreviewWidth = max(380, min(content - list - 18, byHeight))
+            columns = 1
+        } else {
+            let estimated = (content - 32 + 4) / (cardWidth + 4)
+            columns = estimated.isFinite ? Int(max(2, min(10, estimated))) : 5
+        }
+    }
+}
+#endif
+
+#if os(macOS)
+// MARK: - Home screen (Mac): the destinations in the middle of the window
+
+extension ContentView {
+    /// Destination that the home screen describes: under the pointer, else
+    /// held by the keyboard, else the section used last.
+    private var homeItem: FluxDockItem {
+        homeHover ?? focusID.flatMap { FluxDockItem(focusID: $0) } ?? FluxDockItem(kind: library.contentKind)
+    }
+    /// Recherche, Favoris and Réglages keep the room shown before them.
+    private var homeRoomKind: IPTVMediaKind { homeItem.mediaKind ?? homeKind ?? library.contentKind }
+
+    private var dockUnitPoint: UnitPoint {
+        switch dockPosition {
+        case .bottom: .bottom
+        case .corner: .bottomLeading
+        case .top: .top
+        case .leading: .leading
+        case .trailing: .trailing
+        }
+    }
+    var homeTransition: AnyTransition {
+        reduceMotion ? .opacity : .scale(scale: 0.3, anchor: dockUnitPoint).combined(with: .opacity)
+    }
+
+    /// The three rooms stay mounted behind the home screen: pointing at a
+    /// destination brings its room forward without waiting for a decode.
+    var homeRooms: some View {
+        ZStack {
+            ForEach(IPTVMediaKind.allCases, id: \.self) { kind in
+                ZStack {
+                    FluxBackdrop(theme: theme(for: kind))
+                    ProceduralStage(kind: kind, pixelLimit: 2560)
+                }
+                .opacity(kind == homeRoomKind ? 1 : 0)
+            }
+        }
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.45), value: homeRoomKind)
+    }
+
+    private func homeTitle(_ item: FluxDockItem) -> String {
+        switch item {
+        case .live: "Télévision"
+        case .movie: "Films"
+        case .series: "Séries"
+        case .search: "Recherche"
+        case .favorites: "Favoris"
+        case .settings: "Réglages"
+        }
+    }
+
+    private func homeLine(_ item: FluxDockItem) -> String {
+        func count(_ kind: IPTVMediaKind, _ one: String, _ many: String) -> String {
+            let value = library.catalogCount(kind)
+            return "\(value.formatted()) \(value == 1 ? one : many)"
+        }
+        switch item {
+        case .live: return count(.live, "chaîne en direct", "chaînes en direct")
+        case .movie: return count(.movie, "film", "films")
+        case .series: return count(.series, "série", "séries")
+        case .search:
+            switch library.contentKind {
+            case .live: return "Trouver une chaîne"
+            case .movie: return "Trouver un film"
+            case .series: return "Trouver une série"
+            }
+        case .favorites:
+            let lists = library.presets.lists
+            let titles = lists.reduce(0) { $0 + $1.itemIDs.count }
+            return "\(lists.count) \(lists.count == 1 ? "liste" : "listes") · \(titles.formatted()) \(titles == 1 ? "titre" : "titres")"
+        case .settings: return "Sources, interface, dock et lecture"
+        }
+    }
+
+    var deskHome: some View {
+        GeometryReader { geometry in
+            let scale = min(1.2, max(0.6, min((geometry.size.width - 96) / 1010, (geometry.size.height - 120) / 620)))
+            let item = homeItem
+            // Transparent room that the bar keeps above its plate for the
+            // icons that grow under the pointer.
+            let growth = FluxDockMetrics(hero: scale).growth
+            ZStack {
+                // The plate of the bar is in the middle of the window; the
+                // name of the destination stands above it.
+                FluxDock(selection: [], focusedID: focusID, showsFocus: remoteNavigationActive,
+                         accent: themeAccent, second: themeSecond, hero: scale, hover: { homeHover = $0 },
+                         systemFocus: $systemFocus,
+                         activate: { item in pointerSelect(item.focusID); dockAction(item) },
+                         openSettings: { openSettings(.dock) })
+                    .overlay(alignment: .top) {
+                        ZStack {
+                            VStack(spacing: 8 * scale) {
+                                Text(homeTitle(item))
+                                    .font(.system(size: 66 * scale, weight: .bold)).tracking(-0.5)
+                                    .accessibilityAddTraits(.isHeader)
+                                Text(homeLine(item))
+                                    .font(.system(size: 21 * scale, weight: .medium)).foregroundStyle(.white.opacity(0.82))
+                            }
+                            .lineLimit(1).fixedSize()
+                            .shadow(color: .black.opacity(0.6), radius: 16, y: 4)
+                            .id(item).transition(.opacity)
+                        }
+                        .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: item)
+                        .alignmentGuide(.top) { $0[.bottom] - growth + 34 * scale }
+                        .allowsHitTesting(false)
+                    }
+                    .offset(y: -growth / 2)
+                homeBar.frame(maxHeight: .infinity, alignment: .top)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .onChange(of: homeItem) { _, item in
+            if let kind = item.mediaKind { homeKind = kind }
+        }
+        .accessibilityElement(children: .contain).accessibilityLabel("Accueil")
+    }
+
+    /// Name of the application and of its source, then the date and the time.
+    private var homeBar: some View {
+        HStack(spacing: 12) {
+            HStack(spacing: 10) {
+                Image(systemName: "play.tv.fill").foregroundStyle(themeAccent)
+                Text("FLUX").font(.callout.weight(.heavy)).tracking(4)
+                if let source = library.selectedSource {
+                    Text(source.name).font(.callout.weight(.medium)).foregroundStyle(.white.opacity(0.72)).lineLimit(1)
+                }
+            }
+            .padding(.horizontal, 16).frame(height: 38).fluxGlass(radius: 19)
+            Spacer(minLength: 12)
+            TimelineView(.everyMinute) { context in
+                HStack(spacing: 12) {
+                    Text(context.date.formatted(.dateTime.weekday(.wide).day().month(.wide)))
+                        .font(.callout.weight(.medium)).foregroundStyle(.white.opacity(0.72))
+                    Text(context.date.formatted(.dateTime.hour().minute()))
+                        .font(.callout.weight(.bold).monospacedDigit())
+                }
+                .padding(.horizontal, 16).frame(height: 38).fluxGlass(radius: 19)
+            }
+        }
+        .padding(.horizontal, 24).padding(.top, 14).frame(height: 58, alignment: .top)
+    }
+}
+#endif
+
+#if os(macOS)
+// MARK: - Desk screens (Mac): navigation column, channels, preview, catalogue
+
+extension ContentView {
+    // MARK: Navigation column
+
+    /// The same column in every section: scopes and categories, the countries
+    /// of the channels, or the favourite lists of the three kinds.
+    private var deskSidebar: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            if favoritesMode { favoritesSidebar }
+            else if sidebarCountries && facetAvailable { countriesSidebar }
+            else { scopeSidebar }
+        }
+        .padding(14).frame(width: liveSidebarWidth)
+        .frame(maxHeight: .infinity, alignment: .top)
+        // A frame drawn after the glass would be sampled by it: the frames
+        // of the zones belong to what each glass panel shows.
+        .overlay { zoneFrame(.column, radius: 25) }
+        .fluxGlass(radius: 25)
+        .padding(.bottom, navigationFootRoom)
+    }
+
+    /// Back and the home screen are at the top of every navigation column.
+    /// With the search, the reload and the pages they form the top zone.
+    private func sidebarHeading(_ title: String) -> some View {
+        DeskColumnHeader(title: title, backTitle: deskBackTitle, back: { deskLeaveScreen() }, home: { showHome() },
+                         focusedID: remoteNavigationActive ? focusID : nil, systemFocus: $systemFocus)
+            .overlay { zoneFrame(.top, radius: 14, outset: 6, labelled: false) }
+    }
+
+    @ViewBuilder private var scopeSidebar: some View {
+        let kind = library.contentKind
+        sidebarHeading(kind == .live ? "TÉLÉVISION" : kind == .movie ? "FILMS" : "SÉRIES")
+        if facetAvailable { liveCountryButton }
+        HStack(spacing: 8) {
+            Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+            TextField("Filtrer les catégories", text: $library.groupSearch)
+                .textFieldStyle(.plain)
+                .focused($liveGroupSearchFocus)
+                .onSubmit {
+                    liveGroupSearchFocus = false
+                    focusID = liveGroups.first.map { "live-category-\($0)" } ?? "group-all"
+                    systemFocus = focusID
+                }
+            if !groupSearch.isEmpty {
+                Button { groupSearch = "" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary) }
+                    .buttonStyle(.plain).accessibilityLabel("Effacer la recherche de catégories")
+            }
+        }
+        .font(.callout).padding(11)
+        .background(.black.opacity(0.15), in: RoundedRectangle(cornerRadius: 13))
+        ScrollViewReader { reader in
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 5) {
+                    liveScopeButton(kind == .live ? "Toutes les chaînes" : kind == .movie ? "Tous les films" : "Toutes les séries",
+                                    symbol: "square.grid.2x2", id: "group-all",
+                                    count: library.catalogResults.all.items.count) { showAllCatalog() }
+                    ForEach(library.currentPresets) { preset in
+                        liveScopeButton(preset.name, symbol: preset.isDefault ? "star.fill" : "text.badge.star",
+                                        id: "live-preset-\(preset.id)") {
+                            if library.selectedPresetID == preset.id { library.selectedPresetID = nil; clearPreview(); resetCatalogWindow() }
+                            else { selectLivePreset(preset.id) }
+                        }
+                    }
+                    if kind == .movie {
+                        liveScopeButton("À reprendre", symbol: "clock.arrow.circlepath", id: "continue-only") { toggleResumeFilter() }
+                    }
+                    liveScopeButton("Gérer les listes", symbol: "slider.horizontal.3", id: "live-manage-lists") { presentLists() }
+                    Text("CATÉGORIES").font(.caption2.weight(.semibold)).tracking(1.5).foregroundStyle(.secondary)
+                        .padding(.horizontal, 12).padding(.top, 18).padding(.bottom, 5)
+                    ForEach(liveGroups, id: \.self) { name in
+                        liveScopeButton(name, symbol: "folder", id: "live-category-\(name)",
+                                        count: library.catalogResults.slice(group: name).items.count) { toggleCategory(name) }
+                    }
+                    if liveGroups.isEmpty {
+                        Text(groupSearch.isEmpty ? "Les catégories apparaîtront avec votre catalogue." : "Aucune catégorie correspondante.")
+                            .font(.caption).foregroundStyle(.secondary).padding(12)
+                    }
+                }.padding(.vertical, 3)
+            }
+            .onChange(of: focusID) { _, id in
+                if let id, remoteNavigationActive, deskSidebarIDs.contains(id) { reader.scrollTo(id, anchor: .center) }
+            }
+        }
+    }
+
+    /// A second click on the selected category returns to the whole scope.
+    private func toggleCategory(_ name: String) {
+        if group == name {
+            group = nil
+            clearPreview(); resetCatalogWindow()
+        } else if library.contentKind == .live {
+            selectLiveGroup(name)
+        } else {
+            // "À reprendre" keeps combining with a category for films.
+            group = name
+            liveGroupSearchFocus = false
+            clearPreview(); resetCatalogWindow()
+        }
+    }
+
+    /// Countries of the channels, or languages of the films and series.
+    private var facetEntries: [(code: String, name: String, count: Int)] {
+        library.contentKind == .live
+            ? library.liveCountries.map { ($0.code, $0.name, $0.channelCount) }
+            : library.mediaLanguages.map { ($0.code, $0.name, $0.titleCount) }
+    }
+    /// A catalogue whose titles carry no language label offers no such filter.
+    private var facetAvailable: Bool {
+        library.contentKind == .live || library.mediaLanguages.contains { $0.code != MediaLanguage.unknownCode }
+    }
+
+    private func flag(_ code: String?) -> String {
+        guard let code else { return "🌍" }
+        let letters = code.uppercased().unicodeScalars
+        guard code != LiveCountry.unknownCode, letters.count == 2, letters.allSatisfy({ (65...90).contains($0.value) }) else { return "🏳️" }
+        return String(String.UnicodeScalarView(letters.compactMap { UnicodeScalar(0x1F1E6 + $0.value - 65) }))
+    }
+
+    @ViewBuilder private var countriesSidebar: some View {
+        let focusedBack = focusID == "countries-back"
+        Button { pointerSelect("countries"); sidebarCountries = false } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "chevron.left").font(.caption.weight(.bold))
+                Text(library.contentKind == .live ? "Pays des chaînes" : library.contentKind == .movie ? "Langue des films" : "Langue des séries")
+                    .font(.callout.weight(.semibold))
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 12).padding(.vertical, 11)
+            .background(.white.opacity(focusedBack ? 0.14 : 0.06), in: RoundedRectangle(cornerRadius: 13))
+            .overlay { RoundedRectangle(cornerRadius: 13).strokeBorder(focusedBack ? .white.opacity(0.75) : .clear, lineWidth: 2).allowsHitTesting(false) }
+            .contentShape(RoundedRectangle(cornerRadius: 13))
+        }
+        .buttonStyle(FluxBareButtonStyle()).fluxFocus($systemFocus, id: "countries-back").id("countries-back")
+        .accessibilityLabel("Revenir aux catégories")
+        ScrollViewReader { reader in
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 5) {
+                    countryRow(code: nil, name: library.contentKind == .live ? "Tous les pays" : "Toutes les langues",
+                               count: facetEntries.reduce(0) { $0 + $1.count })
+                    ForEach(facetEntries, id: \.code) { entry in
+                        countryRow(code: entry.code, name: entry.name, count: entry.count)
+                    }
+                }.padding(.vertical, 3)
+            }
+            .onAppear { reader.scrollTo(library.countryCode.map { "country-\($0)" } ?? "country-all", anchor: .center) }
+            .onChange(of: focusID) { _, id in
+                if let id, remoteNavigationActive, deskSidebarIDs.contains(id) { reader.scrollTo(id, anchor: .center) }
+            }
+        }
+    }
+
+    private func countryRow(code: String?, name: String, count: Int) -> some View {
+        let id = code.map { "country-\($0)" } ?? "country-all"
+        let selected = library.countryCode == code
+        let focused = focusID == id
+        return Button { pointerSelect(id); selectLiveCountry(code) } label: {
+            HStack(spacing: 10) {
+                if library.contentKind == .live {
+                    Text(flag(code)).font(.title3).frame(width: 30)
+                } else {
+                    // A language has no flag: its code, as playlists write it.
+                    Text(code == nil ? "•" : code == MediaLanguage.unknownCode ? "?" : code == MediaLanguage.multipleCode ? "MULTI" : (code ?? "").uppercased())
+                        .font(.system(size: 10, weight: .bold)).lineLimit(1).minimumScaleFactor(0.7)
+                        .frame(width: 30, height: 20)
+                        .background(.white.opacity(0.12), in: RoundedRectangle(cornerRadius: 5))
+                }
+                Text(name).font(.callout.weight(selected ? .semibold : .regular))
+                    .lineLimit(2).frame(maxWidth: .infinity, alignment: .leading)
+                Text("\(count)").font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+                if selected { Image(systemName: "checkmark").font(.caption.weight(.bold)).foregroundStyle(themeAccent) }
+            }
+            .padding(.horizontal, 12).padding(.vertical, 10)
+            .background(selected ? themeAccent.opacity(0.16) : .white.opacity(focused ? 0.09 : 0), in: RoundedRectangle(cornerRadius: 13))
+            .overlay { RoundedRectangle(cornerRadius: 13).strokeBorder(focused ? .white.opacity(0.75) : .clear, lineWidth: 2).allowsHitTesting(false) }
+            .contentShape(RoundedRectangle(cornerRadius: 13))
+        }
+        .buttonStyle(FluxBareButtonStyle()).fluxFocus($systemFocus, id: id).id(id)
+        .accessibilityLabel(name)
+        .accessibilityValue("\(count) \(library.contentKind == .live ? "chaînes" : "titres")\(selected ? ", sélectionné" : "")")
+    }
+
+    @ViewBuilder private var favoritesSidebar: some View {
+        sidebarHeading("FAVORIS")
+        ScrollViewReader { reader in
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 5) {
+                    ForEach(IPTVMediaKind.allCases, id: \.self) { kind in
+                        Text(kind.frenchTitle.uppercased())
+                            .font(.caption2.weight(.semibold)).tracking(1.5).foregroundStyle(.secondary)
+                            .padding(.horizontal, 12).padding(.top, kind == .live ? 8 : 18).padding(.bottom, 5)
+                        ForEach(library.presets.lists(for: kind)) { preset in
+                            liveScopeButton(preset.name, symbol: preset.isDefault ? "star.fill" : "text.badge.star",
+                                            id: "favorite-list-\(preset.id)", count: preset.itemIDs.count) { selectFavoriteList(preset) }
+                        }
+                        newListRow(kind)
+                    }
+                }.padding(.vertical, 3)
+            }
+            .onChange(of: focusID) { _, id in
+                if let id, remoteNavigationActive, deskSidebarIDs.contains(id) { reader.scrollTo(id, anchor: .center) }
+            }
+        }
+    }
+
+    @ViewBuilder private func newListRow(_ kind: IPTVMediaKind) -> some View {
+        if newListKind == kind {
+            VStack(alignment: .leading, spacing: 5) {
+                HStack(spacing: 7) {
+                    TextField("Nom de la liste", text: $newListName)
+                        .textFieldStyle(.plain).focused($listNameFocus)
+                        .onSubmit { commitNewList(kind) }
+                        .onExitCommand { newListKind = nil }
+                    Button { commitNewList(kind) } label: { Image(systemName: "checkmark.circle.fill").foregroundStyle(themeAccent) }
+                        .buttonStyle(.plain).accessibilityLabel("Créer la liste")
+                        .disabled(newListName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    Button { newListKind = nil } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary) }
+                        .buttonStyle(.plain).accessibilityLabel("Annuler la nouvelle liste")
+                }
+                .font(.callout).padding(.horizontal, 12).padding(.vertical, 10)
+                .background(.black.opacity(0.22), in: RoundedRectangle(cornerRadius: 13))
+                if listNameInvalid {
+                    Text("Nom déjà utilisé ou trop long.").font(.caption2).foregroundStyle(.orange).padding(.horizontal, 12)
+                }
+            }
+        } else {
+            liveScopeButton("Nouvelle liste", symbol: "plus", id: "favorite-new-\(kind.rawValue)") { beginNewList(kind) }
+        }
+    }
+
+    func beginNewList(_ kind: IPTVMediaKind) {
+        renamingList = false; confirmingListDeletion = false; listNameInvalid = false
+        newListName = ""; newListKind = kind
+        Task { @MainActor in
+            await Task.yield()
+            listNameFocus = true
+        }
+    }
+
+    private func commitNewList(_ kind: IPTVMediaKind) {
+        let before = Set(library.presets.lists(for: kind).map(\.id))
+        guard library.createPreset(name: newListName, kind: kind) else { listNameInvalid = true; return }
+        listNameInvalid = false; newListKind = nil
+        if let created = library.presets.lists(for: kind).first(where: { !before.contains($0.id) }) { selectFavoriteList(created) }
+    }
+
+    /// A list created by the user can be renamed or removed from its own screen.
+    @ViewBuilder private var favoriteListActions: some View {
+        if favoritesMode, let preset = library.selectedPreset, !preset.isDefault {
+            if renamingList {
+                TextField("Nom de la liste", text: $newListName)
+                    .textFieldStyle(.plain).focused($listNameFocus)
+                    .onSubmit { renameList(preset) }
+                    .onExitCommand { renamingList = false }
+                    .padding(.horizontal, 12).padding(.vertical, 9).frame(width: 220)
+                    .background(.black.opacity(0.25), in: RoundedRectangle(cornerRadius: 12))
+                    .overlay { RoundedRectangle(cornerRadius: 12).strokeBorder(listNameInvalid ? Color.orange : .white.opacity(0.12), lineWidth: 1) }
+                navButton("Enregistrer", icon: "checkmark", id: "favorite-rename-save") { renameList(preset) }
+                navButton("Annuler", icon: "xmark", id: "favorite-rename-cancel", iconOnly: true) { renamingList = false }
+            } else if confirmingListDeletion {
+                Text("Supprimer cette liste ?").font(.callout.weight(.semibold))
+                navButton("Annuler", icon: "xmark", id: "favorite-delete-cancel") { confirmingListDeletion = false }
+                navButton("Supprimer", icon: "trash", id: "favorite-delete-confirm", active: true) {
+                    let kind = preset.kind
+                    library.deletePreset(preset)
+                    confirmingListDeletion = false
+                    if let fallback = library.presets.lists(for: kind).first { selectFavoriteList(fallback) }
+                }
+            } else {
+                navButton("Renommer", icon: "pencil", id: "favorite-rename") {
+                    listNameInvalid = false; newListName = preset.name; renamingList = true
+                    Task { @MainActor in
+                        await Task.yield()
+                        listNameFocus = true
+                    }
+                }
+                navButton("Supprimer", icon: "trash", id: "favorite-delete", iconOnly: true) { confirmingListDeletion = true }
+            }
+        }
+    }
+
+    private func renameList(_ preset: FavoritePreset) {
+        if library.renamePreset(preset, name: newListName) { renamingList = false; listNameInvalid = false }
+        else { listNameInvalid = true }
+    }
+
+    // MARK: Title and search shared by the three sections
+
+    private var deskTitle: String {
+        if continueOnly { return "À reprendre" }
+        if let preset = library.selectedPreset { return favoritesMode ? "\(preset.name) · \(preset.kind.frenchTitle)" : preset.name }
+        if let group { return group }
+        return library.contentKind == .live ? "Télévision" : environment.title
+    }
+    private var deskSubtitle: String {
+        let count = visible.count
+        let noun: String
+        switch library.contentKind {
+        case .live: noun = count == 1 ? "chaîne" : "chaînes"
+        case .movie: noun = count == 1 ? "film" : "films"
+        case .series: noun = count == 1 ? "série" : "séries"
+        }
+        let amount = library.isFiltering ? "Recherche…" : "\(count.formatted(.number.locale(Locale(identifier: "fr_FR")))) \(noun)"
+        return "\(library.selectedSource?.name ?? "Bibliothèque") · \(amount)"
+    }
+
+    private var deskTitleRow: some View {
+        HStack(alignment: .center, spacing: 10) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(deskTitle).font(.title2.weight(.bold)).lineLimit(1)
+                    .shadow(color: .black.opacity(0.5), radius: 6, y: 1)
+                Text(deskSubtitle).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                    .shadow(color: .black.opacity(0.5), radius: 4, y: 1)
+            }
+            Spacer(minLength: 0)
+            favoriteListActions
+            navButton("Actualiser", icon: "arrow.clockwise", id: "reload", iconOnly: true) { library.reloadSelected() }
+                .disabled(library.selectedSourceID == nil || library.isLoading)
+                .fluxNavigationGlass(radius: 18)
+        }.padding(.horizontal, 3)
+    }
+
+    private var deskSearchField: some View {
+        let prompt: String
+        switch library.contentKind {
+        case .live: prompt = "Rechercher une chaîne"
+        case .movie: prompt = "Rechercher un film"
+        case .series: prompt = "Rechercher une série"
+        }
+        let selected = focusID == DeskZone.searchID && remoteNavigationActive && !searchFocus
+        return HStack(spacing: 10) {
+            // A remote selects the field as a control; OK then places the cursor in it.
+            Image(systemName: "magnifyingglass").foregroundStyle(selected ? .primary : .secondary)
+                .fluxFocus($systemFocus, id: DeskZone.searchID).id(DeskZone.searchID)
+            TextField(prompt, text: $library.search)
+                .textFieldStyle(.plain)
+                .focused($searchFocus).onSubmit { searchFocus = false; focusFirstItem() }
+            if !library.search.isEmpty {
+                Button { library.search = "" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary) }
+                    .buttonStyle(.plain).accessibilityLabel("Effacer la recherche")
+            }
+        }
+        .font(.body).padding(.horizontal, 16).padding(.vertical, 12)
+        .fluxGlass(radius: 20)
+        .overlay {
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .strokeBorder(.white.opacity(selected ? 0.85 : 0), lineWidth: 2).allowsHitTesting(false)
+        }
+        .accessibilityIdentifier("desk-search")
+    }
+
+    /// Title, reload and search: with Back and Home, the top zone.
+    private var deskTopBand: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            deskTitleRow
+            deskSearchField
+        }
+        .overlay { zoneFrame(.top, radius: 20, outset: 6, labelled: false) }
+    }
+
+    // MARK: Television
+
+    /// Categories, then the channels, then the picture and what is known of
+    /// the selected channel.
+    var liveDeskCatalogue: some View {
+        FluxGlassGroup {
+            HStack(alignment: .top, spacing: 18) {
+                deskSidebar
+                VStack(alignment: .leading, spacing: 12) {
+                    deskTopBand
+                    liveNotices
+                    liveDeskChannels
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                liveDeskPreviewPanel.frame(width: deskPreviewWidth)
+            }
+        }
+        .padding(.horizontal, 24)
+    }
+
+    private var liveDeskChannels: some View {
+        Group {
+            if (library.isLoading || library.isFiltering) && visible.isEmpty {
+                ProgressView(library.isLoading ? "Chargement des chaînes…" : "Recherche…")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if visible.isEmpty {
+                VStack(spacing: 16) {
+                    Image(systemName: "tv").font(.system(size: 48, weight: .light)).foregroundStyle(themeAccent)
+                    Text(favoritesMode ? "Cette liste est vide" : "Aucune chaîne dans cette sélection")
+                        .font(.title3.weight(.semibold)).multilineTextAlignment(.center)
+                    if favoritesMode {
+                        Text("Ajoutez une chaîne depuis son étoile.").font(.callout).foregroundStyle(.secondary)
+                    } else if library.credentialIssue == nil {
+                        navButton("Toutes les chaînes", icon: "square.grid.2x2", id: "live-reset") { showAllCatalog() }
+                    }
+                }.padding(24).frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                VStack(spacing: 0) {
+                    if catalogPageCount > 1 {
+                        livePagination.padding(.horizontal, 14).padding(.top, 10).padding(.bottom, 2)
+                    }
+                    ScrollView {
+                        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: max(1, columns)), spacing: 8) {
+                            ForEach(displayedItems) { item in liveDeskChannel(item) }
+                        }.padding(12)
+                    }
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .overlay { zoneFrame(.content, radius: 25) }
+        .clipShape(RoundedRectangle(cornerRadius: 25, style: .continuous))
+        .fluxGlass(radius: 25)
+    }
+
+    private func liveDeskChannel(_ item: IPTVItem) -> some View {
+        Button {
+            guard !modalOpen else { return }
+            // The pointer has already selected the row under it: a click
+            // watches that channel. A touch selects first, then watches.
+            if previewID == item.id { selectCard(item) }
+            else { pointerSelect(item.id); setPreview(item) }
+        } label: {
+            LiveTVChannelRow(item: item, number: (visibleSlice.index(of: item.id) ?? 0) + 1,
+                             favorite: library.isFavorite(item), highlighted: focusID == item.id, accent: themeAccent)
+        }
+        .buttonStyle(FluxBareButtonStyle()).fluxFocus($systemFocus, id: item.id).id(item.id)
+        .accessibilityLabel(item.name)
+        .accessibilityHint("Le pointeur affiche l’aperçu. Cliquer pour regarder. Appui long pour les favoris.")
+        .accessibilityIdentifier("live-channel-\(item.id)")
+        .zIndex(focusID == item.id ? 1 : 0)
+        .animation(reduceMotion ? nil : .spring(response: 0.26, dampingFraction: 0.8), value: focusID == item.id)
+        .contextMenu {
+            Button("Regarder", systemImage: "play.fill") { selectCard(item) }
+            Button("Favoris et listes", systemImage: "star") { chooseFavorites(item) }
+        }
+        .onLongPressGesture(minimumDuration: 0.65, maximumDistance: 12) { chooseFavorites(item) }
+        .onHover { inside in if inside { deskHover(item) } }
+    }
+
+    /// The row or sleeve under the pointer becomes the selection. During
+    /// keyboard navigation the list scrolls under a pointer that has not
+    /// moved: that pointer selects nothing.
+    func deskHover(_ item: IPTVItem) {
+        guard !modalOpen, heldItem == nil, entranceItem == nil, page == .catalogue else { return }
+        if remoteNavigationActive, let rest = keyboardPointer, rest == NSEvent.mouseLocation { return }
+        guard focusID != item.id || previewID != item.id else { return }
+        pointerSelect(item.id); setPreview(item)
+    }
+
+    private var liveDeskPreviewPanel: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            if let item = previewItem, item.kind == .live, visibleSlice.index(of: item.id) != nil {
+                Button { playItem(item) } label: {
+                    LiveTVPreviewScreen(preview: livePreview, item: item, delay: livePreviewDelay,
+                                        automatic: automaticLivePreview, large: true)
+                        .overlay { Color.clear.contentShape(RoundedRectangle(cornerRadius: 20)) }
+                }
+                .buttonStyle(FluxBareButtonStyle())
+                .accessibilityLabel("Regarder \(item.name)")
+                .accessibilityIdentifier("live-preview")
+                .fluxHelp("Regarder la chaîne")
+                liveDeskDetails(item)
+            } else {
+                ZStack {
+                    LinearGradient(colors: [Color(red: 0.08, green: 0.12, blue: 0.18), .black.opacity(0.55)],
+                                   startPoint: .topLeading, endPoint: .bottomTrailing)
+                    VStack(spacing: 12) {
+                        Image(systemName: "tv").font(.system(size: 46, weight: .light)).foregroundStyle(themeAccent)
+                        Text("Choisissez une chaîne").font(.title3.weight(.semibold))
+                        Text("Son aperçu démarre ici, puis un clic l’ouvre en grand.")
+                            .font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                    }.padding(20)
+                }
+                .aspectRatio(16.0 / 9.0, contentMode: .fit)
+                .clipShape(RoundedRectangle(cornerRadius: 20))
+                .overlay { RoundedRectangle(cornerRadius: 20).strokeBorder(.white.opacity(0.30), lineWidth: 1).allowsHitTesting(false) }
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(14)
+        .frame(maxHeight: .infinity, alignment: .top)
+        .overlay { zoneFrame(.actions, radius: 27) }
+        .fluxGlass(radius: 27)
+        .accessibilityElement(children: .contain)
+    }
+
+    private func liveDeskDetails(_ item: IPTVItem) -> some View {
+        let number = (visibleSlice.index(of: item.id) ?? 0) + 1
+        let country = LiveCountry.detectCode(in: item.group)
+        return VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 10) {
+                HStack(spacing: 6) {
+                    Circle().fill(.red.opacity(0.95)).frame(width: 7, height: 7)
+                    Text("EN DIRECT").font(.caption2.weight(.bold)).tracking(1.2)
+                }
+                .padding(.horizontal, 9).padding(.vertical, 5)
+                .background(.black.opacity(0.35), in: Capsule())
+                Text("N° \(number)").font(.caption.monospacedDigit().weight(.medium)).foregroundStyle(.secondary)
+                Spacer(minLength: 0)
+                if library.isFavorite(item) { Image(systemName: "star.fill").font(.callout).foregroundStyle(.yellow) }
+            }
+            Text(item.name).font(.title2.weight(.bold)).lineLimit(2).fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 8) {
+                Button { playItem(item) } label: {
+                    Label("Regarder", systemImage: "play.fill").font(.callout.weight(.semibold))
+                        .padding(.horizontal, 18).padding(.vertical, 11)
+                        .fluxNavigationGlass(selected: true, tint: themeAccent, radius: 17)
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 17).strokeBorder(focusID == "live-watch" && remoteNavigationActive ? .white.opacity(0.9) : .clear, lineWidth: 2)
+                                .allowsHitTesting(false)
+                        }
+                }.buttonStyle(FluxBareButtonStyle()).fluxFocus($systemFocus, id: "live-watch").id("live-watch")
+                navButton("Favoris", icon: library.isFavorite(item) ? "star.fill" : "star", id: "live-favorite") { chooseFavorites(item) }
+                if livePreview.player != nil {
+                    navButton(livePreview.isMuted ? "Activer le son de l’aperçu" : "Couper le son de l’aperçu",
+                              icon: livePreview.isMuted ? "speaker.slash.fill" : "speaker.wave.2.fill",
+                              id: "live-preview-mute", iconOnly: true) { livePreview.toggleMuted() }
+                }
+            }
+            Divider().overlay(.white.opacity(0.14))
+            Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 16, verticalSpacing: 9) {
+                detailRow("Catégorie", item.group)
+                if let country { detailRow("Pays", "\(flag(country))  \(LiveCountry.displayName(for: country))") }
+                detailRow("Source", library.selectedSource?.name ?? "—")
+                detailRow("Position", "\(number) sur \(visible.count)")
+            }
+            Text(automaticLivePreview
+                 ? "L’aperçu démarre après \(livePreviewDelay.title), sans le son. Un clic sur l’image ou sur la chaîne l’ouvre en plein écran."
+                 : "L’aperçu automatique est désactivé dans Réglages › Interface.")
+                .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.horizontal, 4)
+    }
+
+    private func detailRow(_ label: String, _ value: String) -> some View {
+        GridRow {
+            Text(label).font(.callout).foregroundStyle(.secondary)
+            Text(value).font(.callout.weight(.medium)).lineLimit(2).frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    // MARK: Films and series
+
+    var mediaDeskCatalogue: some View {
+        FluxGlassGroup {
+            HStack(alignment: .top, spacing: 18) {
+                deskSidebar
+                VStack(alignment: .leading, spacing: 12) {
+                    deskTopBand
+                    liveNotices
+                    mediaDeskContent
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            }
+        }
+        .padding(.horizontal, 24)
+    }
+
+    @ViewBuilder private var mediaDeskContent: some View {
+        if (library.isLoading || library.isFiltering) && visible.isEmpty {
+            ProgressView(library.isLoading ? "Chargement du catalogue…" : "Recherche…")
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if visible.isEmpty {
+            VStack(spacing: 16) {
+                Image(systemName: library.contentKind == .movie ? "film" : "square.stack.3d.up")
+                    .font(.system(size: 48, weight: .light)).foregroundStyle(themeAccent)
+                Text(library.credentialIssue != nil ? "Source à reconnecter" : favoritesMode ? "Cette liste est vide" : "Aucun titre dans cette sélection")
+                    .font(.title3.weight(.semibold))
+                if favoritesMode {
+                    Text("Ajoutez un titre depuis son étoile.").font(.callout).foregroundStyle(.secondary)
+                }
+            }.frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            if catalogPageCount > 1 { livePagination.padding(.horizontal, 4) }
+            mediaCatalogGrid().overlay { zoneFrame(.content, radius: 22) }
+        }
+    }
+}
+#endif

@@ -30,13 +30,19 @@ public struct CatalogBrowsingState: Codable, Equatable, Sendable {
     public func validated(kind: IPTVMediaKind, index: CatalogIndex, presets: FavoritePresets) -> Self {
         var result = self
         result.catalogPage = max(0, result.catalogPage)
-        if kind != .live || !index.liveCountries.contains(where: { $0.code == result.countryCode }) {
-            result.countryCode = nil
-        }
+        // One filter per kind: the country of a channel, the language of a title.
+        let known = kind == .live
+            ? index.liveCountries.contains(where: { $0.code == result.countryCode })
+            : index.languages(for: kind).contains(where: { $0.code == result.countryCode })
+        if !known { result.countryCode = nil }
         let complete = index.unfiltered(kind)
         if let group = result.group {
-            let countryMatches = result.countryCode == nil
-                || (LiveCountry.detectCode(in: group) ?? LiveCountry.unknownCode) == result.countryCode
+            let countryMatches: Bool
+            if let code = result.countryCode {
+                countryMatches = kind == .live
+                    ? (LiveCountry.detectCode(in: group) ?? LiveCountry.unknownCode) == code
+                    : index.category(group, of: kind, has: code)
+            } else { countryMatches = true }
             if !complete.groups.contains(group) || !countryMatches { result.group = nil }
         }
         if let id = result.presetID, presets.list(id: id)?.kind != kind { result.presetID = nil }
@@ -46,7 +52,9 @@ public struct CatalogBrowsingState: Codable, Equatable, Sendable {
             let term = result.search.trimmingCharacters(in: .whitespacesAndNewlines)
             let matches = item.map {
                 (result.group == nil || result.group == $0.group)
-                    && (result.countryCode == nil || (LiveCountry.detectCode(in: $0.group) ?? LiveCountry.unknownCode) == result.countryCode)
+                    && (result.countryCode == nil || (kind == .live
+                        ? (LiveCountry.detectCode(in: $0.group) ?? LiveCountry.unknownCode)
+                        : index.language(of: $0)) == result.countryCode)
                     && (term.isEmpty || $0.name.localizedStandardContains(term) || $0.group.localizedStandardContains(term))
                     && (result.presetID.flatMap { presets.list(id: $0) }?.itemIDs.contains($0.id) ?? true)
             } ?? false

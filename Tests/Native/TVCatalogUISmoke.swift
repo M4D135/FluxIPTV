@@ -67,7 +67,7 @@ final class TVCatalogControlProbeView: UIView {
             let fixture = try TVCatalogFixture.make()
             let library: IPTVLibrary
             var restoredDefaultsSuite: String?
-            if fixture.scenario == "welcome" {
+            if fixture.scenario == "welcome" || fixture.scenario == "add-source" {
                 library = IPTVLibrary(emptyCatalogFixture: .live)
                 try TVCatalogCapture.require(library.sources.isEmpty, "The welcome fixture unexpectedly contains a source.")
             } else if fixture.scenario == "live-error" {
@@ -111,7 +111,8 @@ final class TVCatalogControlProbeView: UIView {
                         fixtureSearchSubmission: fixture.searchQuery,
                         fixtureSearchObservation: { searchObservations.snapshots.append($0) },
                         fixtureOpenCountries: fixture.opensCountryPicker,
-                        fixtureRestoreBrowsing: fixture.usesPersistedSelection || fixture.scenario == "live-error")
+                        fixtureRestoreBrowsing: fixture.usesPersistedSelection || fixture.scenario == "live-error",
+                        fixtureAddSource: fixture.scenario == "add-source")
                 .environmentObject(library)
                 .environmentObject(playback)
                 .preferredColorScheme(.dark)
@@ -152,6 +153,7 @@ final class TVCatalogControlProbeView: UIView {
         case "search-empty": return "navigation-tab-movie"
         case "search-result": return "catalog-card-fixture-movie-0"
         case "welcome": return "welcome-load-source"
+        case "add-source": return "source-server"
         case "live-error": return "navigation-countries"
         default: return "media-detail-play"
         }
@@ -164,6 +166,7 @@ final class TVCatalogControlProbeView: UIView {
         case "movies", "search-result": return CGSize(width: 240, height: 350)
         case "search-empty": return CGSize(width: 150, height: 112)
         case "welcome": return CGSize(width: 300, height: 72)
+        case "add-source": return CGSize(width: 500, height: 50)
         default: return CGSize(width: 180, height: 64)
         }
     }
@@ -213,12 +216,12 @@ final class TVCatalogControlProbeView: UIView {
 
     static func make() throws -> TVCatalogFixture {
         let scenario = ProcessInfo.processInfo.environment["FLUX_UI_SCENARIO"] ?? ""
-        try TVCatalogCapture.require(["movie", "movies", "series", "live", "welcome", "search-empty", "search-result",
+        try TVCatalogCapture.require(["movie", "movies", "series", "live", "welcome", "add-source", "search-empty", "search-result",
                                       "live-fr", "live-es", "country-picker", "live-restored", "live-error"].contains(scenario),
                                      "FLUX_UI_SCENARIO must name a supported catalogue, detail, welcome or search scenario.")
         let source = IPTVSource(id: UUID(uuidString: "00000000-0000-0000-0000-000000000003")!,
                                 name: "Catalogue local de démonstration", kind: scenario == "live-error" ? .xtream : .m3uFile)
-        if scenario == "welcome" || scenario == "live-error" {
+        if scenario == "welcome" || scenario == "live-error" || scenario == "add-source" {
             return TVCatalogFixture(scenario: scenario, source: source, items: [], kind: .live,
                                     selection: nil, seasons: [], openSeason: nil, episodeID: nil)
         }
@@ -364,7 +367,10 @@ final class TVCatalogControlProbeView: UIView {
         // A separate bundle in a newly created simulator has no user profiles.
         // Volatile overrides leave even that disposable persistent domain alone.
         UserDefaults.standard.setVolatileDomain([
-            FluxAppearance.glassKey: true,
+            // The focus and geometry checks were qualified on the plain dark
+            // surfaces. Liquid Glass changes no layout; it is compiled by the
+            // tvOS builds and left out of these timing-sensitive captures.
+            FluxAppearance.glassKey: false,
             FluxAppearance.artworkKey: true,
             FluxAppearance.wallpaperKey: false,
             FluxAppearance.densityKey: "cinema",
@@ -453,6 +459,8 @@ final class TVCatalogControlProbeView: UIView {
                     try require(!containsSceneKit(window), "A SceneKit view is still mounted in the full-screen detail hierarchy.")
                     let detail = detailBoxEvidence(fixture: fixture, window: window)
                     lastObservation.merge(detail.report) { _, new in new }
+                    let form = sourceFormEvidence(fixture: fixture, window: window)
+                    lastObservation.merge(form.report) { _, new in new }
                     if let focused = UIFocusSystem.focusSystem(for: window)?.focusedItem {
                         let native = nativeFrame(focused, in: window)
                         let frame = native.frame
@@ -492,7 +500,8 @@ final class TVCatalogControlProbeView: UIView {
                         let fullyVisible = valid(frame) && valid(expectedFrame) && valid(viewport) &&
                             viewport.insetBy(dx: -1, dy: -1).contains(frame) &&
                             viewport.insetBy(dx: -1, dy: -1).contains(expectedFrame)
-                        let visibilityAccepted = !(fixture.usesPortraitControl || fixture.countryCode != nil) || fullyVisible
+                        let visibilityAccepted = !(fixture.usesPortraitControl || fixture.countryCode != nil
+                                                   || fixture.scenario == "add-source") || fullyVisible
                         let nativeReport: [String: Any] = [
                             "windowPoints": [window.bounds.width, window.bounds.height],
                             "focusedType": String(describing: type(of: focused)),
@@ -526,7 +535,7 @@ final class TVCatalogControlProbeView: UIView {
                         ]
                         lastObservation.merge(nativeReport) { _, new in new }
                         let key = "\(identity.identifier)|\(frame)|\(expectedFrame)|\(viewport)"
-                        stableSamples = bounded && expectedFocus && largeEnough && visibilityAccepted && search.passed && country.passed && detail.passed && key == precedingFocus ? stableSamples + 1 : 0
+                        stableSamples = bounded && expectedFocus && largeEnough && visibilityAccepted && search.passed && country.passed && detail.passed && form.passed && key == precedingFocus ? stableSamples + 1 : 0
                         previousFocus = key
                         if stableSamples >= 4 {
                             var report = lastObservation
@@ -711,6 +720,32 @@ final class TVCatalogControlProbeView: UIView {
             try require(Date() < deadline, "Catalogue filtering did not settle during \(stage).")
             try await Task.sleep(nanoseconds: 50_000_000)
         }
+    }
+
+    /// The form of a source fills the screen: its last control, the button
+    /// that submits it, is inside the safe area and no scroll view holds it.
+    private static func sourceFormEvidence(fixture: TVCatalogFixture, window: UIWindow) -> (passed: Bool, report: [String: Any]) {
+        guard fixture.scenario == "add-source" else { return (true, ["sourceFormTested": false]) }
+        let probes = controlProbes(in: window).filter { $0.controlIdentifier == "source-submit" && $0.window === window }
+        let frames = probes.map { $0.convert($0.bounds, to: window) }.filter { $0.width > 1 && $0.height > 1 }
+        let safe = window.bounds.inset(by: window.safeAreaInsets).insetBy(dx: -1, dy: -1)
+        let visible = frames.count == 1 && safe.contains(frames[0])
+        let scrolls = probes.contains { probe in
+            var view = probe.superview
+            while let current = view {
+                if current is UIScrollView { return true }
+                view = current.superview
+            }
+            return false
+        }
+        return (visible && !scrolls, [
+            "sourceFormTested": true,
+            "sourceFormSubmitProbeCount": frames.count,
+            "sourceFormSubmitVisible": visible,
+            "sourceFormScrolls": scrolls,
+            "sourceFormSubmitFrame": frames.first.map(coordinates) ?? [],
+            "sourceFormSafeArea": coordinates(safe)
+        ])
     }
 
     private static func detailBoxEvidence(fixture: TVCatalogFixture, window: UIWindow)

@@ -41,9 +41,12 @@ final class IPTVLibrary: ObservableObject {
         didSet {
             guard oldValue != countryCode && !restoringBrowsing else { return }
             restoringBrowsing = true
-            if let group, let countryCode,
-               (LiveCountry.detectCode(in: group) ?? LiveCountry.unknownCode) != countryCode {
-                self.group = nil
+            if let group, let countryCode {
+                // A category that holds nothing in the chosen country or language is left.
+                let kept = contentKind == .live
+                    ? (LiveCountry.detectCode(in: group) ?? LiveCountry.unknownCode) == countryCode
+                    : catalogIndex.category(group, of: contentKind, has: countryCode)
+                if !kept { self.group = nil }
             }
             restoringBrowsing = false
             browsingFilterChanged()
@@ -175,6 +178,8 @@ final class IPTVLibrary: ObservableObject {
 
     var currentPresets: [FavoritePreset] { presets.lists(for: contentKind) }
     var liveCountries: [LiveCountry] { catalogIndex.liveCountries }
+    /// Languages of the films or of the series; empty for the channels.
+    var mediaLanguages: [MediaLanguage] { catalogIndex.languages(for: contentKind) }
     var browsingCatalogReady: Bool { selectedSourceID != nil && loadedCatalogSourceID == selectedSourceID }
 
     var selectedPresetID: String? {
@@ -193,6 +198,8 @@ final class IPTVLibrary: ObservableObject {
     var selectedPreset: FavoritePreset? { selectedPresetID.flatMap { presets.list(id: $0) } }
 
     func catalogItem(id: String?) -> IPTVItem? { catalogIndex.item(id: id) }
+    /// Size of one kind in the loaded source, whatever the current filters.
+    func catalogCount(_ kind: IPTVMediaKind) -> Int { catalogIndex.unfiltered(kind).all.items.count }
 
     private func currentBrowsingState(kind: IPTVMediaKind) -> CatalogBrowsingState {
         CatalogBrowsingState(countryCode: countryCode, group: group, search: search,
@@ -328,7 +335,7 @@ final class IPTVLibrary: ObservableObject {
         filterTask?.cancel(); filterToken = UUID()
         let token = filterToken
         let kind = contentKind, term = search, membership = selectedPreset?.itemIDs
-        let country = kind == .live ? countryCode : nil
+        let country = countryCode
         if term.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && membership == nil && country == nil {
             catalogResults = catalogIndex.unfiltered(kind); isFiltering = false
             reconcileVisibleBrowsingSelection()

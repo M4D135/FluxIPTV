@@ -1,16 +1,63 @@
-# FLUX IPTV 0.8.9 — build 37 — Fiches avec grande boîte et filtres mémorisés
+# FLUX IPTV 0.9.0 — build 38 — Bureau Mac : dock, colonnes et panneaux de verre
 
 Application native SwiftUI pour macOS, iOS et tvOS.
 
-**0.8.9 ajoute le filtre par pays aux chaînes TV et mémorise la navigation.** Les préfixes des catégories (`FR | Généralistes`, `[FR] Cinéma`, `ES - Deportes`, `UK | News`), les noms de pays et les drapeaux reconnus alimentent le menu **Tous les pays**. La détection est générique pour tous les pays et territoires reconnus, avec leurs codes ISO, noms français/anglais et drapeaux ; elle ne se limite pas aux exemples France/Espagne. Choisir un pays conserve ses catégories et ses chaînes. Les catégories sans pays reconnu restent accessibles dans **Pays non identifié**. La liste des pays vient du catalogue complet, même si la recherche ou les favoris ne donnent aucun résultat.
+**La 0.9.0 donne au Mac une interface de bureau.** L’application s’ouvre sur un accueil où le dock occupe le milieu de la fenêtre ; il se range ensuite sous la colonne de navigation qui accompagne les trois espaces. La télévision se lit en trois colonnes, les fiches flottent en verre sur le catalogue flouté, et plus aucune feuille ne recouvre la fenêtre : catégories, pays, langues, listes, sources et réglages sont dessinés dans l’interface, y compris pendant la lecture. Les films et les séries se filtrent par langue, comme les chaînes par pays.
 
-Le pays, la catégorie, la recherche, la recherche de catégories, la liste de favoris, le filtre À reprendre des films, la page et la dernière sélection sont mémorisés **par source et par section**. Revenir dans TV ou relancer l’application retrouve ce contexte sans lancer une chaîne automatiquement. Le changement de section et Retour conservent les filtres ; **Toutes les chaînes** réinitialise explicitement les filtres TV, et **Tous les pays** dans le sélecteur retire seulement la restriction de pays. Une catégorie ou une chaîne supprimée par le fournisseur est écartée lors du prochain chargement réussi.
+Apple TV, iPhone et iPad conservent la disposition de la 0.8.9. Le Liquid Glass devient disponible sur Apple TV, avec un réglage pour revenir aux surfaces sombres plus légères.
 
-**Le build 37 présente la description et une unique grande boîte du titre sélectionné dans la fiche plein écran.** La boîte reprend la jaquette et le format VHS/DVD du catalogue. Les commandes Lecture, Description complète, Favoris et Retour restent disponibles. Une série ouvre son rayon de saisons, puis sa fiche avec les épisodes de la saison choisie. La fiche ne charge aucune bande-annonce et ne propose aucune commande de bande-annonce. Les anciens réglages de bandes-annonces ont été retirés.
+## Le bureau du Mac
 
-Sur Apple TV, **TV, Films, Séries et Recherche** utilisent de grandes icônes avec un focus explicite. Les chaînes suivent une disposition horizontale : catégories au-dessus de grandes vignettes 16:9, aperçu dans la seule vignette active. Les décors FLUX restent visibles. Au premier démarrage sans source, **Charger une liste** propose Xtream Codes ou une URL M3U ; Mac et iOS acceptent aussi un fichier M3U.
+### Accueil
 
-Les animations de focus, d’apparition et de transition restent actives. tvOS utilise des surfaces sombres sans flou de fond, un décor précalculé décodé à une résolution bornée et un seul aperçu vidéo. L’option système Réduire les animations reste respectée. Ces changements réduisent le travail de rendu ; une mesure de fluidité sur appareil reste distincte d’une compilation réussie.
+L’application s’ouvre sur l’accueil : TV, Films, Séries, Recherche, Favoris et Réglages forment un grand dock au milieu de la fenêtre, sur le décor adouci de l’espace. Le nom de la destination pointée s’affiche au-dessus avec son effectif — chaînes, films, séries, listes — et le décor devient celui de cet espace. Un clic, ou **Entrée**, ouvre la destination ; une section s’ouvre là où elle a été laissée.
+
+**Retour** revient à l’écran précédent, écran après écran, jusqu’à l’accueil : la fiche se referme, puis la section laisse la place à celle qui la précédait. Un écran déjà visité ne revient qu’une fois, si bien que Retour ne tourne jamais en rond. Le chevron en haut de la colonne de navigation y revient d’un clic, et la maison ramène directement à l’accueil.
+
+### Zones : tout atteindre au clavier ou à la télécommande
+
+Sous une longue liste, les flèches seules n’atteignent ni les commandes du haut de la fenêtre ni le dock. Depuis une liste, **Retour** (ou **Échap**) encadre donc d’abord les zones de l’écran : **Haut** (Retour, Accueil, recherche, actualiser, pages), **Colonne**, **Contenu**, **Aperçu** pour la télévision, et **Dock**. Les flèches passent d’une zone à sa voisine, **OK** y entre — sur la catégorie, la chaîne ou la destination en cours —, et **Retour** une seconde fois revient à l’écran précédent, dont le nom est rappelé en bas de l’écran. Depuis le dock, Retour revient directement.
+
+**Tab** et **⇧Tab** entrent dans la zone suivante ou précédente sans passer par cette vue. Dans la zone du haut, les flèches vont de Retour à Accueil, à la recherche, à Actualiser puis aux pages ; **OK** sur la recherche y place le curseur. Réglages › Interface permet de supprimer l’étape des zones : Retour revient alors tout de suite à l’écran précédent.
+
+### Dock
+
+Hors de l’accueil, le dock se range sous la colonne de navigation, en bas à gauche : la colonne s’arrête au-dessus de lui et les autres colonnes descendent jusqu’au bord de la fenêtre. Ce sont les mêmes icônes et le même thème que sur l’accueil, en plus petit. Les icônes grossissent sous le pointeur comme dans le Dock du système : celle qui est survolée vient en avant, ses voisines suivent, et le point sous le pointeur ne bouge pas. Un trait marque la destination affichée.
+
+- **Emplacement** : sous la colonne (par défaut), en bas, en haut, ou en colonne à gauche ou à droite. En bas et en haut, le dock garde une bande pour lui.
+- **Thèmes** : Verre, Couleurs, Fumé, Néon et Sans fond.
+- **Ordre** : glisser une icône dans le dock, ou utiliser les flèches de Réglages › Dock.
+- Un clic secondaire sur le dock donne l’emplacement, le thème et l’agrandissement.
+
+### Colonne de navigation
+
+Chaque espace a la même colonne à gauche : Retour et Accueil en haut, tout le catalogue, les listes de favoris, « À reprendre » pour les films, puis les catégories avec leur effectif et un champ pour les filtrer. Un second clic sur la catégorie sélectionnée revient à tout le catalogue. Le bouton du haut ouvre, dans la colonne elle-même, le pays des chaînes ou la langue des films et des séries.
+
+### Télévision
+
+Trois colonnes : les catégories, les chaînes, puis l’aperçu avec les informations de la chaîne dessous. Les chaînes forment une seule liste, de haut en bas ; l’aperçu prend toute la largeur restante. La ligne sous le pointeur grossit et devient la sélection ; l’aperçu démarre après une seconde, sans le son ; un clic sur la ligne ou sur l’image ouvre la chaîne en plein écran. Au toucher, un premier appui sélectionne et un second ouvre.
+
+Les informations sont celles de la liste : catégorie, pays reconnu, source et position. Aucun programme ni horaire n’est inventé ; l’EPG reste à venir.
+
+### Films et séries par langue
+
+La langue est lue dans l’étiquette qui précède le titre (`FR - Titre`, `4K-EN - Titre`), puis dans celle de sa catégorie (`FRANCE SÉRIES`, `ENGLISH MOVIES`). Les étiquettes de qualité et de marque (`4K`, `AMZ`) sont ignorées. Une étiquette portée par moins de trois titres est considérée comme un morceau de titre. Les titres sans étiquette restent accessibles sous **Langue non identifiée**, et le choix est mémorisé par source et par espace.
+
+### Fiches
+
+La fiche d’un film est un panneau de verre posé sur le catalogue, qui reste visible et flouté derrière. Le boîtier quitte le rayon, se tourne et vient se placer à gauche ; à droite, le titre, l’année, la durée, la note et les genres fournis, les commandes, le synopsis et les crédits. Fermer la fiche renvoie le boîtier à sa place.
+
+La fiche d’une série reprend le principe de la télévision : les saisons sous le boîtier, les épisodes en liste de haut en bas, puis le visuel et la description de l’épisode sélectionné. L’épisode sous le pointeur grossit ; un clic le lit. Changer de saison se fait sans quitter la fiche.
+
+### Favoris, réglages et sources
+
+**Favoris** réunit les listes des trois types de contenu dans la colonne de navigation ; une liste se crée, se renomme et se supprime sur place.
+
+**Réglages** est un écran de la fenêtre. Il contient les **sources** : chaque source est une carte avec son type, ses effectifs et ses commandes, et le formulaire d’ajout ou de modification s’ouvre dans la page. La télécommande virtuelle s’affiche depuis Réglages › Interface.
+
+### Clavier
+
+Les flèches déplacent la sélection entre la colonne, la grille, l’aperçu et le dock, et parcourent le dock de l’accueil ; **Entrée** valide, **Échap** montre les zones puis revient à l’écran précédent jusqu’à l’accueil, **Tab** change de zone, **Espace** ouvre l’élément sélectionné, **⌘F** place le curseur dans la recherche et **⌘⇧F** bascule le lecteur en plein écran. Les réglages se parcourent encore au pointeur.
 
 ## Trois espaces, six thèmes chacun
 
@@ -20,15 +67,13 @@ Les animations de focus, d’apparition et de transition restent actives. tvOS u
 | Séries | Vidéoclub | Rayons de séries, puis saisons et épisodes |
 | Direct | Salon TV | Canapé, meuble TV, lumières domestiques |
 
-Les six thèmes restent disponibles : Néo 80–90, Cinéma de minuit, Salon 70, Palace Art déco, Scandinave et Futur néon. Dans **Réglages → Interface**, chacun des trois espaces possède son propre choix. Les anciennes préférences du vidéoclub sont migrées vers Films et Séries sans écraser un réglage déjà choisi.
+Les six thèmes restent disponibles : Néo 80–90, Cinéma de minuit, Salon 70, Palace Art déco, Scandinave et Futur néon. Dans **Réglages → Interface**, chacun des trois espaces possède son propre choix.
 
-Les 18 fonds 4K sont fabriqués par un script Blender à partir de géométrie et de matériaux procéduraux originaux, puis précalculés en JPEG 3840 × 2160. Les salons ont chacun une implantation : loft de briques et métal, penthouse vitré de nuit, salon 70 en U, arches Art déco et laiton, chêne clair et shoji, pavillon futuriste à nervures facettées. Les cinémas et vidéoclubs varient également leurs structures et leurs îlots. Le rendu utilise Cycles et le débruitage Intel Open Image Denoise. Il ne s’agit pas du runtime GPU FERRO. Aucun calcul de pièce 3D continu n’est exécuté dans l’application. Le catalogue utilise des images et des transformations SwiftUI légères ; la fiche ne crée aucune scène SceneKit.
+Les 18 fonds 4K sont fabriqués par un script Blender à partir de géométrie et de matériaux procéduraux originaux, puis précalculés en JPEG 3840 × 2160. Le script reproductible, le manifeste et la planche des décors sont dans `scripts/rooms/`. Aucun calcul de pièce 3D continu n’est exécuté dans l’application. Une refonte des trois univers est inscrite à la [feuille de route](docs/ROADMAP.md).
 
-Le script reproductible, le manifeste et la planche des décors sont dans `scripts/rooms/`. Les images de cette planche sont les fonds embarqués, pas des captures d’écran de l’application.
+## Apple TV, iPhone et iPad
 
-## Navigation à la télécommande
-
-La grille garde ses rangées rapprochées et ses décors. Seul l’élément qui possède le focus avance légèrement ; les autres cartes ne changent pas d’échelle. La présentation des jaquettes reste **VHS avant 2000, DVD dès 2000** (DVD si l’année manque).
+La disposition de la 0.8.9 est conservée : bandeau TV, Films, Séries et Recherche, catégories horizontales et grandes vignettes 16:9 sur Apple TV, fiches plein écran, feuilles pour les catégories, les pays, les listes et les sources.
 
 | Écran | Commande | Résultat |
 |---|---|---|
@@ -40,38 +85,29 @@ La grille garde ses rangées rapprochées et ses décors. Seul l’élément qui
 | Fiche | Lecture/Pause | Lire le film ou l’épisode sélectionné |
 | Épisodes | Gauche / Droite, puis Valider | Choisir et lire l’épisode |
 | Fiche | Retour / Menu | Retrouver la sélection dans le catalogue ou le rayon |
-| Rayon des saisons | Retour / Menu | Revenir au catalogue des séries |
 | Chaînes TV | Rester sur une vignette | Démarrer l’aperçu après le délai choisi |
 | Chaînes TV | Valider | Regarder la chaîne en plein écran |
 | Catalogue | Appui long | Ouvrir les favoris et listes |
 
-La fiche présente les actions à leur place, sans rotation ni commande de titre précédent/suivant. Le synopsis utilise uniquement les métadonnées IPTV ; aucun enrichissement Wikipédia ou Allociné n’est demandé. La description complète dispose d’un écran lisible. Sur Mac, **Entrée** valide, **Échap** revient, **Espace** correspond à Lecture/Pause, **⌘F** ouvre la recherche et **⌘⇧F** bascule le lecteur plein écran.
+Sur Apple TV, **Charger une liste** et **Modifier la source** occupent tout l’écran : le type de source à gauche, les champs et les deux boutons à droite, visibles d’un coup, sans défilement.
 
-## Fiches film et série : description et grande boîte
+Sur Apple TV, **Réglages → Interface → Liquid Glass** applique le verre natif aux panneaux et aux commandes à partir de tvOS 26. Le désactiver rétablit les surfaces sombres sans flou, plus légères à afficher. Sa fluidité sur un appareil physique reste à mesurer.
 
-La fiche affiche le synopsis, les métadonnées fournies et une seule grande boîte portant la jaquette du titre sélectionné. Le format suit celui du catalogue : **VHS avant 2000, DVD dès 2000**, et DVD si l’année manque. Les titres voisins restent dans le catalogue. La présentation conserve une description complète lisible, les favoris et le choix des épisodes pour les séries.
-
-Ouvrir cette fiche ne crée aucun lecteur de bande-annonce et ne lance aucun chargement de vidéo. **Voir le film** ou **Voir S… · E…** démarre la lecture principale. Les aperçus des chaînes TV restent réglables séparément dans **Réglages → Interface → Aperçu des chaînes TV**.
-
-## Télévision : grandes vignettes et catégories
-
-Sur Apple TV, les catégories réelles de la liste défilent horizontalement, avec **Favoris** et **Toutes les chaînes**. La recherche s’ouvre depuis la grande loupe de la navigation. Jusqu’à quatre vignettes occupent la largeur du téléviseur. Le panneau de catégories latéral reste disponible sur les grands écrans Mac/iPad.
-
-L’aperçu TV a son propre réglage : **1 / 3 / 5 / 10 secondes**, 3 secondes par défaut. Il attend une sélection stable, reste muet et s’arrête quand le focus quitte la vignette sur tvOS ou lors de la lecture principale. Une seule vignette crée un lecteur. Les logos, titres et catégories viennent du fournisseur ; aucun programme, horaire EPG ou niveau de progression n’est inventé.
-
-Les catalogues restent paginés et leurs grilles paresseuses afin de ne pas monter des milliers de vues. Le décor conservé est une image statique précalculée. Sur tvOS, le décodage de ce décor est plafonné à 1920 pixels de large et son cache à 32 Mio ; les textes et contrôles restent rendus à la résolution de l’interface. Ce plafond ne réduit pas la résolution du film ou de la chaîne lus.
+Le délai de l’aperçu des chaînes se règle sur 1, 3, 5 ou 10 secondes : une seconde par défaut au pointeur, trois sur Apple TV où la télécommande traverse beaucoup de vignettes.
 
 ## Lecture et commandes flottantes
 
-La vidéo occupe la fenêtre entière. Le bandeau FLUX, les onglets et la télécommande latérale sont retirés de cette vue. Les commandes de lecture se limitent à un panneau centré de largeur bornée, avec une petite capsule supérieure pour Retour, le titre et Plein écran. Afficher les commandes ne redimensionne pas l’image.
+La vidéo occupe la fenêtre entière ; le dock et la navigation sont retirés de cette vue. Les commandes de lecture se limitent à un panneau centré de largeur bornée, avec une petite capsule supérieure pour Retour, le titre et Plein écran. Afficher les commandes ne redimensionne pas l’image.
 
-Le panneau se masque après trois secondes de lecture sans interaction ; pointeur, toucher, clavier et télécommande le rappellent. Pause, chargement, erreur, réglages, déplacement du curseur ou VoiceOver le maintiennent visible. Les options Réduire la transparence et Réduire les animations sont respectées. Les pistes, sous-titres et réglages de volume restent accessibles depuis la roue dentée.
+Le panneau se masque après trois secondes de lecture sans interaction ; pointeur, toucher, clavier et télécommande le rappellent. Pause, chargement, erreur, déplacement du curseur ou VoiceOver le maintiennent visible.
 
-## Favoris et rayons de saisons
+### Zapper sans quitter l’image
 
-L’appui long sur une carte, l’étoile et l’action Favoris ouvrent la même feuille : cocher les listes, créer éventuellement une liste, puis **Enregistrer**. **Annuler** ne modifie rien. Un message confirme l’enregistrement. Les listes Films, Séries et Direct restent séparées.
+Pendant une chaîne en direct, sur Mac et iPad, la liste des chaînes vient se poser à gauche de l’image, en verre, sans arrêter la lecture : bord gauche de la fenêtre au pointeur, bouton **Liste des chaînes** des commandes, ou **←** / **Entrée** quand les commandes sont masquées. **↑ ↓** choisissent, **Entrée** change de chaîne, **← →** passent à la catégorie voisine, **Échap** referme. La liste s’ouvre sur la chaîne regardée et se retire seule après douze secondes sans geste. Sans la liste, **↑** et **↓** zappent toujours directement.
 
-Chaque série possède son rayon de saisons. Les numéros transmis par le fournisseur sont conservés et la saison 0 est identifiée comme Spéciaux. Choisir une saison présente les épisodes avec leurs miniatures ; les positions de reprise existantes sont conservées. Le filtre « À reprendre » du catalogue concerne les films ; il ne prétend pas agréger automatiquement l’historique de tous les épisodes d’une série.
+### Réglages pendant la lecture
+
+Sur Mac, les réglages demandés depuis le lecteur sont deux panneaux de verre posés sur l’image, qui continue de jouer derrière : Interface, Vidéo, Réseau, Audio et sous-titres, Bibliothèque et Diagnostic. La croix, **Échap** ou un clic à côté les referment. Sur Apple TV, iPhone et iPad, ils restent une feuille.
 
 ## Installer
 
@@ -79,31 +115,27 @@ L’archive contient les sources et l’installateur Mac, pas un binaire Apple p
 
 1. Sur Mac, quitter l’ancienne app et arrêter le lancement depuis Xcode.
 2. Décompresser, puis ouvrir **Installer Flux IPTV.command**. L’installateur compile sur ce Mac et vérifie le démarrage ; cette vérification ne remplace pas un essai de lecture.
-3. Vérifier **0.8.9** dans la barre FLUX et le **build 37** dans Réglages. Les réglages d’apparence se trouvent dans Interface.
+3. Vérifier **FLUX 0.9.0 · build 38** en bas de la colonne de Réglages.
 
-Prérequis de déploiement : macOS 14, iOS 17 ou tvOS 17. Installer Xcode complet pour compiler ; le verre système natif est réservé aux contrôles Mac/iOS compatibles ; tvOS privilégie des surfaces sombres légères. Sur iPhone/iPad ou Apple TV, ouvrir `FluxIPTV.xcodeproj`, choisir **FluxIPTViOS** ou **FluxIPTVTV**, puis renseigner l’équipe de signature pour un appareil physique.
+Prérequis de déploiement : macOS 14, iOS 17 ou tvOS 17. Installer Xcode complet pour compiler ; le verre natif demande la version 26 des systèmes, les versions antérieures reçoivent un matériau translucide. Sur iPhone/iPad ou Apple TV, ouvrir `FluxIPTV.xcodeproj`, choisir **FluxIPTViOS** ou **FluxIPTVTV**, puis renseigner l’équipe de signature pour un appareil physique.
 
-Le Mac garde AVPlayer natif ; le bouton VLC externe reste disponible pour les formats incompatibles. Les cibles iOS/tvOS conservent l’intégration VLC expérimentale de la base. Les identifiants d’application et les préférences existantes sont conservés. Lire `LISEZ-MOI INSTALLATION.txt` pour les détails de signature et de Trousseau.
+Le Mac garde AVPlayer natif ; le bouton VLC externe reste disponible pour les formats incompatibles. Les identifiants d’application et les préférences existantes sont conservés. Lire `LISEZ-MOI INSTALLATION.txt` pour les détails de signature et de Trousseau.
 
 ## Ouvrir le projet Apple TV
 
-Ouvrir **`FluxIPTV-AppleTV.xcodeproj`**, ou lancer **`Ouvrir Flux IPTV Apple TV.command`**. Le projet dédié contient uniquement la cible et le schéma **FluxIPTVTV**, avec les mêmes sources, ressources, dépendance VLC et paquet local YouTubeKit que la cible tvOS du projet partagé. Choisir ensuite une destination Apple TV et exécuter avec ⌘R. Le schéma lance par défaut la configuration Release optimisée, sans débogueur ; Debug reste disponible pour le développement.
+Ouvrir **`FluxIPTV-AppleTV.xcodeproj`**, ou lancer **`Ouvrir Flux IPTV Apple TV.command`**. Le projet dédié contient uniquement la cible et le schéma **FluxIPTVTV**. Choisir ensuite une destination Apple TV et exécuter avec ⌘R. Le schéma lance par défaut la configuration Release optimisée, sans débogueur.
 
-« Mismatched platform » avec le schéma **FluxIPTV / My Mac** signifie que la destination ne correspond pas au schéma actif. Dans le projet partagé, choisir d’abord le schéma **FluxIPTVTV**, puis la destination Apple TV. Pour une Apple TV physique, renseigner son équipe dans **Signing & Capabilities** et jumeler l’appareil dans Xcode. Les détails sont dans [LISEZ-MOI APPLE TV.txt](<LISEZ-MOI APPLE TV.txt>) et la [documentation Apple](https://developer.apple.com/documentation/xcode/running-your-app-on-simulated-or-physical-devices).
+« Mismatched platform » avec le schéma **FluxIPTV / My Mac** signifie que la destination ne correspond pas au schéma actif. Les détails sont dans [LISEZ-MOI APPLE TV.txt](<LISEZ-MOI APPLE TV.txt>) et la [documentation Apple](https://developer.apple.com/documentation/xcode/running-your-app-on-simulated-or-physical-devices).
 
 ## Validation
 
-Le périmètre des vérifications de cette livraison est dans [docs/VALIDATION-0.8.9.md](docs/VALIDATION-0.8.9.md). Le build 37 remplace la bande-annonce de la fiche par la grande boîte du titre sélectionné, conserve la description et les actions de lecture, et retire les réglages de bandes-annonces. Il garde les filtres par pays, leur mémoire, les corrections du focus natif et l’espace réservé au-dessus des saisons depuis le build 32. Les résultats des anciens builds ne valident pas cette nouvelle présentation : consulter l’exécution attachée au commit exact du build 37. La restauration de la chaîne attend son montage et la première prise de focus natif, puis libère le champ de recherche avant un transfert unique ; elle est vérifiée sur trois lancements à froid. Les tests unitaires du cœur ne démontrent ni la compilation des frameworks Apple, ni la fluidité réelle, ni la lecture des flux du fournisseur. Aucun EPG n’a été ajouté dans cette version.
-
-Le build 37 corrige aussi la surbrillance après l’échec du chargement d’une source et respecte Retour pendant une restauration en attente. Trois parcours XCUIRemote vérifient la sélection d’un pays, le déplacement hors de la chaîne restaurée puis son retour, et la navigation sur la reconnexion. Ils comparent le focus natif à la sélection dessinée et conservent les captures des actions.
+Le périmètre vérifié pour cette version est dans [docs/VALIDATION-0.9.0.md](docs/VALIDATION-0.9.0.md), avec ce qui ne l’a pas été. Les tests unitaires du cœur ne démontrent ni la compilation des frameworks Apple, ni la fluidité réelle, ni la lecture des flux du fournisseur. Les résultats des versions précédentes ne valident pas la nouvelle interface du Mac.
 
 ## GitHub Actions et pack complet
 
-Le dépôt complet est [M4D135/FluxIPTV](https://github.com/M4D135/FluxIPTV). Le workflow [Swift / Apple platforms](https://github.com/M4D135/FluxIPTV/actions/workflows/ci.yml) se lance à chaque push sur `main`, sur les branches de travail des trois univers, lors des pull requests ou à la demande.
+Le dépôt complet est [M4D135/FluxIPTV](https://github.com/M4D135/FluxIPTV). Le workflow [Swift / Apple platforms](https://github.com/M4D135/FluxIPTV/actions/workflows/ci.yml) se lance à chaque push sur `main`, sur les branches `work/three-rooms-*`, lors des pull requests ou à la demande.
 
-Actions exécute les tests du cœur, vérifie les 18 décors et les deux projets générés, puis compile séparément macOS, iOS Simulator, tvOS Simulator et tvOS ARM64 pour appareil. Les journaux et les résultats Xcode sont conservés même lorsqu’une compilation échoue. Une compilation réussie fournit une archive de l’application correspondante ; le build iOS et le build tvOS Simulator sont destinés aux simulateurs. Le build tvOS pour appareil n’est pas signé et exige la signature de votre équipe pour être installé. Le build Mac n’est ni signé pour distribution ni notarié.
-
-Un job indépendant prépare le **pack complet des sources du commit exécuté**, avec empreinte SHA-256 et identifiant du commit. Il inclut les projets Xcode multiplateforme et Apple TV, l’installateur Mac, le lanceur Apple TV, les tests, la documentation et tous les décors. La présence de ce pack ne vaut pas validation des compilations : consulter les résultats de chaque job dans la même exécution. Voir [docs/CI.md](docs/CI.md) pour les téléchargements et la relance.
+Actions exécute les tests du cœur, vérifie les 18 décors et les deux projets générés, puis compile séparément macOS, iOS Simulator, tvOS Simulator et tvOS ARM64 pour appareil. Un job indépendant prépare le pack complet des sources du commit exécuté, avec son empreinte SHA-256. Voir [docs/CI.md](docs/CI.md).
 
 ### Vérifications locales
 
@@ -117,7 +149,6 @@ bash scripts/test-native-youtube.sh --live
 bash scripts/test-youtube-session.sh
 bash scripts/test-keychain-interaction.sh
 bash scripts/check-keychain-platform.sh tvOS
-bash scripts/check-keychain-platform.sh tvOS-device
 bash scripts/check-keychain-platform.sh iOS
 bash scripts/test-catalog-ui.sh
 bash scripts/build-platforms.sh macOS
@@ -126,8 +157,6 @@ bash scripts/build-platforms.sh tvOS
 bash scripts/build-platforms.sh tvOS-device
 ```
 
+`scripts/test-catalog-ui.sh` ouvre de vraies fenêtres et prend le premier plan. Pour regarder l’interface sans quitter son travail, `FLUX_CATALOG_UI_BACKGROUND=1` garde les fenêtres hors écran et n’exécute que les captures ; `FLUX_CATALOG_UI_GALLERY=1` ajoute les thèmes et les emplacements du dock, l’accueil avec le pointeur sur Films puis sur Séries et le filtre par langue ; `FLUX_CATALOG_UI_SIZE=1728x1050` choisit la taille de la fenêtre. Quatre scénarios envoient à l’écran les touches d’une télécommande et vérifient où la sélection arrive.
+
 Les versions précédentes sont conservées dans [docs/HISTORIQUE.md](docs/HISTORIQUE.md). Leurs anciennes commandes et résultats de tests ne décrivent pas la version actuelle.
-
-Le build 37 conserve aussi le bord inférieur des cartes d’épisodes sur Mac : la barre de défilement native ne prend plus de hauteur dans leur rangée. Les directions, le focus et le trackpad continuent de la faire défiler.
-
-Le build 37 intègre l’initialisation des scénarios pays par la restauration réelle et conserve l’identité du catalogue lorsque Retour devient disponible. Les assertions de focus initial restent strictes ; le parcours Pays vérifie aussi Menu vers l’onglet TV, puis Menu vers l’accueil système. Les compteurs affichent « 1 élément » et « 1 chaîne » au singulier.

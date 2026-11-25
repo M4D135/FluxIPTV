@@ -141,12 +141,57 @@ struct LiveTVChannelLabel: View {
     #endif
 }
 
+#if !os(tvOS)
+/// One channel of the desk list: logo, name, category and position. The row
+/// under the pointer grows; the selected channel feeds the preview panel.
+struct LiveTVChannelRow: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    let item: IPTVItem
+    let number: Int
+    let favorite: Bool
+    let highlighted: Bool
+    let accent: Color
+
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: 16, style: .continuous)
+        HStack(spacing: 12) {
+            ArtworkView(url: item.logoURL, fit: true) {
+                Image(systemName: "tv").font(.title3).foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+            .padding(5).frame(width: 46, height: 46)
+            .background(.white.opacity(0.09), in: RoundedRectangle(cornerRadius: 11, style: .continuous))
+            .clipped()
+            VStack(alignment: .leading, spacing: 3) {
+                Text(item.name).font(.headline).lineLimit(1)
+                Text(item.group).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+            }.frame(maxWidth: .infinity, alignment: .leading)
+            if favorite { Image(systemName: "star.fill").font(.caption).foregroundStyle(.yellow) }
+            Text("\(number)").font(.caption.monospacedDigit().weight(.medium))
+                .foregroundStyle(highlighted ? Color.white.opacity(0.9) : Color.secondary)
+        }
+        .padding(.horizontal, 12).padding(.vertical, 9)
+        .frame(maxWidth: .infinity, minHeight: 64, alignment: .leading)
+        .background(highlighted ? accent.opacity(0.26) : Color.black.opacity(0.28), in: shape)
+        .overlay {
+            shape.strokeBorder(highlighted ? Color.white.opacity(0.88) : Color.white.opacity(0.10), lineWidth: highlighted ? 2 : 0.8)
+                .allowsHitTesting(false)
+        }
+        .contentShape(shape)
+        .scaleEffect(highlighted && !reduceMotion ? 1.045 : 1)
+        .shadow(color: .black.opacity(highlighted ? 0.38 : 0), radius: 12, x: 0, y: 8)
+    }
+}
+#endif
+
 struct LiveTVPreviewScreen: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ObservedObject var preview: LiveTVPreviewController
     let item: IPTVItem
     let delay: LiveTVPreviewDelay
     let automatic: Bool
+    /// The desk shows the preview as the main picture of its column.
+    var large = false
 
     private var displayedPhase: LiveTVPreviewController.Phase {
         preview.previewedItemID == item.id ? preview.phase : .idle
@@ -172,14 +217,15 @@ struct LiveTVPreviewScreen: View {
                         #if os(tvOS)
                         .frame(width: geometry.size.width * 0.66, height: geometry.size.height * 0.56)
                         #else
-                        .frame(width: min(78, geometry.size.width * 0.5), height: min(64, geometry.size.height * 0.5))
+                        .frame(width: large ? min(210, geometry.size.width * 0.4) : min(78, geometry.size.width * 0.5),
+                               height: large ? min(140, geometry.size.height * 0.4) : min(64, geometry.size.height * 0.5))
                         #endif
                         if displayedPhase == .loading { ProgressView().controlSize(.small) }
                         else if geometry.size.height >= 100 {
                             #if os(tvOS)
                             Text(status).font(.system(size: 18, weight: .medium)).foregroundStyle(.white.opacity(0.7)).multilineTextAlignment(.center).lineLimit(2)
                             #else
-                            Text(status).font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.center).lineLimit(2)
+                            Text(status).font(large ? .callout : .caption).foregroundStyle(.secondary).multilineTextAlignment(.center).lineLimit(2)
                             #endif
                         }
                     }
@@ -215,6 +261,9 @@ struct LiveTVPreviewScreen: View {
         }
         #if !os(tvOS)
         .shadow(color: .black.opacity(0.45), radius: 20, x: 0, y: 12)
+        // The picture settles into place when the channel starts.
+        .scaleEffect(large && displayedPhase != .playing && !reduceMotion ? 0.985 : 1)
+        .animation(reduceMotion ? nil : .spring(response: 0.34, dampingFraction: 0.72), value: displayedPhase == .playing)
         #endif
         .allowsHitTesting(false).accessibilityHidden(true)
     }

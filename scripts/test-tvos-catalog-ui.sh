@@ -163,10 +163,10 @@ ready_file="$data_container/Library/Caches/FluxTVCatalogUI-ready.json"
 failed=0
 capture_paths=()
 # Retain every restoration attempt while exposing only the last successful one
-# through the eleven canonical gallery paths. Never reuse an older run's pair.
+# through the twelve canonical gallery paths. Never reuse an older run's pair.
 rm -f "$capture_root/live-restored-ready.json" "$capture_root/live-restored.png" \
   "$capture_root/live-restored-stdout.log" "$capture_root/live-restored-stderr.log"
-for capture_case in movie movies series live welcome search-empty search-result live-fr live-es country-picker live-restored:1 live-restored:2 live-restored:3; do
+for capture_case in movie movies series live welcome add-source search-empty search-result live-fr live-es country-picker live-restored:1 live-restored:2 live-restored:3; do
   scenario="${capture_case%%:*}"
   capture_label="$scenario"
   scenario_root="$capture_root"
@@ -183,6 +183,7 @@ for capture_case in movie movies series live welcome search-empty search-result 
     series) filename='series-s12-e15-detail.png' ;;
     live) filename='live-catalog.png' ;;
     welcome) filename='welcome.png' ;;
+    add-source) filename='add-source.png' ;;
     search-empty) filename='search-empty.png' ;;
     search-result) filename='search-result.png' ;;
     live-fr) filename='live-france.png' ;;
@@ -257,6 +258,14 @@ if sys.argv[2] in ("movies", "search-result") and report.get("fullyVisibleNative
 if sys.argv[2] == "welcome" and report.get("selectedItemID") != "":
     print("The welcome fixture unexpectedly selected catalogue content.", file=sys.stderr)
     sys.exit(1)
+if sys.argv[2] == "add-source":
+    if (report.get("sourceFormTested") is not True
+            or report.get("sourceFormSubmitProbeCount") != 1
+            or report.get("sourceFormSubmitVisible") is not True
+            or report.get("sourceFormScrolls") is not False
+            or report.get("fullyVisibleNativeFocus") is not True):
+        print("The source form must fill the screen: its submit button inside the safe area, nothing to scroll.", file=sys.stderr)
+        sys.exit(1)
 if sys.argv[2].startswith("search-"):
     required = ("searchSubmissionTested", "searchDeferredDuringFiltering", "searchSettledOnExpectedTarget",
                 "searchResultsMatch", "searchRejectedStaleActivation")
@@ -364,7 +373,7 @@ cat "$capture_root/capture-validation.log"
 
 # Add the UI-test runner only after the unchanged capture checks. The delivered
 # projects stay untouched, and XCTest attachments live inside this xcresult,
-# keeping the eleven canonical gallery PNG paths unchanged.
+# keeping the twelve canonical gallery PNG paths unchanged.
 rm -rf "$capture_root/remote-navigation.xcresult" "$capture_root/remote-navigation-attachments"
 rm -f "$capture_root/remote-navigation.log" "$capture_root/remote-attachments-export.log"
 if python3 "$repo_root/scripts/add-tvos-remote-test-target.py" \
@@ -414,7 +423,7 @@ if [[ "$failed" -ne 0 ]]; then
   printf 'FAIL: Native tvOS UI capture or remote-navigation checks failed. Review PNGs, xcresult and logs in %s\n' "$capture_root" >&2
   exit 1
 fi
-printf 'PASS: Eleven native tvOS scenarios have bounded focus matching the measured intended control and nonempty compositor captures; both production search submissions reject stale activation; France, Spain and the country picker preserve the mixed catalogue; browsing filters survive section changes, preferences recreation and catalogue refresh; the actual UI restores saved filters and native focus without a seeded selection on all three cold launches.\n'
+printf 'PASS: Twelve native tvOS scenarios have bounded focus matching the measured intended control and nonempty compositor captures; both production search submissions reject stale activation; France, Spain and the country picker preserve the mixed catalogue; browsing filters survive section changes, preferences recreation and catalogue refresh; the actual UI restores saved filters and native focus without a seeded selection on all three cold launches.\n'
 printf 'Review the PNGs in %s for actual glass, readable menus, channel size, clipping, episode restoration and country selection.\n' "$capture_root"
 printf 'XCUIRemote also checks native simulator navigation with retained XCTest screenshots; physical Apple TV hardware rendering and provider playback still need their own verification.
 '

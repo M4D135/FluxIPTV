@@ -20,9 +20,17 @@ struct AddSourceSheet: View {
     @EnvironmentObject private var library: IPTVLibrary
     var existing: IPTVSource? = nil
     var onSaved: () -> Void = {}
-    init(existing: IPTVSource? = nil, onSaved: @escaping () -> Void = {}) {
+    /// Set when the form is drawn inside the window. Dismissing a view that no
+    /// sheet presents would close the window itself.
+    var inlineClose: (() -> Void)? = nil
+    init(existing: IPTVSource? = nil, onSaved: @escaping () -> Void = {}, inlineClose: (() -> Void)? = nil) {
         self.existing = existing
         self.onSaved = onSaved
+        self.inlineClose = inlineClose
+    }
+    private var inline: Bool { inlineClose != nil }
+    private func finish() {
+        if let inlineClose { inlineClose() } else { dismiss() }
     }
 
     @State private var mode: NewSourceMode = .xtream
@@ -55,7 +63,35 @@ struct AddSourceSheet: View {
     }
 
     var body: some View {
-        ScrollView {
+        Group {
+            #if os(tvOS)
+            televisionForm
+            #else
+            if inline { form.frame(maxWidth: 760, alignment: .leading) }
+            else { ScrollView { form }.fluxSheetSize(width: sourceWidth, height: 650) }
+            #endif
+        }
+        .preferredColorScheme(.dark)
+        #if !os(tvOS)
+        .fileImporter(isPresented: $importingFile, allowedContentTypes: [UTType(filenameExtension: "m3u") ?? .plainText, UTType(filenameExtension: "m3u8") ?? .plainText, .plainText]) { result in
+            switch result {
+            case .success(let url): chosenFile = url; errorText = nil
+            case .failure: errorText = "Impossible d’ouvrir ce fichier."
+            }
+        }
+        #endif
+        #if !os(tvOS)
+        .interactiveDismissDisabled(saving)
+        #endif
+        .onAppear(perform: initialize)
+        .onChange(of: mode) { _, value in
+            errorText = nil; showPassword = false
+            focused = value == .xtream ? .server : value == .remote ? .remote : .name
+        }
+        .onDisappear { attempt?.cancel() }
+    }
+
+    private var form: some View {
         VStack(alignment: .leading, spacing: 18) {
             HStack(spacing: 12) {
                 Image(systemName: "server.rack")
@@ -71,6 +107,10 @@ struct AddSourceSheet: View {
                 Picker("Type", selection: $mode) {
                     ForEach(NewSourceMode.allCases) { kind in Text(kind.rawValue).tag(kind) }
                 }
+                #if os(macOS)
+                // In the window, the three kinds stay visible side by side.
+                .pickerStyle(.segmented)
+                #endif
                 .labelsHidden().disabled(saving)
             }
             if needsUnlock {
@@ -173,7 +213,7 @@ struct AddSourceSheet: View {
             Divider()
             HStack {
                 Button(saving ? "Interrompre" : "Annuler", role: .cancel) {
-                    if saving { attempt?.cancel() } else { dismiss() }
+                    if saving { attempt?.cancel() } else { finish() }
                 }.fluxShortcut(cancel: true)
                 Spacer()
                 if saving {
@@ -188,27 +228,147 @@ struct AddSourceSheet: View {
             }
         }
         .padding(sourcePadding)
+    }
+
+    #if os(tvOS)
+    // MARK: Television: the whole screen, nothing to scroll
+
+    /// What the form is for and the kind of source on the left; the fields
+    /// and the two actions on the right. Everything is on screen at once: a
+    /// remote never has to scroll a form to find its button.
+    private var televisionForm: some View {
+        HStack(alignment: .top, spacing: 56) {
+            VStack(alignment: .leading, spacing: 20) {
+                Image(systemName: "server.rack").font(.system(size: 58, weight: .medium)).foregroundStyle(.cyan)
+                Text(existing == nil ? "Charger une liste" : "Modifier la source")
+                    .font(.system(size: 50, weight: .bold)).lineLimit(2).minimumScaleFactor(0.8)
+                Text("Connectez votre propre abonnement ou playlist IPTV.")
+                    .font(.system(size: 27)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                if existing == nil {
+                    Text("TYPE DE SOURCE").font(.system(size: 21, weight: .semibold)).tracking(2)
+                        .foregroundStyle(.secondary).padding(.top, 18)
+                    Picker("Type", selection: $mode) {
+                        ForEach(NewSourceMode.allCases) { kind in Text(kind.rawValue).tag(kind) }
+                    }
+                    .pickerStyle(.segmented).labelsHidden().disabled(saving)
+                }
+                if needsUnlock {
+                    Text("Ressaisissez vos identifiants ou récupérez-les depuis le Trousseau. Vos favoris seront conservés.")
+                        .font(.system(size: 23)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    if let existing, existing.credentialStorage != .localPrivate {
+                        Button { unlockExplicitly() } label: { Label("Récupérer depuis le Trousseau", systemImage: "lock.open") }
+                    }
+                    Toggle("Autoriser le Trousseau à l’enregistrement", isOn: $allowKeychainPrompt)
+                }
+                Spacer(minLength: 0)
+                Label("En HTTP, les identifiants ne sont pas chiffrés sur le réseau.", systemImage: "lock.shield")
+                    .font(.system(size: 22)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(width: 560, alignment: .leading)
+            .frame(maxHeight: .infinity, alignment: .topLeading)
+            .padding(.top, 24)
+
+            VStack(alignment: .leading, spacing: 14) {
+                Group { televisionFields }.disabled(saving)
+                Spacer(minLength: 0)
+                if let errorText {
+                    Label(errorText, systemImage: "exclamationmark.circle.fill")
+                        .font(.system(size: 23)).foregroundStyle(.orange).lineLimit(3)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(14).background(.orange.opacity(0.10), in: RoundedRectangle(cornerRadius: 14))
+                }
+                HStack(spacing: 24) {
+                    Button(saving ? "Interrompre" : "Annuler", role: .cancel) {
+                        if saving { attempt?.cancel() } else { finish() }
+                    }
+                    .accessibilityIdentifier("source-cancel")
+                    Spacer(minLength: 0)
+                    if saving {
+                        ProgressView()
+                        Text("Vérification…").font(.system(size: 23)).foregroundStyle(.secondary)
+                    }
+                    Button(existing == nil ? "Vérifier et ajouter" : "Vérifier et enregistrer", action: submit)
+                        .disabled(saving || !valid)
+                        .accessibilityIdentifier("source-submit")
+                        #if FLUX_CATALOG_UI_TESTING
+                        .background(TVCatalogControlFrameProbe(identifier: "source-submit").allowsHitTesting(false))
+                        #endif
+                }
+            }
+            .padding(34)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .fluxGlass(radius: 36)
         }
-        .fluxSheetSize(width: sourceWidth, height: 650)
-        .preferredColorScheme(.dark)
-        #if !os(tvOS)
-        .fileImporter(isPresented: $importingFile, allowedContentTypes: [UTType(filenameExtension: "m3u") ?? .plainText, UTType(filenameExtension: "m3u8") ?? .plainText, .plainText]) { result in
-            switch result {
-            case .success(let url): chosenFile = url; errorText = nil
-            case .failure: errorText = "Impossible d’ouvrir ce fichier."
+        .padding(.horizontal, 16).padding(.vertical, 6)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background {
+            ZStack {
+                FluxBackdrop()
+                LinearGradient(colors: [.black.opacity(0.30), .black.opacity(0.62)], startPoint: .top, endPoint: .bottom)
+            }.ignoresSafeArea()
+        }
+        .onExitCommand { if saving { attempt?.cancel() } else { finish() } }
+    }
+
+    @ViewBuilder private var televisionFields: some View {
+        televisionField("Nom de la source (facultatif)") {
+            TextField("Ex. Mon abonnement", text: $name).focused($focused, equals: .name)
+        }
+        switch mode {
+        case .xtream:
+            televisionField("Serveur", hint: "Adresse complète, avec le port si nécessaire. Sans protocole : HTTPS.") {
+                TextField("https://serveur.exemple:8080", text: $server)
+                    .focused($focused, equals: .server).onSubmit { focused = .username }
+                    .accessibilityIdentifier("source-server")
+                    #if FLUX_CATALOG_UI_TESTING
+                    .background(TVCatalogControlFrameProbe(identifier: "source-server").allowsHitTesting(false))
+                    #endif
+            }
+            televisionField("Identifiant") {
+                TextField("Votre identifiant", text: $username)
+                    .focused($focused, equals: .username).onSubmit { focused = .password }
+            }
+            televisionField("Mot de passe") {
+                HStack(spacing: 16) {
+                    Group {
+                        if showPassword { TextField("Votre mot de passe", text: $password) }
+                        else { SecureField("Votre mot de passe", text: $password) }
+                    }
+                    .focused($focused, equals: .password)
+                    Button { showPassword.toggle() } label: { Image(systemName: showPassword ? "eye.slash" : "eye") }
+                        .accessibilityLabel(showPassword ? "Masquer le mot de passe" : "Afficher le mot de passe")
+                }
+            }
+            televisionField("Format TV") {
+                Picker("Format TV", selection: $streamType) {
+                    Text("HLS (.m3u8) — recommandé").tag("m3u8")
+                    Text("MPEG-TS (.ts)").tag("ts")
+                }
+                .pickerStyle(.segmented).labelsHidden()
+            }
+        case .remote:
+            televisionField("URL de la playlist M3U") {
+                TextField("https://serveur.exemple/playlist.m3u", text: $remoteURL).focused($focused, equals: .remote)
+                    .accessibilityIdentifier("source-server")
+                    #if FLUX_CATALOG_UI_TESTING
+                    .background(TVCatalogControlFrameProbe(identifier: "source-server").allowsHitTesting(false))
+                    #endif
             }
         }
-        #endif
-        #if !os(tvOS)
-        .interactiveDismissDisabled(saving)
-        #endif
-        .onAppear(perform: initialize)
-        .onChange(of: mode) { _, value in
-            errorText = nil; showPassword = false
-            focused = value == .xtream ? .server : value == .remote ? .remote : .name
-        }
-        .onDisappear { attempt?.cancel() }
     }
+
+    private func televisionField<Content: View>(_ title: String, hint: String? = nil,
+                                                @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 7) {
+            Text(title).font(.system(size: 23, weight: .semibold)).foregroundStyle(.secondary)
+            content()
+            if let hint {
+                Text(hint).font(.system(size: 20)).foregroundStyle(.secondary).lineLimit(1).minimumScaleFactor(0.8)
+            }
+        }
+    }
+    #endif
 
     private func field<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 5) {
@@ -293,7 +453,7 @@ struct AddSourceSheet: View {
                 #endif
                 }
                 onSaved()
-                dismiss()
+                finish()
             } catch {
                 if Task.isCancelled { errorText = "Vérification interrompue. Vous pouvez réessayer." }
                 else { errorText = IPTVLibrary.safeSourceError(error); if error is KeychainError || error is PrivateCredentialStoreError { needsUnlock = true } }

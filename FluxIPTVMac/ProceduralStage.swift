@@ -118,6 +118,8 @@ private struct RoomStageImage: View {
 struct ProceduralStage: View {
     let kind: IPTVMediaKind
     var cachedOnly = false
+    /// Several rooms mounted together share the memory of one full-size room.
+    var pixelLimit: Int?
     @AppStorage("fluxiptv.appearance.stage") private var style: ProceduralCinema.Style = .orbit
     @AppStorage(MediaThemePreferences.cinemaKey) private var cinemaTheme: VideoClubTheme = .neo90
     @AppStorage(MediaThemePreferences.seriesKey) private var seriesTheme: VideoClubTheme = .neo90
@@ -131,7 +133,8 @@ struct ProceduralStage: View {
         GeometryReader { geometry in
             if !reduced, style != .off {
                 let requested=max(geometry.size.width,geometry.size.height)*displayScale
-                let pixels=requested <= 960 ? 960 : requested <= 1920 ? 1920 : requested <= 2560 ? 2560 : 3840
+                let wanted=requested <= 960 ? 960 : requested <= 1920 ? 1920 : requested <= 2560 ? 2560 : 3840
+                let pixels=min(wanted, pixelLimit ?? wanted)
                 RoomStageImage(environment: MediaEnvironment(kind: kind), theme: theme, maxPixels: pixels, cachedOnly: cachedOnly)
             }
         }.ignoresSafeArea().allowsHitTesting(false).accessibilityHidden(true)

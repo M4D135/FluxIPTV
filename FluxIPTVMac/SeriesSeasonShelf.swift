@@ -10,6 +10,10 @@ struct SeriesSeasonShelf: View {
     let systemFocus: FocusState<String?>.Binding
     let focus: (IPTVSeason) -> Void
     let open: (IPTVSeason) -> Void
+    /// Set by the desk layout: the sleeve of the open season travels to its fiche.
+    var heroNamespace: Namespace.ID? = nil
+    var heldSeason: Int? = nil
+    var heroExpanded = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     static func focusID(_ season: IPTVSeason) -> String { "season-\(season.number)" }
@@ -40,6 +44,8 @@ struct SeriesSeasonShelf: View {
             VStack(alignment: .leading, spacing: 6) {
                 CatalogSleeveArtwork(item: Self.sleeve(series: series, season: season))
                     .aspectRatio(2.0/3.0, contentMode: .fit)
+                    .modifier(SeasonSleeveHero(namespace: heroNamespace, id: "sleeve-\(series.id)::season::\(season.number)",
+                                               held: heldSeason == season.number, expanded: heroExpanded))
                 HStack(spacing: 5) {
                     Text(title).font(.headline).lineLimit(1)
                     Spacer(minLength: 0)
@@ -72,5 +78,19 @@ struct SeriesSeasonShelf: View {
          .focusable().focused(systemFocus, equals: id).focusEffectDisabled()
          .onHover { inside in if inside { focus(season) } }
         #endif
+    }
+}
+
+private struct SeasonSleeveHero: ViewModifier {
+    let namespace: Namespace.ID?
+    let id: String
+    let held: Bool
+    let expanded: Bool
+    @ViewBuilder func body(content: Content) -> some View {
+        if let namespace {
+            content
+                .matchedGeometryEffect(id: id, in: namespace, properties: .frame, anchor: .center, isSource: !(held && expanded))
+                .opacity(held ? 0 : 1)
+        } else { content }
     }
 }
