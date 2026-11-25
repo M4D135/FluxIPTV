@@ -65,10 +65,10 @@ xcrun swiftc -parse-as-library -swift-version 5 -D FLUX_CATALOG_UI_TESTING \
   "$repo_root/Tests/Native/CatalogUISmoke.swift" \
   -o "$smoke_app/Contents/MacOS/CatalogUISmoke"
 
-# Hosted images explicitly disable graphic effects. The fixture's SwiftUI
-# environment selects the normal app branches; the native AppKit material also
-# needs the temporary CI user's system preferences restored to normal before
-# this new process starts. A developer's personal settings are never changed.
+# Hosted images explicitly disable graphic effects. SwiftUI's accessibility
+# environment values are read-only, and AppKit materials also read the system
+# settings. Restore the temporary CI user's normal appearance before this new
+# process starts. A developer's personal settings are never changed.
 if [[ "${GITHUB_ACTIONS:-false}" == true ]]; then
   capture_previous_transparency="$(defaults read com.apple.universalaccess reduceTransparency 2>/dev/null || true)"
   capture_previous_motion="$(defaults read com.apple.universalaccess reduceMotion 2>/dev/null || true)"

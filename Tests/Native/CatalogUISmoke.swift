@@ -32,7 +32,7 @@ private enum CatalogUIFailure: Error, CustomStringConvertible {
                 configureDefaults()
                 defer { UserDefaults.standard.removePersistentDomain(forName: bundleID) }
                 print("System accessibility: reduced transparency=\(NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency), reduced motion=\(NSWorkspace.shared.accessibilityDisplayShouldReduceMotion).")
-                print("Capture environment: transparency and motion reductions are disabled only in this SwiftUI fixture; native glass available=\(FluxAppearance.nativeAvailable).")
+                print("Native glass available=\(FluxAppearance.nativeAvailable). Hosted captures temporarily restore the normal system appearance before this process starts.")
                 if ProcessInfo.processInfo.environment["GITHUB_ACTIONS"] == "true" {
                     try require(!NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency,
                                 "The CI process still sees Reduce Transparency; native glass cannot be assessed.")
@@ -122,12 +122,6 @@ private enum CatalogUIFailure: Error, CustomStringConvertible {
                 .environmentObject(library).environmentObject(playback)
                 .preferredColorScheme(.dark)
                 .environment(\.scenePhase, .active)
-                // Hosted macOS runners deliberately enable Reduce Transparency,
-                // which hides decorative rooms and selects the opaque fallback.
-                // Capture the normal production appearance without changing the
-                // machine's or a developer's accessibility preferences.
-                .environment(\.accessibilityReduceTransparency, false)
-                .environment(\.accessibilityReduceMotion, false)
             let host = NSHostingView(rootView: root)
             let size = CGSize(width: 1440, height: 900)
             let window = NSWindow(contentRect: CGRect(origin: CGPoint(x: 30, y: 30), size: size),
