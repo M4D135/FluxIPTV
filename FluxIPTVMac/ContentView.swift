@@ -82,7 +82,13 @@ struct ContentView: View {
     @FocusState private var searchFocus: Bool
     @State private var cinema = false
     @State private var caseTrailerVisible = false
-    @State private var cinemaControls = false
+    @State private var cinemaControls = true
+    @State private var playerControlsTask: Task<Void, Never>?
+    @State private var hoveredPlayerControls: Set<String> = []
+    @State private var playerWidth: CGFloat = 900
+    @State private var scrubPosition = 0.0
+    @State private var scrubbing = false
+    @Environment(\.accessibilityVoiceOverEnabled) private var voiceOverEnabled
     @State private var wasFullscreen = false
     @State private var cinemaWindowNumber: Int?
     @StateObject private var remoteInput = RemoteInputBridge()
@@ -163,7 +169,7 @@ struct ContentView: View {
             HStack(spacing: 0) {
                 ScrollViewReader { reader in
                     VStack(spacing: 0) {
-                        if !cinema { header }
+                        if page != .player && !cinema { header }
                         switch page {
                         case .catalogue: catalogue
                         case .series: seriesDetail
@@ -220,7 +226,7 @@ struct ContentView: View {
                 #if !os(tvOS)
                 // The simulator is a real side panel, never covers catalogue/video.
                 // On narrow mobile displays it is presented separately.
-                if showRemote && !cinema && !caseTrailerVisible && geometry.size.width >= 800 {
+                if showRemote && page != .player && !cinema && !caseTrailerVisible && geometry.size.width >= 800 {
                     Divider().overlay(.white.opacity(0.08))
                     remotePanel.padding(12)
                 }
@@ -249,17 +255,21 @@ struct ContentView: View {
             .onChange(of: clubProfile) { _, _ in updateColumns(geometry.size.width) }
             #if !os(tvOS)
             #if os(iOS)
-            .sheet(isPresented: Binding(get: { showRemote && geometry.size.width < 800 }, set: { if !$0 { showRemote = false } })) {
+            .sheet(isPresented: Binding(get: { showRemote && page != .player && geometry.size.width < 800 }, set: { if !$0 { showRemote = false } })) {
                 remotePanel.padding(18).presentationDetents([.large])
             }
             #endif
             #endif
         }
         #if os(macOS)
-        .frame(minWidth: cinema ? 320 : 860, minHeight: cinema ? 180 : 540)
+        .frame(minWidth: page == .player ? 320 : 860, minHeight: page == .player ? 180 : 540)
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.willExitFullScreenNotification)) { notice in
             if (notice.object as? NSWindow)?.windowNumber == cinemaWindowNumber { cinema = false; cinemaWindowNumber = nil }
         }
+        #endif
+        #if os(iOS)
+        .statusBar(hidden: page == .player && cinema)
+        .persistentSystemOverlays(page == .player && cinema ? .hidden : .automatic)
         #endif
         #if os(tvOS)
         .fluxExit(heldItem != nil || page != .catalogue || showingSearch || group != nil || continueOnly || library.selectedPresetID != nil) { if heldItem != nil { dispatch(.back) } else { back() } }
@@ -319,7 +329,7 @@ struct ContentView: View {
             if let id=heldItem?.id ?? previewID { revealCatalogItem(id) }
             else { catalogPage=min(catalogPage,catalogPageCount-1) }
         }
-        .onDisappear { caseDetailTask?.cancel(); caseTransitionTask?.cancel(); entranceTask?.cancel(); favoriteFeedbackTask?.cancel() }
+        .onDisappear { caseDetailTask?.cancel(); caseTransitionTask?.cancel(); entranceTask?.cancel(); favoriteFeedbackTask?.cancel(); playerControlsTask?.cancel() }
     }
 
     #if !os(tvOS)
@@ -478,7 +488,7 @@ struct ContentView: View {
                 HStack(spacing: 9) {
                     Image(systemName: "waveform.path").font(.title2.weight(.medium)).foregroundStyle(themeAccent)
                     Text("FLUX").font(.title2.weight(.heavy)).tracking(4)
-                    if !compactChrome {Text("0.8.4").font(.caption2.monospacedDigit()).foregroundStyle(.secondary)}
+                    if !compactChrome {Text("0.8.5").font(.caption2.monospacedDigit()).foregroundStyle(.secondary)}
                 }
                 Spacer(minLength: 0)
                 navButton("Sources", icon: "square.stack", id: "sources", iconOnly: true) { showingSources = true }
@@ -497,7 +507,7 @@ struct ContentView: View {
             }
         }
         .padding(.horizontal, 18).padding(.vertical, 12)
-        .modifier(FluxHeaderChrome(onVideo: page == .player))
+        .fluxGlass(radius: 25)
         .padding(.horizontal, 24).padding(.top, 14).padding(.bottom, 18)
     }
 
@@ -718,86 +728,263 @@ struct ContentView: View {
         }
     }
 
+    /// Windowed and fullscreen playback share the same edge-to-edge surface.
+    /// Chrome floats above the image; showing it never resizes the video.
     private var playerPage: some View {
-        VStack(spacing: cinema ? 0 : 14) {
-            if !cinema {
-                HStack {
-                    VStack(alignment: .leading) {
-                        Text(playback.playingItem?.name ?? "Lecteur").font(.title2.bold()).lineLimit(2)
-                        Text(playback.attemptLabel).font(.caption).foregroundStyle(.secondary)
+        GeometryReader { geometry in
+            ZStack {
+                PlayerSurface(playback: playback, immersive: cinema)
+                    .contentShape(Rectangle())
+                    #if !os(tvOS)
+                    .focusable().focused($systemFocus, equals: "cinema-controls")
+                    .id("cinema-controls").focusEffectDisabled()
+                    .onTapGesture {
+                        if playerControlsVisible { hidePlayerControls() }
+                        else { revealPlayerControls() }
                     }
-                    Spacer()
-                    navButton("Retour", icon: "chevron.backward", id: "player-back") { back() }
-                    navButton("Plein écran", icon: "arrow.up.left.and.arrow.down.right", id: "player-full") { toggleCinema() }
-                }.padding(.horizontal, 24)
-            }
-            ZStack(alignment: .bottom) {
-                PlayerSurface(playback: playback, showsTransport: transportVisible).frame(maxWidth: .infinity, maxHeight: .infinity)
-                if zapBanner && playback.playingItem?.kind == .live && playback.playbackError == nil {liveBanner.transition(.opacity)}
-                #if !os(tvOS)
-                if cinema {
-                    VStack { HStack { Spacer(); Button { cinemaControls.toggle() } label: { Image(systemName: "ellipsis.circle").font(.title2).padding(10).background(.black.opacity(0.78), in: Circle()) }.buttonStyle(.plain).accessibilityLabel("Commandes")
-                        Button { toggleCinema() } label: { Image(systemName: "arrow.down.right.and.arrow.up.left").font(.title2).padding(10).background(.black.opacity(0.78), in: Circle()) }.buttonStyle(.plain).accessibilityLabel("Quitter le plein écran") }.padding(16); Spacer() }
-                }
-                #endif
+                    #endif
                 #if os(tvOS)
-                if cinema && !cinemaControls && playback.isPlaying {
-                    Button {
-                        cinemaControls = true; focusID = "playpause"
-                    } label: {
-                        Label("Commandes", systemImage: "ellipsis.circle").padding(12).background(.black.opacity(0.78), in: Capsule())
-                    }.buttonStyle(.plain).focused($systemFocus, equals: "cinema-controls").id("cinema-controls")
-                    .padding(15).onMoveCommand { direction in
+                if !playerControlsVisible {
+                    // An invisible native focus target lets Select restore the
+                    // controls without keeping a permanent badge over the film.
+                    Button { revealPlayerControls(focus: true) } label: {
+                        Color.clear.contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .focusEffectDisabled()
+                    .focused($systemFocus, equals: "cinema-controls")
+                    .id("cinema-controls")
+                    .accessibilityLabel("Afficher les commandes")
+                    .onMoveCommand { direction in
                         switch direction {
-                        case .left: playback.skip(seconds: -Double(playback.settings.skipSeconds))
-                        case .right: playback.skip(seconds: Double(playback.settings.skipSeconds))
-                        case .up: if playback.playingItem?.kind == .live { adjacent(1) } else { cinemaControls = true; focusID = "playpause" }
-                        case .down: if playback.playingItem?.kind == .live { adjacent(-1) } else { cinemaControls = true; focusID = "playpause" }
+                        case .left: dispatch(.left)
+                        case .right: dispatch(.right)
+                        case .up: dispatch(.up)
+                        case .down: dispatch(.down)
                         @unknown default: break
                         }
-                    }.contextMenu { Button("Moteur de lecture") { showingEngines = true }; Button("Quitter le plein écran") { toggleCinema() } }
+                    }
                 }
                 #endif
+                if playerControlsVisible {
+                    FluxGlassGroup {
+                        VStack(spacing: 12) {
+                            playerHeading
+                            Spacer(minLength: 0)
+                            playerDock
+                        }
+                        .padding(playerChromeInset)
+                    }
+                    .transition(.opacity)
+                }
+                if zapBanner && playback.playingItem?.kind == .live && playback.playbackError == nil {
+                    VStack { Spacer(); liveBanner.padding(.bottom, playerControlsVisible ? 104 : 0) }
+                        .allowsHitTesting(false).transition(.opacity)
+                }
             }
-                .clipShape(RoundedRectangle(cornerRadius: cinema ? 0 : 20))
-                .padding(.horizontal, cinema ? 0 : 24)
-            if !cinema || cinemaControls || playback.opening || !playback.isPlaying {
-                ScrollView(.horizontal, showsIndicators: true) {
-                    HStack(spacing: 10) {
-                        navButton("Précédent", icon: "backward.end.fill", id: "previous", iconOnly: compactTransport) { adjacent(-1) }
-                        navButton("− \(playback.settings.skipSeconds) s", icon: "gobackward", id: "rewind", iconOnly: compactTransport) { playback.skip(seconds: -Double(playback.settings.skipSeconds)) }
-                        navButton(playback.isPlaying ? "Pause" : "Lecture", icon: playback.isPlaying ? "pause.fill" : "play.fill", id: "playpause", iconOnly: compactTransport) { playback.togglePause() }
-                        navButton("+ \(playback.settings.skipSeconds) s", icon: "goforward", id: "forward", iconOnly: compactTransport) { playback.skip(seconds: Double(playback.settings.skipSeconds)) }
-                        navButton("Suivant", icon: "forward.end.fill", id: "next", iconOnly: compactTransport) { adjacent(1) }
-                        #if !os(tvOS)
-                        navButton("Volume −", icon: "speaker.minus", id: "volume-down", iconOnly: compactTransport) { playback.adjustVolume(-0.1) }
-                        navButton(playback.muted ? "Son" : "Muet", icon: playback.muted ? "speaker.slash.fill" : "speaker.wave.2", id: "mute", iconOnly: compactTransport) { playback.toggleMute() }
-                        navButton("Volume +", icon: "speaker.plus", id: "volume-up", iconOnly: compactTransport) { playback.adjustVolume(0.1) }
-                        #endif
-                        navButton("Réglages", icon: "gearshape", id: "engine", iconOnly: compactTransport) { showingEngines = true }
-                        navButton("Arrêter", icon: "stop.fill", id: "stop", iconOnly: compactTransport) { stopPlayback() }
-                        if cinema { navButton("Masquer", icon: "eye.slash", id: "hide-controls", iconOnly: compactTransport) { cinemaControls = false; focusID = "cinema-controls" }; navButton("Quitter le plein écran", icon: "arrow.down.right.and.arrow.up.left", id: "exit-full", iconOnly: compactTransport) { toggleCinema() } }
-                    }.padding(.horizontal, 12)
-                }.padding(10).fluxFrosted(radius: 25).padding(.horizontal, 20).padding(.bottom, 12)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(.black)
+            #if !os(tvOS)
+            .onContinuousHover { phase in
+                if case .active = phase { revealPlayerControls() }
             }
-            if let error = playback.playbackError { Text(error).foregroundStyle(.orange).font(.caption).padding(8) }
+            #endif
+            .onAppear { playerWidth = geometry.size.width; revealPlayerControls() }
+            .onChange(of: geometry.size.width) { _, width in playerWidth = width }
+        }
+        .onChange(of: playback.isPlaying) { _, _ in revealPlayerControls() }
+        .onChange(of: playback.opening) { _, _ in revealPlayerControls() }
+        .onChange(of: playback.playbackError) { _, _ in revealPlayerControls() }
+        .onChange(of: playback.position) { _, position in if !scrubbing { scrubPosition = position } }
+        .onChange(of: playback.playingItem?.id) { _, _ in
+            scrubbing = false; scrubPosition = 0; revealPlayerControls()
+        }
+        .onChange(of: systemFocus) { _, id in
+            if page == .player, playerControlsVisible, id != nil, id != "cinema-controls" { revealPlayerControls() }
+        }
+        .onChange(of: modalOpen) { _, _ in if page == .player { revealPlayerControls() } }
+        .onChange(of: voiceOverEnabled) { _, _ in if page == .player { revealPlayerControls() } }
+        .onDisappear { playerControlsTask?.cancel(); playerControlsTask = nil; hoveredPlayerControls.removeAll() }
+    }
+
+    private var playerControlsVisible: Bool {
+        cinemaControls || playback.opening || !playback.isPlaying || playback.playbackError != nil || voiceOverEnabled
+    }
+    private var narrowPlayer: Bool { playerWidth < 520 }
+    private var playerChromeInset: CGFloat {
+        #if os(tvOS)
+        return 34
+        #else
+        return narrowPlayer ? 10 : 20
+        #endif
+    }
+    private var playerButtonSize: CGFloat {
+        #if os(tvOS)
+        return 56
+        #elseif os(iOS)
+        return 44
+        #else
+        return 40
+        #endif
+    }
+    private var playerTransportIDs: [String] {
+        var ids: [String]
+        if playback.playingItem?.kind == .live { ids = ["previous", "playpause", "next"] }
+        else if narrowPlayer { ids = ["rewind", "playpause", "forward"] }
+        else { ids = ["previous", "rewind", "playpause", "forward", "next"] }
+        #if !os(tvOS)
+        ids.append("mute")
+        #endif
+        ids.append("engine")
+        return ids
+    }
+    private var playerHeading: some View {
+        HStack(spacing: 8) {
+            playerButton("player-back")
+            Text(playback.playingItem?.name ?? "Lecteur")
+                .font(.callout.weight(.semibold)).lineLimit(1)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            #if !os(tvOS)
+            playerButton("player-full")
+            #endif
+        }
+        .padding(5).frame(maxWidth: 620)
+        .fluxMediaGlass(radius: 28)
+        #if !os(tvOS)
+        .onHover { playerControlHover("heading", inside: $0) }
+        #endif
+    }
+    private var playerDock: some View {
+        VStack(spacing: 7) {
+            if playback.seekable && !playback.opening && playback.playbackError == nil {
+                HStack(spacing: 9) {
+                    Text(playback.elapsed).font(.caption.monospacedDigit())
+                    #if os(tvOS)
+                    ProgressView(value: playback.position).tint(.white)
+                        .accessibilityLabel("Progression")
+                        .accessibilityValue(playback.elapsed + " sur " + playback.duration)
+                    #else
+                    Slider(value: $scrubPosition, in: 0...1, onEditingChanged: { editing in
+                        scrubbing = editing
+                        if !editing { playback.seek(scrubPosition) }
+                        revealPlayerControls()
+                    }).labelsHidden().tint(.white)
+                        .accessibilityLabel("Position de lecture")
+                    #endif
+                    Text(playback.duration).font(.caption.monospacedDigit())
+                }
+                .padding(.horizontal, 10)
+            }
+            HStack(spacing: narrowPlayer ? 2 : 6) {
+                ForEach(playerTransportIDs, id: \.self) { id in playerButton(id) }
+            }
+            .frame(maxWidth: .infinity)
+        }
+        .padding(.horizontal, narrowPlayer ? 8 : 12).padding(.vertical, 8)
+        .frame(maxWidth: playerDockWidth)
+        .fluxMediaGlass(radius: 28)
+        #if !os(tvOS)
+        .onHover { playerControlHover("dock", inside: $0) }
+        #endif
+    }
+    private var playerDockWidth: CGFloat {
+        #if os(tvOS)
+        return 520
+        #else
+        return playback.seekable && !narrowPlayer ? 500 : CGFloat(playerTransportIDs.count) * (playerButtonSize + (narrowPlayer ? 2 : 6)) + 24
+        #endif
+    }
+    private func playerButton(_ id: String) -> some View {
+        let label = playerButtonLabel(id)
+        return Button {
+            pointerSelect(id)
+            activateFocus()
+            if page == .player { revealPlayerControls() }
+        } label: {
+            Image(systemName: label.icon)
+                .font(.system(size: playerSymbolSize(id), weight: .semibold))
+                .frame(width: playerButtonSize, height: playerButtonSize)
+                .background(.white.opacity(id == "playpause" ? 0.14 : 0), in: Circle())
+                .overlay(Circle().strokeBorder(playerButtonFocused(id) ? .white.opacity(0.9) : .clear, lineWidth: 1.5))
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain).foregroundStyle(.white)
+        .fluxFocus($systemFocus, id: id).id(id)
+        .accessibilityLabel(label.title).fluxHelp(label.title)
+        .disabled((id == "rewind" || id == "forward") && !playback.seekable)
+    }
+    private func playerButtonLabel(_ id: String) -> (title: String, icon: String) {
+        switch id {
+        case "player-back": return ("Retour", "chevron.backward")
+        case "player-full": return cinema ? ("Quitter le plein écran", "arrow.down.right.and.arrow.up.left") : ("Plein écran", "arrow.up.left.and.arrow.down.right")
+        case "previous": return ("Précédent", "backward.end.fill")
+        case "next": return ("Suivant", "forward.end.fill")
+        case "rewind": return ("Reculer de \(playback.settings.skipSeconds) secondes", "gobackward")
+        case "forward": return ("Avancer de \(playback.settings.skipSeconds) secondes", "goforward")
+        case "playpause": return playback.isPlaying ? ("Pause", "pause.fill") : ("Lecture", "play.fill")
+        case "mute": return playback.muted ? ("Rétablir le son", "speaker.slash.fill") : ("Couper le son", "speaker.wave.2.fill")
+        default: return ("Audio, sous-titres et réglages", "gearshape")
         }
     }
-
-    private var compactTransport: Bool {
+    private func playerSymbolSize(_ id: String) -> CGFloat {
         #if os(tvOS)
-        return false
+        return id == "playpause" ? 28 : 23
         #else
-        return true
+        return id == "playpause" ? 20 : 16
         #endif
     }
-
-    private var transportVisible: Bool {
+    private func playerButtonFocused(_ id: String) -> Bool {
         #if os(tvOS)
-        return !cinema || cinemaControls || !playback.isPlaying
+        return systemFocus == id
         #else
-        return true
+        return remoteNavigationActive && focusID == id
         #endif
+    }
+    private func playerControlHover(_ region: String, inside: Bool) {
+        if inside { hoveredPlayerControls.insert(region); revealPlayerControls() }
+        else {
+            hoveredPlayerControls.remove(region)
+            // Removing an idle panel sends a final hover exit. It must not
+            // immediately resurrect the very controls we have just hidden.
+            if cinemaControls { revealPlayerControls() }
+        }
+    }
+    private func revealPlayerControls(focus: Bool = false) {
+        guard page == .player else { return }
+        playerControlsTask?.cancel()
+        if !cinemaControls {
+            withAnimation(reduceMotion ? nil : .easeOut(duration: 0.18)) { cinemaControls = true }
+        }
+        if focus {
+            focusID = "playpause"
+            Task { @MainActor in
+                await Task.yield()
+                guard page == .player, playerControlsVisible, !modalOpen else { return }
+                systemFocus = "playpause"
+            }
+        }
+        guard playback.isPlaying, !playback.opening, playback.playbackError == nil,
+              hoveredPlayerControls.isEmpty, !scrubbing, !modalOpen, !voiceOverEnabled else { return }
+        playerControlsTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 3_000_000_000)
+            guard !Task.isCancelled, page == .player, playback.isPlaying,
+                  !playback.opening, playback.playbackError == nil,
+                  hoveredPlayerControls.isEmpty, !scrubbing, !modalOpen, !voiceOverEnabled else { return }
+            hidePlayerControls()
+        }
+    }
+    private func hidePlayerControls() {
+        guard playback.isPlaying, !playback.opening, playback.playbackError == nil,
+              !scrubbing, !modalOpen, !voiceOverEnabled else { return }
+        playerControlsTask?.cancel(); playerControlsTask = nil
+        hoveredPlayerControls.removeAll()
+        withAnimation(reduceMotion ? nil : .easeOut(duration: 0.22)) { cinemaControls = false }
+        focusID = "cinema-controls"
+        Task { @MainActor in
+            await Task.yield()
+            guard page == .player, !playerControlsVisible else { return }
+            systemFocus = "cinema-controls"
+        }
     }
 
     private var groupsPanel: some View {
@@ -920,6 +1107,7 @@ struct ContentView: View {
         page = .player; focusID = "playpause"
         playback.play(item, urls: urls)
         if entering && !cinema { toggleCinema() }
+        revealPlayerControls()
         if item.kind == .live { showZapBanner() }
     }
     private func cancelEntrance() {
@@ -936,11 +1124,11 @@ struct ContentView: View {
     private var liveBanner:some View {
         HStack(spacing:14) {
             if let item=playback.playingItem {
-                ArtworkView(url:item.logoURL,fit:true){Image(systemName:"tv").font(.title2)}.frame(width:64,height:48)
+                ArtworkView(url:item.logoURL,fit:true){Image(systemName:"tv").font(.title2)}.frame(width:44,height:36)
                 VStack(alignment:.leading,spacing:4){Text(item.name).font(.headline).lineLimit(1);Text("DIRECT  ·  \(item.group)").font(.caption).foregroundStyle(.secondary).lineLimit(1)}
                 Spacer(); if let number=visibleSlice.index(of:item.id) {Text(String(format:"%03d",number+1)).font(.title.monospacedDigit().weight(.bold))}
             }
-        }.padding(15).fluxFrosted(radius:23).padding(20).allowsHitTesting(false)
+        }.padding(12).frame(maxWidth: 440).fluxMediaGlass(radius:23).padding(20).allowsHitTesting(false)
     }
     private func adjacent(_ delta: Int) {
         guard let item = playback.playingItem else { return }
@@ -956,7 +1144,7 @@ struct ContentView: View {
         }
         playItem(target)
     }
-    private func home() { cancelEntrance(); dismissCaseImmediately(); if cinema { toggleCinema() }; playback.stop(); page = .catalogue; series = nil; seasons = []; seriesRequest = UUID(); focusID = "tab-\(library.contentKind.rawValue)" }
+    private func home() { playerControlsTask?.cancel(); cancelEntrance(); dismissCaseImmediately(); if cinema { toggleCinema(restoringPreviousWindow: true) }; playback.stop(); page = .catalogue; series = nil; seasons = []; seriesRequest = UUID(); focusID = "tab-\(library.contentKind.rawValue)" }
     private func back() {
         if entranceItem != nil { cancelEntrance(); return }
         if heldItem != nil {putCaseBack();return}
@@ -971,27 +1159,32 @@ struct ContentView: View {
         }
     }
     private func stopPlayback() {
-        if cinema { toggleCinema() }
+        playerControlsTask?.cancel(); playerControlsTask = nil
+        if cinema { toggleCinema(restoringPreviousWindow: true) }
         let lastItem = playback.playingItem
         playback.stop(); page = .catalogue
         if let collection = series { showCase(collection, episodes: true) }
         else if let item = lastItem, item.kind == .movie { showCase(item) }
         else { focusID = lastItem?.id ?? "tab-\(library.contentKind.rawValue)" }
     }
-    private func toggleCinema() {
+    private func toggleCinema(restoringPreviousWindow: Bool = false) {
+        #if !os(tvOS)
         guard page == .player else { return }
         #if os(macOS)
-        if cinema { if !wasFullscreen, let w = NSApp.windows.first(where: { $0.windowNumber == cinemaWindowNumber }), w.styleMask.contains(.fullScreen) { w.toggleFullScreen(nil) }; cinemaWindowNumber = nil; cinema = false }
+        if cinema { if (!restoringPreviousWindow || !wasFullscreen), let w = NSApp.windows.first(where: { $0.windowNumber == cinemaWindowNumber }), w.styleMask.contains(.fullScreen) { w.toggleFullScreen(nil) }; cinemaWindowNumber = nil; cinema = false }
         else if let w = NSApp.keyWindow { wasFullscreen = w.styleMask.contains(.fullScreen); cinemaWindowNumber = w.windowNumber; cinema = true; if !wasFullscreen { w.toggleFullScreen(nil) } }
         #else
         cinema.toggle()
         #endif
-        cinemaControls = false
-        focusID = cinema ? "cinema-controls" : "player-full"
+        if !restoringPreviousWindow {
+            focusID = "player-full"
+            revealPlayerControls()
+        }
+        #endif
     }
     private var focusRows: [[String]] {
         var rows: [[String]] = []
-        if !cinema {
+        if page != .player && !cinema {
             #if os(tvOS)
             rows.append(["sources", "search", "settings"])
             #else
@@ -1014,17 +1207,16 @@ struct ContentView: View {
             if episodesFailed { rows.append(["series-retry"]) }
             else { rows.append(seasons.map { "season-\($0.number)" }); rows += episodes.map { [$0.id] } }
         case .player:
-            if !cinema { rows.append(["player-back", "player-full"]) }
-            if !cinema || cinemaControls || playback.opening || !playback.isPlaying { rows.append(["previous", "rewind", "playpause", "forward", "next"] + desktopTransportFocus + ["engine", "stop"] + (cinema ? ["hide-controls", "exit-full"] : [])) } else { rows.append(["cinema-controls"]) }
+            if playerControlsVisible {
+                #if os(tvOS)
+                rows.append(["player-back"])
+                #else
+                rows.append(["player-back", "player-full"])
+                #endif
+                rows.append(playerTransportIDs)
+            } else { rows.append(["cinema-controls"]) }
         }
         return rows
-    }
-    private var desktopTransportFocus: [String] {
-        #if os(tvOS)
-        return []
-        #else
-        return ["volume-down", "mute", "volume-up"]
-        #endif
     }
     private func dispatch(_ action: RemoteAction) {
         if entranceItem != nil {
@@ -1039,12 +1231,25 @@ struct ContentView: View {
             caseRemoteEvent=CaseRemoteEvent(action:action)
             return
         }
+        if page == .player && !playerControlsVisible {
+            switch action {
+            case .left: playback.skip(seconds: -Double(playback.settings.skipSeconds))
+            case .right: playback.skip(seconds: Double(playback.settings.skipSeconds))
+            case .up: if playback.playingItem?.kind == .live { adjacent(1) }
+            case .down: if playback.playingItem?.kind == .live { adjacent(-1) }
+            case .select: break
+            default: break
+            }
+            if [.left, .right, .up, .down, .select].contains(action) {
+                revealPlayerControls(focus: true)
+                return
+            }
+        }
         switch action {
         case .up, .down, .left, .right:
-            if page == .player && cinema && playback.isPlaying && !cinemaControls { if action == .left { playback.skip(seconds: -Double(playback.settings.skipSeconds)) } else if action == .right { playback.skip(seconds: Double(playback.settings.skipSeconds)) } else if playback.playingItem?.kind == .live { adjacent(action == .up ? 1 : -1) } else { cinemaControls = true; focusID = "playpause" } }
-            else if page == .catalogue { focusID=visibleSlice.move(from:focusID,action:action,prefix:focusRows,columns:columns) }
+            if page == .catalogue { focusID=visibleSlice.move(from:focusID,action:action,prefix:focusRows,columns:columns) }
             else { focusID = RemoteNavigation.move(from: focusID, action: action, rows: focusRows) }
-        case .select: if page == .player && cinema && playback.isPlaying && !cinemaControls { cinemaControls = true; focusID = "playpause" } else { activateFocus() }
+        case .select: activateFocus()
         case .back: back()
         case .home: home()
         case .search: search()
@@ -1062,6 +1267,7 @@ struct ContentView: View {
             else if let item = visibleSlice.item(id:focusID) ?? (page == .series ? series : nil) { itemOptions = item }
             else { showingLists = true }
         }
+        if page == .player { revealPlayerControls() }
     }
     private func activateFocus() {
         guard let id = focusID else { focusID = focusRows.first?.first; return }
@@ -1091,8 +1297,8 @@ struct ContentView: View {
         case "add-source": addingSource = true
         case "series-back", "player-back": back()
         case "stop": stopPlayback()
-        case "cinema-controls": cinemaControls = true; focusID = "playpause"
-        case "hide-controls": cinemaControls = false; focusID = "cinema-controls"
+        case "cinema-controls": revealPlayerControls(focus: true)
+        case "hide-controls": hidePlayerControls()
         case "exit-full": toggleCinema()
         case "series-favorite": itemOptions = series
         case "series-retry": if let series { loadSeries(series) }
@@ -1126,13 +1332,6 @@ private extension View {
 }
 #endif
 
-private struct FluxHeaderChrome: ViewModifier {
-    let onVideo: Bool
-    @ViewBuilder func body(content: Content) -> some View {
-        if onVideo { content.fluxFrosted(radius: 25) }
-        else { content.fluxGlass(radius: 25) }
-    }
-}
 
 private extension View {
     @ViewBuilder func fluxHelp(_ title: String) -> some View {

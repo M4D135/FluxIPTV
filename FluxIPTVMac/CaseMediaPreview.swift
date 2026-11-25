@@ -3,11 +3,11 @@ import Combine
 import CoreGraphics
 import Foundation
 
-/// One inline trailer for the visible case back. Its player is shared with the
-/// SceneKit material, never duplicated by a second inline video surface.
+/// One trailer session for the visible case back and its expanded presentation.
+/// Native streams use AVPlayer; YouTube uses its official embedded player.
 @MainActor final class CaseMediaPreviewController: ObservableObject {
-    enum Phase: Equatable { case idle, preparing, still, waiting, loading, playing, ended, external, unavailable, failed }
-    enum StillSource: Equatable { case none, filmFrame, trailerFrame, providerImage }
+    enum Phase: Equatable { case idle, preparing, still, waiting, loading, playing, paused, blocked, ended, external, unavailable, failed }
+    enum StillSource: Equatable { case none, filmFrame, trailerFrame, providerImage, trailerThumbnail }
 
     @Published private(set) var still: CGImage?
     @Published private(set) var source: StillSource = .none
@@ -15,6 +15,11 @@ import Foundation
     @Published private(set) var showVideo = false
     @Published private(set) var phase: Phase = .idle
     @Published private(set) var progress: Double = 0
+    @Published private(set) var failureMessage: String?
+    #if os(macOS) || os(iOS)
+    @Published private(set) var youtubeSession: YouTubeTrailerSession?
+    private var youtubeCleanup: (@MainActor @Sendable () -> Void)?
+    #endif
 
     private struct Configuration: Equatable {
         let itemID: String
@@ -37,6 +42,7 @@ import Foundation
     private var screenshotTask: Task<Void, Never>?
     private var drainingScreenshot: Task<Void, Never>?
     private var artworkTask: Task<Void, Never>?
+    private var thumbnailTask: Task<Void, Never>?
     private var delayTask: Task<Void, Never>?
     private var extractionTimeout: Task<Void, Never>?
     private var playbackTimeout: Task<Void, Never>?
@@ -49,14 +55,27 @@ import Foundation
     // A nonisolated deinit may copy this Sendable action without reading the
     // actor-isolated @Published player. The action owns only playback resources.
     private var playerCleanup: (@MainActor @Sendable () -> Void)?
+    private var youtubeViewportEligible = false
+    private var resumeWhenVisible = false
 
     var externalURL: URL? {
-        guard case .external(let url) = TrailerPreviewRoute.resolve(configuration?.trailerURL) else { return nil }
-        return url
+        switch TrailerPreviewRoute.resolve(configuration?.trailerURL) {
+        case .external(let url): return url
+        case .youtube(let video): return video.watchURL
+        default: return nil
+        }
     }
-    var hasNativeTrailer: Bool {
-        if case .native = TrailerPreviewRoute.resolve(configuration?.trailerURL) { return true }
-        return false
+    var hasInlineTrailer: Bool {
+        switch TrailerPreviewRoute.resolve(configuration?.trailerURL) {
+        case .native: return true
+        case .youtube:
+            #if os(macOS) || os(iOS)
+            return true
+            #else
+            return false
+            #endif
+        default: return false
+        }
     }
     var isLoading: Bool { phase == .loading }
     var isPlaying: Bool { phase == .playing }
@@ -65,6 +84,7 @@ import Foundation
         case .filmFrame: "Image du film"
         case .trailerFrame: "Image de la bande-annonce"
         case .providerImage: "Image du fournisseur"
+        case .trailerThumbnail: "Miniature de la bande-annonce"
         case .none: "Aperçu indisponible"
         }
     }
@@ -72,14 +92,24 @@ import Foundation
         switch phase {
         case .idle: ""
         case .preparing: "Préparation de l’image…"
-        case .still: "Bande-annonce"
+        case .still:
+            if case .youtube = TrailerPreviewRoute.resolve(configuration?.trailerURL), !youtubeViewportEligible { "Agrandir pour lire la bande-annonce" }
+            else { "Bande-annonce" }
         case .waiting: "Bande-annonce automatique après \(configuration?.delay.rawValue ?? 5) s"
         case .loading: "Chargement de la bande-annonce…"
         case .playing: "Bande-annonce · sélectionner pour agrandir"
+        case .paused: "Bande-annonce en pause"
+        case .blocked: "Sélectionnez Lire pour démarrer la bande-annonce"
         case .ended: "Revoir la bande-annonce"
-        case .external: "Bande-annonce sur le site du fournisseur"
-        case .unavailable: "Bande-annonce indisponible"
-        case .failed: "Aperçu indisponible · réessayer la bande-annonce"
+        case .external:
+            #if os(tvOS)
+            if case .youtube = TrailerPreviewRoute.resolve(configuration?.trailerURL) { "YouTube · ouvrir sur iPhone" }
+            else { "Bande-annonce sur le site du fournisseur" }
+            #else
+            "Bande-annonce sur le site du fournisseur"
+            #endif
+        case .unavailable: "Aucune bande-annonce fournie pour ce titre"
+        case .failed: failureMessage ?? "Lecture indisponible · réessayer la bande-annonce"
         }
     }
 
@@ -107,43 +137,63 @@ import Foundation
         switch TrailerPreviewRoute.resolve(next.trailerURL) {
         case .unavailable: phase = .unavailable
         case .external: phase = .external
+        case .youtube:
+            #if os(macOS) || os(iOS)
+            phase = automatic ? .preparing : .still
+            if automatic { queueAutomaticStart(token: token) }
+            #else
+            phase = .external
+            #endif
         case .native:
             phase = automatic ? .preparing : .still
-            if automatic {
-                let framePreparation = screenshotTask ?? drainingScreenshot
-                let backdropPreparation = artworkTask
-                delayTask = Task { @MainActor [weak self] in
-                    // Image generation is preparation, not part of the requested
-                    // 3/5/10 seconds during which the still must remain visible.
-                    await framePreparation?.value
-                    guard let self, self.isCurrent(token) else { return }
-                    if self.still == nil { await backdropPreparation?.value }
-                    guard self.isCurrent(token) else { return }
-                    guard self.still != nil else {
-                        // An unavailable still must not turn an empty frame into
-                        // automatic video. Explicit full-screen playback remains.
-                        self.phase = .still
-                        return
-                    }
-                    // Let the published CGImage reach the native case surface
-                    // before starting its full display interval.
-                    await Task.yield()
-                    guard self.isCurrent(token) else { return }
-                    self.phase = .waiting
-                    do { try await Task.sleep(nanoseconds: UInt64(delay.rawValue) * 1_000_000_000) }
-                    catch { return }
-                    guard self.isCurrent(token) else { return }
-                    await self.handoffToPlayer(token: token, unmute: false)
-                }
-            }
+            if automatic { queueAutomaticStart(token: token) }
         }
     }
 
-    /// Optional explicit inline start. Selecting the miniature in the interface
-    /// should instead stop this controller and open the full-screen trailer.
-    @discardableResult func activateTrailer(unmute: Bool = true) -> Bool {
-        guard backVisible, hasNativeTrailer else { return false }
+    private func queueAutomaticStart(token: UUID) {
+        guard let request = configuration, request.automatic else { return }
         delayTask?.cancel()
+        let framePreparation = screenshotTask ?? drainingScreenshot
+        delayTask = Task { @MainActor [weak self] in
+            await framePreparation?.value
+            guard let self, self.isCurrent(token) else { return }
+            // Give the still/thumbnail a bounded chance to arrive. Its failure
+            // must not suppress an otherwise available trailer indefinitely.
+            for _ in 0..<20 where self.still == nil {
+                do { try await Task.sleep(nanoseconds: 100_000_000) } catch { return }
+                guard self.isCurrent(token) else { return }
+            }
+            await Task.yield()
+            guard self.isCurrent(token) else { return }
+            if case .youtube = TrailerPreviewRoute.resolve(request.trailerURL), !self.youtubeViewportEligible {
+                self.phase = .still; self.delayTask = nil; return
+            }
+            self.phase = .waiting
+            do { try await Task.sleep(nanoseconds: UInt64(request.delay.rawValue) * 1_000_000_000) }
+            catch { return }
+            guard self.isCurrent(token) else { return }
+            if case .youtube = TrailerPreviewRoute.resolve(request.trailerURL), !self.youtubeViewportEligible {
+                self.phase = .still
+                self.delayTask = nil
+                return
+            }
+            await self.handoffToPlayer(token: token, unmute: false)
+            self.delayTask = nil
+        }
+    }
+
+    /// The same session moves into the expanded native container. No restart,
+    /// second web view or second audio decoder is needed on promotion.
+    @discardableResult func activateTrailer(unmute: Bool = true) -> Bool {
+        guard backVisible, hasInlineTrailer else { return false }
+        delayTask?.cancel(); delayTask = nil
+        failureMessage = nil
+        #if os(macOS) || os(iOS)
+        if let youtubeSession, phase != .failed {
+            youtubeSession.play(unmute: unmute)
+            return true
+        }
+        #endif
         if let player {
             player.isMuted = !unmute
             player.play()
@@ -153,11 +203,57 @@ import Foundation
         delayTask = Task { @MainActor [weak self] in
             guard let self, self.isCurrent(token) else { return }
             await self.handoffToPlayer(token: token, unmute: unmute)
+            self.delayTask = nil
         }
         return true
     }
 
-    /// Call before film/episode/full-screen trailer playback, a neighbor change,
+    /// YouTube requires a visible viewport of at least 200 × 200. Smaller
+    /// cases retain the still and can always be opened by explicit selection.
+    func setYouTubeViewportEligible(_ eligible: Bool) {
+        guard eligible != youtubeViewportEligible else { return }
+        objectWillChange.send()
+        youtubeViewportEligible = eligible
+        #if os(macOS) || os(iOS)
+        if let youtubeSession {
+            if !eligible {
+                resumeWhenVisible = phase == .playing || phase == .loading
+                youtubeSession.pause()
+            } else if resumeWhenVisible {
+                resumeWhenVisible = false
+                youtubeSession.play()
+            }
+        } else if eligible, backVisible, configuration?.automatic == true, delayTask == nil,
+                  case .youtube = TrailerPreviewRoute.resolve(configuration?.trailerURL), phase == .still {
+            queueAutomaticStart(token: generation)
+        }
+        #endif
+    }
+
+    func setMuted(_ muted: Bool) {
+        player?.isMuted = muted
+        #if os(macOS) || os(iOS)
+        youtubeSession?.setMuted(muted)
+        #endif
+    }
+    func togglePlayback() {
+        #if os(macOS) || os(iOS)
+        if let youtubeSession { youtubeSession.togglePlayback(); return }
+        #endif
+        guard let player else { activateTrailer(); return }
+        if player.timeControlStatus == .playing { player.pause(); phase = .paused }
+        else { player.play() }
+    }
+    func seek(by delta: Double) {
+        #if os(macOS) || os(iOS)
+        if let youtubeSession { youtubeSession.seek(by: delta); return }
+        #endif
+        guard let player else { return }
+        let seconds = player.currentTime().seconds
+        if seconds.isFinite { player.seek(to: CMTime(seconds: max(0, seconds + delta), preferredTimescale: 600)) }
+    }
+
+    /// Call before film/episode playback, a neighbor change,
     /// front-face rotation, app backgrounding and inspector dismissal.
     func stop() {
         cancelWork(clearStill: true)
@@ -180,11 +276,15 @@ import Foundation
         generation = UUID()
         delayTask?.cancel(); delayTask = nil
         artworkTask?.cancel(); artworkTask = nil
+        thumbnailTask?.cancel(); thumbnailTask = nil
         if let screenshotTask { screenshotTask.cancel(); drainingScreenshot = screenshotTask }
         screenshotTask = nil
         extractionTimeout?.cancel(); extractionTimeout = nil
         generator?.cancelAllCGImageGeneration(); generator = nil
         stopPlayer()
+        stopYouTube()
+        resumeWhenVisible = false
+        failureMessage = nil
         if clearStill { still = nil; source = .none }
     }
 
@@ -197,8 +297,20 @@ import Foundation
             }
             artworkTask = Task { @MainActor [weak self] in
                 let image = await ArtworkLoader.load(backdrop, wallpaper: true)
-                guard let self, self.isCurrent(token), self.source == .none, let image else { return }
+                guard let self, self.isCurrent(token), self.source == .none || self.source == .trailerThumbnail, let image else { return }
                 self.still = image.image; self.source = .providerImage
+            }
+        }
+        if case .youtube(let video) = TrailerPreviewRoute.resolve(request.trailerURL) {
+            if source == .none, let cached = ArtworkLoader.cached(video.thumbnailURL) {
+                still = cached.image; source = .trailerThumbnail
+            }
+            thumbnailTask = Task { @MainActor [weak self] in
+                let image = await ArtworkLoader.load(video.thumbnailURL)
+                guard let self, self.isCurrent(token), self.source == .none, let image else { return }
+                // A YouTube thumbnail is labelled honestly; never call it an
+                // extracted frame from the film or overwrite a real film still.
+                self.still = image.image; self.source = .trailerThumbnail
             }
         }
 
@@ -258,13 +370,66 @@ import Foundation
         generator?.cancelAllCGImageGeneration()
         extractionTimeout?.cancel()
         await pending?.value
-        guard isCurrent(token), case .native(let url) = TrailerPreviewRoute.resolve(configuration?.trailerURL) else { return }
+        guard isCurrent(token) else { return }
         screenshotTask = nil; drainingScreenshot = nil; generator = nil; extractionTimeout = nil
-        startPlayer(url: url, token: token, unmute: unmute)
+        switch TrailerPreviewRoute.resolve(configuration?.trailerURL) {
+        case .native(let url): startPlayer(url: url, token: token, unmute: unmute)
+        case .youtube(let video):
+            #if os(macOS) || os(iOS)
+            startYouTube(video, token: token, unmute: unmute)
+            #else
+            phase = .external
+            #endif
+        default: break
+        }
+    }
+
+    #if os(macOS) || os(iOS)
+    private func startYouTube(_ video: YouTubeTrailer, token: UUID, unmute: Bool) {
+        stopPlayer(); stopYouTube()
+        guard isCurrent(token) else { return }
+        phase = .loading
+        let candidate = YouTubeTrailerSession(trailer: video)
+        candidate.onReady = { [weak self, weak candidate] in
+            guard let self, let candidate, self.isCurrent(token), self.youtubeSession === candidate else { return }
+            // The iframe is ready before the session asks it to play. Reveal
+            // the real player first, so autoplay never starts while hidden.
+            self.showVideo = true
+        }
+        candidate.onStateChange = { [weak self, weak candidate] state in
+            guard let self, let candidate, self.isCurrent(token), self.youtubeSession === candidate else { return }
+            switch state {
+            case .idle: break
+            case .loading: self.phase = .loading
+            case .playing:
+                guard self.youtubeViewportEligible else {
+                    self.resumeWhenVisible = true; candidate.pause(); return
+                }
+                self.phase = .playing; self.showVideo = true
+            case .paused: self.phase = .paused
+            case .ended: self.phase = .ended
+            case .blocked: self.phase = .blocked; self.showVideo = true
+            case .failed(let reason): self.failureMessage = reason; self.phase = .failed
+            }
+        }
+        youtubeSession = candidate
+        youtubeCleanup = { @MainActor [candidate] in candidate.onReady = nil; candidate.onStateChange = nil; candidate.stop() }
+        candidate.start(muted: !unmute)
+    }
+    #endif
+
+    private func stopYouTube() {
+        #if os(macOS) || os(iOS)
+        let cleanup = youtubeCleanup
+        youtubeCleanup = nil
+        cleanup?()
+        youtubeSession = nil
+        #endif
     }
 
     private func startPlayer(url: URL, token: UUID, unmute: Bool) {
         stopPlayer()
+        stopYouTube()
         guard isCurrent(token) else { return }
         phase = .loading
         let item = AVPlayerItem(url: url)
@@ -292,6 +457,8 @@ import Foundation
                 } else if observed.timeControlStatus == .waitingToPlayAtSpecifiedRate {
                     self.phase = .loading
                     self.schedulePlaybackTimeout(token: token)
+                } else if self.showVideo, self.phase != .ended {
+                    self.phase = .paused
                 }
             }
         }
@@ -350,7 +517,7 @@ import Foundation
     }
 
     deinit {
-        delayTask?.cancel(); artworkTask?.cancel(); screenshotTask?.cancel(); drainingScreenshot?.cancel()
+        delayTask?.cancel(); artworkTask?.cancel(); thumbnailTask?.cancel(); screenshotTask?.cancel(); drainingScreenshot?.cancel()
         extractionTimeout?.cancel(); playbackTimeout?.cancel()
         generator?.cancelAllCGImageGeneration()
         itemObservation?.invalidate(); transportObservation?.invalidate()
@@ -361,5 +528,8 @@ import Foundation
             // released its final reference. The player is stopped on MainActor.
             Task { @MainActor [cleanup] in cleanup() }
         }
+        #if os(macOS) || os(iOS)
+        if let cleanup = youtubeCleanup { Task { @MainActor [cleanup] in cleanup() } }
+        #endif
     }
 }

@@ -1,6 +1,8 @@
-# FLUX IPTV 0.8.4 — Pack complet et compilation Apple TV
+# FLUX IPTV 0.8.5 — Lecture immersive, Liquid Glass et bandes-annonces intégrées
 
-Version de sources native SwiftUI pour macOS, iOS et tvOS.
+Version native SwiftUI pour macOS, iOS et tvOS.
+
+**Nouveautés 0.8.5 :** la navigation du catalogue disparaît pendant la lecture, y compris en mode fenêtre. Un petit panneau flottant rassemble les commandes et se masque après trois secondes d’inactivité. Les panneaux utilisent le véritable Liquid Glass clair sur les systèmes 26 compatibles, ou un matériau système translucide sur les versions précédentes. Les bandes-annonces YouTube utilisent le lecteur intégré officiel sur Mac, iPhone et iPad ; les vidéos directes restent natives. Le même lecteur est conservé entre miniature et plein écran.
 
 **Correctif 0.8.4 :** les indicateurs de progression utilisent leur taille native sur tvOS et l’appui long utilise l’API de la télécommande ; macOS/iOS conservent leurs réglages de taille et de déplacement du geste. Le job Linux est fixé sur Ubuntu 24.04 pour installer Swift 6.2. GitHub Actions produit les sources complètes, les journaux Xcode et les applications compilées.
 
@@ -49,13 +51,23 @@ Sur Mac : **⌘F** ouvre la recherche ; **⌘⇧F** bascule le plein écran nati
 
 ## Verso : image, puis bande-annonce
 
-Le cadre supérieur tente d’extraire une véritable image du film. Si le format ou le serveur le refuse, une image de la bande-annonce native ou le panorama fourni par l’IPTV peut servir de secours. La provenance de l’image reste indiquée ; une jaquette n’est pas présentée comme une image extraite du film.
+Le cadre supérieur tente d’extraire une véritable image du film. Si le format ou le serveur le refuse, une image de la bande-annonce native ou le panorama fourni par l’IPTV peut servir de secours. Une miniature YouTube identifiée comme telle complète ces possibilités si aucune image du film ne peut être extraite. La provenance de l’image reste indiquée ; une jaquette n’est pas présentée comme une image extraite du film.
 
-**Réglages → Interface → Aperçu au dos de la boîte** : démarrage automatique activable et délai **3, 5 ou 10 secondes** (5 secondes par défaut). Le délai commence après la préparation de l’image fixe. La vidéo démarre en sourdine et reste dans son cadre, avec un fondu de 0,5 seconde au démarrage effectif. Elle ne déplace pas la sélection et ne se lance pas en boucle. Sans image disponible, la bande-annonce reste accessible par une action explicite.
+**Réglages → Interface → Aperçu au dos de la boîte** : démarrage automatique activable et délai **3, 5 ou 10 secondes** (5 secondes par défaut). Le délai commence après la préparation de l’image fixe. La vidéo démarre en sourdine et reste dans son cadre, avec un fondu de 0,5 seconde vers le lecteur prêt à démarrer. Elle ne déplace pas la sélection et ne se lance pas en boucle. Une image manquante ne bloque plus une bande-annonce disponible. Sur une petite pochette, YouTube attend une ouverture explicite en grand pour conserver des commandes utilisables.
 
-Un clic sur la miniature ouvre le lecteur plein écran. Les URL vidéo directes MP4, M4V, MOV et HLS sont prises en charge nativement selon leurs codecs. Les pages YouTube, Vimeo et Dailymotion restent des liens externes explicites (QR sur tvOS) ; l’application n’extrait pas leur flux vidéo.
+Un clic sur l’image, **Agrandir** ou l’action **Bande-annonce** ouvre le lecteur plein écran avec le son. Les commandes internes de YouTube restent utilisables dans le cadre. Retour retrouve la même boîte et remet l’aperçu en sourdine, en conservant la position du lecteur.
+
+Sur macOS/iOS, les liens et identifiants YouTube valides sont lus avec le lecteur officiel dans une `WKWebView`. Le document transmet l’identité réelle de l’application, nécessaire notamment pour éviter l’erreur 153. Les erreurs de réseau, l’autoplay bloqué et les vidéos dont le propriétaire refuse l’intégration donnent un état explicite ; un lien YouTube reste proposé dans ce dernier cas. Aucun flux YouTube n’est extrait.
+
+Les URL vidéo directes MP4, M4V, MOV et HLS restent prises en charge nativement selon leurs codecs. tvOS ne propose pas de WebView : les vidéos directes sont intégrées et YouTube conserve son ouverture explicite sur iPhone par QR code. Vimeo et Dailymotion restent des liens externes.
 
 Extraction, temporisation et lecteur d’aperçu s’arrêtent en quittant le verso, en changeant de titre ou en passant en arrière-plan. Le passage à une vidéo plein écran attend l’annulation de l’extraction. Une seule vidéo d’aperçu est active. Lors de la lecture principale, le décor et la scène des boîtes sont retirés.
+
+## Lecture et commandes flottantes
+
+La vidéo occupe la fenêtre entière. Le bandeau FLUX, les onglets et la télécommande latérale sont retirés de cette vue. Les commandes de lecture se limitent à un panneau centré de largeur bornée, avec une petite capsule supérieure pour Retour, le titre et Plein écran. Afficher les commandes ne redimensionne pas l’image.
+
+Le panneau se masque après trois secondes de lecture sans interaction ; pointeur, toucher, clavier et télécommande le rappellent. Pause, chargement, erreur, réglages, déplacement du curseur ou VoiceOver le maintiennent visible. Les options Réduire la transparence et Réduire les animations sont respectées. Les pistes, sous-titres et réglages de volume restent accessibles depuis la roue dentée.
 
 ## Description : une source à la fois
 
@@ -79,7 +91,7 @@ L’archive contient les sources et l’installateur Mac, pas un binaire Apple p
 
 1. Sur Mac, quitter l’ancienne app et arrêter le lancement depuis Xcode.
 2. Décompresser, puis ouvrir **Installer Flux IPTV.command**. L’installateur compile sur ce Mac et vérifie le démarrage ; cette vérification ne remplace pas un essai de lecture.
-3. Vérifier **0.8.4** dans la barre FLUX. Les réglages se trouvent dans Interface.
+3. Vérifier **0.8.5** dans la barre FLUX. Les réglages se trouvent dans Interface.
 
 Prérequis de déploiement : macOS 14, iOS 17 ou tvOS 17. Installer Xcode complet pour compiler ; les API de verre natif utilisent le SDK/OS 26 lorsqu’ils sont disponibles. Sur iPhone/iPad ou Apple TV, ouvrir `FluxIPTV.xcodeproj`, choisir **FluxIPTViOS** ou **FluxIPTVTV**, puis renseigner l’équipe de signature pour un appareil physique.
 
@@ -87,7 +99,7 @@ Le Mac garde AVPlayer natif ; le bouton VLC externe reste disponible pour les fo
 
 ## Validation
 
-Le statut précis des vérifications de cette livraison est dans [docs/VALIDATION-0.8.4.md](docs/VALIDATION-0.8.4.md). Les tests unitaires du cœur ne démontrent ni la compilation des frameworks Apple, ni la fluidité réelle, ni la lecture des flux du fournisseur. Aucun EPG n’a été ajouté dans cette version.
+Le statut précis des vérifications de cette livraison est dans [docs/VALIDATION-0.8.5.md](docs/VALIDATION-0.8.5.md). Les tests unitaires du cœur ne démontrent ni la compilation des frameworks Apple, ni la fluidité réelle, ni la lecture des flux du fournisseur. Aucun EPG n’a été ajouté dans cette version.
 
 ## GitHub Actions et pack complet
 

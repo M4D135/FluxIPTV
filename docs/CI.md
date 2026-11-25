@@ -1,4 +1,4 @@
-# GitHub Actions — FLUX IPTV 0.8.4
+# GitHub Actions — FLUX IPTV 0.8.5
 
 Le workflow [Swift / Apple platforms](https://github.com/M4D135/FluxIPTV/actions/workflows/ci.yml) vérifie le commit indiqué en tête de chaque exécution. Il fonctionne sur `main`, sur les branches `work/three-rooms-*`, sur les pull requests et par lancement manuel.
 
@@ -13,6 +13,10 @@ Le workflow [Swift / Apple platforms](https://github.com/M4D135/FluxIPTV/actions
 | Pack des sources | Archive de tous les fichiers suivis par Git dans le commit exécuté | ZIP complet, SHA-256 et identifiant du commit |
 
 Les trois compilations Apple sont indépendantes : l’échec de l’une n’annule pas les autres. Le job du pack des sources est lui aussi indépendant. Un pack disponible ne signifie donc pas que tous les tests ou toutes les compilations sont réussis.
+
+Les jobs Apple utilisent l’image `macos-26` et Xcode **26.3** explicitement sélectionné. Une garde refuse un SDK macOS, iOS Simulator ou tvOS Simulator antérieur à 26. Cela empêche une compilation apparemment réussie avec l’ancien Xcode 16 de retirer silencieusement le code Liquid Glass. La version de Swift, de Xcode et des SDK est jointe aux diagnostics.
+
+Le job macOS exécute aussi `scripts/test-youtube-session.sh` : une vraie fenêtre AppKit et une vraie WKWebView chargent le document du lecteur avec une API IFrame locale contrôlée. Le test couvre les états, la sourdine, le démarrage plein écran avec son, les commandes, les erreurs, la conservation du lecteur entre deux hôtes SwiftUI et sa libération. Il ne contacte pas YouTube et ne prouve pas la lecture d’une vidéo distante.
 
 Le workflow dispose uniquement de la permission GitHub `contents: read`. Il ne publie pas de release, ne modifie pas le dépôt et n’emploie aucun certificat de signature Apple. Une nouvelle exécution sur la même branche annule celle qui serait encore en cours.
 

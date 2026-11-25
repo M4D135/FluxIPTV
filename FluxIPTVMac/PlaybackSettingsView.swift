@@ -33,7 +33,7 @@ struct PlaybackSettingsView: View {
         GeometryReader { geo in
             let wide = geo.size.width >= 740
             VStack(alignment:.leading,spacing:14) {
-                HStack { VStack(alignment:.leading,spacing:4) { Text("Réglages").font(.largeTitle.bold()); Text("FLUX 0.8.4  ·  Centre de contrôle").font(.caption).foregroundStyle(.secondary) }; Spacer(); Button("Fermer",action:close).buttonStyle(.bordered) }
+                HStack { VStack(alignment:.leading,spacing:4) { Text("Réglages").font(.largeTitle.bold()); Text("FLUX 0.8.5  ·  Centre de contrôle").font(.caption).foregroundStyle(.secondary) }; Spacer(); Button("Fermer",action:close).buttonStyle(.bordered) }
                 if wide {
                     HStack(alignment:.top,spacing:22) {
                         VStack(alignment:.leading,spacing:8) { ForEach(Page.allCases) { destination in pageButton(destination) }; Spacer(minLength:0) }.frame(width:230)
@@ -142,7 +142,11 @@ struct PlaybackSettingsView: View {
                     ForEach(TrailerPreviewDelay.allCases) {delay in Text(delay.title).tag(delay)}
                 }.disabled(!automaticTrailerPreview)
                 Text("L’aperçu automatique est muet. Sélectionnez le cadre pour ouvrir la bande-annonce en plein écran. Retour ramène au boîtier.").font(.caption).foregroundStyle(.secondary)
-                Text("Les liens vers YouTube et les autres sites restent des actions à ouvrir ; seuls les flux vidéo directs sont lus dans le cadre.").font(.caption).foregroundStyle(.secondary)
+                #if os(tvOS)
+                Text("Les flux vidéo directs se lisent dans le cadre. Les bandes-annonces YouTube peuvent s’ouvrir sur iPhone avec le QR code.").font(.caption).foregroundStyle(.secondary)
+                #else
+                Text("Les bandes-annonces YouTube et les flux vidéo directs se lisent dans l’application. Sur une petite pochette, sélectionnez Agrandir. Une vidéo dont l’intégration est refusée peut s’ouvrir sur YouTube.").font(.caption).foregroundStyle(.secondary)
+                #endif
             }
             section("Présentation et commandes","La disposition des cartes et des pochettes s’applique aux films et aux séries.") {
                 ForEach(ClubInterfaceProfile.allCases) { concept in

@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// System glass is reserved for navigation. No moving video is sampled.
+/// System glass is reserved for navigation and transient playback controls.
 enum FluxAppearance {
     static let glassKey = "fluxiptv.appearance.glass.v2"
     static let artworkKey = "fluxiptv.appearance.artwork"
@@ -33,9 +33,59 @@ private struct FluxGlassChrome: ViewModifier {
     }
 }
 
+/// Clear Liquid Glass is designed for controls above rich media. A small,
+/// local dimming layer keeps the white controls legible even over a bright shot.
+/// The system remains responsible for the refraction and live material.
+private struct FluxMediaGlass: ViewModifier {
+    @AppStorage(FluxAppearance.glassKey) private var richGlass = true
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    let radius: CGFloat
+
+    @ViewBuilder func body(content: Content) -> some View {
+        let shape = RoundedRectangle(cornerRadius: radius, style: .continuous)
+        if richGlass && !reduceTransparency {
+            #if compiler(>=6.2)
+            if #available(macOS 26.0, iOS 26.0, tvOS 26.0, *) {
+                content
+                    .glassEffect(.clear, in: shape)
+                    .background(.black.opacity(0.30), in: shape)
+            } else {
+                content.background(.ultraThinMaterial, in: shape)
+                    .background(.black.opacity(0.22), in: shape)
+                    .overlay(shape.strokeBorder(.white.opacity(0.18), lineWidth: 0.7).allowsHitTesting(false))
+            }
+            #else
+            content.background(.ultraThinMaterial, in: shape)
+                .background(.black.opacity(0.22), in: shape)
+                .overlay(shape.strokeBorder(.white.opacity(0.18), lineWidth: 0.7).allowsHitTesting(false))
+            #endif
+        } else { content.fluxFrosted(radius: radius) }
+    }
+}
+
+/// Render nearby glass shapes in one system container. Older systems preserve
+/// the same layout and use real system material through the modifiers above.
+struct FluxGlassGroup<Content: View>: View {
+    private let content: Content
+    init(@ViewBuilder content: () -> Content) { self.content = content() }
+    @ViewBuilder var body: some View {
+        #if compiler(>=6.2)
+        if #available(macOS 26.0, iOS 26.0, tvOS 26.0, *) {
+            GlassEffectContainer(spacing: 12) { content }
+        } else { content }
+        #else
+        content
+        #endif
+    }
+}
+
 extension View {
     func fluxGlass(radius: CGFloat = 20) -> some View {
         modifier(FluxGlassChrome(radius: radius))
+    }
+
+    func fluxMediaGlass(radius: CGFloat = 26) -> some View {
+        modifier(FluxMediaGlass(radius: radius))
     }
 
     /// Large moving case panel: static translucent fill instead of sampling the
@@ -53,7 +103,7 @@ extension View {
             .overlay(shape.strokeBorder(.white.opacity(0.17), lineWidth: 1).allowsHitTesting(false))
     }
 
-    /// Static low-cost treatment for all controls over video and reduced-transparency mode.
+    /// Opaque treatment when transparency is disabled or for diagnostic content.
     func fluxFrosted(radius: CGFloat = 20) -> some View {
         let shape = RoundedRectangle(cornerRadius: radius, style: .continuous)
         return background(Color(red: 0.095, green: 0.112, blue: 0.145).opacity(0.97), in: shape)

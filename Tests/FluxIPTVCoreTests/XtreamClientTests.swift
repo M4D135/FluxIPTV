@@ -47,4 +47,31 @@ final class XtreamClientTests: XCTestCase {
                        "https://example.org/sub/series/u/p/4.mkv")
     }
 
+    func testTrailerMetadataNormalizesYouTubeAndTriesTheNextUsableField() {
+        let expected = "https://www.youtube.com/watch?v=M7lc1UVf-VE"
+        for firstField in ["", "  ", "0", "null", "not a link", "https://youtube.com/watch?v=123", "https://youtube.com/results?search_query=film"] {
+            let details = XtreamClient.details(["trailer_url": firstField, "youtube_trailer": "  M7lc1UVf-VE\n"])
+            XCTAssertEqual(details.trailerURL?.absoluteString, expected, firstField)
+        }
+        XCTAssertEqual(XtreamClient.details(["trailer_url": 0, "youtube_trailer": "M7lc1UVf-VE"]).trailerURL?.absoluteString, expected)
+        XCTAssertEqual(XtreamClient.details(["trailer_url": NSNull(), "youtube_trailer": "M7lc1UVf-VE"]).trailerURL?.absoluteString, expected)
+        XCTAssertEqual(XtreamClient.details(["youtube_trailer": "https://youtu.be/M7lc1UVf-VE?si=shared"]).trailerURL?.absoluteString, expected)
+        XCTAssertEqual(XtreamClient.details(["youtube_trailer": "bad identifier", "trailer": "M7lc1UVf-VE"]).trailerURL?.absoluteString, expected)
+    }
+
+    func testPlayableTrailerHasPriorityOverExternalFallbackWithoutLosingDirectStream() {
+        let native = "https://cdn.example.test/trailer.mp4?token=example"
+        let external = "https://example.test/film/trailer"
+        XCTAssertEqual(XtreamClient.details(["trailer_url": native, "youtube_trailer": "M7lc1UVf-VE"]).trailerURL?.absoluteString, native)
+        XCTAssertEqual(XtreamClient.details(["trailer_url": external, "youtube_trailer": "M7lc1UVf-VE"]).trailerURL?.absoluteString, "https://www.youtube.com/watch?v=M7lc1UVf-VE")
+        XCTAssertEqual(XtreamClient.details(["trailer_url": external, "trailer": native]).trailerURL?.absoluteString, native)
+        XCTAssertEqual(XtreamClient.details(["trailer_url": external]).trailerURL?.absoluteString, external)
+    }
+
+    func testMissingMalformedOrUnsafeTrailerMetadataDoesNotInventAVideo() {
+        XCTAssertNil(XtreamClient.details([:]).trailerURL)
+        for value in ["", "0", "null", "123", "not a link", "file:///tmp/trailer.mp4", "javascript:alert(1)", "https://youtube.com/watch?v=123", "https://youtube.com/watch?v=M7lc1UVf-VE&v=abcdefghijk", "https://user:password@youtube.com/watch?v=M7lc1UVf-VE"] {
+            XCTAssertNil(XtreamClient.details(["youtube_trailer": value]).trailerURL, value)
+        }
+    }
 }

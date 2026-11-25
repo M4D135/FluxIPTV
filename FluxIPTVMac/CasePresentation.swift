@@ -1,5 +1,6 @@
 import SwiftUI
 import AVKit
+import QuartzCore
 #if os(macOS)
 import AppKit
 #endif
@@ -56,7 +57,7 @@ struct CasePresentation: View {
     @StateObject private var descriptions=CaseDescriptionModel()
     @State private var descriptionID=""
     @State private var descriptionActive=false
-    @State private var bridge=CaseHitBridge()
+    @StateObject private var bridge=CaseHitBridge()
     @State private var page:CaseFaceLayout.Page = .details
     @State private var focused:CaseFaceLayout.Action?
     @State private var dragging=false
@@ -68,7 +69,7 @@ struct CasePresentation: View {
     @State private var startingPlayback=false
     @State private var handoffTask:Task<Void,Never>?
     @State private var handoffToken=UUID()
-    @State private var trailer:URL?
+    @State private var trailerFullscreen=false
     @State private var qrURL:URL?
     @State private var seasons:[IPTVSeason]=[]
     @State private var seasonIndex = 0
@@ -112,7 +113,7 @@ struct CasePresentation: View {
     private var currentFace:CaseFaceLayout.Page? {CaseFaceLayout.face(yaw:yaw,pitch:pitch).map{$0 == .front ? (collectorOpen ? CaseFaceLayout.Page.episodes:.front):.details}}
     private var descriptionKey:String {"\(item.id)|\(item.name)|\(details.year ?? "")|\(descriptions.source.rawValue)|\(details.synopsis ?? "")"}
     private var acceptsRotation:Bool {
-        guard trailer == nil,qrURL == nil,!commandsActive,!descriptionActive,!startingPlayback,scenePhase == .active else{return false}
+        guard !trailerFullscreen,qrURL == nil,!commandsActive,!descriptionActive,!startingPlayback,scenePhase == .active else{return false}
         #if os(tvOS)
         // Ordinary Siri Remote swipes navigate; the visible Manipuler action
         // explicitly grants the continuous pan to the 3D object.
@@ -121,7 +122,8 @@ struct CasePresentation: View {
         return manipulating || !collectorOpen
         #endif
     }
-    private var previewVisible:Bool {!suspended && currentFace == .details && !collectorOpen && !dragging && !manipulating && !startingPlayback && trailer == nil && qrURL == nil && scenePhase == .active}
+    private var previewVisible:Bool {!suspended && (trailerFullscreen || (currentFace == .details && !collectorOpen && !dragging && !manipulating)) && !startingPlayback && qrURL == nil && scenePhase == .active}
+    private var youtubeViewportEligible:Bool {trailerFullscreen || (previewVisible && bridge.previewProjection?.isAutoplayEligible == true)}
     private var previewKey:String {"\(item.id)|\(previewVisible)|\(automaticPreview)|\(previewDelay.rawValue)|\(details.trailerURL?.absoluteString ?? "")|\(item.backdropURL?.absoluteString ?? "")"}
     private func regions(_ face:CaseFaceLayout.Page)->[CaseFaceLayout.Region] {
         CaseFaceLayout.regions(face,series:item.isSeriesCollection,trailer:details.trailerURL != nil,episodeCount:visibleEpisodes.count,retry:seasonError).filter { region in
@@ -130,13 +132,14 @@ struct CasePresentation: View {
     }
     var body:some View {
         ZStack {
-            if let trailer {
-                // A trailer has sole use of the video surface. No live 3D render
-                // behind it; closing returns to the same side of the same sleeve.
-                CaseTrailerView(url:trailer,remoteEvent:remoteEvent,close:{self.trailer=nil})
+            if trailerFullscreen {
+                // Retain the actual player while its native host changes size.
+                // No live 3D rendering or duplicate audio behind fullscreen.
+                CaseTrailerView(preview:mediaPreview,remoteEvent:remoteEvent,close:closeTrailer)
             } else {
                 VStack(spacing:4) {
                     modelControl
+                        .overlay(alignment:.topLeading) { inlineYouTubePreview }
                         .overlay { sideArrows }
                         .frame(maxWidth:.infinity,maxHeight:.infinity)
                         .layoutPriority(1)
@@ -150,9 +153,12 @@ struct CasePresentation: View {
         .task(id:previewKey) {
             let filmURL:URL? = previewVisible && item.kind == .movie ? (try? library.playbackURLs(for:item))?.first:nil
             mediaPreview.update(item:item,details:details,filmURL:filmURL,backVisible:previewVisible,automatic:automaticPreview,delay:previewDelay)
+            if trailerFullscreen && previewVisible {mediaPreview.setYouTubeViewportEligible(true);mediaPreview.activateTrailer()}
         }
         .onDisappear{cancelHandoff();mediaPreview.stop();onTrailerPresentation(false)}
-        .onChange(of:trailer != nil){_,visible in onTrailerPresentation(visible)}
+        .onChange(of:trailerFullscreen){_,visible in onTrailerPresentation(visible)}
+        .onChange(of:youtubeViewportEligible){_,eligible in mediaPreview.setYouTubeViewportEligible(eligible)}
+        .onAppear{mediaPreview.setYouTubeViewportEligible(youtubeViewportEligible)}
         .onChange(of:scenePhase){_,phase in
             if phase != .active {cancelHandoff();padRotation=nil;dragging=false;manipulating=false;mediaPreview.stop()}
         }
@@ -173,7 +179,7 @@ struct CasePresentation: View {
         #endif
         .onChange(of:item.id){_,_ in
             // Preserve the orientation, but never reuse the previous series data.
-            cancelHandoff();trailer=nil;qrURL=nil;loadedSeriesID=nil;seasons=[];seasonIndex=0;episodePage=0;seasonError=false;seasonLoading=false
+            cancelHandoff();trailerFullscreen=false;qrURL=nil;loadedSeriesID=nil;seasons=[];seasonIndex=0;episodePage=0;seasonError=false;seasonLoading=false
             page = .details;commandsActive=false;manipulating=false;descriptionActive=false;descriptions.reset();descriptionID=""
             focused=nil;padRotation=nil;dragging=false
             #if os(tvOS)
@@ -284,7 +290,9 @@ struct CasePresentation: View {
             }
             Text(navigationHint).font(.caption2).foregroundStyle(.secondary).lineLimit(2)
         }.padding(.horizontal,12).padding(.vertical,7)
-         .fluxGlass(radius:23).padding(.horizontal,12)
+         .frame(maxWidth:1000)
+         .fluxMediaGlass(radius:23).padding(.horizontal,12)
+         .frame(maxWidth:.infinity)
          .accessibilityHint(navigationHint)
     }
     private var navigationHint:String {
@@ -310,6 +318,58 @@ struct CasePresentation: View {
     private var model:some View {
         Case3DView(item:item,details:details,printData:printData,focused:manipulating ? nil:focused,yaw:yaw,pitch:pitch,motion:!reduceMotion && !dragging,bridge:bridge,padInput:handlePad,padEnabled:acceptsRotation,previousItem:previousItem,nextItem:nextItem,previousFarItem:previousFarItem,nextFarItem:nextFarItem,selectedTheme:selectedTheme,previewStill:mediaPreview.still,previewPlayer:mediaPreview.player,previewPlaying:mediaPreview.showVideo && previewVisible,concept:concept)
             .frame(maxWidth:.infinity,maxHeight:.infinity)
+    }
+    @ViewBuilder private var inlineYouTubePreview:some View {
+        #if os(macOS) || os(iOS)
+        if previewVisible, !trailerFullscreen,
+           case .youtube = TrailerPreviewRoute.resolve(details.trailerURL),
+           let projection=bridge.previewProjection {
+            ZStack(alignment:.topTrailing) {
+                if let session=mediaPreview.youtubeSession, projection.isAutoplayEligible {
+                    // A real interactive web view follows the projected case
+                    // surface. SceneKit cannot render a live WKWebView texture.
+                    YouTubeTrailerSurface(session:session)
+                        .opacity(mediaPreview.showVideo ? 1:0)
+                        .allowsHitTesting(mediaPreview.showVideo)
+                        .animation(reduceMotion ? nil:.easeInOut(duration:0.5),value:mediaPreview.showVideo)
+                } else {
+                    Color.clear.allowsHitTesting(false)
+                }
+                Button {activate(.trailer)} label: {
+                    Label("Agrandir",systemImage:"arrow.up.left.and.arrow.down.right")
+                        .font(.caption.weight(.semibold)).padding(.horizontal,10).padding(.vertical,6)
+                        .fluxMediaGlass(radius:12)
+                }.buttonStyle(.plain).offset(y:-34)
+                    .accessibilityLabel("Bande-annonce en plein écran")
+            }
+            .frame(width:projection.surfaceSize.width,height:projection.surfaceSize.height)
+            .projectionEffect(previewTransform(projection))
+        }
+        #endif
+    }
+    private func previewTransform(_ projection:CasePreviewProjection)->ProjectionTransform {
+        let m=projection.matrix
+        var transform=CATransform3DIdentity
+        transform.m11=m.m11;transform.m12=m.m12;transform.m14=m.m14
+        transform.m21=m.m21;transform.m22=m.m22;transform.m24=m.m24
+        transform.m41=m.m41;transform.m42=m.m42
+        return ProjectionTransform(transform)
+    }
+    private func openTrailer() {
+        leaveCommands();faceBack()
+        let filmURL:URL? = item.kind == .movie ? (try? library.playbackURLs(for:item))?.first:nil
+        mediaPreview.update(item:item,details:details,filmURL:filmURL,backVisible:true,automatic:automaticPreview,delay:previewDelay)
+        mediaPreview.setYouTubeViewportEligible(true)
+        trailerFullscreen=true
+        mediaPreview.activateTrailer(unmute:true)
+    }
+    private func closeTrailer() {
+        mediaPreview.setMuted(true)
+        trailerFullscreen=false
+        #if os(macOS)
+        keyboardSurfaceFocused=false
+        Task { @MainActor in await Task.yield();keyboardSurfaceFocused=true }
+        #endif
     }
     @ViewBuilder private var modelControl:some View {
         #if os(tvOS)
@@ -528,7 +588,13 @@ struct CasePresentation: View {
         case .trailer:
             guard let url=details.trailerURL else{return}
             switch TrailerPreviewRoute.resolve(url) {
-            case .native(let playable):leaveCommands();preparePlayback{trailer=playable}
+            case .native:openTrailer()
+            case .youtube(let video):
+                #if os(macOS) || os(iOS)
+                openTrailer()
+                #else
+                mediaPreview.stop();showLink(video.watchURL)
+                #endif
             case .external(let external):mediaPreview.stop();showLink(external)
             case .unavailable:break
             }
@@ -543,7 +609,7 @@ struct CasePresentation: View {
             default:finishPad()
             }
         }
-        if trailer != nil {return}
+        if trailerFullscreen {return}
         if qrURL != nil {if action == .back {qrURL=nil};return}
         if manipulating {
             switch action {
@@ -624,47 +690,128 @@ struct CasePresentation: View {
     }
 }
 private struct CaseTrailerView:View {
-    let url:URL;let remoteEvent:CaseRemoteEvent?;let close:()->Void
-    @Environment(\.scenePhase) private var scenePhase
-    @State private var player=AVPlayer()
+    @ObservedObject var preview:CaseMediaPreviewController
+    let remoteEvent:CaseRemoteEvent?;let close:()->Void
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.openURL) private var openURL
+    @Environment(\.accessibilityVoiceOverEnabled) private var voiceOverEnabled
+    @State private var controlsVisible=true
+    @State private var controlsHovered=false
+    @State private var controlTimer:Task<Void,Never>?
     #if os(macOS)
-    @State private var expandedWindowNumber: Int?
+    @State private var expandedWindowNumber:Int?
+    @State private var escapeMonitor:Any?
     #endif
     var body:some View {
-        ZStack(alignment:.topTrailing) {
+        ZStack(alignment:.topLeading) {
             Color.black.ignoresSafeArea()
-            VideoPlayer(player:player).frame(maxWidth:.infinity,maxHeight:.infinity)
-            Button {player.pause();player.replaceCurrentItem(with:nil);close()} label:{Label("Revenir à la pochette",systemImage:"xmark.circle.fill").padding(12)}.buttonStyle(.bordered).padding(15)
-        }.onAppear{
+            trailerSurface.frame(maxWidth:.infinity,maxHeight:.infinity)
+            if controlsVisible || preview.phase != .playing {
+                HStack(spacing:10) {
+                    Button(action:close) {Label("Pochette",systemImage:"chevron.left").padding(10)}
+                    if preview.phase == .blocked || preview.phase == .paused {
+                        Button {preview.activateTrailer();revealControls()} label:{Label("Lire",systemImage:"play.fill").padding(10)}
+                    }
+                }.buttonStyle(.plain).font(.callout.weight(.semibold))
+                    .padding(4).fluxMediaGlass(radius:22).padding(16)
+                    .transition(.opacity)
+                    #if !os(tvOS)
+                    .onHover {inside in
+                        controlsHovered=inside
+                        if inside {controlTimer?.cancel()}else if controlsVisible {revealControls()}
+                    }
+                    #endif
+            }
+        }
+        .onAppear {
             #if os(macOS)
+            let windowNumber=NSApp.keyWindow?.windowNumber
+            escapeMonitor=NSEvent.addLocalMonitorForEvents(matching:.keyDown) { event in
+                guard event.keyCode == 53,event.window?.windowNumber == windowNumber else{return event}
+                close();return nil
+            }
             if let window=NSApp.keyWindow,!window.styleMask.contains(.fullScreen) {
                 expandedWindowNumber=window.windowNumber;window.toggleFullScreen(nil)
             }
             #endif
-            player.replaceCurrentItem(with:AVPlayerItem(url:url));player.play()
-         }
-         .onDisappear{
-            player.pause();player.replaceCurrentItem(with:nil)
+            revealControls()
+        }
+        .onDisappear {
+            controlTimer?.cancel()
+            // The retained session is still playing in the miniature after
+            // dismissal. Only its sound and native presentation change.
             #if os(macOS)
+            if let escapeMonitor {NSEvent.removeMonitor(escapeMonitor);self.escapeMonitor=nil}
             if let number=expandedWindowNumber,let window=NSApp.windows.first(where:{$0.windowNumber==number}),window.styleMask.contains(.fullScreen) {window.toggleFullScreen(nil)}
             expandedWindowNumber=nil
             #endif
-         }
-         .onChange(of:scenePhase){_,phase in if phase != .active {player.pause()}}
-         .onChange(of:remoteEvent){_,event in
+        }
+        .onChange(of:preview.phase){_,_ in revealControls()}
+        .onChange(of:remoteEvent){_,event in
             guard let action=event?.action else{return}
+            revealControls()
             switch action {
-            case .playPause:if player.timeControlStatus == .playing {player.pause()}else{player.play()}
-            case .rewind,.forward:
-                let current=player.currentTime().seconds
-                if current.isFinite {player.seek(to:CMTime(seconds:max(0,current+(action == .rewind ? -15:15)),preferredTimescale:600))}
-            case .back,.home:player.pause();player.replaceCurrentItem(with:nil);close()
+            case .playPause:preview.togglePlayback()
+            case .rewind:preview.seek(by:-15)
+            case .forward:preview.seek(by:15)
+            case .back,.home:close()
             default:break
             }
-         }
-         #if os(tvOS)
-         .onExitCommand{player.pause();player.replaceCurrentItem(with:nil);close()}
-         #endif
+        }
+        #if os(tvOS)
+        .onExitCommand(perform:close)
+        #else
+        .onContinuousHover {phase in if case .active = phase {revealControls()}}
+        .simultaneousGesture(TapGesture().onEnded{revealControls()})
+        #endif
+    }
+    @ViewBuilder private var trailerSurface:some View {
+        if preview.phase == .failed {
+            VStack(spacing:18) {
+                Image(systemName:"exclamationmark.circle").font(.largeTitle)
+                Text(preview.statusText).multilineTextAlignment(.center)
+                Button("Réessayer"){preview.activateTrailer()}
+                #if !os(tvOS)
+                if let url=preview.externalURL {
+                    Button("Ouvrir sur YouTube"){openURL(url)}
+                }
+                #endif
+            }.padding(30).frame(maxWidth:520)
+                .frame(maxWidth:.infinity,maxHeight:.infinity)
+        } else {
+            #if os(macOS) || os(iOS)
+            if let session=preview.youtubeSession {
+                YouTubeTrailerSurface(session:session)
+                    // Native return controls stay outside the YouTube viewport
+                    // so its title, branding and own controls remain accessible.
+                    .padding(.top,72)
+            } else if let player=preview.player {
+                VideoPlayer(player:player)
+            } else {
+                nativePlaceholder
+            }
+            #else
+            if let player=preview.player {VideoPlayer(player:player)}else{nativePlaceholder}
+            #endif
+        }
+    }
+    private var nativePlaceholder:some View {
+        VStack(spacing:14) {
+            if [.idle,.still,.ended,.paused,.blocked].contains(preview.phase) {
+                Button(preview.phase == .ended ? "Revoir la bande-annonce":"Lire la bande-annonce"){preview.activateTrailer()}
+            }
+            else {ProgressView();Text(preview.statusText).font(.callout)}
+        }.frame(maxWidth:.infinity,maxHeight:.infinity)
+    }
+    private func revealControls() {
+        controlTimer?.cancel()
+        withAnimation(reduceMotion ? nil:.easeOut(duration:0.18)){controlsVisible=true}
+        guard preview.phase == .playing,!voiceOverEnabled,!controlsHovered else{return}
+        controlTimer=Task { @MainActor in
+            do{try await Task.sleep(nanoseconds:3_000_000_000)}catch{return}
+            guard !Task.isCancelled,preview.phase == .playing,!controlsHovered,!voiceOverEnabled else{return}
+            withAnimation(reduceMotion ? nil:.easeOut(duration:0.22)){controlsVisible=false}
+        }
     }
 }
 #if os(tvOS)

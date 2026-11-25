@@ -69,15 +69,28 @@ public struct XtreamClient: Sendable {
             }
             return nil
         }
-        let rawTrailer = value("trailer_url","youtube_trailer","trailer")
-        let trailer: URL? = rawTrailer.flatMap { raw in
-            if let url = try? IPTVURL.validated(raw) { return url }
-            if raw.count == 11 && raw.unicodeScalars.allSatisfy({ CharacterSet(charactersIn:"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-").contains($0) }) {
-                var c = URLComponents(string:"https://www.youtube.com/watch")
-                c?.queryItems = [URLQueryItem(name:"v",value:raw)]; return c?.url
+        // An empty, zero, or malformed first field must not hide a valid second
+        // field. Prefer a playable stream/embed over an external-page fallback.
+        let trailer: URL? = {
+            var external: URL?
+            for key in ["trailer_url", "youtube_trailer", "trailer"] {
+                guard let raw = value(key) else { continue }
+                if let youtube = YouTubeTrailer(videoID: raw) { return youtube.watchURL }
+                guard let url = try? IPTVURL.validated(raw) else { continue }
+                switch TrailerPreviewRoute.resolve(url) {
+                case .native:
+                    return url
+                case .youtube(let youtube):
+                    return youtube.watchURL
+                case .external:
+                    // A YouTube channel/search page or invalid ID is not a trailer.
+                    if !YouTubeTrailer.isYouTubeHost(url.host ?? ""), external == nil { external = url }
+                case .unavailable:
+                    break
+                }
             }
-            return nil
-        }
+            return external
+        }()
         return IPTVDetails(synopsis: value("plot","description","overview"), year: value("year","releaseDate","release_date","releasedate","air_date"), duration: value("duration","episode_run_time"), rating: value("rating","rating_5based"), genre: value("genre"), cast: value("cast","actors"), director: value("director","directors"), trailerURL: trailer)
     }
 

@@ -53,25 +53,28 @@ struct VLCVideoSurface: UIViewRepresentable {
 }
 #endif
 
+/// The image and loading/error states only. ContentView owns one transient
+/// control surface so windowed playback never draws two transport bars.
 struct PlayerSurface: View {
     @ObservedObject var playback: PlaybackController
-    var showsTransport: Bool = true
-    @State private var scrubPosition = 0.0
-    @State private var scrubbing = false
-    @State private var hovering = false
+    var immersive = false
 
     var body: some View {
-        ZStack(alignment: .bottom) {
+        ZStack {
             Color.black
             #if os(macOS)
             NativeVideoSurface(player: playback.player)
             #else
-            if playback.engine == .native { NativeVideoSurface(player: playback.player) }
-            else { VLCVideoSurface(playback: playback) }
-            #endif
-            if showsTransport && showControls && !playback.opening && playback.playbackError == nil {
-                controls.padding(12).transition(.opacity)
+            Group {
+                if playback.engine == .native { NativeVideoSurface(player: playback.player) }
+                else { VLCVideoSurface(playback: playback) }
             }
+            #if os(iOS)
+            // Only the image extends under device cutouts. Transient commands
+            // remain in the safe area in ContentView.
+            .ignoresSafeArea(.container, edges: immersive ? .all : [])
+            #endif
+            #endif
             if playback.opening {
                 VStack(spacing: 10) {
                     ProgressView()
@@ -79,67 +82,27 @@ struct PlayerSurface: View {
                         .controlSize(.large)
                         #endif
                     Text("Ouverture du flux…").font(.headline)
-                    Text(playback.attemptLabel).font(.caption).foregroundStyle(.secondary)
                 }
-                .padding(22).fluxFrosted(radius: 22)
+                .padding(22).fluxMediaGlass(radius: 22)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .allowsHitTesting(false)
             }
-            if playback.playbackError != nil {
+            if let error = playback.playbackError {
                 VStack(spacing: 12) {
                     Image(systemName: "play.slash.fill").font(.largeTitle)
                     Text("Impossible de lire ce flux").font(.headline)
+                    Text(error).font(.caption).foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center).lineLimit(4)
                     Button("Réessayer") { playback.retry(preferred: playback.preferredEngine) }
                         .buttonStyle(.borderedProminent)
                     #if os(macOS)
                     Button("Ouvrir dans VLC externe") { playback.openExternalVLC() }.buttonStyle(.bordered)
                     #endif
                 }
-                .padding(20).fluxFrosted(radius: 22)
+                .padding(20).frame(maxWidth: 440).fluxGlass(radius: 22)
+                .padding(20)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
-        #if os(macOS)
-        .onHover { hovering = $0 }
-        #endif
-        .onChange(of: playback.position) { _, value in if !scrubbing { scrubPosition = value } }
-        .onChange(of: playback.playingItem?.id) { _, _ in scrubbing = false; scrubPosition = 0 }
-    }
-
-    private var showControls: Bool {
-        #if os(macOS)
-        return hovering || !playback.isPlaying
-        #else
-        return true
-        #endif
-    }
-
-    private var controls: some View {
-        HStack(spacing: 12) {
-            Button { playback.togglePause() } label: {
-                Image(systemName: playback.isPlaying ? "pause.fill" : "play.fill")
-                    .font(.system(size: 17, weight: .semibold)).frame(width: 30, height: 30)
-            }.buttonStyle(.plain).accessibilityLabel("Lecture / pause")
-            if playback.seekable {
-                Text(playback.elapsed).font(.caption.monospacedDigit())
-                #if os(tvOS)
-                Button { playback.skip(seconds: -Double(playback.settings.skipSeconds)) } label: { Image(systemName: "gobackward") }
-                ProgressView(value: playback.position).frame(maxWidth: .infinity)
-                Button { playback.skip(seconds: Double(playback.settings.skipSeconds)) } label: { Image(systemName: "goforward") }
-                #else
-                Slider(value: $scrubPosition, in: 0...1, onEditingChanged: { editing in
-                    scrubbing = editing
-                    if !editing { playback.seek(scrubPosition) }
-                }).labelsHidden()
-                #endif
-                Text(playback.duration).font(.caption.monospacedDigit())
-            } else { Spacer(); Label(playback.engine.title, systemImage: "play.rectangle").font(.caption) }
-            #if !os(tvOS)
-            Button { playback.toggleMute() } label: { Image(systemName: playback.muted ? "speaker.slash.fill" : "speaker.wave.2.fill").frame(width: 28, height: 28) }.buttonStyle(.plain).accessibilityLabel("Sourdine")
-            Slider(value: Binding(get: { playback.localVolume }, set: { playback.setVolume($0) }), in: 0...1).labelsHidden().frame(width: 82).accessibilityLabel("Volume")
-            #endif
-        }
-        .padding(.horizontal, 14).padding(.vertical, 8)
-        .fluxFrosted(radius: 25)
     }
 }

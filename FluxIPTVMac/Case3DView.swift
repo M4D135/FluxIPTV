@@ -33,9 +33,10 @@ struct CasePrintData: Equatable, Sendable {
     var previewStatus = ""
 }
 
-@MainActor final class CaseHitBridge {
+@MainActor final class CaseHitBridge: ObservableObject {
     var pick: ((CGPoint) -> (ProceduralCase.Surface, CGPoint)?)?
     var pickNeighbor: ((CGPoint) -> Int?)?
+    @Published var previewProjection: CasePreviewProjection?
 }
 
 struct Case3DView: View {
@@ -147,9 +148,11 @@ private enum SleeveTexture {
         return c.makeImage()
     }
     static func focusTexture()->CGImage? {
-        guard let c=context(256,128) else{return nil}
-        c.setStrokeColor(ink(0.35,0.98,1));c.setLineWidth(7)
-        c.addPath(CGPath(roundedRect:CGRect(x:5,y:5,width:246,height:118),cornerWidth:17,cornerHeight:17,transform:nil));c.strokePath()
+        // A fine high-resolution rim remains a hairline when the same material
+        // is stretched onto the description panel; it must never cover its text.
+        guard let c=context(1024,512) else{return nil}
+        c.setStrokeColor(ink(0.46,0.96,1,0.88));c.setLineWidth(3)
+        c.addPath(CGPath(roundedRect:CGRect(x:3,y:3,width:1018,height:506),cornerWidth:20,cornerHeight:20,transform:nil));c.strokePath()
         return c.makeImage()
     }
     static func shadowTexture()->CGImage? {
@@ -413,6 +416,7 @@ private enum SleeveTexture {
 }
 
 @MainActor private final class CaseScene {
+    weak var bridge: CaseHitBridge?
     let view: CaseMetalView
     let scene = SCNScene(), model = SCNNode(), body = SCNNode()
     let front = SCNMaterial(), back = SCNMaterial(), inside = SCNMaterial(), edge = SCNMaterial(), spine = SCNMaterial()
@@ -434,6 +438,7 @@ private enum SleeveTexture {
     private var oldYaw: Double = 0, oldPitch: Double = 0, oldTheme: VideoClubTheme?, oldQuality: CaseRenderQuality?
     private var oldFocus: CaseFaceLayout.Action?, oldFocusPage: CaseFaceLayout.Page?
     private var pauseRender: Task<Void,Never>?, textureTask: Task<Void,Never>?, textureToken = UUID()
+    private var projectionTask: Task<Void,Never>?
     private var lastRenderPulse: TimeInterval = 0
     private var dirtyFront = true, dirtyBack = true, dirtyInside = true, dirtySpine = true
 
@@ -555,6 +560,21 @@ private enum SleeveTexture {
     }
     private func pulse() {
         lastRenderPulse = ProcessInfo.processInfo.systemUptime; view.isPlaying = true
+        if projectionTask == nil {
+            projectionTask = Task { @MainActor [weak self] in
+                repeat {
+                    // Publishing outside updateNSView/updateUIView avoids a
+                    // nested SwiftUI layout while tracking the short 3D motion.
+                    try? await Task.sleep(nanoseconds: 33_000_000)
+                    guard !Task.isCancelled, let self else { return }
+                    self.publishPreviewProjection()
+                    if ProcessInfo.processInfo.systemUptime - self.lastRenderPulse >= 0.38 {
+                        self.projectionTask = nil
+                        return
+                    }
+                } while !Task.isCancelled
+            }
+        }
         guard pauseRender == nil else { return }
         pauseRender = Task { @MainActor [weak self] in
             while !Task.isCancelled {
@@ -565,6 +585,27 @@ private enum SleeveTexture {
                 }
             }
         }
+    }
+    private func publishPreviewProjection() {
+        guard let bridge, view.bounds.width > 0, view.bounds.height > 0 else { return }
+        let rect = CaseBackMediaLayout.frame
+        let depth: Float = isCollector ? Float(CaseCarousel.collectorHalfDepth) : 0.14
+        // SceneKit's view-coordinate Y convention differs across renderers.
+        // Calibrate against the actual camera instead of guessing from the OS.
+        let center = view.projectPoint(camera.presentation.convertPosition(SCNVector3(0,0,-2), to:nil))
+        let up = view.projectPoint(camera.presentation.convertPosition(SCNVector3(0,0.2,-2), to:nil))
+        let downwardsY = up.y < center.y
+        func point(_ x: CGFloat, _ y: CGFloat) -> CGPoint {
+            let local = SCNVector3(Float(-(x-0.5)*1.906), Float((0.5-y)*2.906), -depth-0.007)
+            let world = body.presentation.convertPosition(local, to: nil)
+            let screen = view.projectPoint(world)
+            return CGPoint(x: CGFloat(screen.x), y: downwardsY ? CGFloat(screen.y) : view.bounds.height-CGFloat(screen.y))
+        }
+        let projection = collectorOpen ? nil : CasePreviewProjection(
+            topLeft: point(rect.minX,rect.minY), topRight: point(rect.maxX,rect.minY),
+            bottomRight: point(rect.maxX,rect.maxY), bottomLeft: point(rect.minX,rect.maxY),
+            viewport: view.bounds.size)
+        if bridge.previewProjection != projection { bridge.previewProjection = projection }
     }
     private func hitPoint(_ point:CGPoint) -> CGPoint {
         #if os(macOS)
@@ -741,6 +782,7 @@ private enum SleeveTexture {
     func release() {
         view.removePadInput(); view.padInput = nil; view.padEnabled = false
         textureTask?.cancel(); textureToken = UUID(); pauseRender?.cancel(); view.resized = nil
+        projectionTask?.cancel(); projectionTask=nil; bridge=nil
         previewVideoNode.geometry?.firstMaterial?.diffuse.contents=nil
         oldPreviewPlayer=nil;oldPreviewStill=nil;previewVideoActive=false
         view.isPlaying = false; view.scene = nil; view.pointOfView = nil
@@ -752,7 +794,7 @@ private struct CaseSceneSurface:NSViewRepresentable {
     let item:IPTVItem;let details:IPTVDetails;let printData:CasePrintData;let artwork:CGImage?;let episodeArt:[String:FluxBitmap];let focused:CaseFaceLayout.Action?;let yaw:Double;let pitch:Double;let motion:Bool;let theme:VideoClubTheme;let quality:CaseRenderQuality;let bridge:CaseHitBridge;let padInput:(CasePadInput)->Void;let padEnabled:Bool
     let previousItem:IPTVItem?;let nextItem:IPTVItem?;let previousFarItem:IPTVItem?;let nextFarItem:IPTVItem?;let leftArtwork:CGImage?;let rightArtwork:CGImage?;let farLeftArtwork:CGImage?;let farRightArtwork:CGImage?;let previewStill:CGImage?;let previewPlayer:AVPlayer?;let previewPlaying:Bool;let concept:ClubInterfaceProfile
     func makeCoordinator()->CaseScene {CaseScene()}
-    func makeNSView(context:Context)->SCNView {let scene=context.coordinator;bridge.pick={[weak scene] in scene?.hit($0)};bridge.pickNeighbor={[weak scene] in scene?.hitNeighbor($0)};scene.view.padInput=padInput;scene.view.padEnabled=padEnabled;return scene.view}
+    func makeNSView(context:Context)->SCNView {let scene=context.coordinator;scene.bridge=bridge;bridge.pick={[weak scene] in scene?.hit($0)};bridge.pickNeighbor={[weak scene] in scene?.hitNeighbor($0)};scene.view.padInput=padInput;scene.view.padEnabled=padEnabled;return scene.view}
     func updateNSView(_ view:SCNView,context:Context) {context.coordinator.view.padInput=padInput;context.coordinator.view.padEnabled=padEnabled;context.coordinator.update(item:item,details:details,data:printData,artwork:artwork,episodeArt:episodeArt,focused:focused,yaw:yaw,pitch:pitch,motion:motion,theme:theme,quality:quality);context.coordinator.updatePreview(still:previewStill,player:previewPlayer,playing:previewPlaying,motion:motion);context.coordinator.updateNeighbors(previous:previousItem,next:nextItem,previousFar:previousFarItem,nextFar:nextFarItem,left:leftArtwork,right:rightArtwork,farLeft:farLeftArtwork,farRight:farRightArtwork,concept:concept,motion:motion)}
     static func dismantleNSView(_ nsView:SCNView,coordinator:CaseScene) {coordinator.release()}
 }
@@ -761,7 +803,7 @@ private struct CaseSceneSurface:UIViewRepresentable {
     let item:IPTVItem;let details:IPTVDetails;let printData:CasePrintData;let artwork:CGImage?;let episodeArt:[String:FluxBitmap];let focused:CaseFaceLayout.Action?;let yaw:Double;let pitch:Double;let motion:Bool;let theme:VideoClubTheme;let quality:CaseRenderQuality;let bridge:CaseHitBridge;let padInput:(CasePadInput)->Void;let padEnabled:Bool
     let previousItem:IPTVItem?;let nextItem:IPTVItem?;let previousFarItem:IPTVItem?;let nextFarItem:IPTVItem?;let leftArtwork:CGImage?;let rightArtwork:CGImage?;let farLeftArtwork:CGImage?;let farRightArtwork:CGImage?;let previewStill:CGImage?;let previewPlayer:AVPlayer?;let previewPlaying:Bool;let concept:ClubInterfaceProfile
     func makeCoordinator()->CaseScene {CaseScene()}
-    func makeUIView(context:Context)->SCNView {let scene=context.coordinator;bridge.pick={[weak scene] in scene?.hit($0)};bridge.pickNeighbor={[weak scene] in scene?.hitNeighbor($0)};scene.view.padInput=padInput;scene.view.padEnabled=padEnabled;return scene.view}
+    func makeUIView(context:Context)->SCNView {let scene=context.coordinator;scene.bridge=bridge;bridge.pick={[weak scene] in scene?.hit($0)};bridge.pickNeighbor={[weak scene] in scene?.hitNeighbor($0)};scene.view.padInput=padInput;scene.view.padEnabled=padEnabled;return scene.view}
     func updateUIView(_ view:SCNView,context:Context) {context.coordinator.view.padInput=padInput;context.coordinator.view.padEnabled=padEnabled;context.coordinator.update(item:item,details:details,data:printData,artwork:artwork,episodeArt:episodeArt,focused:focused,yaw:yaw,pitch:pitch,motion:motion,theme:theme,quality:quality);context.coordinator.updatePreview(still:previewStill,player:previewPlayer,playing:previewPlaying,motion:motion);context.coordinator.updateNeighbors(previous:previousItem,next:nextItem,previousFar:previousFarItem,nextFar:nextFarItem,left:leftArtwork,right:rightArtwork,farLeft:farLeftArtwork,farRight:farRightArtwork,concept:concept,motion:motion)}
     static func dismantleUIView(_ uiView:SCNView,coordinator:CaseScene) {coordinator.release()}
 }
