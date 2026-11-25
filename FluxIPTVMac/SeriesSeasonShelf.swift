@@ -27,7 +27,9 @@ struct SeriesSeasonShelf: View {
         ScrollView {
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(minimum: 0), spacing: 4), count: max(1, columns)), spacing: 18) {
                 ForEach(seasons) { season in seasonButton(season) }
-            }.padding(.horizontal, 20).padding(.top, 14).padding(.bottom, 24)
+            }
+            // Leave room for the selected sleeve's upward lift and zoom.
+            .padding(.horizontal, 20).padding(.top, 32).padding(.bottom, 24)
         }
     }
 

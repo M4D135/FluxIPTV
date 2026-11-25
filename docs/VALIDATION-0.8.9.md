@@ -1,13 +1,14 @@
-# Validation de FLUX IPTV 0.8.9 — build 31
+# Validation de FLUX IPTV 0.8.9 — build 32
 
-## Finalisation des builds 30 et 31
+## Finalisation des builds 30 à 32
 
 - Réunion de la branche pays/mémoire et de la branche principale, sans abandonner les corrections de focus de recherche, la grille dans la zone sûre ou les contrôles natifs stricts.
 - La sélection logique est publiée dès la fin du filtrage, puis réaffirmée avec le focus natif après le montage des résultats. Une transition du moteur de focus vers l’en-tête ne peut plus annuler ce transfert.
 - Le test de recherche Mac observe ensemble sélection logique et focus natif, avec quatre observations stables. Les onze scénarios tvOS conservent leurs exigences géométriques et de visibilité.
 - Les couleurs de sélection restent au-dessus du fond sombre. Le calcul des colonnes conserve l’espacement final prévu.
 - Les builds 29 et 30 ont révélé que la présentation native du sélecteur pouvait ignorer l’affectation dans `onAppear` comme la préférence de focus, puis sélectionner « Tous les pays ». Le build 31 attend la première entrée de focus réellement signalée par le binding de la feuille et le transfère une seule fois vers le pays mémorisé. La demande est consommée avant l’écriture pour laisser ensuite la navigation libre. Aucun délai arbitraire ni boucle de recentrage n’est utilisé ; un pays disparu se replie sur « Tous les pays ». Le contrôle géométrique de `country-picker` reste inchangé.
-- Les projets Xcode affichent 0.8.9 / 31 ; le centre de contrôle lit la version et le build du bundle pour éviter les anciens numéros figés dans l’interface.
+- Le build 32 porte la marge supérieure du rayon des saisons de 14 à 32 points : la première carte sélectionnée conserve son contour et ses arrondis pendant le zoom et le déplacement vertical. Les animations et les exigences des contrôles natifs sont conservées.
+- Les projets Xcode affichent 0.8.9 / 32 ; le centre de contrôle lit la version et le build du bundle pour éviter les anciens numéros figés dans l’interface.
 
 ## Pays des chaînes TV
 

@@ -1,10 +1,11 @@
 # Feuille de route FLUX IPTV
 
-## Intégré dans les sources 0.8.9 — build 31
+## Intégré dans les sources 0.8.9 — build 32
 
 - Filtre des chaînes par pays détecté dans le préfixe des catégories, avec conservation des catégories non identifiées.
 - Mémoire de navigation par source et par section : pays, catégorie, recherches, favoris, page et sélection ; restauration après relance sans démarrer la lecture.
 - Corrections de focus après recherche vide ou remplacement de recherche, avec vérification de la sélection logique et du focus natif.
+- Marge supérieure des saisons adaptée au zoom et au déplacement de la carte sélectionnée.
 
 - Sélection d’un film : fiche plein écran avec description lisible, bande-annonce, lecture et favoris. La scène de boîtes manipulables et les voisins ont été retirés.
 - Sélection d’une série : rayon des saisons, puis fiche de la saison et choix des épisodes avec conservation de la reprise.
