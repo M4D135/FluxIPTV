@@ -16,6 +16,8 @@
 - Build 23 : découpage de l'expression principale SwiftUI en sous-vues opaques pour supprimer le second blocage de compilation (« unable to type-check this expression in reasonable time »), sans effacement de type ni changement des animations.
 - Arrêt immédiat de l'aperçu lors d'un changement de chaîne, lecteur et état rattachés à l'identifiant de la chaîne courante ; les erreurs d'URL conservent cette identité et les tâches annulées ne remplacent pas l'aperçu actif.
 - Retour depuis la bande-annonce traité par le lecteur qui l'a reçu, sans seconde activation de la fiche après fermeture.
+- Build 24 : une recherche sans résultat conserve sa demande de focus jusqu'au transfert natif vers l'onglet de contenu courant ; le repli automatique transitoire vers TV ne l'annule plus.
+- Les boutons de catalogue déjà dessinés utilisent explicitement le style nu au plus près de leur libellé. Un style `plain` interne reprenait la priorité sur tvOS et ajoutait un large socle blanc derrière la tuile active ; le contour et les animations propres à FLUX sont conservés.
 - La garde SwiftParser rejette maintenant les erreurs de syntaxe, y compris dans les branches de compilation conditionnelle, en plus des déclarations SwiftUI invalides.
 - Conservation de la sourdine demandée pendant le chargement asynchrone d’une bande-annonce ; retour à la fiche et commande de son partagent le même état que le lecteur.
 - Nouvelle tentative après une erreur de session YouTube depuis le bouton Lire, en conservant la préférence de son.

@@ -48,7 +48,7 @@ private enum TVCatalogUIFailure: Error, CustomStringConvertible {
         WindowGroup {
             ContentView(fixtureSelection: fixture.selection, fixtureSeasons: fixture.seasons,
                         fixtureOpenSeason: fixture.openSeason, fixtureEpisodeID: fixture.episodeID,
-                        fixtureOpenItem: fixture.kind == .movie)
+                        fixtureOpenItem: fixture.scenario == "movie")
                 .environmentObject(library)
                 .environmentObject(playback)
                 .preferredColorScheme(.dark)
@@ -70,6 +70,7 @@ private enum TVCatalogUIFailure: Error, CustomStringConvertible {
     var expectedInitialControl: String {
         switch scenario {
         case "live": return "live-channel-fixture-live-0"
+        case "movies": return "catalog-card-fixture-movie-1"
         case "welcome": return "welcome-load-source"
         default: return "media-detail-play"
         }
@@ -78,6 +79,7 @@ private enum TVCatalogUIFailure: Error, CustomStringConvertible {
     var minimumFocusSize: CGSize {
         switch scenario {
         case "live": return CGSize(width: 300, height: 230)
+        case "movies": return CGSize(width: 240, height: 350)
         case "welcome": return CGSize(width: 300, height: 72)
         default: return CGSize(width: 180, height: 64)
         }
@@ -85,8 +87,8 @@ private enum TVCatalogUIFailure: Error, CustomStringConvertible {
 
     static func make() throws -> TVCatalogFixture {
         let scenario = ProcessInfo.processInfo.environment["FLUX_UI_SCENARIO"] ?? ""
-        try TVCatalogCapture.require(["movie", "series", "live", "welcome"].contains(scenario),
-                                     "FLUX_UI_SCENARIO must be movie, series, live or welcome.")
+        try TVCatalogCapture.require(["movie", "movies", "series", "live", "welcome"].contains(scenario),
+                                     "FLUX_UI_SCENARIO must be movie, movies, series, live or welcome.")
         let source = IPTVSource(id: UUID(uuidString: "00000000-0000-0000-0000-000000000003")!,
                                 name: "Catalogue local de démonstration", kind: .m3uFile)
         if scenario == "welcome" {
@@ -145,9 +147,10 @@ private enum TVCatalogUIFailure: Error, CustomStringConvertible {
         let episodeID = "fixture-series-s12-e15"
         try TVCatalogCapture.require(seasons.first(where: { $0.number == 12 })?.episodes.contains(where: { $0.id == episodeID }) == true,
                                      "The exact requested S12/E15 fixture identifier is absent.")
+        let isMovie = scenario == "movie" || scenario == "movies"
         return TVCatalogFixture(scenario: scenario, source: source, items: items,
-                                kind: scenario == "movie" ? .movie : .series,
-                                selection: scenario == "movie" ? items[1] : collection,
+                                kind: isMovie ? .movie : .series,
+                                selection: isMovie ? items[1] : collection,
                                 seasons: scenario == "series" ? seasons : [],
                                 openSeason: scenario == "series" ? 12 : nil,
                                 episodeID: scenario == "series" ? episodeID : nil)
@@ -236,8 +239,12 @@ private enum TVCatalogUIFailure: Error, CustomStringConvertible {
                         let frame = focused.frame
                         let windowArea = window.bounds.width * window.bounds.height
                         let fraction = frame.width * frame.height / windowArea
+                        // A portrait catalogue card includes its 2:3 artwork
+                        // and labels. Keep the tighter bound for all controls
+                        // and landscape tiles in the other four scenarios.
+                        let maximumHeightFraction: CGFloat = fixture.scenario == "movies" ? 0.72 : 0.45
                         let bounded = !frame.isEmpty && !frame.isInfinite && !frame.isNull && fraction.isFinite &&
-                            fraction < 0.18 && frame.width < window.bounds.width * 0.75 && frame.height < window.bounds.height * 0.45
+                            fraction < 0.18 && frame.width < window.bounds.width * 0.75 && frame.height < window.bounds.height * maximumHeightFraction
                         let identity = focusIdentity(focused)
                         // Some SwiftUI focus items expose an accessibility ID
                         // directly, others only their UIKit geometry. An ID,
@@ -254,6 +261,7 @@ private enum TVCatalogUIFailure: Error, CustomStringConvertible {
                             "boundedNativeFocus": bounded,
                             "largeEnoughNativeControl": largeEnough,
                             "minimumFocusPoints": [fixture.minimumFocusSize.width, fixture.minimumFocusSize.height],
+                            "maximumFocusHeightFraction": maximumHeightFraction,
                             "expectedInitialControlIdentifier": fixture.expectedInitialControl,
                             "expectedControlIdentifierObserved": identity.identifier == fixture.expectedInitialControl,
                             "sceneKitViewMounted": false
