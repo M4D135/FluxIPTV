@@ -1,6 +1,6 @@
-# Validation de FLUX IPTV 0.8.9 — build 32
+# Validation de FLUX IPTV 0.8.9 — build 33
 
-## Finalisation des builds 30 à 32
+## Finalisation des builds 30 à 33
 
 - Réunion de la branche pays/mémoire et de la branche principale, sans abandonner les corrections de focus de recherche, la grille dans la zone sûre ou les contrôles natifs stricts.
 - La sélection logique est publiée dès la fin du filtrage, puis réaffirmée avec le focus natif après le montage des résultats. Une transition du moteur de focus vers l’en-tête ne peut plus annuler ce transfert.
@@ -8,7 +8,8 @@
 - Les couleurs de sélection restent au-dessus du fond sombre. Le calcul des colonnes conserve l’espacement final prévu.
 - Les builds 29 et 30 ont révélé que la présentation native du sélecteur pouvait ignorer l’affectation dans `onAppear` comme la préférence de focus, puis sélectionner « Tous les pays ». Le build 31 attend la première entrée de focus réellement signalée par le binding de la feuille et le transfère une seule fois vers le pays mémorisé. La demande est consommée avant l’écriture pour laisser ensuite la navigation libre. Aucun délai arbitraire ni boucle de recentrage n’est utilisé ; un pays disparu se replie sur « Tous les pays ». Le contrôle géométrique de `country-picker` reste inchangé.
 - Le build 32 porte la marge supérieure du rayon des saisons de 14 à 32 points : la première carte sélectionnée conserve son contour et ses arrondis pendant le zoom et le déplacement vertical. Les animations et les exigences des contrôles natifs sont conservées.
-- Les projets Xcode affichent 0.8.9 / 32 ; le centre de contrôle lit la version et le build du bundle pour éviter les anciens numéros figés dans l’interface.
+- Le second passage du build 32 sur `main` a révélé une course à la restauration : les filtres et la chaîne mémorisée étaient exacts, mais le champ de recherche conservait parfois le focus UIKit. Le build 33 attend que la cible soit montée et que le navigateur ait reçu sa première entrée de focus natif avant un transfert unique. Il libère explicitement les champs de recherche, protège la sélection contre le repli temporaire du moteur natif et annule la demande lors d’une action explicite de recherche ou de sélection. Le contrôle `live-restored` est répété sur trois lancements à froid, sans assouplissement des assertions.
+- Les projets Xcode affichent 0.8.9 / 33 ; le centre de contrôle lit la version et le build du bundle pour éviter les anciens numéros figés dans l’interface.
 
 ## Pays des chaînes TV
 

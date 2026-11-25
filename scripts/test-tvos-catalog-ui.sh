@@ -159,7 +159,22 @@ run_bounded 30 xcrun simctl install "$simulator_id" "$fixture_app" >> "$capture_
 data_container="$(run_bounded 15 xcrun simctl get_app_container "$simulator_id" "$bundle_id" data)"
 ready_file="$data_container/Library/Caches/FluxTVCatalogUI-ready.json"
 failed=0
-for scenario in movie movies series live welcome search-empty search-result live-fr live-es country-picker live-restored; do
+capture_paths=()
+# Retain every restoration attempt while exposing only the last successful one
+# through the eleven canonical gallery paths. Never reuse an older run's pair.
+rm -f "$capture_root/live-restored-ready.json" "$capture_root/live-restored.png" \
+  "$capture_root/live-restored-stdout.log" "$capture_root/live-restored-stderr.log"
+for capture_case in movie movies series live welcome search-empty search-result live-fr live-es country-picker live-restored:1 live-restored:2 live-restored:3; do
+  scenario="${capture_case%%:*}"
+  capture_label="$scenario"
+  scenario_root="$capture_root"
+  if [[ "$scenario" == live-restored ]]; then
+    capture_label="live-restored-attempt-${capture_case#*:}"
+    scenario_root="$capture_root/repeats/$capture_label"
+  fi
+  mkdir -p "$scenario_root"
+  scenario_failed=0
+  printf 'Native tvOS scenario: %s\n' "$capture_label"
   case "$scenario" in
     movie) filename='movie-detail.png' ;;
     movies) filename='movie-catalog.png' ;;
@@ -173,29 +188,32 @@ for scenario in movie movies series live welcome search-empty search-result live
     country-picker) filename='live-country-picker.png' ;;
     live-restored) filename='live-restored.png' ;;
   esac
-  rm -f "$ready_file" "$capture_root/$scenario-ready.json" "$capture_root/$filename"
-  if ! run_bounded 30 env "SIMCTL_CHILD_FLUX_UI_SCENARIO=$scenario" xcrun simctl launch \
-    "--stdout=$capture_root/$scenario-stdout.log" "--stderr=$capture_root/$scenario-stderr.log" \
+  rm -f "$ready_file" "$scenario_root/$scenario-ready.json" "$scenario_root/$filename" \
+    "$scenario_root/$scenario-stdout.log" "$scenario_root/$scenario-stderr.log"
+  # Terminate any surviving fixture process before each launch, including repeats.
+  if ! run_bounded 30 env "SIMCTL_CHILD_FLUX_UI_SCENARIO=$scenario" xcrun simctl launch --terminate-running-process \
+    "--stdout=$scenario_root/$scenario-stdout.log" "--stderr=$scenario_root/$scenario-stderr.log" \
     "$simulator_id" "$bundle_id" >> "$capture_root/simulator.log" 2>&1; then
-    printf 'Failed to launch the %s scenario.\n' "$scenario" >&2
-    failed=1
+    printf 'Failed to launch the %s scenario.\n' "$capture_label" >&2
+    scenario_failed=1
   fi
   ready=false
   for ((attempt = 0; attempt < 30; attempt++)); do
     if [[ -f "$ready_file" ]]; then
-      cp "$ready_file" "$capture_root/$scenario-ready.json"
+      cp "$ready_file" "$scenario_root/$scenario-ready.json"
       ready=true
       break
     fi
     sleep 1
   done
   # Retain compositor evidence even when readiness/focus assertions failed.
-  if ! run_bounded 20 xcrun simctl io "$simulator_id" screenshot --type=png "$capture_root/$filename" \
-    >> "$capture_root/simulator.log" 2>&1; then failed=1; fi
+  if ! run_bounded 20 xcrun simctl io "$simulator_id" screenshot --type=png "$scenario_root/$filename" \
+    >> "$capture_root/simulator.log" 2>&1; then scenario_failed=1; fi
+  capture_paths+=("$scenario_root/$filename")
   if [[ "$ready" != true ]]; then
-    printf 'No readiness report for %s after 30 seconds; its screenshot is diagnostic only.\n' "$scenario" >&2
-    failed=1
-  elif ! python3 - "$capture_root/$scenario-ready.json" "$scenario" <<'PY'
+    printf 'No readiness report for %s after 30 seconds; its screenshot is diagnostic only.\n' "$capture_label" >&2
+    scenario_failed=1
+  elif ! python3 - "$scenario_root/$scenario-ready.json" "$scenario" <<'PY'
 import json
 import sys
 
@@ -279,8 +297,19 @@ if sys.argv[2] == "country-picker":
         print("Browsing filters did not survive section changes, preferences recreation and catalogue refresh.", file=sys.stderr)
         sys.exit(1)
 PY
-  then failed=1; fi
+  then scenario_failed=1; fi
   run_bounded 15 xcrun simctl terminate "$simulator_id" "$bundle_id" >> "$capture_root/simulator.log" 2>&1 || true
+  if [[ "$scenario_failed" -ne 0 ]]; then
+    failed=1
+  elif [[ "$scenario" == live-restored ]]; then
+    cp "$scenario_root/$filename" "$capture_root/$filename"
+    cp "$scenario_root/$scenario-ready.json" "$capture_root/$scenario-ready.json"
+    for stream in stdout stderr; do
+      if [[ -f "$scenario_root/$scenario-$stream.log" ]]; then
+        cp "$scenario_root/$scenario-$stream.log" "$capture_root/$scenario-$stream.log"
+      fi
+    done
+  fi
 done
 
 # Validate actual simctl PNGs with Apple's decoder. No third-party Python image
@@ -316,9 +345,7 @@ for path in CommandLine.arguments.dropFirst() {
 exit(failed ? 1 : 0)
 SWIFT
 if ! run_bounded 120 xcrun swift -module-cache-path "$smoke_root/ModuleCache" "$smoke_root/ValidateCaptures.swift" \
-  "$capture_root/movie-detail.png" "$capture_root/movie-catalog.png" "$capture_root/series-s12-e15-detail.png" \
-  "$capture_root/live-catalog.png" "$capture_root/welcome.png" "$capture_root/search-empty.png" "$capture_root/search-result.png" \
-  "$capture_root/live-france.png" "$capture_root/live-spain.png" "$capture_root/live-country-picker.png" "$capture_root/live-restored.png" \
+  "${capture_paths[@]}" \
   > "$capture_root/capture-validation.log" 2>&1; then failed=1; fi
 cat "$capture_root/capture-validation.log"
 
@@ -326,6 +353,6 @@ if [[ "$failed" -ne 0 ]]; then
   printf 'FAIL: Native tvOS UI capture checks failed. Review PNGs and logs in %s\n' "$capture_root" >&2
   exit 1
 fi
-printf 'PASS: Eleven native tvOS scenarios have bounded focus matching the measured intended control and nonempty compositor captures; both production search submissions reject stale activation; France, Spain and the country picker preserve the mixed catalogue; browsing filters survive section changes, preferences recreation and catalogue refresh; the actual UI restores saved filters and native focus without a seeded selection.\n'
+printf 'PASS: Eleven native tvOS scenarios have bounded focus matching the measured intended control and nonempty compositor captures; both production search submissions reject stale activation; France, Spain and the country picker preserve the mixed catalogue; browsing filters survive section changes, preferences recreation and catalogue refresh; the actual UI restores saved filters and native focus without a seeded selection on all three cold launches.\n'
 printf 'Review the PNGs in %s for actual glass, readable menus, channel size, clipping, episode restoration and country selection.\n' "$capture_root"
 printf 'This checks initial focus, programmatic production search submission and native layout; physical remote navigation, Apple TV hardware rendering and trailer playback still need their own verification.\n'
