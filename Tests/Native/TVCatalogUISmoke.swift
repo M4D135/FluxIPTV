@@ -70,6 +70,11 @@ final class TVCatalogControlProbeView: UIView {
             if fixture.scenario == "welcome" {
                 library = IPTVLibrary(emptyCatalogFixture: .live)
                 try TVCatalogCapture.require(library.sources.isEmpty, "The welcome fixture unexpectedly contains a source.")
+            } else if fixture.scenario == "live-error" {
+                library = IPTVLibrary(unavailableCatalogFixture: fixture.source, kind: .live)
+                try TVCatalogCapture.require(!library.sources.isEmpty && !library.isLoading &&
+                                             !library.browsingCatalogReady && library.credentialIssue != nil,
+                                             "The failed-source fixture must have no loaded catalogue and require reconnection.")
             } else if fixture.restoresBrowsing {
                 let restored = try TVCatalogCapture.makeRestoredBrowsingLibrary(fixture: fixture)
                 library = restored.library
@@ -105,11 +110,15 @@ final class TVCatalogControlProbeView: UIView {
                         fixtureSearchSubmission: fixture.searchQuery,
                         fixtureSearchObservation: { searchObservations.snapshots.append($0) },
                         fixtureOpenCountries: fixture.opensCountryPicker,
-                        fixtureRestoreBrowsing: fixture.restoresBrowsing)
+                        fixtureRestoreBrowsing: fixture.restoresBrowsing || fixture.scenario == "live-error")
                 .environmentObject(library)
                 .environmentObject(playback)
                 .preferredColorScheme(.dark)
                 .task {
+                    // XCUIRemote owns readiness and subsequent input during
+                    // interaction tests. The initial-capture observer must not
+                    // keep asserting an old destination while the user moves.
+                    if ProcessInfo.processInfo.environment["FLUX_UI_REMOTE_TESTING"] == "1" { return }
                     await TVCatalogCapture.awaitInitialFocus(fixture: fixture, library: library,
                                                              playback: playback, searches: searchObservations)
                     if let restoredDefaultsSuite {
@@ -142,6 +151,7 @@ final class TVCatalogControlProbeView: UIView {
         case "search-empty": return "navigation-tab-movie"
         case "search-result": return "catalog-card-fixture-movie-0"
         case "welcome": return "welcome-load-source"
+        case "live-error": return "navigation-tab-live"
         default: return "media-detail-play"
         }
     }
@@ -202,11 +212,11 @@ final class TVCatalogControlProbeView: UIView {
     static func make() throws -> TVCatalogFixture {
         let scenario = ProcessInfo.processInfo.environment["FLUX_UI_SCENARIO"] ?? ""
         try TVCatalogCapture.require(["movie", "movies", "series", "live", "welcome", "search-empty", "search-result",
-                                      "live-fr", "live-es", "country-picker", "live-restored"].contains(scenario),
+                                      "live-fr", "live-es", "country-picker", "live-restored", "live-error"].contains(scenario),
                                      "FLUX_UI_SCENARIO must name a supported catalogue, detail, welcome or search scenario.")
         let source = IPTVSource(id: UUID(uuidString: "00000000-0000-0000-0000-000000000003")!,
-                                name: "Catalogue local de démonstration", kind: .m3uFile)
-        if scenario == "welcome" {
+                                name: "Catalogue local de démonstration", kind: scenario == "live-error" ? .xtream : .m3uFile)
+        if scenario == "welcome" || scenario == "live-error" {
             return TVCatalogFixture(scenario: scenario, source: source, items: [], kind: .live,
                                     selection: nil, seasons: [], openSeason: nil, episodeID: nil)
         }

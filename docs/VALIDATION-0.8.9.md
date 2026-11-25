@@ -1,6 +1,15 @@
-# Validation de FLUX IPTV 0.8.9 — build 34
+# Validation de FLUX IPTV 0.8.9 — build 35
 
-## Fiches du build 34 : description et grande boîte
+## Finalisation du build 35 : navigation réelle
+
+- La grande boîte, la description et les commandes de lecture du build 34 sont conservées, avec l’absence de lecteur de bande-annonce dans la fiche.
+- Un échec de chargement libère la restauration en attente ; les contrôles de reconnexion suivent le focus natif et leur surbrillance reste synchronisée.
+- Les choix natifs provisoires pendant le chargement ne remplacent pas la page ni la chaîne mémorisées. Retour annule la demande en attente et empêche la réouverture involontaire de la recherche.
+- Les trois parcours XCUIRemote utilisent les directions, Valider et Menu dans le simulateur : France → Espagne puis fermeture sans changement, sortie et retour sur la chaîne restaurée, navigation sur la reconnexion après échec de source. Le test compare `hasFocus` au marqueur non interactif de la sélection dessinée.
+- Onze captures d’actions sont attachées au résultat Xcode et exportées, en plus des onze captures canoniques et des trois lancements à froid de restauration. Aucun target de test n’est ajouté aux projets livrés.
+- Les huit configurations des deux projets affichent 0.8.9 / 35. Le résultat applicable reste celui du workflow attaché au commit exact livré.
+
+## Fiches conservées depuis le build 34 : description et grande boîte
 
 Ce build réunit la nouvelle fiche, la correction de l’API pays et la restauration du focus arrivée en parallèle sur la branche principale. Les sondes AppKit des fiches contrôlent directement la boîte et le bouton Lecture ; elles ne dépendent pas de l’exposition de l’arbre d’accessibilité par le runner.
 
@@ -10,7 +19,7 @@ Ce build réunit la nouvelle fiche, la correction de l’API pays et la restaura
 - Les réglages de lecture automatique et de délai des bandes-annonces sont retirés. Les réglages et le comportement des aperçus des chaînes TV restent disponibles.
 - Le catalogue, les filtres par pays, la mémoire de navigation et les marges du rayon de saisons du build 32 sont conservés.
 
-La validation de cette présentation repose sur l’exécution attachée au commit exact du build 34 : compilations Apple, captures des fiches Film/Série et contrôles natifs du focus, de la boîte visible et de l’absence de lecteur de bande-annonce. Le résultat applicable est celui de cette exécution.
+La validation de cette présentation repose sur l’exécution attachée au commit exact livré : compilations Apple, captures des fiches Film/Série et contrôles natifs du focus, de la boîte visible et de l’absence de lecteur de bande-annonce. Le résultat applicable est celui de cette exécution.
 
 - La détection des pays utilise désormais `Locale.Region.isoRegions`, disponible sur toutes les versions minimales du projet, à la place de l’API dépréciée `Locale.isoRegionCodes`. Les groupements à plusieurs pays (EU, EZ) sont écartés avant de conserver les codes de deux lettres. Les faux positifs EU/EZ sont couverts dans la suite existante.
 

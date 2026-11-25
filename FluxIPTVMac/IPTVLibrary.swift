@@ -119,6 +119,18 @@ final class IPTVLibrary: ObservableObject {
         contentKind = kind
     }
 
+    /// Settled failed-source screen after its alert was dismissed. No account
+    /// is read and no refresh is started; the production view must still let
+    /// native remote focus and its visible highlight follow each other.
+    init(unavailableCatalogFixture source: IPTVSource, kind: IPTVMediaKind) {
+        precondition(source.kind == .xtream)
+        browsingDefaults = nil
+        sources = [source]
+        selectedSourceID = source.id
+        contentKind = kind
+        credentialIssue = "La source de démonstration doit être reconnectée."
+    }
+
     /// Isolated local catalogue for the native UI capture harness. This path
     /// neither loads saved accounts nor starts a source refresh.
     init(catalogFixture source: IPTVSource, items: [IPTVItem], kind: IPTVMediaKind,

@@ -119,9 +119,9 @@ jobs:
         if: ${{ !cancelled() && matrix.platform == 'macOS' && steps.apple_build.outcome == 'success' }}
         timeout-minutes: 8
         run: bash scripts/test-catalog-ui.sh 2>&1 | tee build/logs/catalog-ui-native.log
-      - name: Capture focused full-screen details on Apple TV Simulator
+      - name: Capture and navigate the native Apple TV interface
         if: ${{ !cancelled() && matrix.platform == 'tvOS' && steps.apple_build.outcome == 'success' }}
-        timeout-minutes: 15
+        timeout-minutes: 20
         run: bash scripts/test-tvos-catalog-ui.sh 2>&1 | tee build/logs/tvos-catalog-ui-native.log
       - name: Package the unsigned application
         run: |

@@ -345,7 +345,10 @@ struct ContentView: View {
             reportSearchFocusFixture()
             #endif
             guard let id, heldItem == nil else { return }
-            if page == .catalogue, let item = visibleSlice.item(id:id) {
+            // Native focus may move while a saved source is still loading.
+            // Highlight that control without replacing the saved page/item;
+            // restoration reveals and previews its own destination below.
+            if page == .catalogue, !pendingBrowseRestore, let item = visibleSlice.item(id:id) {
                 revealCatalogItem(id); setPreview(item)
             }
             #if os(tvOS)
@@ -373,12 +376,15 @@ struct ContentView: View {
             if id != nil, page == .catalogue, heldItem == nil, !modalOpen {
                 browserHasEnteredFocus = true
             }
-            if pendingBrowseRestore, page == .catalogue, heldItem == nil, !modalOpen {
+            if pendingBrowseRestore, pendingBrowseFocus != nil,
+               page == .catalogue, heldItem == nil, !modalOpen {
                 resolveBrowseRestoreFocus()
                 // The incoming ID may be a temporary header. Do not let it
                 // overwrite the destination that was just handed off.
                 return
             }
+            // Waiting for source data alone must not freeze the drawn focus:
+            // there may never be a handoff if loading ends in an error.
             #endif
             // Removing the old results can make the native focus engine pick
             // the first header button before our submitted-search destination
@@ -860,7 +866,14 @@ struct ContentView: View {
                                     .font(.caption2.monospacedDigit()).foregroundStyle(.secondary)
                             }
                         }
-                }.accessibilityElement(children: .combine).accessibilityLabel("Flux IPTV") }
+                }.accessibilityElement(children: .combine).accessibilityLabel("Flux IPTV")
+                    #if os(tvOS) && FLUX_CATALOG_UI_TESTING
+                    // Read the drawn selection independently from UIKit focus
+                    // without adding a focusable control to the fixture.
+                    .accessibilityIdentifier("flux-catalog-logical-focus")
+                    .accessibilityValue(focusID ?? "none")
+                    #endif
+                }
                 Spacer(minLength: 0)
                 HStack(spacing: televisionLayout ? 20 : compactNavigation ? 5 : 10) {
                     ForEach(IPTVMediaKind.allCases, id: \.self) { kind in modeButton(kind) }
@@ -946,6 +959,7 @@ struct ContentView: View {
             .background(active ? themeAccent.opacity(0.20) : Color.white.opacity(focusID == id ? 0.13 : 0.035), in: RoundedRectangle(cornerRadius: 16))
             .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(focusID == id ? Color.white.opacity(0.8) : .white.opacity(active ? 0.18 : 0.04), lineWidth: focusID == id ? 2 : 1).allowsHitTesting(false))
         }.buttonStyle(FluxBareButtonStyle()).fluxFocus($systemFocus, id: id).id(id).accessibilityLabel(title).fluxHelp(title)
+            .accessibilityIdentifier("navigation-\(id)")
     }
 
     private var liveSidebarWidth: CGFloat {
@@ -1959,6 +1973,15 @@ struct ContentView: View {
         pendingBrowseRestore = true
         pendingCatalogFocus = nil
         showingSearch = !library.search.isEmpty
+        // A failed load has no focus destination to wait for. Release the
+        // pending state so reconnect/error controls keep normal navigation.
+        // A later source selection or successful install starts restoration
+        // again through selectedSourceID/browsingRevision observations.
+        if library.sources.isEmpty || library.credentialIssue != nil ||
+           (!library.browsingCatalogReady && !library.isLoading) {
+            cancelBrowsingRestore()
+            return
+        }
         guard library.browsingCatalogReady, !library.isLoading, !library.isFiltering, !library.sources.isEmpty,
               library.credentialIssue == nil else { return }
         let revision = library.browsingRevision
@@ -2199,6 +2222,9 @@ struct ContentView: View {
         case .series:
             let id = series?.id; home(); focusID = id ?? "tab-series"
         case .catalogue:
+            // A Back during restored-search filtering must stay closed when
+            // those results arrive; the saved query itself remains unchanged.
+            cancelBrowsingRestore()
             if showingSearch { showingSearch = false; searchFocus = false }
             else { focusID = "tab-\(library.contentKind.rawValue)" }
         }

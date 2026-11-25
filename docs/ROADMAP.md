@@ -1,20 +1,19 @@
 # Feuille de route FLUX IPTV
 
-## Intégré dans les sources 0.8.9 — build 34
+## Intégré dans les sources 0.8.9 — build 35
 
 - Filtre des chaînes par pays détecté dans le préfixe des catégories, avec conservation des catégories non identifiées.
 - Mémoire de navigation par source et par section : pays, catégorie, recherches, favoris, page et sélection ; restauration après relance sans démarrer la lecture.
 - Corrections de focus après recherche vide ou remplacement de recherche, avec vérification de la sélection logique et du focus natif.
 - Marge supérieure des saisons adaptée au zoom et au déplacement de la carte sélectionnée.
+- Navigation et surbrillance conservées après une erreur de source ; Retour annule la restauration en attente sans effacer la recherche mémorisée.
 
-- Sélection d’un film : fiche plein écran avec description lisible, bande-annonce, lecture et favoris. La scène de boîtes manipulables et les voisins ont été retirés.
+- Sélection d’un film : fiche plein écran avec une grande boîte du titre sélectionné, description, lecture et favoris. Les voisins restent dans le catalogue ; la fiche ne charge aucune bande-annonce.
 - Sélection d’une série : rayon des saisons, puis fiche de la saison et choix des épisodes avec conservation de la reprise.
 - Apple TV : grandes entrées TV, Films, Séries et Recherche ; catégories horizontales et grandes vignettes de chaînes 16:9.
 - Accueil « Charger une liste » au démarrage sans source ; conservation des listes déjà enregistrées.
 - Cinéma / vidéoclub / salon, six ambiances par espace, 18 fonds précalculés conservés.
 - Aperçu TV unique et muet dans la vignette sélectionnée ; délai 1/3/5/10 s séparé de celui des bandes-annonces.
-- Bandes-annonces dans l’application : lecteur YouTube embarqué sur Mac/iOS, résolution locale de formats publics et AVPlayer sur tvOS, vidéos directes natives sur les trois plateformes. Aucun QR code ni transfert sur iPhone.
-- Même session vidéo entre la fiche et le plein écran ; arrêt avant la lecture principale. Les refus du fournisseur sont affichés dans l’app.
 - Favoris avec choix des listes et confirmation d’enregistrement ; navigation générale retirée pendant la lecture ; commandes compactes à masquage automatique.
 - Rendu tvOS allégé : surfaces sombres sans flou, décor décodé à une résolution bornée, grilles paresseuses, catalogue démonté pendant la fiche. Animations de focus et de transition conservées.
 - Projet Xcode Apple TV dédié et lancement Release optimisé ; projet partagé pour Mac, iPhone/iPad et Apple TV.
@@ -26,6 +25,7 @@
 - Une vraie WKWebView sur macOS est exercée avec un fournisseur IFrame local pour vérifier le cycle de vie du lecteur, les commandes et les reprises après erreur.
 - Un vrai AVPlayer est exercé avec une vidéo locale pour le délai, l’annulation et le nettoyage de l’aperçu TV.
 - Les captures SwiftUI Mac et Apple TV contrôlent les fiches plein écran, les catégories, l’accueil, le focus natif et l’absence de scène SceneKit dans la présentation.
+- Des commandes XCUIRemote exercent les menus pays, le retour à la chaîne restaurée et la reconnexion dans le simulateur ; les captures des actions sont jointes au résultat Xcode.
 - Les applications compilées, les sources du commit exact et leurs empreintes sont disponibles dans les artefacts de chaque exécution réussie. Le statut de l’exécution reste la référence pour chaque version.
 
 ## Validation restant à faire sur Apple
@@ -35,7 +35,7 @@
 - Lecture HLS/MP4 et cas de refus de capture ; arrêt de l’aperçu avant la lecture.
 - Passage souris / clavier / trackpad, catalogue volumineux et mémoire réelle.
 - Catalogue fournisseur réel, réseau lent ou coupé et disponibilité des métadonnées.
-- Lecture YouTube réelle, refus d’intégration et rendu de Liquid Glass sur chaque appareil.
+- Rendu de Liquid Glass et ergonomie sur chaque appareil.
 
 ## Développements ultérieurs
 

@@ -118,6 +118,7 @@ struct LiveCountryPicker: View {
         #endif
         #endif
         .accessibilityLabel(name)
+        .accessibilityIdentifier("live-country-option-\(key)")
         .accessibilityValue("\(count) chaînes\(selected ? ", sélectionné" : "")")
     }
 }

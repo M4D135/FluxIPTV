@@ -360,10 +360,59 @@ if ! run_bounded 120 xcrun swift -module-cache-path "$smoke_root/ModuleCache" "$
   > "$capture_root/capture-validation.log" 2>&1; then failed=1; fi
 cat "$capture_root/capture-validation.log"
 
+# Add the UI-test runner only after the unchanged capture checks. The delivered
+# projects stay untouched, and XCTest attachments live inside this xcresult,
+# keeping the eleven canonical gallery PNG paths unchanged.
+rm -rf "$capture_root/remote-navigation.xcresult" "$capture_root/remote-navigation-attachments"
+rm -f "$capture_root/remote-navigation.log" "$capture_root/remote-attachments-export.log"
+if python3 "$repo_root/scripts/add-tvos-remote-test-target.py" \
+  --smoke-repository "$smoke_repo" --app-bundle-id "$bundle_id" \
+  > "$capture_root/remote-target.log" 2>&1 \
+  && run_bounded 30 plutil -lint "$smoke_repo/FluxIPTV-AppleTV.xcodeproj/project.pbxproj" \
+  >> "$capture_root/remote-target.log" 2>&1; then
+  if run_bounded 600 xcodebuild -project "$smoke_repo/FluxIPTV-AppleTV.xcodeproj" \
+    -scheme FluxIPTVTVRemoteNavigation -configuration Debug \
+    -destination "platform=tvOS Simulator,id=$simulator_id" \
+    -derivedDataPath "$smoke_root/DerivedData" -parallel-testing-enabled NO \
+    -resultBundlePath "$capture_root/remote-navigation.xcresult" \
+    'SWIFT_ACTIVE_COMPILATION_CONDITIONS=DEBUG FLUX_CATALOG_UI_TESTING' \
+    CODE_SIGNING_ALLOWED=NO ONLY_ACTIVE_ARCH=YES test \
+    > "$capture_root/remote-navigation.log" 2>&1; then
+    echo 'PASS: XCUIRemote country selection/Menu, restored-channel reentry and failed-source reconnect highlight.'
+  else
+    failed=1
+    tail -100 "$capture_root/remote-navigation.log" >&2
+  fi
+else
+  failed=1
+  cat "$capture_root/remote-target.log" >&2
+fi
+
+# Export original attachments and Xcode's manifest even after test failures so
+# the actual remote-action screenshots can be reviewed without a Mac/Xcode.
+if [[ -d "$capture_root/remote-navigation.xcresult" ]]; then
+  if run_bounded 30 xcrun xcresulttool help export attachments \
+    > "$capture_root/remote-attachments-export.log" 2>&1 \
+    && run_bounded 60 xcrun xcresulttool export attachments \
+    --path "$capture_root/remote-navigation.xcresult" \
+    --output-path "$capture_root/remote-navigation-attachments" \
+    >> "$capture_root/remote-attachments-export.log" 2>&1; then
+    printf 'Exported original XCTest attachments and manifest to %s\n' "$capture_root/remote-navigation-attachments"
+  else
+    failed=1
+    echo 'FAIL: Could not export the XCTest remote-navigation attachments.' >&2
+    tail -60 "$capture_root/remote-attachments-export.log" >&2
+  fi
+else
+  failed=1
+  echo 'FAIL: No remote-navigation xcresult was produced; no remote-action evidence is available.' >&2
+fi
+
 if [[ "$failed" -ne 0 ]]; then
-  printf 'FAIL: Native tvOS UI capture checks failed. Review PNGs and logs in %s\n' "$capture_root" >&2
+  printf 'FAIL: Native tvOS UI capture or remote-navigation checks failed. Review PNGs, xcresult and logs in %s\n' "$capture_root" >&2
   exit 1
 fi
 printf 'PASS: Eleven native tvOS scenarios have bounded focus matching the measured intended control and nonempty compositor captures; both production search submissions reject stale activation; France, Spain and the country picker preserve the mixed catalogue; browsing filters survive section changes, preferences recreation and catalogue refresh; the actual UI restores saved filters and native focus without a seeded selection on all three cold launches.\n'
 printf 'Review the PNGs in %s for actual glass, readable menus, channel size, clipping, episode restoration and country selection.\n' "$capture_root"
-printf 'This checks initial focus, programmatic production search submission and native layout; physical remote navigation, Apple TV hardware rendering and provider playback still need their own verification.\n'
+printf 'XCUIRemote also checks native simulator navigation with retained XCTest screenshots; physical Apple TV hardware rendering and provider playback still need their own verification.
+'
