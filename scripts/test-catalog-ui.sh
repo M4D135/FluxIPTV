@@ -15,11 +15,19 @@ capture_previous_motion=""
 cleanup() {
   if [[ "$capture_accessibility_changed" == true ]]; then
     if [[ -n "$capture_previous_transparency" ]]; then
+      case "$capture_previous_transparency" in
+        1) capture_previous_transparency=true ;;
+        0) capture_previous_transparency=false ;;
+      esac
       defaults write com.apple.universalaccess reduceTransparency -bool "$capture_previous_transparency"
     else
       defaults delete com.apple.universalaccess reduceTransparency >/dev/null 2>&1 || true
     fi
     if [[ -n "$capture_previous_motion" ]]; then
+      case "$capture_previous_motion" in
+        1) capture_previous_motion=true ;;
+        0) capture_previous_motion=false ;;
+      esac
       defaults write com.apple.universalaccess reduceMotion -bool "$capture_previous_motion"
     else
       defaults delete com.apple.universalaccess reduceMotion >/dev/null 2>&1 || true
