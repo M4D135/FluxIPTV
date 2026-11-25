@@ -1,8 +1,8 @@
 # Feuille de route FLUX IPTV
 
-## Intégré dans les sources 0.8.9 — build 36
+## Intégré dans les sources 0.8.9 — build 37
 
-- Filtre des chaînes par pays détecté dans le préfixe des catégories, avec conservation des catégories non identifiées.
+- Filtre des chaînes pour tous les pays/territoires détectés dans le préfixe des catégories (codes ISO, noms français/anglais et drapeaux), avec conservation des catégories non identifiées et couverture exhaustive des 249 codes ISO dans les tests.
 - Mémoire de navigation par source et par section : pays, catégorie, recherches, favoris, page et sélection ; restauration après relance sans démarrer la lecture.
 - Corrections de focus après recherche vide ou remplacement de recherche, avec vérification de la sélection logique et du focus natif.
 - Marge supérieure des saisons adaptée au zoom et au déplacement de la carte sélectionnée.

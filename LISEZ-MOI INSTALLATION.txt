@@ -1,4 +1,4 @@
-FLUX IPTV 0.8.9 — BUILD 36 — CINÉMA, VIDÉOCLUB ET SALON TV - Installation sur votre Mac
+FLUX IPTV 0.8.9 — BUILD 37 — CINÉMA, VIDÉOCLUB ET SALON TV - Installation sur votre Mac
 
 1. Quittez FLUX IPTV et arrêtez le projet s'il tourne dans Xcode.
 2. Décompressez l'archive et double-cliquez sur « Installer Flux IPTV.command ».
@@ -10,7 +10,7 @@ FLUX IPTV 0.8.9 — BUILD 36 — CINÉMA, VIDÉOCLUB ET SALON TV - Installation 
    bundle en cas d'échec du démarrage. Ce contrôle ne valide pas la lecture.
 4. Ensuite ouvrez uniquement FluxIPTV.app depuis le Finder ou le Dock.
    Ne relancez pas l'installateur à chaque utilisation. Vérifiez le numéro 0.8.9
-   dans la barre FLUX, le build 36 dans Réglages et les thèmes dans Interface.
+   dans la barre FLUX, le build 37 dans Réglages et les thèmes dans Interface.
 
 Sur Mac, VLC intégré est désactivé. En cas de format incompatible, installez le
 lecteur VLC officiel et utilisez le bouton « Ouvrir dans VLC externe ».
@@ -36,7 +36,7 @@ binaire macOS précompilé ; l'installateur n'a pas été exécuté sous macOS i
 
 Sources > Modifier permet de choisir « Sur ce Mac, sans Trousseau ». Les identifiants sont alors dans un fichier privé non chiffré (permissions 600) ; le Trousseau demeure plus sûr. Les favoris sont conservés.
 
-NOUVEAUTÉS DU BUILD 36
+NOUVEAUTÉS DU BUILD 37
 La fiche film/série présente la description et une unique grande boîte du
 titre sélectionné, avec sa jaquette VHS/DVD. Lecture, Description complète,
 Favoris, Retour et les épisodes restent disponibles. Aucune bande-annonce

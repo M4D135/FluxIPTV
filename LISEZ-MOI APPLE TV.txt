@@ -1,4 +1,4 @@
-FLUX IPTV 0.8.9 — BUILD 36 — PROJET APPLE TV
+FLUX IPTV 0.8.9 — BUILD 37 — PROJET APPLE TV
 
 1. Décompressez tout le dossier, en conservant Sources et FluxIPTVMac à côté
    des fichiers .xcodeproj. Les sources et les 18 décors 4K sont partagés.

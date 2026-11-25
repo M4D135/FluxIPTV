@@ -2,6 +2,62 @@ import XCTest
 @testable import FluxIPTVCore
 
 final class LiveCountryTests: XCTestCase {
+    // Independent ISO 3166-1 alpha-2 fixture: do not derive the expected set
+    // from Locale.Region or from the detector under test. Countries and
+    // territories are included; TV and SD remain ambiguous bare TV labels.
+    // Reference: https://www.iso.org/iso-3166-country-codes.html
+    private let isoCountryCodes = """
+    AD AE AF AG AI AL AM AO AQ AR AS AT AU AW AX AZ BA BB BD BE BF BG BH BI
+    BJ BL BM BN BO BQ BR BS BT BV BW BY BZ CA CC CD CF CG CH CI CK CL CM CN
+    CO CR CU CV CW CX CY CZ DE DJ DK DM DO DZ EC EE EG EH ER ES ET FI FJ FK
+    FM FO FR GA GB GD GE GF GG GH GI GL GM GN GP GQ GR GS GT GU GW GY HK HM
+    HN HR HT HU ID IE IL IM IN IO IQ IR IS IT JE JM JO JP KE KG KH KI KM KN
+    KP KR KW KY KZ LA LB LC LI LK LR LS LT LU LV LY MA MC MD ME MF MG MH MK
+    ML MM MN MO MP MQ MR MS MT MU MV MW MX MY MZ NA NC NE NF NG NI NL NO NP
+    NR NU NZ OM PA PE PF PG PH PK PL PM PN PR PS PT PW PY QA RE RO RS RU RW
+    SA SB SC SD SE SG SH SI SJ SK SL SM SN SO SR SS ST SV SX SY SZ TC TD TF
+    TG TH TJ TK TL TM TN TO TR TT TV TW TZ UA UG UM US UY UZ VA VC VE VG VI
+    VN VU WF WS YE YT ZA ZM ZW
+    """.split(whereSeparator: \.isWhitespace).map(String.init)
+
+    func testEveryISOCountryAndTerritoryHasDetectablePrefixes() {
+        XCTAssertEqual(isoCountryCodes.count, 249)
+        XCTAssertEqual(Set(isoCountryCodes).count, 249)
+        for code in isoCountryCodes {
+            XCTAssertEqual(LiveCountry.detectCode(in: "\(flag(for: code)) | Local"), code, code)
+            let expectedBareCode: String? = ["TV", "SD"].contains(code) ? nil : code
+            XCTAssertEqual(LiveCountry.detectCode(in: "\(code) | News"), expectedBareCode, code)
+            XCTAssertEqual(LiveCountry.detectCode(in: "[\(code.lowercased())] Local"), expectedBareCode, code)
+        }
+    }
+
+    func testEveryISOCountryAndTerritoryRecognizesFrenchAndEnglishNames() throws {
+        for code in isoCountryCodes {
+            for locale in [Locale(identifier: "fr_FR"), Locale(identifier: "en_US")] {
+                let name = try XCTUnwrap(locale.localizedString(forRegionCode: code), "\(locale.identifier): \(code)")
+                XCTAssertEqual(LiveCountry.detectCode(in: "\(name) | Local"), code, "\(code): \(name)")
+            }
+        }
+    }
+
+    func testCatalogContainsAndFiltersEveryISOCountryIndependently() throws {
+        let channels = isoCountryCodes.map { code in
+            channel("country-\(code)", group: "\(flag(for: code)) | \(code) Local", name: "Channel \(code)")
+        }
+        let unknown = channel("unclassified", group: "Documentaires", name: "Local documentary")
+        let index = CatalogIndex(channels + [unknown])
+        XCTAssertEqual(Set(index.liveCountries.map(\.code)), Set(isoCountryCodes + [LiveCountry.unknownCode]))
+        XCTAssertEqual(index.liveCountries.count, 250)
+        XCTAssertEqual(index.liveCountries.last?.code, LiveCountry.unknownCode)
+        for (code, channel) in zip(isoCountryCodes, channels) {
+            XCTAssertEqual(index.liveCountries.first(where: { $0.code == code })?.channelCount, 1, code)
+            let results = try index.matching(kind: .live, search: "", countryCode: code)
+            XCTAssertEqual(results.all.items, [channel], code)
+            XCTAssertEqual(results.groups, [channel.group], code)
+        }
+        XCTAssertEqual(try index.matching(kind: .live, search: "", countryCode: LiveCountry.unknownCode).all.items, [unknown])
+    }
+
     func testDelimitedCodesAndFlags() {
         let categories = [
             "FR": "FR", "FR | Généralistes": "FR", "[FR] Sport": "FR",
@@ -84,6 +140,10 @@ final class LiveCountryTests: XCTestCase {
         XCTAssertTrue(CatalogScope.isAll(group: nil, search: "", presetID: nil, resumeOnly: false))
         XCTAssertFalse(CatalogScope.isAll(group: nil, search: "", presetID: nil, resumeOnly: false, countryCode: "FR"))
         XCTAssertFalse(CatalogScope.isAll(group: nil, search: "", presetID: nil, resumeOnly: false, countryCode: LiveCountry.unknownCode))
+    }
+
+    private func flag(for code: String) -> String {
+        String(String.UnicodeScalarView(code.unicodeScalars.compactMap { UnicodeScalar($0.value - 65 + 0x1F1E6) }))
     }
 
     private func channel(_ id: String, group: String, name: String, kind: IPTVMediaKind = .live) -> IPTVItem {

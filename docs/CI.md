@@ -1,4 +1,4 @@
-# GitHub Actions — FLUX IPTV 0.8.9 — build 36
+# GitHub Actions — FLUX IPTV 0.8.9 — build 37
 
 Le workflow [Swift / Apple platforms](https://github.com/M4D135/FluxIPTV/actions/workflows/ci.yml) vérifie le commit indiqué en tête de chaque exécution. Il fonctionne sur `main`, sur les branches `work/three-rooms-*`, sur les pull requests et par lancement manuel.
 
@@ -15,7 +15,7 @@ Le workflow [Swift / Apple platforms](https://github.com/M4D135/FluxIPTV/actions
 
 Les quatre compilations Apple sont indépendantes : l’échec de l’une n’annule pas les autres. Le job du pack des sources est lui aussi indépendant. Un pack disponible ne signifie donc pas que tous les tests ou toutes les compilations sont réussis.
 
-Les jobs Apple utilisent l’image `macos-26` et Xcode **26.3** explicitement sélectionné. Une garde refuse un SDK macOS, iOS Simulator, tvOS Simulator ou tvOS pour appareil antérieur à 26. Cela empêche une compilation apparemment réussie avec l’ancien Xcode 16 de retirer silencieusement le code Liquid Glass. La version de Swift, de Xcode et des SDK est jointe aux diagnostics.
+Les jobs Apple utilisent l’image `macos-26-intel` et Xcode **26.3** explicitement sélectionné. Une garde refuse un SDK macOS, iOS Simulator, tvOS Simulator ou tvOS pour appareil antérieur à 26. Cela empêche une compilation apparemment réussie avec l’ancien Xcode 16 de retirer silencieusement le code Liquid Glass. La version de Swift, de Xcode et des SDK est jointe aux diagnostics.
 
 Le job macOS exécute aussi `scripts/test-youtube-session.sh` : une vraie fenêtre AppKit et une vraie WKWebView chargent le document du lecteur avec une API IFrame locale contrôlée. Le test couvre les états, la sourdine, le démarrage plein écran avec son, les commandes, les erreurs, la conservation du lecteur entre deux hôtes SwiftUI et sa libération. Il ne contacte pas YouTube et ne prouve pas la lecture d’une vidéo distante.
 
@@ -24,6 +24,8 @@ Le job macOS exécute aussi `scripts/test-youtube-session.sh` : une vraie fenêt
 `scripts/test-catalog-ui.sh` capture le catalogue Mac et les fiches film/épisodes dans une vraie fenêtre SwiftUI avec jaquettes locales. `scripts/test-tvos-catalog-ui.sh` construit une copie isolée de l’app avec un catalogue local, crée son propre simulateur Apple TV et capture le direct, le catalogue des films, l’accueil sans liste, la fiche film et la saison 12 / épisode 15. Le test attend un focus natif stable, compare son rectangle au contrôle réellement mesuré dans la fenêtre, vérifie sa visibilité, ses bornes et l’absence de SCNView. La carte de film doit aussi tenir entièrement dans le viewport natif, après conversion de son cadre vers les coordonnées de la fenêtre et intersection des zones de découpage. Un identifiant d’accessibilité absent ne suffit jamais à valider le focus. Deux scénarios supplémentaires soumettent une recherche avec résultat et une recherche vide au traitement de production ; ils vérifient la fin du filtrage, le refus d’ouvrir un ancien résultat et le focus natif final. Les PNG et rapports sont conservés dans les diagnostics tvOS, y compris en cas d’échec. Ce test ne contient ni flux IPTV ni lecture YouTube et n’injecte pas une fausse navigation de télécommande.
 
 `scripts/test-keychain-interaction.sh` vérifie le pont de compatibilité Mac sans accéder aux identifiants. `scripts/check-keychain-platform.sh` type-vérifie le code réel avec les SDK iOS/tvOS et les avertissements traités comme erreurs. tvOS utilise le petit pont C vers la constante publique de refus d’interaction ; iOS utilise LAContext. La dépréciation est isolée à la fonction de compatibilité, jamais masquée sur tout le projet.
+
+La couverture du cœur vérifie les 249 codes ISO de pays/territoires, leurs drapeaux et leurs noms français/anglais, puis construit un catalogue mixte et filtre séparément chacun des 249 pays. France et Espagne servent uniquement de cas de navigation native ; la détection n’est pas limitée à ces pays.
 
 Quatre scénarios tvOS supplémentaires couvrent France, Espagne, le sélecteur de pays et la restauration du catalogue : onze captures au total. Ils vérifient le filtrage du modèle réel, la séparation des préférences par section et leur relecture par une nouvelle bibliothèque. Le scénario de restauration ouvre ContentView sans sélection injectée et exige le retour du focus natif sur la chaîne mémorisée. Il est exécuté trois fois, avec terminaison puis nouveau lancement du processus entre chaque passage ; chaque passage conserve les mêmes assertions et ses diagnostics. Les onze captures canoniques restent présentes.
 

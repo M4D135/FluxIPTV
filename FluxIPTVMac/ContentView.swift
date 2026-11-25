@@ -21,7 +21,7 @@ private struct CatalogFocusRequest: Equatable {
 #if os(tvOS)
 /// Restoration can finish filtering before its lazy grid cell is mounted or
 /// the native focus engine has made its initial choice (often a search field).
-private struct BrowseRestoreFocusRequest {
+private struct BrowseRestoreFocusRequest: Equatable {
     let revision: UUID
     let context: CatalogFocusRequest
     let targetID: String
@@ -118,6 +118,7 @@ struct ContentView: View {
     @State private var browseRestoreTask: Task<Void, Never>?
     #if os(tvOS)
     @State private var pendingBrowseFocus: BrowseRestoreFocusRequest?
+    @State private var browseRestoreFocusTask: Task<Void, Never>?
     @State private var mountedBrowseFocusTargets: Set<String> = []
     @State private var browserHasEnteredFocus = false
     #endif
@@ -376,11 +377,14 @@ struct ContentView: View {
             if id != nil, page == .catalogue, heldItem == nil, !modalOpen {
                 browserHasEnteredFocus = true
             }
+            #if FLUX_CATALOG_UI_TESTING
+            traceBrowseRestore("focus-binding:\(id ?? "nil")")
+            #endif
             if pendingBrowseRestore, pendingBrowseFocus != nil,
                page == .catalogue, heldItem == nil, !modalOpen {
                 resolveBrowseRestoreFocus()
                 // The incoming ID may be a temporary header. Do not let it
-                // overwrite the destination that was just handed off.
+                // overwrite the destination awaiting its deferred handoff.
                 return
             }
             // Waiting for source data alone must not freeze the drawn focus:
@@ -414,6 +418,9 @@ struct ContentView: View {
         .onChange(of: searchFocus) { _, focused in
             if focused, page == .catalogue, heldItem == nil, !modalOpen {
                 browserHasEnteredFocus = true
+                #if FLUX_CATALOG_UI_TESTING
+                traceBrowseRestore("search-focus-binding:true")
+                #endif
                 resolveBrowseRestoreFocus()
             }
         }
@@ -650,8 +657,30 @@ struct ContentView: View {
         }
         .onChange(of: scenePhase) { _, phase in
             if phase != .active { library.flushBrowsingPreferences() }
+            #if os(tvOS)
+            #if FLUX_CATALOG_UI_TESTING
+            traceBrowseRestore("scene-phase:\(String(describing: phase))")
+            #endif
+            if phase == .active {
+                resolveBrowseRestoreFocus()
+            } else {
+                browseRestoreFocusTask?.cancel()
+                browseRestoreFocusTask = nil
+            }
+            #endif
         }
-        .onDisappear { caseDetailTask?.cancel(); caseTransitionTask?.cancel(); seriesTask?.cancel(); entranceTask?.cancel(); favoriteFeedbackTask?.cancel(); playerControlsTask?.cancel(); browseRestoreTask?.cancel(); livePreview.stop(); library.flushBrowsingPreferences() }
+        .onDisappear {
+            caseDetailTask?.cancel(); caseTransitionTask?.cancel(); seriesTask?.cancel(); entranceTask?.cancel()
+            favoriteFeedbackTask?.cancel(); playerControlsTask?.cancel(); browseRestoreTask?.cancel()
+            #if os(tvOS)
+            #if FLUX_CATALOG_UI_TESTING
+            traceBrowseRestore("view-disappeared:cancel-handoff")
+            #endif
+            browseRestoreFocusTask?.cancel()
+            browseRestoreFocusTask = nil
+            #endif
+            livePreview.stop(); library.flushBrowsingPreferences()
+        }
     }
 
     #if !os(tvOS)
@@ -1968,6 +1997,11 @@ struct ContentView: View {
     private func restoreBrowsingContext() {
         browseRestoreTask?.cancel()
         #if os(tvOS)
+        #if FLUX_CATALOG_UI_TESTING
+        traceBrowseRestore("restore-start:replace-pending-handoff")
+        #endif
+        browseRestoreFocusTask?.cancel()
+        browseRestoreFocusTask = nil
         pendingBrowseFocus = nil
         #endif
         pendingBrowseRestore = true
@@ -2010,6 +2044,9 @@ struct ContentView: View {
             #if os(tvOS)
             pendingBrowseFocus = BrowseRestoreFocusRequest(revision: revision, context: context, targetID: target)
             focusID = target
+            #if FLUX_CATALOG_UI_TESTING
+            traceBrowseRestore("request-created:\(target)")
+            #endif
             resolveBrowseRestoreFocus()
             #else
             focusID = target
@@ -2023,6 +2060,9 @@ struct ContentView: View {
     #if os(tvOS)
     private func browseFocusTargetAppeared(_ id: String) {
         mountedBrowseFocusTargets.insert(id)
+        #if FLUX_CATALOG_UI_TESTING
+        traceBrowseRestore("target-appeared:\(id)")
+        #endif
         resolveBrowseRestoreFocus()
     }
     private func resolveBrowseRestoreFocus() {
@@ -2032,23 +2072,64 @@ struct ContentView: View {
             return
         }
         guard !library.isLoading, !library.isFiltering, page == .catalogue,
-              heldItem == nil, !modalOpen, browserHasEnteredFocus,
+              heldItem == nil, !modalOpen, scenePhase == .active, browserHasEnteredFocus,
               mountedBrowseFocusTargets.contains(request.targetID) else { return }
-        // Consume before writing: subsequent remote navigation, including a
-        // deliberate move back into Search, must never be pulled to this item.
-        pendingBrowseFocus = nil
-        pendingBrowseRestore = false
-        searchFocus = false
-        liveGroupSearchFocus = false
-        focusID = request.targetID
-        systemFocus = request.targetID
+        guard browseRestoreFocusTask == nil else { return }
+        #if FLUX_CATALOG_UI_TESTING
+        traceBrowseRestore("handoff-scheduled:\(request.targetID)")
+        #endif
+        // onAppear and focus-binding callbacks can run inside the native
+        // engine's initial update. Leave that callback before requesting the
+        // remembered control; a mounted cell is not proof of native focus.
+        browseRestoreFocusTask = Task { @MainActor in
+            await Task.yield()
+            guard !Task.isCancelled else { return }
+            browseRestoreFocusTask = nil
+            guard pendingBrowseRestore, pendingBrowseFocus == request else { return }
+            guard request.revision == library.browsingRevision, request.context == catalogFocusContext else {
+                cancelBrowsingRestore()
+                return
+            }
+            guard !library.isLoading, !library.isFiltering, page == .catalogue,
+                  heldItem == nil, !modalOpen, scenePhase == .active, browserHasEnteredFocus,
+                  mountedBrowseFocusTargets.contains(request.targetID) else {
+                #if FLUX_CATALOG_UI_TESTING
+                traceBrowseRestore("handoff-deferred:readiness-changed")
+                #endif
+                return
+            }
+            #if FLUX_CATALOG_UI_TESTING
+            traceBrowseRestore("handoff-requested:\(request.targetID)")
+            #endif
+            // Consume before writing: subsequent remote navigation, including
+            // deliberate Search reentry, must never be pulled to this item.
+            pendingBrowseFocus = nil
+            pendingBrowseRestore = false
+            searchFocus = false
+            liveGroupSearchFocus = false
+            focusID = request.targetID
+            systemFocus = request.targetID
+        }
+    }
+    #if FLUX_CATALOG_UI_TESTING
+    /// Binding observations explain scheduling only. The capture harness and
+    /// XCUIRemote independently determine whether UIKit accepted the request.
+    private func traceBrowseRestore(_ event: String) {
+        let target = pendingBrowseFocus?.targetID ?? "nil"
+        print("BROWSE_RESTORE: event=\(event), phase=\(String(describing: scenePhase)), pending=\(pendingBrowseRestore), target=\(target), mounted=\(mountedBrowseFocusTargets.contains(target)), enteredFocusBinding=\(browserHasEnteredFocus), logical=\(focusID ?? "nil"), focusBinding=\(systemFocus ?? "nil"), searchBinding=\(searchFocus), loading=\(library.isLoading), filtering=\(library.isFiltering), modal=\(modalOpen)")
     }
     #endif
+    #endif
     private func cancelBrowsingRestore() {
+        #if os(tvOS) && FLUX_CATALOG_UI_TESTING
+        traceBrowseRestore("restore-cancelled")
+        #endif
         browseRestoreTask?.cancel()
         browseRestoreTask = nil
         pendingBrowseRestore = false
         #if os(tvOS)
+        browseRestoreFocusTask?.cancel()
+        browseRestoreFocusTask = nil
         pendingBrowseFocus = nil
         #endif
     }

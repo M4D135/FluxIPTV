@@ -1,4 +1,14 @@
-# Validation de FLUX IPTV 0.8.9 — build 36
+# Validation de FLUX IPTV 0.8.9 — build 37
+
+## Build 37 : tous les pays et transfert du focus après montage
+
+La détection des pays n’est pas limitée aux exemples France/Espagne. Le cœur utilise les codes de régions ISO, les noms français/anglais, les drapeaux et les alias de playlists. Trois tests supplémentaires utilisent une liste indépendante des 249 codes ISO de pays et territoires : préfixes et drapeaux, noms français/anglais, puis catalogue mixte avec une chaîne par pays et filtrage exact de chaque pays. Les préfixes techniques nus `TV` et `SD` restent exclus ; Tuvalu et Soudan sont reconnus par leur nom ou leur drapeau. Les regroupements `EU` et `EZ` ne deviennent pas des pays.
+
+Le run du build 36 [45668822249](https://github.com/M4D135/FluxIPTV/actions/runs/45668822249) a réussi les quatre compilations Apple, les 134 tests du cœur, les contrôles Mac, les trois lancements à froid de chaîne mémorisée et les trois parcours XCUIRemote. Il a néanmoins échoué sur deux des onze rapports canoniques : France et Espagne. Les données restaurées et les cartes mesurées étaient correctes ; le contour de sélection entourait la chaîne, tandis que le focus UIKit restait sur Pays. Ces deux images ne constituaient donc pas une preuve de focus réussi.
+
+Le build 37 intègre également le correctif de structure de Retour : le modificateur reste présent et seule son action devient optionnelle, afin de ne plus recréer le catalogue lorsque la sélection quitte l’onglet TV. Le transfert tvOS attend ensuite la sortie du callback courant de montage ou de focus, dans une tâche MainActor annulable. La même demande, son contexte, la carte montée, la fin du filtrage et l’activité de la scène sont revérifiés avant l’affectation. Le passage en arrière-plan suspend cette tâche ; le retour à une scène active reprend une demande encore valide. Une nouvelle restauration ou une action explicite annule la tâche obsolète. Aucun délai fixe ni boucle de recentrage n’est ajouté. Des traces réservées aux tests décrivent les transitions ; une valeur de binding n’est jamais présentée comme une preuve du focus UIKit.
+
+Les deux projets portent 0.8.9 / 37. Le résultat applicable reste celui du workflow du commit exact : 137 tests du cœur attendus, quatre compilations Apple, onze rapports natifs `ready`, trois démarrages à froid et trois parcours XCUIRemote. Les critères de géométrie, visibilité, contenu et correspondance du focus restent inchangés. La grande boîte et le correctif du bas des cartes d’épisodes Mac sont conservés.
 
 ## Finalisation du build 36 : rangée d’épisodes entière sur Mac
 
