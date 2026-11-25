@@ -119,8 +119,8 @@ private enum CatalogUIFailure: Error, CustomStringConvertible {
                                   isSeriesCollection: true,
                                   details: IPTVDetails(synopsis: "Une description IPTV locale accompagne ce rayon de douze saisons. Chaque boîtier ouvre les épisodes de la saison choisie.", year: "2014", genre: "Drame"))
         items.append(collection)
-        let seasons = (1...12).map { number in
-            IPTVSeason(number: number, episodes: (1...16).map { episode in
+        let seasons = (1...12).map { (number: Int) in
+            IPTVSeason(number: number, episodes: (1...16).map { (episode: Int) in
                 IPTVItem(id: "fixture-series-s\(number)-e\(episode)", sourceID: source.id,
                          name: "Épisode \(episode)", group: collection.group, logoURL: nil,
                          kind: .series, directURL: nil, xtreamStreamID: nil, fileExtension: nil,
@@ -128,6 +128,9 @@ private enum CatalogUIFailure: Error, CustomStringConvertible {
                          seasonNumber: number, episodeNumber: episode)
             })
         }
+        let restoredEpisodeID = "fixture-series-s12-e15"
+        try require(seasons.first(where: { $0.number == 12 })?.episodes.contains(where: { $0.id == restoredEpisodeID }) == true,
+                    "The requested S12/E15 restoration fixture is missing or has an unexpected identifier.")
         let playback = PlaybackController()
         defer { playback.stop(); ArtworkLoader.cache.removeAllObjects() }
         let scenarios: [(kind: IPTVMediaKind, filename: String, season: Int?)] = [
@@ -143,7 +146,7 @@ private enum CatalogUIFailure: Error, CustomStringConvertible {
             let selected = library.catalogResults.all.items.first
             try require(selected != nil && !library.isLoading && !library.isFiltering, "Fixture catalogue was not installed synchronously.")
             let root = ContentView(fixtureSelection: selected, fixtureSeasons: kind == .series ? seasons : [],
-                                   fixtureOpenSeason: scenario.season, fixtureEpisodeID: scenario.season == nil ? nil : "fixture-series-s12-e15")
+                                   fixtureOpenSeason: scenario.season, fixtureEpisodeID: scenario.season == nil ? nil : restoredEpisodeID)
                 .environmentObject(library).environmentObject(playback)
                 .preferredColorScheme(.dark)
                 .environment(\.scenePhase, .active)
