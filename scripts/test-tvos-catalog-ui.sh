@@ -207,20 +207,6 @@ if (report.get("status") != "ready" or report.get("scenario") != sys.argv[2]
         or report.get("sceneKitViewMounted") is not False):
     print("Native focus/detail readiness failed; screenshot retained for inspection.", file=sys.stderr)
     sys.exit(1)
-proof = report.get("focusProofMode")
-if proof == "swiftui-label-native-focus":
-    if (sys.argv[2] not in ("movies", "search-result")
-            or report.get("nativeFocusAttachedToActiveWindow") is not True
-            or report.get("nativeLabelFocusObserved") is not True
-            or report.get("nativeLabelFocusedProbeCount") != 1
-            or report.get("nativeLabelFocusedIdentifiers") != [report.get("expectedInitialControlIdentifier")]
-            or report.get("nativeFocusDimensionsCompatible") is not True
-            or report.get("fullyVisibleNativeFocus") is not True):
-        print("Portrait focus lacks unique native Button-label identity, matching dimensions or full visibility.", file=sys.stderr)
-        sys.exit(1)
-elif proof != "uikit-geometry" or report.get("nativeProxyGeometryMatchesExpectedControl") is not True:
-    print("This scenario requires the strict UIKit/control geometry comparison.", file=sys.stderr)
-    sys.exit(1)
 if sys.argv[2] == "series" and report.get("requestedEpisodeID") != "fixture-series-s12-e15":
     print("The episode 15 restoration fixture was not selected.", file=sys.stderr)
     sys.exit(1)

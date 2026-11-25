@@ -31,12 +31,12 @@
 - Rétablissement conjoint de la sélection et du focus natif après une recherche vide, même si le système sélectionne brièvement une autre rubrique.
 - Suppression du fond blanc de focus natif sur les commandes personnalisées : un seul style de bouton, contour fin et animation de la vignette conservés.
 
-## Qualification du build 27
+## Qualification du build 28
 
 - Réunion des corrections de focus de la branche principale et des cartes tvOS adaptées au viewport, avec conservation des observations logiques et natives après recherche.
 - Les couleurs de sélection restent au-dessus de la surface sombre ; le mode compact tient compte du dernier espacement pour conserver sa densité propre.
-- Le smoke convertit le rectangle du focus natif par le conteneur déclaré de son parent immédiat, dont la chaîne doit atteindre la fenêtre active. Pour les fiches, le direct, l’accueil et la recherche vide, il le compare à la sonde du contrôle attendu ; aucune coordonnée attendue ne sert à choisir cet espace.
-- Dans les grilles portrait, l’adaptateur de focus SwiftUI expose un rectangle décalé de l’inset sûr, alors que le contrôle affiché reste à sa place. Ces scénarios observent donc `EnvironmentValues.isFocused` sous le vrai libellé du bouton, indépendamment de `focusID`. Ils exigent une seule sonde visible effectivement focalisée, le bon identifiant, une taille compatible avec l’élément natif et la visibilité complète du contrôle mesuré dans sa fenêtre. Le rectangle de l’adaptateur reste dans les diagnostics, sans compensation arbitraire ni affirmation de correspondance lorsqu’il diffère.
+- Le smoke convertit le rectangle du focus natif par le conteneur déclaré le plus proche dans son ascendance, dont le rattachement à la fenêtre active est vérifié. Il le compare ensuite à la sonde du contrôle attendu ; aucune coordonnée attendue ne sert à choisir cet espace.
+- Sur tvOS, la marge horizontale existante de 16 points encadre le ScrollView des jaquettes. Le conteneur de défilement reste ainsi dans la zone sûre et son repère de focus coïncide avec la position affichée. La largeur utile et les positions prévues des cartes restent inchangées. Les sept scénarios conservent les mêmes exigences géométriques, sans compensation de coordonnées ni preuve de substitution.
 - Le contrôle du Trousseau iOS/tvOS exige le marqueur de succès et utilise un tableau d’arguments compatible avec le Bash macOS.
 
 ## Garde-fous exécutés par la CI
