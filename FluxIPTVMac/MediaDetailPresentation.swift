@@ -1,19 +1,12 @@
 import SwiftUI
-import AVKit
-#if os(macOS)
-import AppKit
-#else
-import UIKit
-#endif
 
 struct MediaDetailRemoteEvent: Equatable {
     let action: RemoteAction
     let token = UUID()
 }
 
-/// A readable screen for one selected title. Artwork is static; the only live
-/// surface is its single trailer player. No catalogue neighbours or 3D scene
-/// are created while this presentation is visible.
+/// A readable screen for one selected title and its physical sleeve. The
+/// artwork is static: this screen creates no video session or catalogue grid.
 struct MediaDetailPresentation: View {
     let item: IPTVItem
     let details: IPTVDetails
@@ -27,21 +20,16 @@ struct MediaDetailPresentation: View {
     var initialSeasonNumber: Int? = nil
     var initialEpisodeID: String? = nil
     var suspended = false
-    var onTrailerPresentation: (Bool) -> Void = { _ in }
 
     @EnvironmentObject private var library: IPTVLibrary
     @EnvironmentObject private var playback: PlaybackController
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @AppStorage(TrailerPreviewDelay.storageKey) private var previewDelay: TrailerPreviewDelay = .five
-    @AppStorage(TrailerPreviewDelay.automaticKey) private var automaticPreview = true
-    @StateObject private var preview = CaseMediaPreviewController()
     @State private var seasons: [IPTVSeason] = []
     @State private var selectedEpisodeID: String?
     @State private var seasonLoading = false
     @State private var seasonFailed = false
     @State private var seasonReload = UUID()
-    @State private var fullscreenTrailer = false
     @State private var expandedDescription = false
     @State private var descriptionPage = 0
     @State private var focusedID = "play"
@@ -54,8 +42,7 @@ struct MediaDetailPresentation: View {
          play: @escaping () -> Void, playEpisode: @escaping (IPTVItem, [IPTVSeason]) -> Void,
          favorite: @escaping () -> Void, isFavorite: Bool, remoteEvent: MediaDetailRemoteEvent?,
          initialSeasons: [IPTVSeason] = [], initialSeasonNumber: Int? = nil,
-         initialEpisodeID: String? = nil, suspended: Bool = false,
-         onTrailerPresentation: @escaping (Bool) -> Void = { _ in }) {
+         initialEpisodeID: String? = nil, suspended: Bool = false) {
         self.item = item
         self.details = details
         self.close = close
@@ -68,7 +55,6 @@ struct MediaDetailPresentation: View {
         self.initialSeasonNumber = initialSeasonNumber
         self.initialEpisodeID = initialEpisodeID
         self.suspended = suspended
-        self.onTrailerPresentation = onTrailerPresentation
         // The season shelf already has these episodes. Install them before
         // the first focus evaluation, so the restored episode's Play button
         // is enabled immediately instead of falling back to "Les saisons".
@@ -79,7 +65,6 @@ struct MediaDetailPresentation: View {
         _selectedEpisodeID = State(initialValue: initialEpisode?.id)
     }
 
-    private var active: Bool { !suspended && !startingPlayback && scenePhase == .active && !expandedDescription }
     private var selectedSeason: IPTVSeason? {
         seasons.first(where: { $0.number == initialSeasonNumber }) ?? seasons.first
     }
@@ -104,17 +89,12 @@ struct MediaDetailPresentation: View {
         let number = episode.episodeNumber ?? ((episodes.firstIndex(where: { $0.id == episode.id }) ?? 0) + 1)
         return "Voir S\(season) · E\(number)"
     }
-    private var previewKey: String {
-        "\(item.id)|\(active)|\(automaticPreview)|\(previewDelay.rawValue)|\(details.trailerURL?.absoluteString ?? "")|\(item.backdropURL?.absoluteString ?? "")"
-    }
     private var selectionKey: String {
         "\(item.id)|\(initialSeasonNumber.map(String.init) ?? "")|\(initialEpisodeID ?? "")|\(seasonReload)"
     }
     private var focusRows: [[String]] {
         var playbackActions: [String] = []
         if !startingPlayback && (!item.isSeriesCollection || selectedEpisode != nil) { playbackActions.append("play") }
-        if !startingPlayback && details.trailerURL != nil { playbackActions.append("trailer") }
-        if preview.showVideo { playbackActions.append("mute") }
         var rows = [["back", "description", "favorite"], playbackActions]
         if seasonFailed { rows.append(["retry-episodes"]) }
         if !episodes.isEmpty { rows.append(episodes.map { "episode:\($0.id)" }) }
@@ -123,10 +103,7 @@ struct MediaDetailPresentation: View {
 
     var body: some View {
         ZStack {
-            if fullscreenTrailer {
-                MediaDetailTrailerPresentation(preview: preview, remoteEvent: remoteEvent, close: closeTrailer)
-                    .transition(.opacity)
-            } else if expandedDescription {
+            if expandedDescription {
                 descriptionScreen
                     .transition(.opacity)
             } else {
@@ -145,20 +122,15 @@ struct MediaDetailPresentation: View {
         .background(Color(red: 0.025, green: 0.035, blue: 0.055))
         .foregroundStyle(.white)
         .preferredColorScheme(.dark)
-        .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: fullscreenTrailer)
         .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: expandedDescription)
-        .task(id: previewKey) { configurePreview() }
         .task(id: selectionKey) { await loadEpisodes() }
         .onChange(of: initialSeasons) { _, value in
             guard !value.isEmpty else { return }
             seasons = value
             if !episodes.contains(where: { $0.id == selectedEpisodeID }) { selectedEpisodeID = episodes.first?.id }
         }
-        .onChange(of: remoteEvent) { [fullscreenTrailer] _, event in
-            // Route according to the screen that received the event. The
-            // trailer's handler may close itself before this parent callback
-            // runs; reading live state here would consume Back/Select twice.
-            guard !fullscreenTrailer, let event else { return }
+        .onChange(of: remoteEvent) { _, event in
+            guard let event else { return }
             handle(event.action)
         }
         .onChange(of: nativeFocus) { _, value in
@@ -166,10 +138,10 @@ struct MediaDetailPresentation: View {
             focusedID = value
             if value.hasPrefix("episode:") { selectedEpisodeID = String(value.dropFirst("episode:".count)) }
         }
-        .onChange(of: fullscreenTrailer) { _, value in onTrailerPresentation(value) }
-        .onChange(of: scenePhase) { _, phase in if phase != .active { cancelHandoff(); preview.stop() } }
+        .onChange(of: scenePhase) { _, phase in if phase != .active { cancelHandoff() } }
+        .onChange(of: suspended) { _, value in if value { cancelHandoff() } }
         .onAppear { setFocus(item.isSeriesCollection && selectedEpisode == nil ? "back" : "play") }
-        .onDisappear { cancelHandoff(); preview.stop(); onTrailerPresentation(false) }
+        .onDisappear { cancelHandoff() }
     }
 
     private var backdrop: some View {
@@ -194,7 +166,7 @@ struct MediaDetailPresentation: View {
             HStack(alignment: .top, spacing: metrics.gap * 1.4) {
                 titleInformation(metrics)
                     .frame(width: metrics.informationWidth, height: metrics.mainHeight, alignment: .topLeading)
-                trailerSection(metrics)
+                caseSection(metrics)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             }.frame(height: metrics.mainHeight)
             if item.isSeriesCollection { episodeSection(metrics).frame(height: metrics.episodeHeight) }
@@ -209,7 +181,7 @@ struct MediaDetailPresentation: View {
             VStack(alignment: .leading, spacing: 24) {
                 topBar(compact: true)
                 titleInformation(metrics)
-                trailerSection(metrics)
+                caseSection(metrics)
                 if item.isSeriesCollection { episodeSection(metrics).frame(height: metrics.episodeHeight) }
                 controlsHint
             }.padding(.horizontal, metrics.horizontalPadding).padding(.vertical, metrics.verticalPadding)
@@ -251,10 +223,7 @@ struct MediaDetailPresentation: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             if !metrics.wide { descriptionControl }
             if metrics.wide { Spacer(minLength: 0) }
-            ViewThatFits(in: .horizontal) {
-                HStack(spacing: 12) { playbackControl; trailerControl }
-                VStack(alignment: .leading, spacing: 10) { playbackControl; trailerControl }
-            }
+            playbackControl
         }
     }
 
@@ -268,34 +237,10 @@ struct MediaDetailPresentation: View {
         control("play", title: startingPlayback ? "Ouverture…" : playbackTitle, icon: "play.fill", primary: true, action: startPlayback)
             .disabled(startingPlayback || (item.isSeriesCollection && selectedEpisode == nil))
     }
-    private var trailerControl: some View {
-        control("trailer", title: "Bande-annonce", icon: "play.rectangle", action: openTrailer)
-            .disabled(details.trailerURL == nil || startingPlayback)
-    }
-
-    private func trailerSection(_ metrics: MediaDetailMetrics) -> some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Label("BANDE-ANNONCE", systemImage: "play.rectangle")
-                .font(.system(size: metrics.metadataSize, weight: .semibold)).tracking(1.4)
-                .foregroundStyle(.white.opacity(0.78))
-            MediaDetailTrailerSurface(preview: preview, artworkURL: item.backdropURL ?? item.logoURL, artworkIsPoster: item.backdropURL == nil)
-                .frame(height: metrics.previewHeight)
-                .frame(maxWidth: .infinity)
-                .background(.black)
-                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(.white.opacity(0.14), lineWidth: 1).allowsHitTesting(false))
-                .overlay(alignment: .bottomTrailing) {
-                    control("mute", title: preview.isMuted ? "Activer le son" : "Couper le son", icon: preview.isMuted ? "speaker.slash" : "speaker.wave.2", iconOnly: true) {
-                        preview.setMuted(!preview.isMuted)
-                    }
-                    .disabled(!preview.showVideo)
-                    .padding(16)
-                }
-            Text(preview.statusText)
-                .font(.system(size: metrics.metadataSize))
-                .foregroundStyle(.white.opacity(0.68)).lineLimit(1)
-                .frame(maxWidth: .infinity, alignment: .leading)
-        }
+    private func caseSection(_ metrics: MediaDetailMetrics) -> some View {
+        MediaDetailCaseArtwork(item: item, year: details.year ?? item.details.year)
+            .frame(height: metrics.caseHeight)
+            .frame(maxWidth: .infinity)
     }
 
     private func episodeSection(_ metrics: MediaDetailMetrics) -> some View {
@@ -476,12 +421,6 @@ struct MediaDetailPresentation: View {
         #endif
     }
 
-    private func configurePreview() {
-        preview.setBackFacing(active)
-        preview.update(item: item, details: details, filmURL: nil, backVisible: active, automatic: automaticPreview, delay: previewDelay)
-        preview.setYouTubeViewportEligible(active)
-        if fullscreenTrailer && active { preview.activateTrailer() }
-    }
     private func loadEpisodes() async {
         guard item.isSeriesCollection else { seasons = []; return }
         seasonLoading = initialSeasons.isEmpty; seasonFailed = false
@@ -498,27 +437,20 @@ struct MediaDetailPresentation: View {
         }
     }
     private func setFocus(_ id: String) { focusedID = id; nativeFocus = id }
-    private func openTrailer() {
-        guard !startingPlayback, details.trailerURL != nil else { return }
-        preview.setBackFacing(true); preview.setYouTubeViewportEligible(true)
-        _ = preview.activateTrailer()
-        fullscreenTrailer = true
-    }
-    private func closeTrailer() {
-        preview.setMuted(true); fullscreenTrailer = false; setFocus("trailer")
-    }
     private func closeDescription() { expandedDescription = false; setFocus("description") }
     private func moveDescription(_ delta: Int) { descriptionPage = max(0, min(descriptionPages.count - 1, descriptionPage + delta)) }
     private func cancelHandoff() { handoffToken = UUID(); handoffTask?.cancel(); handoffTask = nil; startingPlayback = false }
-    private func dismiss() { cancelHandoff(); preview.stop(); close() }
+    private func dismiss() { cancelHandoff(); close() }
     private func startPlayback() {
-        guard !startingPlayback else { return }
+        guard !startingPlayback, !suspended else { return }
         let episode = selectedEpisode, allSeasons = seasons
         guard !item.isSeriesCollection || episode != nil else { return }
         startingPlayback = true
         let token = UUID(); handoffToken = token
         handoffTask = Task { @MainActor in
-            await preview.stopAndWait()
+            // Coalesce the button/remote event before handing the selected
+            // title to the main player. No preview needs to be stopped here.
+            await Task.yield()
             guard !Task.isCancelled, handoffToken == token else { return }
             if let episode, item.isSeriesCollection { playEpisode(episode, allSeasons) }
             else { play() }
@@ -526,8 +458,7 @@ struct MediaDetailPresentation: View {
         }
     }
     private func handle(_ action: RemoteAction) {
-        // The fullscreen player owns its events; both views share one session.
-        guard !fullscreenTrailer else { return }
+        guard !suspended, scenePhase == .active else { return }
         if expandedDescription {
             switch action {
             case .back, .home: closeDescription()
@@ -546,8 +477,6 @@ struct MediaDetailPresentation: View {
         switch action {
         case .back, .home: dismiss()
         case .playPause: startPlayback()
-        case .fullscreen: openTrailer()
-        case .mute: preview.setMuted(!preview.isMuted)
         case .up, .down, .left, .right:
                 if let target = RemoteNavigation.move(from: focusedID, action: action, rows: focusRows) {
                 setFocus(target)
@@ -557,14 +486,93 @@ struct MediaDetailPresentation: View {
             switch focusedID {
             case "back": dismiss()
             case "favorite": favorite()
-            case "trailer": openTrailer()
-            case "mute": preview.setMuted(!preview.isMuted)
             case "description": descriptionPage = 0; expandedDescription = true; setFocus("description-back")
             case "retry-episodes": seasonReload = UUID()
             default: startPlayback()
             }
         default: break
         }
+    }
+}
+
+/// One lightweight sleeve uses the full cover, a printed spine and a fixed
+/// perspective. It never starts a renderer, animation loop or media session.
+private struct MediaDetailCaseArtwork: View {
+    let item: IPTVItem
+    let year: String?
+    private var format: CasePackageFormat { .resolve(year: year) }
+
+    var body: some View {
+        GeometryReader { geometry in
+            let ratio = CGFloat(format.halfWidth / format.halfHeight)
+            let height = max(1, min(geometry.size.height - 42, (geometry.size.width - 70) / ratio))
+            let width = height * ratio
+            let spine = max(14, width * (format == .vhs ? 0.115 : 0.075))
+            let radius = max(5, width * 0.018)
+            let shape = RoundedRectangle(cornerRadius: radius, style: .continuous)
+            VStack(spacing: 14) {
+                HStack(spacing: 0) {
+                    LinearGradient(colors: [.black, Color(white: 0.20), Color(white: 0.075)],
+                                   startPoint: .leading, endPoint: .trailing)
+                        .frame(width: spine, height: height)
+                        .overlay {
+                            Text(item.name)
+                                .font(.system(size: max(10, height * 0.026), weight: .semibold))
+                                .foregroundStyle(.white.opacity(0.84))
+                                .lineLimit(1).minimumScaleFactor(0.65)
+                                .frame(width: height * 0.78, height: spine)
+                                .rotationEffect(.degrees(-90))
+                                .frame(width: spine, height: height)
+                        }
+                        .overlay(alignment: .trailing) { Rectangle().fill(.white.opacity(0.26)).frame(width: 1) }
+                    ArtworkView(url: item.logoURL, fit: true) {
+                        VStack(spacing: 18) {
+                            Image(systemName: item.isSeriesCollection ? "square.stack.3d.up" : "film")
+                                .font(.system(size: height * 0.09, weight: .light))
+                            Text(item.name).font(.system(size: max(18, height * 0.045), weight: .bold))
+                                .multilineTextAlignment(.center).lineLimit(5)
+                        }
+                        .foregroundStyle(.white.opacity(0.86)).padding(24)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .background(LinearGradient(colors: [Color(red: 0.09, green: 0.16, blue: 0.21), .black], startPoint: .topLeading, endPoint: .bottomTrailing))
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(.black)
+                    .clipShape(RoundedRectangle(cornerRadius: max(2, radius * 0.55)))
+                    .padding(.vertical, format == .vhs ? 4 : 6)
+                    .padding(.trailing, format == .vhs ? 4 : 6)
+                }
+                .frame(width: width, height: height)
+                .background(Color(white: 0.08), in: shape)
+                .clipShape(shape)
+                .overlay {
+                    LinearGradient(stops: [.init(color: .white.opacity(0.16), location: 0),
+                                           .init(color: .clear, location: 0.16),
+                                           .init(color: .clear, location: 0.82),
+                                           .init(color: .white.opacity(0.045), location: 1)],
+                                   startPoint: .topLeading, endPoint: .bottomTrailing)
+                        .clipShape(shape)
+                }
+                .overlay { shape.strokeBorder(.white.opacity(0.40), lineWidth: 1.2) }
+                .rotation3DEffect(.degrees(-8), axis: (x: 0, y: 1, z: 0), perspective: 0.28)
+                .shadow(color: .black.opacity(0.55), radius: 14, x: 12, y: 14)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("Boîtier \(format.title) · \(item.name)")
+                .accessibilityIdentifier("media-detail-box")
+                #if FLUX_CATALOG_UI_TESTING
+                #if os(tvOS)
+                .background(TVCatalogControlFrameProbe(identifier: "media-detail-box").allowsHitTesting(false))
+                #elseif os(macOS)
+                .background(CatalogDetailBoxFrameProbe().allowsHitTesting(false))
+                #endif
+                #endif
+                Text(format.title)
+                    .font(.system(size: max(12, min(18, height * 0.028)), weight: .semibold))
+                    .tracking(3).foregroundStyle(.white.opacity(0.55))
+            }
+            .frame(width: geometry.size.width, height: geometry.size.height)
+        }
+        .allowsHitTesting(false)
     }
 }
 
@@ -578,7 +586,7 @@ private struct MediaDetailMetrics {
     let hintHeight: CGFloat
     let informationWidth: CGFloat
     let mainHeight: CGFloat
-    let previewHeight: CGFloat
+    let caseHeight: CGFloat
     let episodeHeight: CGFloat
     let episodeWidth: CGFloat
     let episodeCardHeight: CGFloat
@@ -633,9 +641,8 @@ private struct MediaDetailMetrics {
         #endif
         episodeThumbnailHeight = min(82, max(58, episodeCardHeight * 0.42))
         let available = size.height - verticalPadding * 2 - headerHeight - hintHeight - gap * (series ? 3 : 2) - episodeHeight
-        let videoWidth = wide ? usableWidth - informationWidth - gap * 1.4 : usableWidth
-        previewHeight = wide ? max(160, min(videoWidth * 9 / 16, available - metadataSize * 2.6 - 28)) : videoWidth * 9 / 16
         mainHeight = max(280, available)
+        caseHeight = wide ? mainHeight : min(560, max(320, usableWidth * 1.2))
         // Reserve title, metadata and controls before fitting the synopsis.
         let summaryBudget = mainHeight - titleSize * 1.25 * CGFloat(titleLines) - metadataSize * 1.3 * CGFloat(metadataLines) - headerHeight - informationGap * 4
         let fittingLines = max(2, Int((summaryBudget + 6) / (bodySize * 1.25 + 6)))
@@ -682,190 +689,3 @@ private struct MediaDetailEpisodeStyle: ButtonStyle {
             .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: configuration.isPressed)
     }
 }
-
-private struct MediaDetailTrailerSurface: View {
-    @ObservedObject var preview: CaseMediaPreviewController
-    var artworkURL: URL?
-    var artworkIsPoster = false
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-    var body: some View {
-        ZStack {
-            Color.black
-            #if os(macOS) || os(iOS)
-            if let session = preview.youtubeSession { YouTubeTrailerSurface(session: session) }
-            else if let player = preview.player {
-                if !preview.showVideo { placeholder }
-                MediaDetailNativeVideoSurface(player: player).opacity(preview.showVideo ? 1 : 0)
-            }
-            else { placeholder }
-            #else
-            if let player = preview.player {
-                if !preview.showVideo { placeholder }
-                MediaDetailNativeVideoSurface(player: player).opacity(preview.showVideo ? 1 : 0)
-            }
-            else { placeholder }
-            #endif
-            if preview.phase == .loading || preview.phase == .preparing {
-                ProgressView().tint(.white).padding(20).background(.black.opacity(0.75), in: Circle()).allowsHitTesting(false)
-            }
-            if preview.phase == .failed || preview.phase == .external {
-                Text(preview.statusText).font(.headline).multilineTextAlignment(.center)
-                    .padding(28).frame(maxWidth: 620)
-                    .background(.black.opacity(0.8), in: RoundedRectangle(cornerRadius: 18))
-            }
-        }
-        .clipped()
-        .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: preview.showVideo)
-    }
-    private var placeholder: some View {
-        ZStack {
-            if let still = preview.still {
-                Image(decorative: still, scale: 1, orientation: .up).resizable().scaledToFit()
-            } else if let artworkURL {
-                ArtworkView(url: artworkURL, fit: artworkIsPoster) { Color.clear }
-                    .opacity(preview.phase == .unavailable ? 0.42 : 0.75)
-            }
-            if preview.phase == .unavailable {
-                VStack(spacing: 15) {
-                    Image(systemName: "play.slash").font(.system(size: 34, weight: .light))
-                    Text("Aucune bande-annonce disponible").font(.headline).multilineTextAlignment(.center)
-                }.padding(24).background(.black.opacity(0.65), in: RoundedRectangle(cornerRadius: 18))
-            }
-        }.frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-}
-
-private struct MediaDetailTrailerPresentation: View {
-    @ObservedObject var preview: CaseMediaPreviewController
-    let remoteEvent: MediaDetailRemoteEvent?
-    let close: () -> Void
-    @FocusState private var nativeFocus: String?
-    @State private var focus = "back"
-    #if os(macOS)
-    @State private var expandedWindowNumber: Int?
-    @State private var escapeMonitor: Any?
-    #endif
-    private let actions = ["back", "rewind", "play", "forward", "mute"]
-
-    var body: some View {
-        GeometryReader { geometry in
-            let compact = geometry.size.width < 880
-            #if os(tvOS)
-            let horizontalMargin = max(24, 90 - min(geometry.safeAreaInsets.leading, geometry.safeAreaInsets.trailing))
-            let topMargin = max(24, 60 - geometry.safeAreaInsets.top)
-            #else
-            let horizontalMargin: CGFloat = compact ? 12 : 24
-            let topMargin: CGFloat = 16
-            #endif
-            VStack(spacing: 12) {
-            HStack(spacing: compact ? 7 : 12) {
-                button("back", title: "La fiche", icon: "chevron.left", compact: compact, action: close)
-                Spacer(minLength: 0)
-                button("rewind", title: "−15 s", icon: "gobackward.15", compact: compact) { preview.seek(by: -15) }
-                button("play", title: preview.isPlaying ? "Pause" : "Lire", icon: preview.isPlaying ? "pause.fill" : "play.fill", compact: compact) { preview.togglePlayback() }
-                button("forward", title: "+15 s", icon: "goforward.15", compact: compact) { preview.seek(by: 15) }
-                button("mute", title: preview.isMuted ? "Activer le son" : "Couper le son", icon: preview.isMuted ? "speaker.slash" : "speaker.wave.2", compact: compact) { preview.setMuted(!preview.isMuted) }
-            }.padding(.horizontal, horizontalMargin).padding(.top, topMargin)
-            MediaDetailTrailerSurface(preview: preview).frame(maxWidth: .infinity, maxHeight: .infinity)
-            if preview.phase != .playing {
-                Text(preview.statusText)
-                    #if os(tvOS)
-                    .font(.system(size: 24))
-                    #else
-                    .font(.callout)
-                    #endif
-                    .foregroundStyle(.white.opacity(0.7)).padding(.horizontal, horizontalMargin).padding(.bottom, topMargin)
-            }
-            }
-        }
-        .background(.black).foregroundStyle(.white)
-        .onAppear {
-            nativeFocus = "back"
-            #if os(macOS)
-            let windowNumber = NSApp.keyWindow?.windowNumber
-            escapeMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
-                guard event.keyCode == 53, event.window?.windowNumber == windowNumber else { return event }
-                close(); return nil
-            }
-            if let window = NSApp.keyWindow, !window.styleMask.contains(.fullScreen) {
-                expandedWindowNumber = window.windowNumber; window.toggleFullScreen(nil)
-            }
-            #endif
-        }
-        .onDisappear {
-            #if os(macOS)
-            if let escapeMonitor { NSEvent.removeMonitor(escapeMonitor); self.escapeMonitor = nil }
-            if let number = expandedWindowNumber, let window = NSApp.windows.first(where: { $0.windowNumber == number }), window.styleMask.contains(.fullScreen) { window.toggleFullScreen(nil) }
-            expandedWindowNumber = nil
-            #endif
-        }
-        .onChange(of: nativeFocus) { _, value in if let value { focus = value } }
-        .onChange(of: remoteEvent) { _, event in
-            guard let action = event?.action else { return }
-            switch action {
-            case .back, .home, .fullscreen: close()
-            case .playPause: preview.togglePlayback()
-            case .rewind: preview.seek(by: -15)
-            case .forward: preview.seek(by: 15)
-            case .mute: preview.setMuted(!preview.isMuted)
-            case .left, .right, .up, .down:
-                if let target = RemoteNavigation.move(from: focus, action: action, rows: [actions]) { focus = target; nativeFocus = target }
-            case .select:
-                switch focus {
-                case "back": close()
-                case "rewind": preview.seek(by: -15)
-                case "forward": preview.seek(by: 15)
-                case "mute": preview.setMuted(!preview.isMuted)
-                default: preview.togglePlayback()
-                }
-            default: break
-            }
-        }
-    }
-    private func button(_ id: String, title: String, icon: String, compact: Bool, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            if compact { Image(systemName: icon).accessibilityLabel(title) }
-            else { Label(title, systemImage: icon).lineLimit(1) }
-        }
-            .buttonStyle(MediaDetailControlStyle(highlighted: focus == id, compact: compact))
-            #if os(macOS)
-            .focusable()
-            #endif
-            .focused($nativeFocus, equals: id).focusEffectDisabled()
-    }
-}
-
-#if os(macOS)
-private final class MediaDetailVideoView: NSView {
-    private let videoLayer = AVPlayerLayer()
-    override init(frame: CGRect) {
-        super.init(frame: frame); wantsLayer = true; layer?.backgroundColor = NSColor.black.cgColor
-        videoLayer.videoGravity = .resizeAspect; layer?.addSublayer(videoLayer)
-    }
-    required init?(coder: NSCoder) { fatalError("init(coder:) is unavailable") }
-    override func layout() {
-        super.layout(); CATransaction.begin(); CATransaction.setDisableActions(true); videoLayer.frame = bounds; CATransaction.commit()
-    }
-    func setPlayer(_ player: AVPlayer) { if videoLayer.player !== player { videoLayer.player = player } }
-}
-private struct MediaDetailNativeVideoSurface: NSViewRepresentable {
-    let player: AVPlayer
-    func makeNSView(context: Context) -> MediaDetailVideoView { let view = MediaDetailVideoView(frame: .zero); view.setPlayer(player); return view }
-    func updateNSView(_ view: MediaDetailVideoView, context: Context) { view.setPlayer(player) }
-}
-#else
-private final class MediaDetailVideoView: UIView {
-    override class var layerClass: AnyClass { AVPlayerLayer.self }
-    func setPlayer(_ player: AVPlayer) {
-        let video = layer as! AVPlayerLayer; video.videoGravity = .resizeAspect
-        if video.player !== player { video.player = player }
-        backgroundColor = .black
-    }
-}
-private struct MediaDetailNativeVideoSurface: UIViewRepresentable {
-    let player: AVPlayer
-    func makeUIView(context: Context) -> MediaDetailVideoView { let view = MediaDetailVideoView(); view.setPlayer(player); return view }
-    func updateUIView(_ view: MediaDetailVideoView, context: Context) { view.setPlayer(player) }
-}
-#endif

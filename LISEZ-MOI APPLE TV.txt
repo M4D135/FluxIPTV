@@ -1,4 +1,4 @@
-FLUX IPTV 0.8.9 — BUILD 32 — PROJET APPLE TV
+FLUX IPTV 0.8.9 — BUILD 33 — PROJET APPLE TV
 
 1. Décompressez tout le dossier, en conservant Sources et FluxIPTVMac à côté
    des fichiers .xcodeproj. Les sources et les 18 décors 4K sont partagés.
@@ -51,20 +51,23 @@ et dernière sélection sont mémorisés par source et par section.
 Retour et le changement de section conservent les filtres. « Toutes les
 chaînes » les réinitialise ; « Tous les pays » enlève seulement le filtre pays.
 Rester sur la chaîne lance un aperçu muet après 3 s par défaut (1/3/5/10 s
-réglables séparément des films/séries). Valider ouvre la chaîne.
-Film : Valider ouvre une fiche plein écran avec synopsis et bande-annonce.
-Série : Valider ouvre les saisons ; choisir une saison affiche les épisodes.
+réglables dans Interface > Aperçu des chaînes TV). Valider ouvre la chaîne.
+Film : Valider ouvre une fiche plein écran avec synopsis et une unique
+grande boîte portant la jaquette du titre sélectionné : VHS avant 2000,
+DVD dès 2000 ou lorsque l’année manque.
+Série : Valider ouvre les saisons ; choisir une saison affiche sa fiche,
+la grande boîte du titre et les épisodes.
 Les directions déplacent le focus ; Valider active le bouton visible.
 Lecture/Pause lit le film ou l’épisode choisi depuis sa fiche.
 Retour/Menu remonte d’un niveau et retrouve la sélection.
-Appui long sur une carte ouvre les favoris. Les décors restent visibles dans
-le catalogue ; la fiche ne rend aucune scène de boîtes ni voisin.
+Appui long sur une carte ouvre les favoris. La fiche conserve Lecture,
+Description complète, Favoris et Retour. Les décors restent visibles dans
+le catalogue ; seule la boîte du titre sélectionné apparaît dans sa fiche.
 
-Les bandes-annonces compatibles se lisent directement dans l’app, y compris
-les formats YouTube publics pris en charge par le résolveur local. Aucun QR
-code ni iPhone requis. Une vidéo qui exige une connexion, une vérification
-d’âge ou une protection est refusée avec un message. La disponibilité réelle
-des bandes-annonces dépend aussi de YouTube et du réseau.
+Aucune bande-annonce n’est chargée ni proposée dans les fiches film/série.
+Leurs commandes et réglages ont été retirés au build 33. Les aperçus des
+chaînes TV restent disponibles ; la lecture du film ou de l’épisode choisi
+démarre seulement avec la commande de lecture.
 
 Les archives CI « tvOS-simulator » sont destinées au simulateur uniquement.
 Le build « tvOS-device-unsigned » vérifie la compilation pour Apple TV ARM64,

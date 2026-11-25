@@ -33,7 +33,8 @@ final class LiveCountryTests: XCTestCase {
         for category in ["", "  ", "---", "FRONTIÈRE", "ESport", "ARTE", "INTERNATIONAL",
                          "Cinéma FR", "Sport [ES]", "FR2 Sports", "USAHD", "FranceTV",
                          "EN | News", "FRENCH | Cinema", "Arabic | News", "[ZZ] Unknown", "🇿🇿 Unknown",
-                         "TV | Généralistes", "[TV] General", "SD | Sport", "HD | Sport", "4K | Sport"] {
+                         "TV | Généralistes", "[TV] General", "SD | Sport", "HD | Sport", "4K | Sport",
+                         "EU | News", "EZ | News"] {
             XCTAssertNil(LiveCountry.detectCode(in: category), category)
         }
     }

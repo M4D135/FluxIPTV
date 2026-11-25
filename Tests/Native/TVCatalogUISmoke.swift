@@ -1,4 +1,5 @@
 #if os(tvOS) && FLUX_CATALOG_UI_TESTING
+import AVFoundation
 import CoreGraphics
 import CoreText
 import Darwin
@@ -431,6 +432,8 @@ final class TVCatalogControlProbeView: UIView {
                 if let window = windows.first(where: { $0.isKeyWindow && !$0.isHidden }),
                    window.bounds.width > 800, window.bounds.height > 400 {
                     try require(!containsSceneKit(window), "A SceneKit view is still mounted in the full-screen detail hierarchy.")
+                    let detail = detailBoxEvidence(fixture: fixture, window: window)
+                    lastObservation.merge(detail.report) { _, new in new }
                     if let focused = UIFocusSystem.focusSystem(for: window)?.focusedItem {
                         let native = nativeFrame(focused, in: window)
                         let frame = native.frame
@@ -504,7 +507,7 @@ final class TVCatalogControlProbeView: UIView {
                         ]
                         lastObservation.merge(nativeReport) { _, new in new }
                         let key = "\(identity.identifier)|\(frame)|\(expectedFrame)|\(viewport)"
-                        stableSamples = bounded && expectedFocus && largeEnough && visibilityAccepted && search.passed && country.passed && key == precedingFocus ? stableSamples + 1 : 0
+                        stableSamples = bounded && expectedFocus && largeEnough && visibilityAccepted && search.passed && country.passed && detail.passed && key == precedingFocus ? stableSamples + 1 : 0
                         previousFocus = key
                         if stableSamples >= 4 {
                             var report = lastObservation
@@ -686,6 +689,30 @@ final class TVCatalogControlProbeView: UIView {
             try require(Date() < deadline, "Catalogue filtering did not settle during \(stage).")
             try await Task.sleep(nanoseconds: 50_000_000)
         }
+    }
+
+    private static func detailBoxEvidence(fixture: TVCatalogFixture, window: UIWindow)
+        -> (passed: Bool, report: [String: Any]) {
+        guard fixture.scenario == "movie" || fixture.scenario == "series" else { return (true, ["detailBoxTested": false]) }
+        let probes = controlProbes(in: window)
+        let boxes = probes.filter { $0.controlIdentifier == "media-detail-box" && $0.window === window }
+        let frame = boxes.count == 1 ? boxes[0].convert(boxes[0].bounds, to: window) : CGRect.null
+        let viewport = boxes.count == 1 ? visibleViewport(from: boxes[0].superview, in: window) : CGRect.null
+        let large = valid(frame) && frame.width >= 200 && frame.height >= 280 && frame.width < frame.height
+        let visible = valid(frame) && valid(viewport) && viewport.insetBy(dx: -1, dy: -1).contains(frame)
+        let forbidden = probes.map(\.controlIdentifier).filter { $0 == "media-detail-trailer" || $0 == "media-detail-mute" }
+        func playerLayers(_ layer: CALayer) -> Int {
+            (layer is AVPlayerLayer ? 1 : 0) + (layer.sublayers ?? []).reduce(0) { $0 + playerLayers($1) }
+        }
+        func webViews(_ view: UIView) -> Int {
+            (String(describing: type(of: view)).contains("WKWebView") ? 1 : 0) + view.subviews.reduce(0) { $0 + webViews($1) }
+        }
+        let players = playerLayers(window.layer), web = webViews(window)
+        return (boxes.count == 1 && large && visible && forbidden.isEmpty && players == 0 && web == 0, [
+            "detailBoxTested": true, "detailBoxProbeCount": boxes.count,
+            "detailBoxFrame": coordinates(frame), "detailBoxLargeEnough": large, "detailBoxFullyVisible": visible,
+            "detailTrailerControlIDs": forbidden, "detailPlayerLayerCount": players, "detailWebViewCount": web
+        ])
     }
 
     private static func controlProbes(in view: UIView) -> [TVCatalogControlProbeView] {

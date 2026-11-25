@@ -1,6 +1,18 @@
-# Validation de FLUX IPTV 0.8.9 — build 32
+# Validation de FLUX IPTV 0.8.9 — build 33
 
-## Finalisation des builds 30 à 32
+## Fiches du build 33 : description et grande boîte
+
+- La fiche d’un film ou d’une série présente une unique grande boîte du titre sélectionné avec sa jaquette, à côté de la description. Le format suit la règle du catalogue : VHS avant 2000, DVD dès 2000 et DVD si l’année manque.
+- Aucun lecteur ni aperçu de bande-annonce n’est créé par la fiche. Elle ne charge aucune bande-annonce et ne propose plus de commande de bande-annonce ou de plein écran vidéo d’aperçu.
+- Les actions Lecture, Description complète, Favoris et Retour restent disponibles, ainsi que le choix de l’épisode pour une série. La lecture principale démarre par la commande dédiée.
+- Les réglages de lecture automatique et de délai des bandes-annonces sont retirés. Les réglages et le comportement des aperçus des chaînes TV restent disponibles.
+- Le catalogue, les filtres par pays, la mémoire de navigation et les marges du rayon de saisons du build 32 sont conservés.
+
+La validation de cette présentation repose sur l’exécution attachée au commit exact du build 33 : compilations Apple, captures des fiches Film/Série et contrôles natifs du focus, de la boîte visible et de l’absence de lecteur de bande-annonce. Le résultat applicable est celui de cette exécution.
+
+- La détection des pays utilise désormais `Locale.Region.isoRegions`, disponible sur toutes les versions minimales du projet, à la place de l’API dépréciée `Locale.isoRegionCodes`. Les groupements à plusieurs pays (EU, EZ) sont écartés avant de conserver les codes de deux lettres. Les faux positifs EU/EZ sont couverts dans la suite existante.
+
+## Historique : finalisation des builds 30 à 32
 
 - Réunion de la branche pays/mémoire et de la branche principale, sans abandonner les corrections de focus de recherche, la grille dans la zone sûre ou les contrôles natifs stricts.
 - La sélection logique est publiée dès la fin du filtrage, puis réaffirmée avec le focus natif après le montage des résultats. Une transition du moteur de focus vers l’en-tête ne peut plus annuler ce transfert.
@@ -8,7 +20,7 @@
 - Les couleurs de sélection restent au-dessus du fond sombre. Le calcul des colonnes conserve l’espacement final prévu.
 - Les builds 29 et 30 ont révélé que la présentation native du sélecteur pouvait ignorer l’affectation dans `onAppear` comme la préférence de focus, puis sélectionner « Tous les pays ». Le build 31 attend la première entrée de focus réellement signalée par le binding de la feuille et le transfère une seule fois vers le pays mémorisé. La demande est consommée avant l’écriture pour laisser ensuite la navigation libre. Aucun délai arbitraire ni boucle de recentrage n’est utilisé ; un pays disparu se replie sur « Tous les pays ». Le contrôle géométrique de `country-picker` reste inchangé.
 - Le build 32 porte la marge supérieure du rayon des saisons de 14 à 32 points : la première carte sélectionnée conserve son contour et ses arrondis pendant le zoom et le déplacement vertical. Les animations et les exigences des contrôles natifs sont conservées.
-- Les projets Xcode affichent 0.8.9 / 32 ; le centre de contrôle lit la version et le build du bundle pour éviter les anciens numéros figés dans l’interface.
+- Les projets du build 32 affichent 0.8.9 / 32 ; le centre de contrôle lit la version et le build du bundle pour éviter les anciens numéros figés dans l’interface.
 
 ## Pays des chaînes TV
 
@@ -28,7 +40,7 @@
 - Retour vers le catalogue et changement de section conservent les filtres ; la réinitialisation passe par une commande explicite.
 - Restaurer une sélection ne démarre aucune lecture.
 
-## Vérifications
+## Périmètre des vérifications
 
 Les tests du cœur couvrent la détection, les faux positifs, les filtres composés et le stockage par contexte. Les sept scénarios tvOS du build 28 restent présents avec les mêmes exigences de taille, de position, de correspondance du focus et de visibilité.
 
@@ -36,4 +48,4 @@ Quatre scénarios natifs supplémentaires utilisent un même catalogue mixte de 
 
 Le scénario du sélecteur vérifie aussi le modèle IPTVLibrary réel avec une suite UserDefaults isolée : pays/catégorie/recherches/sélection, aller-retour entre TV et Films, écriture des préférences, nouvelle instance de la bibliothèque et rafraîchissement du catalogue. Ce contrôle ne prétend pas simuler un redémarrage physique de l’Apple TV ou des déplacements à la Siri Remote.
 
-Le résultat applicable est celui du workflow attaché au commit exact livré. Une compilation Apple TV appareil vérifie le SDK et le binaire Release, sans mesurer la fluidité d’un appareil physique. Les captures de démonstration ne prouvent pas la lecture d’une chaîne ou d’une bande-annonce distante.
+Le résultat applicable est celui du workflow attaché au commit exact livré. Une compilation Apple TV appareil vérifie le SDK et le binaire Release, sans mesurer la fluidité d’un appareil physique. Les captures de démonstration ne prouvent pas la lecture d’une chaîne ou d’un film du fournisseur. Les anciennes vérifications de bandes-annonces des builds 30 à 32 décrivent leur présentation d’alors ; le build 33 ne propose plus de bande-annonce dans les fiches.

@@ -214,6 +214,14 @@ if (report.get("status") != "ready" or report.get("scenario") != sys.argv[2]
 if sys.argv[2] == "series" and report.get("requestedEpisodeID") != "fixture-series-s12-e15":
     print("The episode 15 restoration fixture was not selected.", file=sys.stderr)
     sys.exit(1)
+if sys.argv[2] in ("movie", "series"):
+    if (any(report.get(key) is not True for key in ("detailBoxTested", "detailBoxLargeEnough", "detailBoxFullyVisible"))
+            or report.get("detailBoxProbeCount") != 1
+            or report.get("detailTrailerControlIDs") != []
+            or report.get("detailPlayerLayerCount") != 0
+            or report.get("detailWebViewCount") != 0):
+        print("The film/series detail must show one large visible box without trailer controls or a mounted player.", file=sys.stderr)
+        sys.exit(1)
 if sys.argv[2] == "live" and report.get("selectedItemID") != "fixture-live-0":
     print("The live fixture did not select its first channel.", file=sys.stderr)
     sys.exit(1)

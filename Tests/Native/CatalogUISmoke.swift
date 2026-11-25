@@ -1,5 +1,6 @@
 #if os(macOS) && FLUX_CATALOG_UI_TESTING
 import AppKit
+import AVFoundation
 import CoreGraphics
 import CoreText
 import Darwin
@@ -8,6 +9,26 @@ import ImageIO
 import QuartzCore
 import SwiftUI
 import UniformTypeIdentifiers
+import WebKit
+
+/// Measures the actual sleeve without contributing accessibility or input.
+struct CatalogDetailBoxFrameProbe: NSViewRepresentable {
+    func makeNSView(context: Context) -> CatalogDetailBoxProbeView {
+        let view = CatalogDetailBoxProbeView(frame: .zero)
+        view.setAccessibilityElement(false)
+        return view
+    }
+    func updateNSView(_ view: CatalogDetailBoxProbeView, context: Context) {}
+    func sizeThatFits(_ proposal: ProposedViewSize, nsView: CatalogDetailBoxProbeView, context: Context) -> CGSize? {
+        guard let width = proposal.width, let height = proposal.height else { return nil }
+        return CGSize(width: width, height: height)
+    }
+}
+
+final class CatalogDetailBoxProbeView: NSView {
+    override var acceptsFirstResponder: Bool { false }
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+}
 
 private enum CatalogUIFailure: Error, CustomStringConvertible {
     case assertion(String)
@@ -117,7 +138,7 @@ private enum CatalogUIFailure: Error, CustomStringConvertible {
         let collection = IPTVItem(id: "fixture-series", sourceID: source.id, name: "Les saisons", group: "Séries · Drame",
                                   logoURL: seriesArtwork, kind: .series, directURL: nil, xtreamStreamID: nil, fileExtension: nil,
                                   isSeriesCollection: true,
-                                  details: IPTVDetails(synopsis: "Une description IPTV locale accompagne cette série de douze saisons. Chaque saison ouvre une fiche plein écran avec ses épisodes et sa bande-annonce.", year: "2014", genre: "Drame"))
+                                  details: IPTVDetails(synopsis: "Une description IPTV locale accompagne cette série de douze saisons. Chaque saison ouvre une fiche plein écran avec son boîtier et ses épisodes.", year: "2014", genre: "Drame"))
         items.append(collection)
         let seasons = (1...12).map { (number: Int) in
             IPTVSeason(number: number, episodes: (1...16).map { (episode: Int) in
@@ -172,7 +193,12 @@ private enum CatalogUIFailure: Error, CustomStringConvertible {
             try await Task.sleep(nanoseconds: 300_000_000)
             try require(playback.playingItem == nil && playback.player.currentItem == nil, "A visual capture unexpectedly started main playback.")
             let filename = scenario.filename
-            do { try await capture(host, window: window, to: output.appendingPathComponent(filename)) }
+            do {
+                try await capture(host, window: window, to: output.appendingPathComponent(filename))
+                if scenario.detail {
+                    try verifyDetailBox(in: host, reportURL: output.appendingPathComponent(filename.replacingOccurrences(of: ".png", with: "-box.json")))
+                }
+            }
             catch { captureFailures.append("\(filename): \(error)") }
             window.orderOut(nil)
             window.contentView = nil
@@ -245,6 +271,49 @@ private enum CatalogUIFailure: Error, CustomStringConvertible {
                         "The early OK opened an old search result while filtering.")
             print("PASS: debounced search '\(scenario.query)'\(scenario.replacement.map { " → '\($0)'" } ?? "") deferred/cancelled focus and rejected stale OK.")
         }
+    }
+
+    @MainActor private static func verifyDetailBox(in host: NSView, reportURL: URL) throws {
+        func views(_ view: NSView) -> [NSView] { [view] + view.subviews.flatMap(views) }
+        func playerLayers(_ layer: CALayer?) -> Int {
+            guard let layer else { return 0 }
+            return (layer is AVPlayerLayer ? 1 : 0) + (layer.sublayers ?? []).reduce(0) { $0 + playerLayers($1) }
+        }
+        // Query the native accessibility objects, including SwiftUI's virtual
+        // children. Requiring Play and the box prevents an empty tree passing.
+        var pending: [NSObject] = [host], visited: Set<ObjectIdentifier> = [], identifiers: Set<String> = []
+        while let node = pending.popLast(), visited.count < 4096 {
+            guard visited.insert(ObjectIdentifier(node)).inserted else { continue }
+            let identifier = NSSelectorFromString("accessibilityIdentifier")
+            if node.responds(to: identifier), let value = node.perform(identifier)?.takeUnretainedValue() as? String {
+                identifiers.insert(value)
+            }
+            let children = NSSelectorFromString("accessibilityChildren")
+            if node.responds(to: children), let values = node.perform(children)?.takeUnretainedValue() as? [NSObject] {
+                pending.append(contentsOf: values)
+            }
+            if let view = node as? NSView { pending.append(contentsOf: view.subviews) }
+        }
+        let nativeViews = views(host)
+        let boxes = nativeViews.compactMap { $0 as? CatalogDetailBoxProbeView }.filter { !$0.isHiddenOrHasHiddenAncestor && $0.window === host.window }
+        let frame = boxes.count == 1 ? boxes[0].convert(boxes[0].bounds, to: host) : CGRect.zero
+        let visible = boxes.count == 1 ? boxes[0].convert(boxes[0].visibleRect, to: host) : CGRect.zero
+        let large = frame.width >= 200 && frame.height >= 280 && frame.width < frame.height
+        let fullyVisible = !frame.isEmpty && visible.insetBy(dx: -1, dy: -1).contains(frame) && host.bounds.insetBy(dx: -1, dy: -1).contains(frame)
+        let forbidden = identifiers.filter { $0 == "media-detail-trailer" || $0 == "media-detail-mute" }.sorted()
+        let players = playerLayers(host.layer), webViews = nativeViews.filter { $0 is WKWebView }.count
+        let report: [String: Any] = [
+            "detailBoxTested": true, "detailBoxProbeCount": boxes.count,
+            "detailBoxFrame": [frame.minX, frame.minY, frame.width, frame.height],
+            "detailBoxLargeEnough": large, "detailBoxFullyVisible": fullyVisible,
+            "detailBoxIdentifierObserved": identifiers.contains("media-detail-box"),
+            "detailPlayControlObserved": identifiers.contains("media-detail-play"),
+            "detailTrailerControlIDs": forbidden, "detailPlayerLayerCount": players, "detailWebViewCount": webViews
+        ]
+        try JSONSerialization.data(withJSONObject: report, options: [.prettyPrinted, .sortedKeys]).write(to: reportURL, options: .atomic)
+        try require(boxes.count == 1 && large && fullyVisible && identifiers.contains("media-detail-box") && identifiers.contains("media-detail-play") && forbidden.isEmpty && players == 0 && webViews == 0,
+                    "The detail must contain one large visible box and Play, without a trailer control, web player or video layer. See \(reportURL.lastPathComponent).")
+        print("PASS: \(reportURL.lastPathComponent): large visible native box, Play present, no trailer control/web player/video layer.")
     }
 
     private static func cache(_ image: CGImage, at url: URL) {

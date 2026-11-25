@@ -125,7 +125,6 @@ struct ContentView: View {
     @FocusState private var searchFocus: Bool
     @State private var pendingCatalogFocus: CatalogFocusRequest?
     @State private var cinema = false
-    @State private var caseTrailerVisible = false
     @State private var cinemaControls = true
     @State private var playerControlsTask: Task<Void, Never>?
     @State private var hoveredPlayerControls: Set<String> = []
@@ -382,7 +381,7 @@ struct ContentView: View {
             #if !os(tvOS)
             // The simulator is a real side panel, never covers catalogue/video.
             // On narrow mobile displays it is presented separately.
-            if showRemote && page != .player && !cinema && !caseTrailerVisible && width >= 800 {
+            if showRemote && page != .player && !cinema && width >= 800 {
                 Divider().overlay(.white.opacity(0.08))
                 remotePanel.padding(12)
             }
@@ -617,7 +616,7 @@ struct ContentView: View {
     // No decorative render passes or backdrop downloads behind video.
     private var background: some View {
         ZStack {
-            if page == .player || caseTrailerVisible || heldItem != nil {
+            if page == .player || heldItem != nil {
                 Color.black.ignoresSafeArea()
             } else if library.sources.isEmpty {
                 Color(red: 0.025, green: 0.035, blue: 0.065).ignoresSafeArea()
@@ -719,7 +718,7 @@ struct ContentView: View {
             isFavorite:library.isFavorite(item),remoteEvent:caseRemoteEvent,
             initialSeasons:heldSeasonNumber == nil ? []:seasons,
             initialSeasonNumber:heldSeasonNumber,initialEpisodeID:heldEpisodeID,
-            suspended:modalOpen,onTrailerPresentation:{caseTrailerVisible=$0})
+            suspended:modalOpen)
         .frame(maxWidth:.infinity,maxHeight:.infinity)
         .opacity(caseExpanded ? 1 : 0)
     }

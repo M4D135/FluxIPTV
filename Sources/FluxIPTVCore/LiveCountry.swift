@@ -59,9 +59,14 @@ public struct LiveCountry: Identifiable, Equatable, Sendable {
     private static let english = Locale(identifier: "en_US")
     private static let invariant = Locale(identifier: "en_US_POSIX")
 
-    private static let regionCodes: Set<String> = Set(Locale.isoRegionCodes.filter {
-        $0.utf8.count == 2 && $0.utf8.allSatisfy { (65...90).contains($0) }
-    })
+    // ISO regions also include groupings such as EU and EZ; keep individual
+    // countries and territories, then require a two-letter region code.
+    private static let regionCodes: Set<String> = Set(
+        Locale.Region.isoRegions
+            .filter { $0.subRegions.isEmpty }
+            .map(\.identifier)
+            .filter { $0.utf8.count == 2 && $0.utf8.allSatisfy { (65...90).contains($0) } }
+    )
 
     private static let codeAliases = ["UK": "GB", "USA": "US"]
 

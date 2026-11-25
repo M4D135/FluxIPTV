@@ -1,4 +1,4 @@
-# FLUX IPTV 0.8.9 — build 32 — Pays TV et filtres mémorisés
+# FLUX IPTV 0.8.9 — build 33 — Fiches avec grande boîte et filtres mémorisés
 
 Application native SwiftUI pour macOS, iOS et tvOS.
 
@@ -6,7 +6,7 @@ Application native SwiftUI pour macOS, iOS et tvOS.
 
 Le pays, la catégorie, la recherche, la recherche de catégories, la liste de favoris, le filtre À reprendre des films, la page et la dernière sélection sont mémorisés **par source et par section**. Revenir dans TV ou relancer l’application retrouve ce contexte sans lancer une chaîne automatiquement. Le changement de section et Retour conservent les filtres ; **Toutes les chaînes** réinitialise explicitement les filtres TV, et **Tous les pays** dans le sélecteur retire seulement la restriction de pays. Une catégorie ou une chaîne supprimée par le fournisseur est écartée lors du prochain chargement réussi.
 
-**0.8.8 refond la consultation des films et séries :** sélectionner un film ouvre une fiche plein écran avec grand synopsis et bande-annonce. Une série ouvre son rayon de saisons, puis les épisodes de la saison choisie. La scène de boîtes manipulables et ses voisins ont été retirés.
+**Le build 33 présente la description et une unique grande boîte du titre sélectionné dans la fiche plein écran.** La boîte reprend la jaquette et le format VHS/DVD du catalogue. Les commandes Lecture, Description complète, Favoris et Retour restent disponibles. Une série ouvre son rayon de saisons, puis sa fiche avec les épisodes de la saison choisie. La fiche ne charge aucune bande-annonce et ne propose aucune commande de bande-annonce. Les anciens réglages de bandes-annonces ont été retirés.
 
 Sur Apple TV, **TV, Films, Séries et Recherche** utilisent de grandes icônes avec un focus explicite. Les chaînes suivent une disposition horizontale : catégories au-dessus de grandes vignettes 16:9, aperçu dans la seule vignette active. Les décors FLUX restent visibles. Au premier démarrage sans source, **Charger une liste** propose Xtream Codes ou une URL M3U ; Mac et iOS acceptent aussi un fichier M3U.
 
@@ -36,11 +36,9 @@ La grille garde ses rangées rapprochées et ses décors. Seul l’élément qui
 | Film | Valider | Ouvrir sa fiche plein écran |
 | Série | Valider | Ouvrir le rayon de ses saisons |
 | Saison | Valider | Afficher la fiche et les épisodes |
-| Fiche | Directions, puis Valider | Lecture, bande-annonce, description complète, favoris ou retour |
+| Fiche | Directions, puis Valider | Lecture, description complète, favoris ou retour |
 | Fiche | Lecture/Pause | Lire le film ou l’épisode sélectionné |
 | Épisodes | Gauche / Droite, puis Valider | Choisir et lire l’épisode |
-| Bande-annonce plein écran | Lecture/Pause | Mettre en pause ou reprendre |
-| Bande-annonce plein écran | Retour / Menu | Retrouver la fiche et la même session vidéo |
 | Fiche | Retour / Menu | Retrouver la sélection dans le catalogue ou le rayon |
 | Rayon des saisons | Retour / Menu | Revenir au catalogue des séries |
 | Chaînes TV | Rester sur une vignette | Démarrer l’aperçu après le délai choisi |
@@ -49,19 +47,17 @@ La grille garde ses rangées rapprochées et ses décors. Seul l’élément qui
 
 La fiche présente les actions à leur place, sans rotation ni commande de titre précédent/suivant. Le synopsis utilise uniquement les métadonnées IPTV ; aucun enrichissement Wikipédia ou Allociné n’est demandé. La description complète dispose d’un écran lisible. Sur Mac, **Entrée** valide, **Échap** revient, **Espace** correspond à Lecture/Pause, **⌘F** ouvre la recherche et **⌘⇧F** bascule le lecteur plein écran.
 
-## Bandes-annonces dans l’application
+## Fiches film et série : description et grande boîte
 
-**Réglages → Interface → Bandes-annonces** : lecture automatique activable, délai **1, 3, 5 ou 10 secondes**, 5 secondes par défaut. L’aperçu démarre en sourdine. **Bande-annonce** agrandit la vidéo et active le son ; Retour retrouve la fiche. Le lecteur est conservé entre ces deux présentations et arrêté avant la lecture principale.
+La fiche affiche le synopsis, les métadonnées fournies et une seule grande boîte portant la jaquette du titre sélectionné. Le format suit celui du catalogue : **VHS avant 2000, DVD dès 2000**, et DVD si l’année manque. Les titres voisins restent dans le catalogue. La présentation conserve une description complète lisible, les favoris et le choix des épisodes pour les séries.
 
-Les vidéos directes MP4, M4V, MOV et HLS sont lues nativement selon les codecs disponibles. Sur macOS/iOS, les liens YouTube valides utilisent le lecteur officiel embarqué dans une WKWebView. Sur tvOS, le paquet local `Vendor/YouTubeKit` résout les formats publics compatibles pour AVPlayer. Cette intégration non officielle peut être affectée par les changements YouTube et les restrictions réseau. La provenance et les licences du sous-ensemble sont embarquées dans le paquet.
-
-La résolution tvOS ne possède ni compte, ni serveur intermédiaire, ni mécanisme de contournement d’une connexion, d’un contrôle d’âge ou d’une protection. Si la lecture publique est refusée ou aucun format compatible n’est disponible, la fiche affiche la raison. **Aucun QR code ni renvoi sur iPhone.** Une page web ne devient jamais une URL de flux par simple substitution. L’app ne diffuse pas le film pour fabriquer une miniature de sa fiche.
+Ouvrir cette fiche ne crée aucun lecteur de bande-annonce et ne lance aucun chargement de vidéo. **Voir le film** ou **Voir S… · E…** démarre la lecture principale. Les aperçus des chaînes TV restent réglables séparément dans **Réglages → Interface → Aperçu des chaînes TV**.
 
 ## Télévision : grandes vignettes et catégories
 
 Sur Apple TV, les catégories réelles de la liste défilent horizontalement, avec **Favoris** et **Toutes les chaînes**. La recherche s’ouvre depuis la grande loupe de la navigation. Jusqu’à quatre vignettes occupent la largeur du téléviseur. Le panneau de catégories latéral reste disponible sur les grands écrans Mac/iPad.
 
-L’aperçu TV a son propre réglage : **1 / 3 / 5 / 10 secondes**, 3 secondes par défaut, indépendant des bandes-annonces. Il attend une sélection stable, reste muet et s’arrête quand le focus quitte la vignette sur tvOS ou lors de la lecture principale. Une seule vignette crée un lecteur. Les logos, titres et catégories viennent du fournisseur ; aucun programme, horaire EPG ou niveau de progression n’est inventé.
+L’aperçu TV a son propre réglage : **1 / 3 / 5 / 10 secondes**, 3 secondes par défaut. Il attend une sélection stable, reste muet et s’arrête quand le focus quitte la vignette sur tvOS ou lors de la lecture principale. Une seule vignette crée un lecteur. Les logos, titres et catégories viennent du fournisseur ; aucun programme, horaire EPG ou niveau de progression n’est inventé.
 
 Les catalogues restent paginés et leurs grilles paresseuses afin de ne pas monter des milliers de vues. Le décor conservé est une image statique précalculée. Sur tvOS, le décodage de ce décor est plafonné à 1920 pixels de large et son cache à 32 Mio ; les textes et contrôles restent rendus à la résolution de l’interface. Ce plafond ne réduit pas la résolution du film ou de la chaîne lus.
 
@@ -83,7 +79,7 @@ L’archive contient les sources et l’installateur Mac, pas un binaire Apple p
 
 1. Sur Mac, quitter l’ancienne app et arrêter le lancement depuis Xcode.
 2. Décompresser, puis ouvrir **Installer Flux IPTV.command**. L’installateur compile sur ce Mac et vérifie le démarrage ; cette vérification ne remplace pas un essai de lecture.
-3. Vérifier **0.8.9** dans la barre FLUX et le **build 32** dans Réglages. Les réglages d’apparence se trouvent dans Interface.
+3. Vérifier **0.8.9** dans la barre FLUX et le **build 33** dans Réglages. Les réglages d’apparence se trouvent dans Interface.
 
 Prérequis de déploiement : macOS 14, iOS 17 ou tvOS 17. Installer Xcode complet pour compiler ; le verre système natif est réservé aux contrôles Mac/iOS compatibles ; tvOS privilégie des surfaces sombres légères. Sur iPhone/iPad ou Apple TV, ouvrir `FluxIPTV.xcodeproj`, choisir **FluxIPTViOS** ou **FluxIPTVTV**, puis renseigner l’équipe de signature pour un appareil physique.
 
@@ -97,7 +93,7 @@ Ouvrir **`FluxIPTV-AppleTV.xcodeproj`**, ou lancer **`Ouvrir Flux IPTV Apple TV.
 
 ## Validation
 
-Le périmètre des vérifications de cette livraison est dans [docs/VALIDATION-0.8.9.md](docs/VALIDATION-0.8.9.md). Le build 32 réunit les filtres par pays et leur mémoire avec les dernières corrections du focus natif de recherche, du sélecteur de pays et de la grille Apple TV. Il réserve aussi l’espace nécessaire au-dessus des saisons pour afficher entièrement la carte sélectionnée pendant son animation. Les tests unitaires du cœur ne démontrent ni la compilation des frameworks Apple, ni la fluidité réelle, ni la lecture des flux du fournisseur. Aucun EPG n’a été ajouté dans cette version.
+Le périmètre des vérifications de cette livraison est dans [docs/VALIDATION-0.8.9.md](docs/VALIDATION-0.8.9.md). Le build 33 remplace la bande-annonce de la fiche par la grande boîte du titre sélectionné, conserve la description et les actions de lecture, et retire les réglages de bandes-annonces. Il garde les filtres par pays, leur mémoire, les corrections du focus natif et l’espace réservé au-dessus des saisons depuis le build 32. Les résultats des anciens builds ne valident pas cette nouvelle présentation : consulter l’exécution attachée au commit exact du build 33. Les tests unitaires du cœur ne démontrent ni la compilation des frameworks Apple, ni la fluidité réelle, ni la lecture des flux du fournisseur. Aucun EPG n’a été ajouté dans cette version.
 
 ## GitHub Actions et pack complet
 

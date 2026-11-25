@@ -19,8 +19,6 @@ struct PlaybackSettingsView: View {
     @AppStorage(FluxAppearance.glassKey) private var glass = true
     @AppStorage(FluxAppearance.artworkKey) private var artwork = true
     @AppStorage(FluxAppearance.densityKey) private var density = "cinema"
-    @AppStorage(TrailerPreviewDelay.storageKey) private var trailerPreviewDelay: TrailerPreviewDelay = .five
-    @AppStorage(TrailerPreviewDelay.automaticKey) private var automaticTrailerPreview = true
     @AppStorage(LiveTVPreviewDelay.storageKey) private var livePreviewDelay: LiveTVPreviewDelay = .three
     @AppStorage(LiveTVPreviewDelay.automaticKey) private var automaticLivePreview = true
     @AppStorage(ClubInterfaceProfile.storageKey) private var clubProfile: ClubInterfaceProfile = .neoVideoClub
@@ -143,7 +141,7 @@ struct PlaybackSettingsView: View {
             environmentSection(.cinema,selection:$cinemaTheme)
             environmentSection(.videoClub,selection:$seriesTheme)
             environmentSection(.livingRoom,selection:$tvTheme)
-            section("Aperçu des chaînes TV", "La chaîne sélectionnée s’anime dans son écran après un délai. Ce réglage est indépendant des films et séries.") {
+            section("Aperçu des chaînes TV", "La chaîne sélectionnée s’anime dans son écran après un délai.") {
                 Toggle("Aperçu TV automatique", isOn: $automaticLivePreview)
                 Picker("Délai avant l’aperçu TV", selection: $livePreviewDelay) {
                     ForEach(LiveTVPreviewDelay.allCases) { delay in Text(delay.title).tag(delay) }
@@ -151,19 +149,7 @@ struct PlaybackSettingsView: View {
                 Text("Un seul aperçu à la fois, muet au départ. Le bouton Son active son audio ; Regarder ouvre la chaîne. Changer de chaîne, de catégorie ou d’espace arrête l’aperçu précédent.")
                     .font(.caption).foregroundStyle(.secondary)
             }
-            section("Bandes-annonces","La fiche plein écran présente le synopsis et une grande vidéo intégrée.") {
-                Toggle("Bande-annonce automatique dans le cadre",isOn:$automaticTrailerPreview)
-                Picker("Délai avant la bande-annonce",selection:$trailerPreviewDelay) {
-                    ForEach(TrailerPreviewDelay.allCases) {delay in Text(delay.title).tag(delay)}
-                }.disabled(!automaticTrailerPreview)
-                Text("L’aperçu automatique est muet. Bande-annonce agrandit la vidéo ; Retour retrouve la fiche du titre.").font(.caption).foregroundStyle(.secondary)
-                #if os(tvOS)
-                Text("Les bandes-annonces disponibles se lisent dans cette application. Une vidéo refusée ou indisponible est signalée dans la fiche.").font(.caption).foregroundStyle(.secondary)
-                #else
-                Text("Les bandes-annonces YouTube et les flux vidéo directs se lisent dans l’application. Sélectionnez Plein écran pour agrandir la vidéo.").font(.caption).foregroundStyle(.secondary)
-                #endif
-            }
-            section("Présentation et commandes","Les films et les séries partagent une fiche lisible, avec lecture et favoris.") {
+            section("Présentation et commandes","La fiche des films et séries présente la description, la boîte du titre, la lecture et les favoris.") {
                 ForEach(ClubInterfaceProfile.allCases) { concept in
                     Button {clubProfile=concept} label: {
                         HStack(alignment:.center,spacing:14) {
@@ -194,7 +180,6 @@ struct PlaybackSettingsView: View {
                     glass=true;artwork=true;density="cinema"
                     clubProfile = .neoVideoClub;stage = .orbit
                     cinemaTheme = .neo90;seriesTheme = .neo90;tvTheme = .neo90
-                    trailerPreviewDelay = .five;automaticTrailerPreview = true
                     livePreviewDelay = .three;automaticLivePreview = true
                 }
             }
