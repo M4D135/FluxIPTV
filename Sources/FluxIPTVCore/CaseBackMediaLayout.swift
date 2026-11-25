@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(CoreGraphics)
+import CoreGraphics
+#endif
 
 /// Normalized UV layout shared by printed artwork, video planes and focus.
 public enum CaseBackMediaLayout {

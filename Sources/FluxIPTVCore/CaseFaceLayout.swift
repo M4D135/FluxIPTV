@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(CoreGraphics)
+import CoreGraphics
+#endif
 
 /// Layout shared by the printed sleeve, UV picking and remote navigation.
 /// Coordinates are normalized from the top-left, independently of viewport size.

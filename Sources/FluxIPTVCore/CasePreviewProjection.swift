@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(CoreGraphics)
+import CoreGraphics
+#endif
 
 /// Projects a live native/web surface onto the four screen-space corners of
 /// the case's video frame. Coordinates use a top-left origin with downward Y.
