@@ -15,7 +15,8 @@ xcrun clang -isysroot "$sdk_path" -mmacosx-version-min=14.0 \
 xcrun swiftc -parse-as-library -swift-version 5 -warnings-as-errors \
   -D FLUX_KEYCHAIN_TESTING -sdk "$sdk_path" -target "$(uname -m)-apple-macosx14.0" \
   -import-objc-header "$compat_root/LegacyKeychainInteraction.h" \
-  "$repo_root"/Sources/FluxIPTVCore/*.swift \
+  "$repo_root/Sources/FluxIPTVCore/IPTVModels.swift" \
+  "$repo_root/Sources/FluxIPTVCore/PrivateCredentialStore.swift" \
   "$repo_root/FluxIPTVMac/SourcePersistence.swift" \
   "$repo_root/Tests/Native/KeychainInteractionSmoke.swift" \
   "$smoke_root/LegacyKeychainInteraction.o" -o "$smoke_root/KeychainInteractionSmoke"
