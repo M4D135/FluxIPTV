@@ -125,7 +125,13 @@ struct MediaDetailPresentation: View {
             seasons = value
             if !episodes.contains(where: { $0.id == selectedEpisodeID }) { selectedEpisodeID = episodes.first?.id }
         }
-        .onChange(of: remoteEvent) { _, event in if let event { handle(event.action) } }
+        .onChange(of: remoteEvent) { [fullscreenTrailer] _, event in
+            // Route according to the screen that received the event. The
+            // trailer's handler may close itself before this parent callback
+            // runs; reading live state here would consume Back/Select twice.
+            guard !fullscreenTrailer, let event else { return }
+            handle(event.action)
+        }
         .onChange(of: nativeFocus) { _, value in
             guard let value else { return }
             focusedID = value

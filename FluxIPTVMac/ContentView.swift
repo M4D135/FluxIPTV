@@ -512,11 +512,12 @@ struct ContentView: View {
     private var activeCatalogue: some View {
         resultsObservedCatalogue
         .task(id: livePreviewKey) {
+            guard !Task.isCancelled else { return }
             guard livePreviewAllowed, let item = previewItem, item.kind == .live else { livePreview.stop(); return }
             do {
                 let urls = automaticLivePreview ? try library.playbackURLs(for: item) : []
                 livePreview.schedule(id: item.id, urls: urls, delay: livePreviewDelay, enabled: automaticLivePreview)
-            } catch { livePreview.markUnavailable() }
+            } catch { livePreview.markUnavailable(id: item.id) }
         }
         .onDisappear { caseDetailTask?.cancel(); caseTransitionTask?.cancel(); seriesTask?.cancel(); entranceTask?.cancel(); favoriteFeedbackTask?.cancel(); playerControlsTask?.cancel(); livePreview.stop() }
     }
@@ -548,6 +549,7 @@ struct ContentView: View {
     private func setPreview(_ item: IPTVItem) {
         guard previewID != item.id else { return }
         if item.kind == .live {
+            livePreview.stop()
             withAnimation(reduceMotion ? nil : .spring(response: 0.38, dampingFraction: 0.86)) {
                 previewID = item.id; previewItem = item
             }
