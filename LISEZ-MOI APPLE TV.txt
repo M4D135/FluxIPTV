@@ -1,4 +1,4 @@
-FLUX IPTV 0.8.9 — BUILD 33 — PROJET APPLE TV
+FLUX IPTV 0.8.9 — BUILD 34 — PROJET APPLE TV
 
 1. Décompressez tout le dossier, en conservant Sources et FluxIPTVMac à côté
    des fichiers .xcodeproj. Les sources et les 18 décors 4K sont partagés.
@@ -65,7 +65,7 @@ Description complète, Favoris et Retour. Les décors restent visibles dans
 le catalogue ; seule la boîte du titre sélectionné apparaît dans sa fiche.
 
 Aucune bande-annonce n’est chargée ni proposée dans les fiches film/série.
-Leurs commandes et réglages ont été retirés au build 33. Les aperçus des
+Leurs commandes et réglages ont été retirés au build 34. Les aperçus des
 chaînes TV restent disponibles ; la lecture du film ou de l’épisode choisi
 démarre seulement avec la commande de lecture.
 

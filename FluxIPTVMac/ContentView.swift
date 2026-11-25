@@ -18,6 +18,16 @@ private struct CatalogFocusRequest: Equatable {
     let countryCode: String?
 }
 
+#if os(tvOS)
+/// Restoration can finish filtering before its lazy grid cell is mounted or
+/// the native focus engine has made its initial choice (often a search field).
+private struct BrowseRestoreFocusRequest {
+    let revision: UUID
+    let context: CatalogFocusRequest
+    let targetID: String
+}
+#endif
+
 #if FLUX_CATALOG_UI_TESTING
 struct CatalogSearchFocusSnapshot {
     let focusID: String?
@@ -106,6 +116,11 @@ struct ContentView: View {
     }
     @State private var pendingBrowseRestore = true
     @State private var browseRestoreTask: Task<Void, Never>?
+    #if os(tvOS)
+    @State private var pendingBrowseFocus: BrowseRestoreFocusRequest?
+    @State private var mountedBrowseFocusTargets: Set<String> = []
+    @State private var browserHasEnteredFocus = false
+    #endif
     @State private var resumeSlice = CatalogSlice()
     @State private var caseDetailTask: Task<Void, Never>?
     @State private var caseTransitionTask: Task<Void, Never>?
@@ -334,7 +349,9 @@ struct ContentView: View {
                 revealCatalogItem(id); setPreview(item)
             }
             #if os(tvOS)
-            systemFocus = id
+            // Scroll lazy destinations into existence without mistaking an
+            // early programmatic binding write for native focus readiness.
+            if !pendingBrowseRestore || page != .catalogue { systemFocus = id }
             reader.scrollTo(id, anchor: .center)
             #else
             if remoteNavigationActive && !searchFocus && !liveGroupSearchFocus {
@@ -348,10 +365,21 @@ struct ContentView: View {
             Task { @MainActor in
                 await Task.yield()
                 reader.scrollTo(id,anchor:.center)
-                if heldItem == nil && remoteNavigationActive { systemFocus=id }
+                if heldItem == nil && remoteNavigationActive && !pendingBrowseRestore { systemFocus=id }
             }
         }
         .onChange(of: systemFocus) { _, id in
+            #if os(tvOS)
+            if id != nil, page == .catalogue, heldItem == nil, !modalOpen {
+                browserHasEnteredFocus = true
+            }
+            if pendingBrowseRestore, page == .catalogue, heldItem == nil, !modalOpen {
+                resolveBrowseRestoreFocus()
+                // The incoming ID may be a temporary header. Do not let it
+                // overwrite the destination that was just handed off.
+                return
+            }
+            #endif
             // Removing the old results can make the native focus engine pick
             // the first header button before our submitted-search destination
             // is mounted. Keep that temporary fallback from cancelling the
@@ -371,6 +399,19 @@ struct ContentView: View {
             reportSearchFocusFixture()
             #endif
         }
+        #if os(tvOS)
+        .onChange(of: pendingBrowseFocus?.targetID) { _, id in
+            // A return to the same remembered item may not change focusID.
+            // Realize that lazy cell even when the logical selection is equal.
+            if let id { reader.scrollTo(id, anchor: .center) }
+        }
+        .onChange(of: searchFocus) { _, focused in
+            if focused, page == .catalogue, heldItem == nil, !modalOpen {
+                browserHasEnteredFocus = true
+                resolveBrowseRestoreFocus()
+            }
+        }
+        #endif
     }
 
     private func browserChrome(width: CGFloat) -> some View {
@@ -561,6 +602,9 @@ struct ContentView: View {
         }
         .onChange(of: catalogFocusContext) { _, context in
             if let request = pendingCatalogFocus, request != context { pendingCatalogFocus = nil }
+            #if os(tvOS)
+            if let request = pendingBrowseFocus, request.context != context { cancelBrowsingRestore() }
+            #endif
             #if FLUX_CATALOG_UI_TESTING
             reportSearchFocusFixture()
             #endif
@@ -875,6 +919,10 @@ struct ContentView: View {
             .animation(reduceMotion ? nil : .spring(response: 0.25, dampingFraction: 0.88), value: focused)
             .accessibilityLabel(title).accessibilityValue(selected ? "Sélectionné" : "")
             .accessibilityIdentifier("navigation-\(id)")
+            #if os(tvOS)
+            .onAppear { browseFocusTargetAppeared(id) }
+            .onDisappear { mountedBrowseFocusTargets.remove(id) }
+            #endif
             #if os(tvOS) && FLUX_CATALOG_UI_TESTING
             .background(TVCatalogControlFrameProbe(identifier: "navigation-\(id)").allowsHitTesting(false))
             #endif
@@ -1248,6 +1296,10 @@ struct ContentView: View {
         }.buttonStyle(FluxBareButtonStyle()).fluxFocus($systemFocus, id: item.id).id(item.id)
             .accessibilityLabel(item.name).accessibilityHint(televisionLayout ? "L’aperçu démarre dans cette vignette. Valider pour regarder. Appui long pour les favoris." : "Sélectionner pour afficher l’aperçu. Regarder ouvre la chaîne. Appui long pour les favoris.")
             .accessibilityIdentifier("live-channel-\(item.id)")
+            #if os(tvOS)
+            .onAppear { browseFocusTargetAppeared(item.id) }
+            .onDisappear { mountedBrowseFocusTargets.remove(item.id) }
+            #endif
             #if os(tvOS) && FLUX_CATALOG_UI_TESTING
             .background(TVCatalogControlFrameProbe(identifier: "live-channel-\(item.id)").allowsHitTesting(false))
             #endif
@@ -1468,6 +1520,10 @@ struct ContentView: View {
                 .overlay(RoundedRectangle(cornerRadius: 21).strokeBorder(focused ? Color.white.opacity(0.88) : .white.opacity(0.08), lineWidth: focused ? 2 : 1).allowsHitTesting(false))
             }.buttonStyle(FluxBareButtonStyle()).fluxFocus($systemFocus, id: item.id).id(item.id)
                 .accessibilityIdentifier("catalog-card-\(item.id)")
+                #if os(tvOS)
+                .onAppear { browseFocusTargetAppeared(item.id) }
+                .onDisappear { mountedBrowseFocusTargets.remove(item.id) }
+                #endif
                 #if os(tvOS) && FLUX_CATALOG_UI_TESTING
                 .background(TVCatalogControlFrameProbe(identifier: "catalog-card-\(item.id)").allowsHitTesting(false))
                 #endif
@@ -1881,6 +1937,7 @@ struct ContentView: View {
         }
     }
     private func pointerSelect(_ id: String) {
+        cancelBrowsingRestore()
         #if !os(tvOS)
         remoteNavigationActive = false
         #endif
@@ -1896,6 +1953,9 @@ struct ContentView: View {
     /// poster. A remembered selection never opens a player on app launch.
     private func restoreBrowsingContext() {
         browseRestoreTask?.cancel()
+        #if os(tvOS)
+        pendingBrowseFocus = nil
+        #endif
         pendingBrowseRestore = true
         pendingCatalogFocus = nil
         showingSearch = !library.search.isEmpty
@@ -1904,30 +1964,74 @@ struct ContentView: View {
         let revision = library.browsingRevision
         let source = library.selectedSourceID
         let kind = library.contentKind
+        let context = catalogFocusContext
         let rememberedItemID = library.browseItemID
         browseRestoreTask = Task { @MainActor in
             await Task.yield()
             guard !Task.isCancelled, library.browsingRevision == revision,
                   library.selectedSourceID == source, library.contentKind == kind,
+                  catalogFocusContext == context,
                   !library.isLoading, !library.isFiltering, page == .catalogue,
                   heldItem == nil, !modalOpen else { return }
             rebuildResumeSlice()
             catalogPage = min(catalogPage, catalogPageCount - 1)
+            let target: String
             if let item = visibleSlice.item(id: rememberedItemID) {
                 revealCatalogItem(item.id)
                 setPreview(item)
-                focusID = item.id
-                systemFocus = item.id
+                target = item.id
             } else {
-                focusID = "tab-\(kind.rawValue)"
-                systemFocus = focusID
+                target = "tab-\(kind.rawValue)"
             }
-            pendingBrowseRestore = false
             browseRestoreTask = nil
+            #if os(tvOS)
+            pendingBrowseFocus = BrowseRestoreFocusRequest(revision: revision, context: context, targetID: target)
+            focusID = target
+            resolveBrowseRestoreFocus()
+            #else
+            focusID = target
+            searchFocus = false
+            liveGroupSearchFocus = false
+            systemFocus = target
+            pendingBrowseRestore = false
+            #endif
         }
+    }
+    #if os(tvOS)
+    private func browseFocusTargetAppeared(_ id: String) {
+        mountedBrowseFocusTargets.insert(id)
+        resolveBrowseRestoreFocus()
+    }
+    private func resolveBrowseRestoreFocus() {
+        guard pendingBrowseRestore, let request = pendingBrowseFocus else { return }
+        guard request.revision == library.browsingRevision, request.context == catalogFocusContext else {
+            cancelBrowsingRestore()
+            return
+        }
+        guard !library.isLoading, !library.isFiltering, page == .catalogue,
+              heldItem == nil, !modalOpen, browserHasEnteredFocus,
+              mountedBrowseFocusTargets.contains(request.targetID) else { return }
+        // Consume before writing: subsequent remote navigation, including a
+        // deliberate move back into Search, must never be pulled to this item.
+        pendingBrowseFocus = nil
+        pendingBrowseRestore = false
+        searchFocus = false
+        liveGroupSearchFocus = false
+        focusID = request.targetID
+        systemFocus = request.targetID
+    }
+    #endif
+    private func cancelBrowsingRestore() {
+        browseRestoreTask?.cancel()
+        browseRestoreTask = nil
+        pendingBrowseRestore = false
+        #if os(tvOS)
+        pendingBrowseFocus = nil
+        #endif
     }
     private func focusFirstItem() {
         guard page == .catalogue, heldItem == nil, !modalOpen, !searchFocus, !liveGroupSearchFocus else { return }
+        cancelBrowsingRestore()
         pendingCatalogFocus = catalogFocusContext
         resolveCatalogFocus()
     }
@@ -1976,6 +2080,7 @@ struct ContentView: View {
     #endif
     private func search() {
         guard !modalOpen else { return }
+        cancelBrowsingRestore()
         cancelEntrance()
         if page != .catalogue { home() } else { dismissCaseImmediately() }
         liveGroupSearchFocus = false
@@ -1985,6 +2090,7 @@ struct ContentView: View {
         // While a query is filtering, visibleSlice can still contain the old
         // matches. A quick second OK must not open one of those stale items.
         guard page != .catalogue || !library.isFiltering else { return }
+        cancelBrowsingRestore()
         library.selectedItemID = item.id
         setPreview(item)
         if item.isSeriesCollection {loadSeries(item)}

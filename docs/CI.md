@@ -1,4 +1,4 @@
-# GitHub Actions — FLUX IPTV 0.8.9 — build 32
+# GitHub Actions — FLUX IPTV 0.8.9 — build 34
 
 Le workflow [Swift / Apple platforms](https://github.com/M4D135/FluxIPTV/actions/workflows/ci.yml) vérifie le commit indiqué en tête de chaque exécution. Il fonctionne sur `main`, sur les branches `work/three-rooms-*`, sur les pull requests et par lancement manuel.
 
@@ -25,7 +25,7 @@ Le job macOS exécute aussi `scripts/test-youtube-session.sh` : une vraie fenêt
 
 `scripts/test-keychain-interaction.sh` vérifie le pont de compatibilité Mac sans accéder aux identifiants. `scripts/check-keychain-platform.sh` type-vérifie le code réel avec les SDK iOS/tvOS et les avertissements traités comme erreurs. tvOS utilise le petit pont C vers la constante publique de refus d’interaction ; iOS utilise LAContext. La dépréciation est isolée à la fonction de compatibilité, jamais masquée sur tout le projet.
 
-Quatre scénarios tvOS supplémentaires couvrent France, Espagne, le sélecteur de pays et la restauration du catalogue : onze captures au total. Ils vérifient le filtrage du modèle réel, la séparation des préférences par section et leur relecture par une nouvelle bibliothèque. Le scénario de restauration ouvre ContentView sans sélection injectée et exige le retour du focus natif sur la chaîne mémorisée.
+Quatre scénarios tvOS supplémentaires couvrent France, Espagne, le sélecteur de pays et la restauration du catalogue : onze captures au total. Ils vérifient le filtrage du modèle réel, la séparation des préférences par section et leur relecture par une nouvelle bibliothèque. Le scénario de restauration ouvre ContentView sans sélection injectée et exige le retour du focus natif sur la chaîne mémorisée. Il est exécuté trois fois, avec terminaison puis nouveau lancement du processus entre chaque passage ; chaque passage conserve les mêmes assertions et ses diagnostics. Les onze captures canoniques restent présentes.
 
 Le contrôle des SDK exige son marqueur de réussite exact dans le journal. Son tableau d’arguments reste non vide sur toutes les plateformes pour être compatible avec le Bash livré sur macOS et `set -u` ; une erreur d’expansion ne peut plus laisser le contrôle iOS apparemment réussi.
 
