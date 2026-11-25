@@ -95,7 +95,7 @@ def generate(platforms, project_name):
         for config in ['Debug','Release']:
             settings = f"""
             CODE_SIGN_STYLE = Automatic;
-            CURRENT_PROJECT_VERSION = 25;
+            CURRENT_PROJECT_VERSION = 26;
             GENERATE_INFOPLIST_FILE = NO;
             INFOPLIST_FILE = FluxIPTVMac/{p['plist']};
             SDKROOT = {p['sdk']};

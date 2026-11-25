@@ -19,6 +19,7 @@
 - Build 24 : une recherche sans résultat conserve sa demande de focus jusqu'au transfert natif vers l'onglet de contenu courant ; le repli automatique transitoire vers TV ne l'annule plus.
 - Les boutons de catalogue déjà dessinés utilisent explicitement le style nu au plus près de leur libellé. Un style `plain` interne reprenait la priorité sur tvOS et ajoutait un large socle blanc derrière la tuile active ; le contour et les animations propres à FLUX sont conservés.
 - Build 25 : sept colonnes de jaquettes en densité normale sur Apple TV, afin de garder le titre et les métadonnées dans la zone visible sous les menus. La capture native vérifie désormais aussi la position de la carte focalisée dans la fenêtre et son confinement dans le viewport, pas seulement sa taille relative.
+- Build 26 : correction du contrôle Trousseau iOS avec le Bash livré sur macOS. Le tableau d'arguments du compilateur n'est plus vide sur iOS et la CI exige le marqueur de réussite exact ; un journal contenant seulement une erreur de script ne suffit plus à valider cette étape.
 - La garde SwiftParser rejette maintenant les erreurs de syntaxe, y compris dans les branches de compilation conditionnelle, en plus des déclarations SwiftUI invalides.
 - Conservation de la sourdine demandée pendant le chargement asynchrone d’une bande-annonce ; retour à la fiche et commande de son partagent le même état que le lecteur.
 - Nouvelle tentative après une erreur de session YouTube depuis le bouton Lire, en conservant la préférence de son.
