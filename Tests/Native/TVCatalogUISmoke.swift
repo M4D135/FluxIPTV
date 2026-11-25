@@ -242,7 +242,7 @@ private enum TVCatalogUIFailure: Error, CustomStringConvertible {
                         // A portrait catalogue card includes its 2:3 artwork
                         // and labels. Keep the tighter bound for all controls
                         // and landscape tiles in the other four scenarios.
-                        let maximumHeightFraction: CGFloat = fixture.scenario == "movies" ? 0.72 : 0.45
+                        let maximumHeightFraction: CGFloat = fixture.scenario == "movies" ? 0.60 : 0.45
                         let bounded = !frame.isEmpty && !frame.isInfinite && !frame.isNull && fraction.isFinite &&
                             fraction < 0.18 && frame.width < window.bounds.width * 0.75 && frame.height < window.bounds.height * maximumHeightFraction
                         let identity = focusIdentity(focused)
@@ -251,12 +251,23 @@ private enum TVCatalogUIFailure: Error, CustomStringConvertible {
                         // when exposed, must match the intended initial control.
                         let expectedFocus = identity.identifier.isEmpty || identity.identifier == fixture.expectedInitialControl
                         let largeEnough = frame.width >= fixture.minimumFocusSize.width && frame.height >= fixture.minimumFocusSize.height
+                        let geometry = focusGeometry(focused, in: window)
+                        let fullyVisible = geometry.map {
+                            !$0.frame.isEmpty && !$0.frame.isNull && !$0.frame.isInfinite &&
+                                $0.viewport.insetBy(dx: -1, dy: -1).contains($0.frame)
+                        } ?? false
+                        // A small enough card can still extend below the grid.
+                        // Measure its actual window position and clipped viewport.
+                        let visibilityAccepted = fixture.scenario != "movies" || fullyVisible
                         lastObservation = [
                             "windowPoints": [window.bounds.width, window.bounds.height],
                             "focusedType": String(describing: type(of: focused)),
                             "focusedIdentifier": identity.identifier,
                             "focusedLabel": identity.label,
                             "focusFrame": [frame.origin.x, frame.origin.y, frame.width, frame.height],
+                            "focusFrameInWindow": geometry.map { [$0.frame.minX, $0.frame.minY, $0.frame.width, $0.frame.height] } ?? [],
+                            "focusViewportInWindow": geometry.map { [$0.viewport.minX, $0.viewport.minY, $0.viewport.width, $0.viewport.height] } ?? [],
+                            "fullyVisibleNativeFocus": fullyVisible,
                             "focusAreaFraction": fraction.isFinite ? Double(fraction) : -1,
                             "boundedNativeFocus": bounded,
                             "largeEnoughNativeControl": largeEnough,
@@ -266,8 +277,8 @@ private enum TVCatalogUIFailure: Error, CustomStringConvertible {
                             "expectedControlIdentifierObserved": identity.identifier == fixture.expectedInitialControl,
                             "sceneKitViewMounted": false
                         ]
-                        let key = "\(identity.identifier)|\(frame)"
-                        stableSamples = bounded && expectedFocus && largeEnough && key == previousFocus ? stableSamples + 1 : 0
+                        let key = "\(identity.identifier)|\(frame)|\(String(describing: geometry?.frame))"
+                        stableSamples = bounded && expectedFocus && largeEnough && visibilityAccepted && key == previousFocus ? stableSamples + 1 : 0
                         previousFocus = key
                         if stableSamples >= 4 {
                             var report = lastObservation
@@ -291,7 +302,7 @@ private enum TVCatalogUIFailure: Error, CustomStringConvertible {
             var report = lastObservation
             report["status"] = "failed"
             report["scenario"] = fixture.scenario
-            report["error"] = "No stable native focus on the expected bounded, sufficiently large control within 22 seconds."
+            report["error"] = "No stable native focus on the expected bounded, sufficiently large control (and fully visible movie card) within 22 seconds."
             try write(report)
             fputs("FAIL: tvOS UI did not reach the expected stable bounded native focus.\n", stderr)
         } catch is CancellationError {
@@ -306,6 +317,37 @@ private enum TVCatalogUIFailure: Error, CustomStringConvertible {
 
     private static func containsSceneKit(_ view: UIView) -> Bool {
         view is SCNView || view.subviews.contains(where: containsSceneKit)
+    }
+
+    private static func focusGeometry(_ focused: any UIFocusItem, in window: UIWindow) -> (frame: CGRect, viewport: CGRect)? {
+        if let view = focused as? UIView {
+            return (view.convert(view.bounds, to: window), visibleViewport(from: view.superview, in: window))
+        }
+        // UIFocusItem.frame is expressed in its containing focus environment,
+        // not in window coordinates. SwiftUI's responder item is not a UIView.
+        var parent = focused.parentFocusEnvironment
+        var visited = Set<ObjectIdentifier>()
+        while let environment = parent, visited.insert(ObjectIdentifier(environment)).inserted {
+            if let container = environment.focusItemContainer {
+                let space = container.coordinateSpace
+                return (space.convert(focused.frame, to: window),
+                        visibleViewport(from: space as? UIView, in: window))
+            }
+            parent = environment.parentFocusEnvironment
+        }
+        return nil
+    }
+
+    private static func visibleViewport(from view: UIView?, in window: UIWindow) -> CGRect {
+        var visible = window.safeAreaLayoutGuide.layoutFrame
+        var ancestor = view
+        while let candidate = ancestor {
+            if candidate.clipsToBounds {
+                visible = visible.intersection(candidate.convert(candidate.bounds, to: window))
+            }
+            ancestor = candidate.superview
+        }
+        return visible
     }
 
     private static func focusIdentity(_ focused: any UIFocusItem) -> (identifier: String, label: String) {

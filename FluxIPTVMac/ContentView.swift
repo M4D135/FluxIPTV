@@ -200,7 +200,10 @@ struct ContentView: View {
     }
     private var cardWidth: CGFloat {
         #if os(tvOS)
-        return density == "compact" ? 260 : 300
+        // Seven portrait cards fit the 1080p TV safe width in the normal mode.
+        // Keep their full footer inside the remaining height below the menus;
+        // six columns still left a 552-point card in a roughly 520-point area.
+        return density == "compact" ? 210 : 240
         #elseif os(iOS)
         return sizeClass == .compact ? 124 : (library.contentKind == .live ? 174 : 150)
         #else

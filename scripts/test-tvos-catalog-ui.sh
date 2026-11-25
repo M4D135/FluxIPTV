@@ -211,6 +211,9 @@ if sys.argv[2] == "live" and report.get("selectedItemID") != "fixture-live-0":
 if sys.argv[2] == "movies" and report.get("selectedItemID") != "fixture-movie-1":
     print("The movie catalogue fixture did not select its second poster.", file=sys.stderr)
     sys.exit(1)
+if sys.argv[2] == "movies" and report.get("fullyVisibleNativeFocus") is not True:
+    print("The focused movie card extends outside its visible safe viewport.", file=sys.stderr)
+    sys.exit(1)
 if sys.argv[2] == "welcome" and report.get("selectedItemID") != "":
     print("The welcome fixture unexpectedly selected catalogue content.", file=sys.stderr)
     sys.exit(1)
