@@ -3,183 +3,183 @@
   "generator": "Blender procedural geometry and materials",
   "blender": "4.3.2",
   "seed": 82026,
-  "width": 1920,
-  "height": 1080,
+  "width": 3840,
+  "height": 2160,
   "samples": 24,
   "external_models": false,
   "external_textures": false,
   "image_generation_ai": false,
-  "files": [
-    {
-      "file": "cinema-neo90.jpg",
-      "bytes": 228092,
-      "sha256": "4d3f70251845f950e7fd58cb5bb2267003d315310d7229e9129fdd7d0c360416",
-      "seconds": 85.08,
-      "objects": 420,
-      "engine": "CYCLES",
-      "denoising": "OpenImageDenoise"
-    },
-    {
-      "file": "cinema-midnight.jpg",
-      "bytes": 218860,
-      "sha256": "6907018d2a3633dfaa7f9860f9777d8b7527aea7866ca86a4f347f2288b00627",
-      "seconds": 91.62,
-      "objects": 420,
-      "engine": "CYCLES",
-      "denoising": "OpenImageDenoise"
-    },
-    {
-      "file": "cinema-vintage70.jpg",
-      "bytes": 218495,
-      "sha256": "1bbff3f073a1c42b2b8861285d14b4f8593ccf7de9af1c2a3b985ac998bcecd9",
-      "seconds": 95.72,
-      "objects": 416,
-      "engine": "CYCLES",
-      "denoising": "OpenImageDenoise"
-    },
-    {
-      "file": "cinema-artDeco.jpg",
-      "bytes": 210846,
-      "sha256": "81526539e41852048f9dead2e80bff0342d086e3d8b07a1a23b515fbe7de3085",
-      "seconds": 90.31,
-      "objects": 443,
-      "engine": "CYCLES",
-      "denoising": "OpenImageDenoise"
-    },
-    {
-      "file": "cinema-zen.jpg",
-      "bytes": 225963,
-      "sha256": "1518108a282cbbe95761bb8ac691f0a8d464fc8eec44125cdd529fa2d35fb03a",
-      "seconds": 113.74,
-      "objects": 416,
-      "engine": "CYCLES",
-      "denoising": "OpenImageDenoise"
-    },
-    {
-      "file": "cinema-future.jpg",
-      "bytes": 244234,
-      "sha256": "725c1a6567b8e474208d92e35bee1370b3f9d3d72c11a9b298ed9d0372215ea9",
-      "seconds": 98.28,
-      "objects": 423,
-      "engine": "CYCLES",
-      "denoising": "OpenImageDenoise"
-    },
-    {
-      "file": "videoClub-neo90.jpg",
-      "bytes": 351122,
-      "sha256": "25c74bf43adbd3adccb1110e2fd3687ce4a56243515b4411ff3be7b69aaf3694",
-      "seconds": 109.73,
-      "objects": 7539,
-      "engine": "CYCLES",
-      "denoising": "OpenImageDenoise"
-    },
-    {
-      "file": "videoClub-midnight.jpg",
-      "bytes": 319378,
-      "sha256": "f5238f2bc34ba83d7155892460a03394eba50c707b19acdda3a7e96dd76e6188",
-      "seconds": 139.42,
-      "objects": 7537,
-      "engine": "CYCLES",
-      "denoising": "OpenImageDenoise"
-    },
-    {
-      "file": "videoClub-vintage70.jpg",
-      "bytes": 351684,
-      "sha256": "dab3783b897683bc81d2da2088939f2b3028b2299d41298368d61cba01d006e1",
-      "seconds": 110.84,
-      "objects": 7539,
-      "engine": "CYCLES",
-      "denoising": "OpenImageDenoise"
-    },
-    {
-      "file": "videoClub-artDeco.jpg",
-      "bytes": 312507,
-      "sha256": "3170e25a018dbfad3a255db026aa21a22b1f3273ff439b5a9f7f7d868b8b9013",
-      "seconds": 143.21,
-      "objects": 7561,
-      "engine": "CYCLES",
-      "denoising": "OpenImageDenoise"
-    },
-    {
-      "file": "videoClub-zen.jpg",
-      "bytes": 378335,
-      "sha256": "14bde49363809ebccfb86ef879e4a8ed15d6ad8be43de301db4e0e5090f65dac",
-      "seconds": 164.37,
-      "objects": 7536,
-      "engine": "CYCLES",
-      "denoising": "OpenImageDenoise"
-    },
-    {
-      "file": "videoClub-future.jpg",
-      "bytes": 341858,
-      "sha256": "d8ecea9ff594bbd148347a4628c9bdbd27759fd7dc4dc563e7b3799da590b126",
-      "seconds": 153.77,
-      "objects": 7539,
-      "engine": "CYCLES",
-      "denoising": "OpenImageDenoise"
-    },
-    {
-      "file": "livingRoom-neo90.jpg",
-      "bytes": 185985,
-      "sha256": "6a76d26d2c3c2f0075f91f7692e8209f30b9868d4106bcd2debf0e38d348d800",
-      "seconds": 121.36,
-      "objects": 378,
-      "engine": "CYCLES",
-      "denoising": "OpenImageDenoise"
-    },
-    {
-      "file": "livingRoom-midnight.jpg",
-      "bytes": 172321,
-      "sha256": "41d2f6aa23dd1e6ac7e287149db19f47da3640d6d78f5bfe2503a159a011a4e9",
-      "seconds": 94.15,
-      "objects": 378,
-      "engine": "CYCLES",
-      "denoising": "OpenImageDenoise"
-    },
-    {
-      "file": "livingRoom-vintage70.jpg",
-      "bytes": 196391,
-      "sha256": "2429afd742724b5c57036d730e6960da9f172603074f4669728460abb71c2e82",
-      "seconds": 97.77,
-      "objects": 376,
-      "engine": "CYCLES",
-      "denoising": "OpenImageDenoise"
-    },
-    {
-      "file": "livingRoom-artDeco.jpg",
-      "bytes": 179140,
-      "sha256": "206d974d3b8950e2d7db339fc9c26ad0799b0c8e13d3fd6eb7e106506bdf6fcf",
-      "seconds": 89.59,
-      "objects": 401,
-      "engine": "CYCLES",
-      "denoising": "OpenImageDenoise"
-    },
-    {
-      "file": "livingRoom-zen.jpg",
-      "bytes": 201439,
-      "sha256": "9bf319415d6009d33d9c6c6c8466103d6e85806fda8788cd0a59abf5ba89a672",
-      "seconds": 104.67,
-      "objects": 376,
-      "engine": "CYCLES",
-      "denoising": "OpenImageDenoise"
-    },
-    {
-      "file": "livingRoom-future.jpg",
-      "bytes": 182693,
-      "sha256": "038513871a54fb8fca9bc242afd64ef773df3f74474497e1ab763a1c0b6c301b",
-      "seconds": 96.51,
-      "objects": 378,
-      "engine": "CYCLES",
-      "denoising": "OpenImageDenoise"
-    }
-  ],
   "color_management": {
     "view": "AgX",
     "look": "AgX - Medium High Contrast",
     "exposure": 0.25
   },
   "source_files": {
-    "scripts/rooms/bake_rooms.py": "216e6f7327f94d87c8c54829125297ebda38e7f029b6aa05b95c3cbe6dbfd136",
+    "scripts/rooms/bake_rooms.py": "9ee9f62c607970d1545096712775c4794dc943ff5b3dd60f753201b69bbbfdba",
     "scripts/rooms/denoise_linear.py": "98269ec82f06ab2a7c421eca48ca64db44920b336bd3e89686c4ae0056d825a2"
-  }
+  },
+  "files": [
+    {
+      "file": "cinema-neo90.jpg",
+      "bytes": 960517,
+      "sha256": "3b00603fea1175382674b3c07b2a20242e13bcdf31a11944f4d05da7d219c909",
+      "seconds": 339.14,
+      "objects": 494,
+      "engine": "CYCLES",
+      "denoising": "OpenImageDenoise"
+    },
+    {
+      "file": "cinema-midnight.jpg",
+      "bytes": 904514,
+      "sha256": "a8231b0a3f85f3681be66d1b763ff6e487d362912747ee6fec7aefa486c9e22c",
+      "seconds": 491.83,
+      "objects": 332,
+      "engine": "CYCLES",
+      "denoising": "OpenImageDenoise"
+    },
+    {
+      "file": "cinema-vintage70.jpg",
+      "bytes": 922750,
+      "sha256": "94b2122459ec7292acff2dcd3c9095345b248536cef00db749acd6042f2b89f4",
+      "seconds": 427.65,
+      "objects": 433,
+      "engine": "CYCLES",
+      "denoising": "OpenImageDenoise"
+    },
+    {
+      "file": "cinema-artDeco.jpg",
+      "bytes": 975530,
+      "sha256": "f9c6a7859665e043773f7409d0355e669a1693f2ef9c874afd6fea426bd4b235",
+      "seconds": 396.56,
+      "objects": 470,
+      "engine": "CYCLES",
+      "denoising": "OpenImageDenoise"
+    },
+    {
+      "file": "cinema-zen.jpg",
+      "bytes": 1069316,
+      "sha256": "b345ebfb6bd9885ce6c90b6986c646c721951328f485a8d71769c5296fb55627",
+      "seconds": 480.23,
+      "objects": 589,
+      "engine": "CYCLES",
+      "denoising": "OpenImageDenoise"
+    },
+    {
+      "file": "cinema-future.jpg",
+      "bytes": 1042195,
+      "sha256": "43d7d2f2b94778eb46c4d3ed1d4b929b9364d66bf5133e00218d4ee0b53e01d2",
+      "seconds": 408.29,
+      "objects": 329,
+      "engine": "CYCLES",
+      "denoising": "OpenImageDenoise"
+    },
+    {
+      "file": "videoClub-neo90.jpg",
+      "bytes": 1269752,
+      "sha256": "be5d211b0db6094975a1fdccd2a21803e932078e86350db653418f75e2828e01",
+      "seconds": 430.03,
+      "objects": 7614,
+      "engine": "CYCLES",
+      "denoising": "OpenImageDenoise"
+    },
+    {
+      "file": "videoClub-midnight.jpg",
+      "bytes": 1273788,
+      "sha256": "0f4728b73e95dfcf80a65a4cb2e44234fc33d181218d13a3d9072b34923f32cc",
+      "seconds": 423.69,
+      "objects": 7361,
+      "engine": "CYCLES",
+      "denoising": "OpenImageDenoise"
+    },
+    {
+      "file": "videoClub-vintage70.jpg",
+      "bytes": 1238392,
+      "sha256": "140216416523d82efb1c1c69cacda9f4ed644e1913c597003b6ab5d8953832ac",
+      "seconds": 467.27,
+      "objects": 7557,
+      "engine": "CYCLES",
+      "denoising": "OpenImageDenoise"
+    },
+    {
+      "file": "videoClub-artDeco.jpg",
+      "bytes": 1309667,
+      "sha256": "56d392ef3a8e8f30ab5e6960ac6b51d49c0846bffc585997c8fcbfdc2495a4b5",
+      "seconds": 412.77,
+      "objects": 7588,
+      "engine": "CYCLES",
+      "denoising": "OpenImageDenoise"
+    },
+    {
+      "file": "videoClub-zen.jpg",
+      "bytes": 1423596,
+      "sha256": "d3468c03c092b73332d96b6dacb8a789d84e74220ca628a31a422723339d17aa",
+      "seconds": 833.41,
+      "objects": 7610,
+      "engine": "CYCLES",
+      "denoising": "OpenImageDenoise"
+    },
+    {
+      "file": "videoClub-future.jpg",
+      "bytes": 1317935,
+      "sha256": "94de41f52e03eac4d6a490e5c009fda793e2d33073d982bba03ba936fd8e2795",
+      "seconds": 536.06,
+      "objects": 7445,
+      "engine": "CYCLES",
+      "denoising": "OpenImageDenoise"
+    },
+    {
+      "file": "livingRoom-neo90.jpg",
+      "bytes": 904674,
+      "sha256": "a4562b3352fa9ff47d71f7f868add4b6e48a8bfb5f421ab0418cb3b1b9e4764c",
+      "seconds": 366.87,
+      "objects": 686,
+      "engine": "CYCLES",
+      "denoising": "OpenImageDenoise"
+    },
+    {
+      "file": "livingRoom-midnight.jpg",
+      "bytes": 615668,
+      "sha256": "066cfb97b6d73d3ad3d8a9cd94a6a5c2156e4d6a1a15a5cbf2677b37ac637bd8",
+      "seconds": 570.52,
+      "objects": 331,
+      "engine": "CYCLES",
+      "denoising": "OpenImageDenoise"
+    },
+    {
+      "file": "livingRoom-vintage70.jpg",
+      "bytes": 884954,
+      "sha256": "c03410c00740c8d47189cb34775f2b83a1c41768bd4d510e01c159ebc50c767c",
+      "seconds": 367.75,
+      "objects": 346,
+      "engine": "CYCLES",
+      "denoising": "OpenImageDenoise"
+    },
+    {
+      "file": "livingRoom-artDeco.jpg",
+      "bytes": 773086,
+      "sha256": "be23ccf38694bf4886b4bff6bb29730126fbb8521a98a5c408714dee8272ea64",
+      "seconds": 354.01,
+      "objects": 402,
+      "engine": "CYCLES",
+      "denoising": "OpenImageDenoise"
+    },
+    {
+      "file": "livingRoom-zen.jpg",
+      "bytes": 1000253,
+      "sha256": "854b47a6073ae4f498ba6aa70edbfa27db94bd92efcfc1c1227ad6c78269ad03",
+      "seconds": 619.68,
+      "objects": 351,
+      "engine": "CYCLES",
+      "denoising": "OpenImageDenoise"
+    },
+    {
+      "file": "livingRoom-future.jpg",
+      "bytes": 913823,
+      "sha256": "e9a48c2f073f7b2936f7cb6b1aeba05c71a00cce195de622c6061b8a00d7a526",
+      "seconds": 334.06,
+      "objects": 217,
+      "engine": "CYCLES",
+      "denoising": "OpenImageDenoise"
+    }
+  ]
 }
