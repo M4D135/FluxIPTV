@@ -14,6 +14,8 @@ Une exécution du build 36 a exposé une course dans les scénarios France/Espag
 
 Le scénario de source indisponible commence sur Pays, contrôle choisi par le moteur natif et confirmé dans l’arbre d’accessibilité. Il conserve les trois déplacements Bas / Haut / Bas entre Pays et Reconnecter, la comparaison entre focus natif et surbrillance et les trois captures correspondantes. Ces ajustements concernent le harnais de validation ; les commandes de l’application sont conservées.
 
+L’exécution initiale [45663229094](https://github.com/M4D135/FluxIPTV/actions/runs/45663229094) a produit onze PNG canoniques, mais seulement neuf rapports `ready` : France et Espagne avaient le statut `failed`. Un des trois tests XCUIRemote avait réussi. La présence d’une image ne vaut donc pas validation de son focus ; la livraison exige les rapports et tests réussis du commit final.
+
 ## Finalisation du build 35 : navigation réelle
 
 - La grande boîte, la description et les commandes de lecture du build 34 sont conservées, avec l’absence de lecteur de bande-annonce dans la fiche.
