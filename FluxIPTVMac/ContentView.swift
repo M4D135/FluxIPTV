@@ -1128,7 +1128,7 @@ struct ContentView: View {
         VStack(alignment: .leading, spacing: 16) {
             HStack(alignment: .center, spacing: 18) {
                 Text("En direct").font(.system(size: 34, weight: .bold))
-                Text(library.isFiltering ? "Recherche…" : "\(visible.count) chaînes")
+                Text(library.isFiltering ? "Recherche…" : "\(visible.count) \(visible.count == 1 ? "chaîne" : "chaînes")")
                     .font(.system(size: 22)).foregroundStyle(.white.opacity(0.7))
                 Spacer(minLength: 10)
                 Text("OK Regarder · Appui long Favoris")
@@ -1200,7 +1200,7 @@ struct ContentView: View {
                         VStack(alignment: .leading, spacing: 4) {
                             Text(group ?? library.selectedPreset?.name ?? "Télévision")
                                 .font(.title2.weight(.bold)).lineLimit(1)
-                            Text("\(library.selectedSource?.name ?? "Votre salon TV") · \(library.isFiltering ? "Recherche…" : "\(visible.count) chaînes")")
+                            Text("\(library.selectedSource?.name ?? "Votre salon TV") · \(library.isFiltering ? "Recherche…" : "\(visible.count) \(visible.count == 1 ? "chaîne" : "chaînes")")")
                                 .font(.caption).foregroundStyle(.secondary).lineLimit(1)
                         }
                         Spacer(minLength: 0)
@@ -1397,7 +1397,7 @@ struct ContentView: View {
             HStack {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(library.selectedPreset?.name ?? environment.title).font(.system(.largeTitle, design: .default).weight(.bold)).lineLimit(1)
-                    Text("\(library.selectedSource?.name ?? "Bibliothèque")  ·  \(library.isFiltering ? "Recherche…" : "\(visible.count) éléments")").font(.callout).foregroundStyle(.secondary)
+                    Text("\(library.selectedSource?.name ?? "Bibliothèque")  ·  \(library.isFiltering ? "Recherche…" : "\(visible.count) \(visible.count == 1 ? "élément" : "éléments")")").font(.callout).foregroundStyle(.secondary)
                     if !compactChrome {
                         Text(library.contentKind == .movie ? "À l’affiche · Choisir un film" : library.contentKind == .series ? "Les séries · Saisons et épisodes" : "En direct · Choisir une chaîne")
                             .font(.caption).foregroundStyle(.secondary)

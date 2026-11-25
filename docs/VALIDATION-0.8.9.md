@@ -1,4 +1,10 @@
-# Validation de FLUX IPTV 0.8.9 — build 36
+# Validation de FLUX IPTV 0.8.9 — build 37
+
+## Finalisation du build 37 : validation native intégrée
+
+Le build 37 intègre les derniers correctifs du build 36 : les scénarios France/Espagne passent par la restauration de production et le catalogue garde son identité SwiftUI lorsque Retour devient disponible. Le test Pays exige toujours le focus natif et logique sur la première chaîne française dès son démarrage. Il conserve toutes les étapes France → Espagne, réouverture, déplacement vers France et annulation par Menu, puis vérifie le retour à l’onglet TV et la mise en arrière-plan par Menu. Aucun déplacement préparatoire ne masque un échec de restauration.
+
+La revue des captures corrige aussi les libellés au singulier : « 1 élément » et « 1 chaîne ». Les deux projets Xcode portent 0.8.9 / 37. La validation applicable est l’exécution du commit exact livré ; les treize lancements canoniques et les trois parcours de télécommande restent obligatoires.
 
 ## Finalisation du build 36 : rangée d’épisodes entière sur Mac
 

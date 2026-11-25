@@ -1,4 +1,4 @@
-# FLUX IPTV 0.8.9 — build 36 — Fiches avec grande boîte et filtres mémorisés
+# FLUX IPTV 0.8.9 — build 37 — Fiches avec grande boîte et filtres mémorisés
 
 Application native SwiftUI pour macOS, iOS et tvOS.
 
@@ -6,7 +6,7 @@ Application native SwiftUI pour macOS, iOS et tvOS.
 
 Le pays, la catégorie, la recherche, la recherche de catégories, la liste de favoris, le filtre À reprendre des films, la page et la dernière sélection sont mémorisés **par source et par section**. Revenir dans TV ou relancer l’application retrouve ce contexte sans lancer une chaîne automatiquement. Le changement de section et Retour conservent les filtres ; **Toutes les chaînes** réinitialise explicitement les filtres TV, et **Tous les pays** dans le sélecteur retire seulement la restriction de pays. Une catégorie ou une chaîne supprimée par le fournisseur est écartée lors du prochain chargement réussi.
 
-**Le build 36 présente la description et une unique grande boîte du titre sélectionné dans la fiche plein écran.** La boîte reprend la jaquette et le format VHS/DVD du catalogue. Les commandes Lecture, Description complète, Favoris et Retour restent disponibles. Une série ouvre son rayon de saisons, puis sa fiche avec les épisodes de la saison choisie. La fiche ne charge aucune bande-annonce et ne propose aucune commande de bande-annonce. Les anciens réglages de bandes-annonces ont été retirés.
+**Le build 37 présente la description et une unique grande boîte du titre sélectionné dans la fiche plein écran.** La boîte reprend la jaquette et le format VHS/DVD du catalogue. Les commandes Lecture, Description complète, Favoris et Retour restent disponibles. Une série ouvre son rayon de saisons, puis sa fiche avec les épisodes de la saison choisie. La fiche ne charge aucune bande-annonce et ne propose aucune commande de bande-annonce. Les anciens réglages de bandes-annonces ont été retirés.
 
 Sur Apple TV, **TV, Films, Séries et Recherche** utilisent de grandes icônes avec un focus explicite. Les chaînes suivent une disposition horizontale : catégories au-dessus de grandes vignettes 16:9, aperçu dans la seule vignette active. Les décors FLUX restent visibles. Au premier démarrage sans source, **Charger une liste** propose Xtream Codes ou une URL M3U ; Mac et iOS acceptent aussi un fichier M3U.
 
@@ -79,7 +79,7 @@ L’archive contient les sources et l’installateur Mac, pas un binaire Apple p
 
 1. Sur Mac, quitter l’ancienne app et arrêter le lancement depuis Xcode.
 2. Décompresser, puis ouvrir **Installer Flux IPTV.command**. L’installateur compile sur ce Mac et vérifie le démarrage ; cette vérification ne remplace pas un essai de lecture.
-3. Vérifier **0.8.9** dans la barre FLUX et le **build 36** dans Réglages. Les réglages d’apparence se trouvent dans Interface.
+3. Vérifier **0.8.9** dans la barre FLUX et le **build 37** dans Réglages. Les réglages d’apparence se trouvent dans Interface.
 
 Prérequis de déploiement : macOS 14, iOS 17 ou tvOS 17. Installer Xcode complet pour compiler ; le verre système natif est réservé aux contrôles Mac/iOS compatibles ; tvOS privilégie des surfaces sombres légères. Sur iPhone/iPad ou Apple TV, ouvrir `FluxIPTV.xcodeproj`, choisir **FluxIPTViOS** ou **FluxIPTVTV**, puis renseigner l’équipe de signature pour un appareil physique.
 
@@ -93,9 +93,9 @@ Ouvrir **`FluxIPTV-AppleTV.xcodeproj`**, ou lancer **`Ouvrir Flux IPTV Apple TV.
 
 ## Validation
 
-Le périmètre des vérifications de cette livraison est dans [docs/VALIDATION-0.8.9.md](docs/VALIDATION-0.8.9.md). Le build 36 remplace la bande-annonce de la fiche par la grande boîte du titre sélectionné, conserve la description et les actions de lecture, et retire les réglages de bandes-annonces. Il garde les filtres par pays, leur mémoire, les corrections du focus natif et l’espace réservé au-dessus des saisons depuis le build 32. Les résultats des anciens builds ne valident pas cette nouvelle présentation : consulter l’exécution attachée au commit exact du build 36. La restauration de la chaîne attend son montage et la première prise de focus natif, puis libère le champ de recherche avant un transfert unique ; elle est vérifiée sur trois lancements à froid. Les tests unitaires du cœur ne démontrent ni la compilation des frameworks Apple, ni la fluidité réelle, ni la lecture des flux du fournisseur. Aucun EPG n’a été ajouté dans cette version.
+Le périmètre des vérifications de cette livraison est dans [docs/VALIDATION-0.8.9.md](docs/VALIDATION-0.8.9.md). Le build 37 remplace la bande-annonce de la fiche par la grande boîte du titre sélectionné, conserve la description et les actions de lecture, et retire les réglages de bandes-annonces. Il garde les filtres par pays, leur mémoire, les corrections du focus natif et l’espace réservé au-dessus des saisons depuis le build 32. Les résultats des anciens builds ne valident pas cette nouvelle présentation : consulter l’exécution attachée au commit exact du build 37. La restauration de la chaîne attend son montage et la première prise de focus natif, puis libère le champ de recherche avant un transfert unique ; elle est vérifiée sur trois lancements à froid. Les tests unitaires du cœur ne démontrent ni la compilation des frameworks Apple, ni la fluidité réelle, ni la lecture des flux du fournisseur. Aucun EPG n’a été ajouté dans cette version.
 
-Le build 36 corrige aussi la surbrillance après l’échec du chargement d’une source et respecte Retour pendant une restauration en attente. Trois parcours XCUIRemote vérifient la sélection d’un pays, le déplacement hors de la chaîne restaurée puis son retour, et la navigation sur la reconnexion. Ils comparent le focus natif à la sélection dessinée et conservent les captures des actions.
+Le build 37 corrige aussi la surbrillance après l’échec du chargement d’une source et respecte Retour pendant une restauration en attente. Trois parcours XCUIRemote vérifient la sélection d’un pays, le déplacement hors de la chaîne restaurée puis son retour, et la navigation sur la reconnexion. Ils comparent le focus natif à la sélection dessinée et conservent les captures des actions.
 
 ## GitHub Actions et pack complet
 
@@ -128,4 +128,6 @@ bash scripts/build-platforms.sh tvOS-device
 
 Les versions précédentes sont conservées dans [docs/HISTORIQUE.md](docs/HISTORIQUE.md). Leurs anciennes commandes et résultats de tests ne décrivent pas la version actuelle.
 
-Le build 36 conserve aussi le bord inférieur des cartes d’épisodes sur Mac : la barre de défilement native ne prend plus de hauteur dans leur rangée. Les directions, le focus et le trackpad continuent de la faire défiler.
+Le build 37 conserve aussi le bord inférieur des cartes d’épisodes sur Mac : la barre de défilement native ne prend plus de hauteur dans leur rangée. Les directions, le focus et le trackpad continuent de la faire défiler.
+
+Le build 37 intègre l’initialisation des scénarios pays par la restauration réelle et conserve l’identité du catalogue lorsque Retour devient disponible. Les assertions de focus initial restent strictes ; le parcours Pays vérifie aussi Menu vers l’onglet TV, puis Menu vers l’accueil système. Les compteurs affichent « 1 élément » et « 1 chaîne » au singulier.
