@@ -302,7 +302,7 @@ struct ContentView: View {
                 browserHeight = geometry.size.height; updateColumns(geometry.size.width)
                 if library.sources.isEmpty { focusID = "add-source"; systemFocus = "add-source" }
                 #if FLUX_CATALOG_UI_TESTING
-                else if heldItem == nil { systemFocus = focusID }
+                if !library.sources.isEmpty, heldItem == nil { systemFocus = focusID }
                 #endif
             }
             .onChange(of: geometry.size.height) { _, height in browserHeight = height }
