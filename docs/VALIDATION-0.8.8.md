@@ -13,6 +13,7 @@
 ## Corrections de finalisation
 
 - Correction de la déclaration conditionnelle du focus qui bloquait les quatre compilations Apple de la première révision 0.8.8.
+- Découpage de la vue principale en sous-vues pour éviter le dépassement du budget d’analyse de types du compilateur Swift.
 - La garde SwiftParser rejette maintenant les erreurs de syntaxe, y compris dans les branches de compilation conditionnelle, en plus des déclarations SwiftUI invalides.
 - Conservation de la sourdine demandée pendant le chargement asynchrone d’une bande-annonce ; retour à la fiche et commande de son partagent le même état que le lecteur.
 - Nouvelle tentative après une erreur de session YouTube depuis le bouton Lire, en conservant la préférence de son.

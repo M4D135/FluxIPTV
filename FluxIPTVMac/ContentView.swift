@@ -233,136 +233,160 @@ struct ContentView: View {
         #endif
     }
 
-    var body: some View {
+    var body: some View { activeCatalogue }
+
+    // Opaque subview boundaries keep each SwiftUI expression small enough for
+    // all four Apple SDK builds without erasing view identity or adding layers.
+    private var catalogueLayout: some View {
         GeometryReader { geometry in
-            HStack(spacing: 0) {
-                ScrollViewReader { reader in
-                    ZStack {
-                        if library.sources.isEmpty {
-                            firstSourceWelcome
-                        } else if let heldItem {
-                            heldOverlay(heldItem, reader: reader)
-                        } else {
-                            VStack(spacing: 0) {
-                                if page != .player && !cinema {
-                                    if library.contentKind == .live && page == .catalogue { liveHeader }
-                                    else { header }
-                                }
-                                switch page {
-                                case .catalogue: catalogue
-                                case .series: seriesDetail
-                                case .player: playerPage
-                                }
-                            }
-                            .opacity(entranceItem == nil ? 1 : 0)
-                        }
+            responsiveBrowser(geometry: geometry)
+        }
+    }
+
+    private func browserPane(reader: ScrollViewProxy) -> some View {
+        ZStack {
+            if library.sources.isEmpty {
+                firstSourceWelcome
+            } else if let heldItem {
+                heldOverlay(heldItem, reader: reader)
+            } else {
+                VStack(spacing: 0) {
+                    if page != .player && !cinema {
+                        if library.contentKind == .live && page == .catalogue { liveHeader }
+                        else { header }
                     }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .coordinateSpace(name: "club-pane")
-                    .onChange(of: page) { previous, destination in
-                        pendingCatalogFocus = nil
-                        guard previous == .series,destination == .catalogue,let target=focusID,visibleSlice.item(id:target) != nil else{return}
-                        revealCatalogItem(target)
-                        Task { @MainActor in
-                            await Task.yield()
-                            guard page == .catalogue,heldItem == nil,focusID == target else{return}
-                            reader.scrollTo(target,anchor:.center);systemFocus=target
-                        }
-                    }
-                    .onChange(of: heldItem?.id) { _, id in
-                        if id != nil { pendingCatalogFocus = nil }
-                        guard id == nil, page != .player, let target=focusID else{return}
-                        if page == .catalogue {revealCatalogItem(target)}
-                        Task { @MainActor in
-                            await Task.yield()
-                            guard heldItem == nil, page != .player, !searchFocus else{return}
-                            reader.scrollTo(target,anchor:.center)
-                            systemFocus=target
-                        }
-                    }
-                    .onChange(of: focusID) { _, id in
-                        #if FLUX_CATALOG_UI_TESTING
-                        reportSearchFocusFixture()
-                        #endif
-                        guard let id, heldItem == nil else { return }
-                        if page == .catalogue, let item = visibleSlice.item(id:id) {
-                            revealCatalogItem(id); setPreview(item)
-                        }
-                        #if os(tvOS)
-                        systemFocus = id
-                        reader.scrollTo(id, anchor: .center)
-                        #else
-                        if remoteNavigationActive && !searchFocus && !liveGroupSearchFocus {
-                            systemFocus = id
-                            reader.scrollTo(id, anchor: .center)
-                        }
-                        #endif
-                    }
-                    .onChange(of: catalogPage) { _, _ in
-                        guard page == .catalogue, let id = heldItem?.id ?? focusID, displayedItems.contains(where: { $0.id == id }) else { return }
-                        Task { @MainActor in
-                            await Task.yield()
-                            reader.scrollTo(id,anchor:.center)
-                            if heldItem == nil && remoteNavigationActive { systemFocus=id }
-                        }
-                    }
-                    .onChange(of: systemFocus) { _, id in
-                        if heldItem == nil, let id, focusID != id { focusID = id }
+                    switch page {
+                    case .catalogue: catalogue
+                    case .series: seriesDetail
+                    case .player: playerPage
                     }
                 }
-                #if !os(tvOS)
-                // The simulator is a real side panel, never covers catalogue/video.
-                // On narrow mobile displays it is presented separately.
-                if showRemote && page != .player && !cinema && !caseTrailerVisible && geometry.size.width >= 800 {
-                    Divider().overlay(.white.opacity(0.08))
-                    remotePanel.padding(12)
-                }
-                #endif
+                .opacity(entranceItem == nil ? 1 : 0)
             }
-            .background { background }
-            .overlay {
-                if let entranceItem {
-                    PlaybackEntranceView(kind: entranceItem.kind, expanded: entranceExpanded)
-                }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .coordinateSpace(name: "club-pane")
+    }
+
+    private func focusedBrowserPane(reader: ScrollViewProxy) -> some View {
+        browserPane(reader: reader)
+        .onChange(of: page) { previous, destination in
+            pendingCatalogFocus = nil
+            guard previous == .series,destination == .catalogue,let target=focusID,visibleSlice.item(id:target) != nil else{return}
+            revealCatalogItem(target)
+            Task { @MainActor in
+                await Task.yield()
+                guard page == .catalogue,heldItem == nil,focusID == target else{return}
+                reader.scrollTo(target,anchor:.center);systemFocus=target
             }
-            .overlay(alignment: .top) {
-                if let favoriteFeedback {
-                    Label(favoriteFeedback, systemImage: "checkmark.circle.fill")
-                        .font(.callout.weight(.semibold)).padding(14)
-                        .fluxFrosted(radius: 18).padding(.top, 18)
-                        .allowsHitTesting(false).transition(.opacity)
-                }
+        }
+        .onChange(of: heldItem?.id) { _, id in
+            if id != nil { pendingCatalogFocus = nil }
+            guard id == nil, page != .player, let target=focusID else{return}
+            if page == .catalogue {revealCatalogItem(target)}
+            Task { @MainActor in
+                await Task.yield()
+                guard heldItem == nil, page != .player, !searchFocus else{return}
+                reader.scrollTo(target,anchor:.center)
+                systemFocus=target
             }
-            .allowsHitTesting(entranceItem == nil)
-            .onAppear {
-                browserHeight = geometry.size.height; updateColumns(geometry.size.width)
-                if library.sources.isEmpty { focusID = "add-source"; systemFocus = "add-source" }
-                #if FLUX_CATALOG_UI_TESTING
-                if !library.sources.isEmpty, heldItem == nil { systemFocus = focusID }
-                if let query = fixtureSearchSubmission {
-                    library.search = query
-                    focusFirstItem()
-                    // Exercise the same early OK as the remote, while the
-                    // debounced library still exposes the previous results.
-                    activateFocus()
-                    reportSearchFocusFixture()
-                }
-                #endif
-            }
-            .onChange(of: geometry.size.height) { _, height in browserHeight = height }
-            .onChange(of: geometry.size.width) { _, width in updateColumns(width) }
-            .onChange(of: library.contentKind) { _, _ in continueOnly = false; group = nil; groupSearch = ""; liveGroupSearchFocus = false; clearPreview(); updateColumns(geometry.size.width) }
-            .onChange(of: showRemote) { _, _ in updateColumns(geometry.size.width) }
-            .onChange(of: density) { _, _ in updateColumns(geometry.size.width) }
-            .onChange(of: clubProfile) { _, _ in updateColumns(geometry.size.width) }
-            #if !os(tvOS)
-            #if os(iOS)
-            .sheet(isPresented: Binding(get: { showRemote && page != .player && geometry.size.width < 800 }, set: { if !$0 { showRemote = false } })) {
-                remotePanel.padding(18).presentationDetents([.large])
-            }
+        }
+        .onChange(of: focusID) { _, id in
+            #if FLUX_CATALOG_UI_TESTING
+            reportSearchFocusFixture()
             #endif
+            guard let id, heldItem == nil else { return }
+            if page == .catalogue, let item = visibleSlice.item(id:id) {
+                revealCatalogItem(id); setPreview(item)
+            }
+            #if os(tvOS)
+            systemFocus = id
+            reader.scrollTo(id, anchor: .center)
+            #else
+            if remoteNavigationActive && !searchFocus && !liveGroupSearchFocus {
+                systemFocus = id
+                reader.scrollTo(id, anchor: .center)
+            }
             #endif
         }
+        .onChange(of: catalogPage) { _, _ in
+            guard page == .catalogue, let id = heldItem?.id ?? focusID, displayedItems.contains(where: { $0.id == id }) else { return }
+            Task { @MainActor in
+                await Task.yield()
+                reader.scrollTo(id,anchor:.center)
+                if heldItem == nil && remoteNavigationActive { systemFocus=id }
+            }
+        }
+        .onChange(of: systemFocus) { _, id in
+            if heldItem == nil, let id, focusID != id { focusID = id }
+        }
+    }
+
+    private func browserChrome(width: CGFloat) -> some View {
+        HStack(spacing: 0) {
+            ScrollViewReader { reader in
+                focusedBrowserPane(reader: reader)
+            }
+            #if !os(tvOS)
+            // The simulator is a real side panel, never covers catalogue/video.
+            // On narrow mobile displays it is presented separately.
+            if showRemote && page != .player && !cinema && !caseTrailerVisible && width >= 800 {
+                Divider().overlay(.white.opacity(0.08))
+                remotePanel.padding(12)
+            }
+            #endif
+        }
+        .background { background }
+        .overlay {
+            if let entranceItem {
+                PlaybackEntranceView(kind: entranceItem.kind, expanded: entranceExpanded)
+            }
+        }
+        .overlay(alignment: .top) {
+            if let favoriteFeedback {
+                Label(favoriteFeedback, systemImage: "checkmark.circle.fill")
+                    .font(.callout.weight(.semibold)).padding(14)
+                    .fluxFrosted(radius: 18).padding(.top, 18)
+                    .allowsHitTesting(false).transition(.opacity)
+            }
+        }
+        .allowsHitTesting(entranceItem == nil)
+    }
+
+    private func responsiveBrowser(geometry: GeometryProxy) -> some View {
+        browserChrome(width: geometry.size.width)
+        .onAppear {
+            browserHeight = geometry.size.height; updateColumns(geometry.size.width)
+            if library.sources.isEmpty { focusID = "add-source"; systemFocus = "add-source" }
+            #if FLUX_CATALOG_UI_TESTING
+            if !library.sources.isEmpty, heldItem == nil { systemFocus = focusID }
+            if let query = fixtureSearchSubmission {
+                library.search = query
+                focusFirstItem()
+                // Exercise the same early OK as the remote, while the
+                // debounced library still exposes the previous results.
+                activateFocus()
+                reportSearchFocusFixture()
+            }
+            #endif
+        }
+        .onChange(of: geometry.size.height) { _, height in browserHeight = height }
+        .onChange(of: geometry.size.width) { _, width in updateColumns(width) }
+        .onChange(of: library.contentKind) { _, _ in continueOnly = false; group = nil; groupSearch = ""; liveGroupSearchFocus = false; clearPreview(); updateColumns(geometry.size.width) }
+        .onChange(of: showRemote) { _, _ in updateColumns(geometry.size.width) }
+        .onChange(of: density) { _, _ in updateColumns(geometry.size.width) }
+        .onChange(of: clubProfile) { _, _ in updateColumns(geometry.size.width) }
+        #if !os(tvOS)
+        #if os(iOS)
+        .sheet(isPresented: Binding(get: { showRemote && page != .player && geometry.size.width < 800 }, set: { if !$0 { showRemote = false } })) {
+            remotePanel.padding(18).presentationDetents([.large])
+        }
+        #endif
+        #endif
+    }
+
+    private var platformCatalogue: some View {
+        catalogueLayout
         #if os(macOS)
         .frame(minWidth: page == .player ? 320 : 860, minHeight: page == .player ? 180 : 540)
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.willExitFullScreenNotification)) { notice in
@@ -373,6 +397,10 @@ struct ContentView: View {
         .statusBar(hidden: page == .player && cinema)
         .persistentSystemOverlays(page == .player && cinema ? .hidden : .automatic)
         #endif
+    }
+
+    private var commandCatalogue: some View {
+        platformCatalogue
         #if os(tvOS)
         .fluxExit(heldItem != nil || page != .catalogue || showingSearch || group != nil || continueOnly || library.selectedPresetID != nil) { if heldItem != nil { dispatch(.back) } else { back() } }
         .onPlayPauseCommand { dispatch(.playPause) }
@@ -402,6 +430,10 @@ struct ContentView: View {
         .onAppear { remoteInput.connect { action in if !modalOpen && !searchFocus && !liveGroupSearchFocus { dispatch(action) } } }
         .onDisappear { remoteInput.disconnect() }
         #endif
+    }
+
+    private var sourceSheets: some View {
+        commandCatalogue
         .sheet(isPresented: $addingSource) { AddSourceSheet(onSaved: { home() }).environmentObject(library) }
         .sheet(item: $editingSource) { source in AddSourceSheet(existing: source, onSaved: { home() }).environmentObject(library) }
         .sheet(item: $presetEditor) { editor in
@@ -410,11 +442,19 @@ struct ContentView: View {
                 return library.createPreset(name: name, kind: editor.kind, initialItem: editor.initialItem)
             }
         }
+    }
+
+    private var catalogueSheets: some View {
+        sourceSheets
         .sheet(isPresented: $showingSources) { sourcesPanel }
         .sheet(isPresented: $showingLists) { listsPanel }
         .sheet(isPresented: $showingGroups) { groupsPanel }
         .sheet(isPresented: $showingEngines, onDismiss: { diagnosticSettings = false }) { enginesPanel }
         .sheet(item: $itemOptions) { item in itemPanel(item) }
+    }
+
+    private var catalogueDialogs: some View {
+        catalogueSheets
         .confirmationDialog("Navigation", isPresented: $showingNavigationMenu, titleVisibility: .visible) {
             Button("Sources") { showingSources = true }
             Button("Listes et favoris") { showingLists = true }
@@ -431,12 +471,20 @@ struct ContentView: View {
         .alert("Flux IPTV", isPresented: Binding(get: { library.alertMessage != nil }, set: { if !$0 { library.alertMessage = nil } })) {
             Button("OK", role: .cancel) { library.alertMessage = nil }
         } message: { Text(library.alertMessage ?? "") }
+    }
+
+    private var sourceObservedCatalogue: some View {
+        catalogueDialogs
         .onChange(of: library.selectedSourceID) { _, _ in home(); group = nil; clearPreview() }
         .onChange(of: library.sources.isEmpty) { _, empty in
             if empty { home(); focusID = "add-source"; systemFocus = "add-source" }
         }
         .onChange(of: library.selectedPresetID) { _, id in if id != nil {continueOnly=false};if library.contentKind != .live {group=nil};clearPreview() }
         .onChange(of: library.search) { _, _ in if library.contentKind != .live {group=nil};clearPreview() }
+    }
+
+    private var resultsObservedCatalogue: some View {
+        sourceObservedCatalogue
         .onChange(of: group) { _, _ in clearPreview(); resetCatalogWindow() }
         .onChange(of: library.catalogResults.revision) { _, _ in resetCatalogWindow() }
         .onChange(of: catalogFocusContext) { _, context in
@@ -459,6 +507,10 @@ struct ContentView: View {
             if let id=heldItem?.id ?? previewID { revealCatalogItem(id) }
             else { catalogPage=min(catalogPage,catalogPageCount-1) }
         }
+    }
+
+    private var activeCatalogue: some View {
+        resultsObservedCatalogue
         .task(id: livePreviewKey) {
             guard livePreviewAllowed, let item = previewItem, item.kind == .live else { livePreview.stop(); return }
             do {
