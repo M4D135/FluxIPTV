@@ -1,0 +1,42 @@
+name: Native catalogue visual check
+
+on:
+  push:
+    branches: ['work/catalog-capture-*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  catalogue-capture:
+    runs-on: macos-26
+    timeout-minutes: 12
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@v4
+      - name: Record the native environment
+        run: |
+          mkdir -p build/logs
+          xcodebuild -version | tee build/logs/xcode-version.log
+          xcrun swiftc --version | tee build/logs/swift-version.log
+      - name: Capture the production catalogue with local fixture data
+        timeout-minutes: 8
+        run: bash scripts/test-catalog-ui.sh 2>&1 | tee build/logs/catalog-ui-native.log
+      - name: Save visual diagnostics including failed captures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: catalogue-visual-${{ github.run_attempt }}
+          path: build/logs/
+          if-no-files-found: error
+          retention-days: 14

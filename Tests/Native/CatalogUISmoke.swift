@@ -114,6 +114,7 @@ private enum CatalogUIFailure: Error, CustomStringConvertible {
         let playback = PlaybackController()
         defer { playback.stop(); ArtworkLoader.cache.removeAllObjects() }
         let kinds: [IPTVMediaKind] = [.live, .movie]
+        var captureFailures: [String] = []
         for kind in kinds {
             let library = IPTVLibrary(catalogFixture: source, items: items, kind: kind)
             let selected = library.catalogResults.all.items.first
@@ -142,12 +143,14 @@ private enum CatalogUIFailure: Error, CustomStringConvertible {
             try await Task.sleep(nanoseconds: 300_000_000)
             try require(playback.playingItem == nil && playback.player.currentItem == nil, "A visual capture unexpectedly started main playback.")
             let filename = kind == .live ? "catalog-tv.png" : "catalog-dvd-vhs.png"
-            try capture(host, to: output.appendingPathComponent(filename))
+            do { try await capture(host, window: window, to: output.appendingPathComponent(filename)) }
+            catch { captureFailures.append("\(filename): \(error)") }
             window.orderOut(nil)
             window.contentView = nil
             window.close()
             await Task.yield()
         }
+        try require(captureFailures.isEmpty, captureFailures.joined(separator: "\n"))
     }
 
     private static func cache(_ image: CGImage, at url: URL) {
@@ -155,21 +158,64 @@ private enum CatalogUIFailure: Error, CustomStringConvertible {
                                      cost: image.bytesPerRow * image.height)
     }
 
-    @MainActor private static func capture(_ view: NSView, to url: URL) throws {
-        guard let bitmap = view.bitmapImageRepForCachingDisplay(in: view.bounds) else {
-            throw CatalogUIFailure.assertion("Unable to allocate native view capture.")
+    @MainActor private static func capture(_ view: NSView, window: NSWindow, to url: URL) async throws {
+        // Keep the view-cache diagnostic even if a compositor-dependent effect
+        // cannot draw into this bitmap. Assertions must never discard evidence.
+        var cachedImage: CGImage?
+        var cachedPNG: Data?
+        if let bitmap = view.bitmapImageRepForCachingDisplay(in: view.bounds) {
+            view.cacheDisplay(in: view.bounds, to: bitmap)
+            cachedImage = bitmap.cgImage
+            cachedPNG = bitmap.representation(using: .png, properties: [:])
+            if let cachedPNG {
+                let cacheURL = url.deletingLastPathComponent().appendingPathComponent(url.deletingPathExtension().lastPathComponent + "-cache.png")
+                try cachedPNG.write(to: cacheURL, options: .atomic)
+                print("View-cache diagnostic: \(cacheURL.path)")
+            }
         }
-        view.cacheDisplay(in: view.bounds, to: bitmap)
-        guard let image = bitmap.cgImage, image.width >= 1400, image.height >= 850,
-              let png = bitmap.representation(using: .png, properties: [:]) else {
-            throw CatalogUIFailure.assertion("Native ContentView capture is missing or too small.")
+
+        try? FileManager.default.removeItem(at: url)
+        let canCaptureWindow = CGPreflightScreenCaptureAccess()
+        print("Existing WindowServer capture permission: \(canCaptureWindow)")
+        var image: CGImage?
+        var method = "NSView cacheDisplay"
+        if canCaptureWindow, FileManager.default.isExecutableFile(atPath: "/usr/sbin/screencapture") {
+            let status = try await captureWindow(window.windowNumber, to: url)
+            if status == 0, let source = CGImageSourceCreateWithURL(url as CFURL, nil) {
+                image = CGImageSourceCreateImageAtIndex(source, 0, nil)
+                method = "WindowServer screencapture"
+            } else { print("WindowServer capture returned status \(status); retaining the view-cache diagnostic.") }
+        } else {
+            // Never request permission, alter TCC, or capture another window.
+            print("WindowServer capture is unavailable with existing permissions; retaining the view-cache diagnostic.")
         }
-        try require(hasDetail(image, region: CGRect(x: 0, y: 0, width: image.width, height: max(100, image.height / 6))),
-                    "Native header capture is empty or uniform.")
-        try require(hasDetail(image, region: CGRect(x: 0, y: image.height / 3, width: image.width, height: image.height / 2)),
-                    "Native catalogue capture is empty or uniform.")
-        try png.write(to: url, options: .atomic)
-        print("Capture: \(url.path) (\(image.width)×\(image.height))")
+        if image == nil, let cachedImage, let cachedPNG {
+            image = cachedImage
+            try cachedPNG.write(to: url, options: .atomic)
+        }
+        guard let image else { throw CatalogUIFailure.assertion("Native ContentView capture is missing.") }
+        print("Capture: \(url.path) (\(image.width)×\(image.height), \(method))")
+        try require(image.width >= 1400 && image.height >= 850, "Native ContentView capture is too small.")
+        let headerHasDetail = hasDetail(image, region: CGRect(x: 0, y: 0, width: image.width, height: max(100, image.height / 6)))
+        let catalogueHasDetail = hasDetail(image, region: CGRect(x: 0, y: image.height / 3, width: image.width, height: image.height / 2))
+        print("Capture detail: header=\(headerHasDetail), catalogue=\(catalogueHasDetail). PNG retained regardless of result.")
+        try require(headerHasDetail, "Native header capture is empty or uniform.")
+        try require(catalogueHasDetail, "Native catalogue capture is empty or uniform.")
+    }
+
+    @MainActor private static func captureWindow(_ windowNumber: Int, to url: URL) async throws -> Int32 {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
+        process.arguments = ["-x", "-o", "-l", String(windowNumber), url.path]
+        let timeout = Task { @MainActor in
+            do { try await Task.sleep(nanoseconds: 5_000_000_000) } catch { return }
+            if process.isRunning { process.terminate() }
+        }
+        defer { timeout.cancel() }
+        return try await withCheckedThrowingContinuation { continuation in
+            process.terminationHandler = { completed in continuation.resume(returning: completed.terminationStatus) }
+            do { try process.run() } catch { continuation.resume(throwing: error) }
+        }
     }
 
     private static func hasDetail(_ image: CGImage, region: CGRect) -> Bool {
