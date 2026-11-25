@@ -155,7 +155,9 @@ fi
 run_bounded 30 xcrun simctl boot "$simulator_id" >> "$capture_root/simulator.log" 2>&1
 run_bounded 180 xcrun simctl bootstatus "$simulator_id" -b >> "$capture_root/simulator.log" 2>&1
 fixture_app="$smoke_root/DerivedData/Build/Products/Debug-appletvsimulator/FluxIPTVTV.app"
-run_bounded 30 xcrun simctl install "$simulator_id" "$fixture_app" >> "$capture_root/simulator.log" 2>&1
+# A freshly migrated CI simulator can install slowly after bootstatus succeeds.
+# Keep installation bounded without changing any native scenario deadline.
+run_bounded 120 xcrun simctl install "$simulator_id" "$fixture_app" >> "$capture_root/simulator.log" 2>&1
 data_container="$(run_bounded 15 xcrun simctl get_app_container "$simulator_id" "$bundle_id" data)"
 ready_file="$data_container/Library/Caches/FluxTVCatalogUI-ready.json"
 failed=0

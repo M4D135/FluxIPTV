@@ -129,3 +129,5 @@ bash scripts/build-platforms.sh tvOS-device
 Les versions précédentes sont conservées dans [docs/HISTORIQUE.md](docs/HISTORIQUE.md). Leurs anciennes commandes et résultats de tests ne décrivent pas la version actuelle.
 
 Le build 37 conserve aussi le bord inférieur des cartes d’épisodes sur Mac : la barre de défilement native ne prend plus de hauteur dans leur rangée. Les directions, le focus et le trackpad continuent de la faire défiler.
+
+Le build 37 intègre l’initialisation des scénarios pays par la restauration réelle et conserve l’identité du catalogue lorsque Retour devient disponible. Les assertions de focus initial restent strictes ; le parcours Pays vérifie aussi Menu vers l’onglet TV, puis Menu vers l’accueil système. Les compteurs affichent « 1 élément » et « 1 chaîne » au singulier.

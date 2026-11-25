@@ -10,6 +10,10 @@ Le build 37 intègre également le correctif de structure de Retour : le modific
 
 Les deux projets portent 0.8.9 / 37. Le résultat applicable reste celui du workflow du commit exact : 137 tests du cœur attendus, quatre compilations Apple, onze rapports natifs `ready`, trois démarrages à froid et trois parcours XCUIRemote. Les critères de géométrie, visibilité, contenu et correspondance du focus restent inchangés. La grande boîte et le correctif du bas des cartes d’épisodes Mac sont conservés.
 
+Le test Pays exige le focus natif et logique sur la chaîne mémorisée dès son démarrage. Il conserve les étapes France → Espagne, réouverture, déplacement vers France et annulation par Menu, puis vérifie le retour à l’onglet TV et la mise en arrière-plan par Menu. Aucun déplacement préparatoire ne masque un échec de restauration. Les libellés au singulier affichent « 1 élément » et « 1 chaîne ».
+
+Le run [45674755225](https://github.com/M4D135/FluxIPTV/actions/runs/45674755225), tentative 1, a compilé la production et la fixture tvOS, puis a atteint la limite de 30 secondes pendant l’installation dans le simulateur, avant les scénarios natifs. La limite de cette seule commande passe à 120 secondes pour laisser aboutir une installation lente ; son code de retour reste obligatoire. Aucun délai d’attente fixe, relâchement de contrôle du focus ou changement des limites des scénarios n’est introduit.
+
 ## Finalisation du build 36 : rangée d’épisodes entière sur Mac
 
 La revue visuelle du build 35 a montré que la barre horizontale native de macOS rognait le bas des cartes d’épisodes. La préférence `.hidden` laisse macOS afficher un indicateur avec une souris ; `.never` empêche cet indicateur de prendre de la hauteur dans cette rangée. Le défilement par les directions, le focus et le trackpad reste disponible. Les dimensions de la boîte, des cartes et les animations sont conservées.
