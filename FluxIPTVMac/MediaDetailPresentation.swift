@@ -351,6 +351,8 @@ struct MediaDetailPresentation: View {
             .accessibilityIdentifier("media-detail-\(id)")
             #if os(tvOS) && FLUX_CATALOG_UI_TESTING
             .background(TVCatalogControlFrameProbe(identifier: "media-detail-\(id)").allowsHitTesting(false))
+            #elseif os(macOS) && FLUX_CATALOG_UI_TESTING
+            .background(CatalogDetailControlFrameProbe(identifier: "media-detail-\(id)").allowsHitTesting(false))
             #endif
             #if !os(tvOS)
             .onHover { inside in if inside { focusedID = id } }

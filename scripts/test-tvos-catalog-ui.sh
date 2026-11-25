@@ -189,6 +189,9 @@ for scenario in movie movies series live welcome search-empty search-result live
     fi
     sleep 1
   done
+  # A fresh tvOS simulator may show its first-use Control Center tip over the
+  # first screenshot. Let that system overlay expire after readiness is proven.
+  if [[ "$scenario" == movie && "$ready" == true ]]; then sleep 10; fi
   # Retain compositor evidence even when readiness/focus assertions failed.
   if ! run_bounded 20 xcrun simctl io "$simulator_id" screenshot --type=png "$capture_root/$filename" \
     >> "$capture_root/simulator.log" 2>&1; then failed=1; fi

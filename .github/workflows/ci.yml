@@ -50,8 +50,9 @@ jobs:
           retention-days: 14
 
   apple-build:
-    # Xcode 16 on macos-15 compiles out the Liquid Glass branch entirely.
-    runs-on: macos-26
+    # Keep Xcode 26 / Liquid Glass on the standard Intel runner pool.
+    # Native harnesses follow the host architecture; device builds stay ARM64.
+    runs-on: macos-26-intel
     timeout-minutes: 45
     env:
       DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
