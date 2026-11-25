@@ -263,7 +263,9 @@ struct MediaDetailPresentation: View {
                             ForEach(episodes) { episode in episodeButton(episode, metrics: metrics) }
                         }.padding(.vertical, 4).padding(.horizontal, 4)
                     }
-                    .scrollIndicators(.hidden)
+                    // macOS may still reserve a mouse scroller with .hidden.
+                    // Keep the full card height; arrows/focus scroll this row.
+                    .scrollIndicators(.never)
                     .task(id: selectedEpisodeID) {
                         await Task.yield()
                         guard !Task.isCancelled, let id = selectedEpisodeID else { return }

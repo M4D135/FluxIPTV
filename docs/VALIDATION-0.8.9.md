@@ -1,4 +1,12 @@
-# Validation de FLUX IPTV 0.8.9 — build 35
+# Validation de FLUX IPTV 0.8.9 — build 36
+
+## Finalisation du build 36 : rangée d’épisodes entière sur Mac
+
+La revue visuelle du build 35 a montré que la barre horizontale native de macOS rognait le bas des cartes d’épisodes. La préférence `.hidden` laisse macOS afficher un indicateur avec une souris ; `.never` empêche cet indicateur de prendre de la hauteur dans cette rangée. Le défilement par les directions, le focus et le trackpad reste disponible. Les dimensions de la boîte, des cartes et les animations sont conservées.
+
+Le build 36 reprend la grande boîte et tous les correctifs de navigation du build 35. Les deux projets Xcode portent 0.8.9 / 36. Les résultats attendus sont ceux du workflow attaché à son commit : les quatre compilations Apple, les 134 tests du cœur, les captures natives et les trois parcours XCUIRemote. La capture Mac de la saison 12 doit montrer le bord inférieur complet des cartes sans barre grise.
+
+Référence du comportement macOS : https://developer.apple.com/documentation/swiftui/scrollindicatorvisibility/hidden
 
 ## Finalisation du build 35 : navigation réelle
 

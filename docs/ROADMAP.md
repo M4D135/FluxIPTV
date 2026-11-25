@@ -1,6 +1,6 @@
 # Feuille de route FLUX IPTV
 
-## Intégré dans les sources 0.8.9 — build 35
+## Intégré dans les sources 0.8.9 — build 36
 
 - Filtre des chaînes par pays détecté dans le préfixe des catégories, avec conservation des catégories non identifiées.
 - Mémoire de navigation par source et par section : pays, catégorie, recherches, favoris, page et sélection ; restauration après relance sans démarrer la lecture.
