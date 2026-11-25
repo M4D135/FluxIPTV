@@ -79,11 +79,16 @@ public enum CaseCarousel {
         let camera=distance(aspect:aspect,editorial:editorial)
         let maximumWidth=Double(CasePackageFormat.dvd.halfWidth)
         let maximumDepth=Double(CasePackageFormat.vhs.halfDepth(collector:true))
-        let nearest=placements(aspect:aspect,editorial:editorial).map { placement in
-            let angle=placement.angle * .pi/180
-            return -placement.depth+placement.scale*(maximumWidth*abs(sin(angle))+maximumDepth*abs(cos(angle)))
-        }.max() ?? 0
-        let scale=max(1,(camera+heldHalfDepth+shelfClearance)/(camera-nearest))
+        var nearest:Double?
+        for placement in placements(aspect:aspect,editorial:editorial) {
+            let angle:Double=placement.angle * Double.pi/180
+            let widthProjection:Double=maximumWidth*abs(sin(angle))
+            let depthProjection:Double=maximumDepth*abs(cos(angle))
+            let forwardExtent:Double=placement.scale*(widthProjection+depthProjection)
+            let front:Double=forwardExtent-placement.depth
+            nearest=max(nearest ?? front,front)
+        }
+        let scale=max(1,(camera+heldHalfDepth+shelfClearance)/(camera-(nearest ?? 0)))
         return ShelfTransform(scale:scale,z:camera*(1-scale))
     }
 

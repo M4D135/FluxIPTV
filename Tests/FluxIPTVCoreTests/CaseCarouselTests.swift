@@ -150,8 +150,11 @@ final class CaseCarouselTests: XCTestCase {
         return body+lid
     }
     private func rotate(_ point:SIMD3<Double>,yaw:Double,pitch:Double)->SIMD3<Double> {
-        let y=yaw * .pi/180,p=pitch * .pi/180
-        let turned=SIMD3(cos(y)*point.x+sin(y)*point.z,point.y,-sin(y)*point.x+cos(y)*point.z)
-        return SIMD3(turned.x,cos(p)*turned.y-sin(p)*turned.z,sin(p)*turned.y+cos(p)*turned.z)
+        let y:Double=yaw * Double.pi/180,p:Double=pitch * Double.pi/180
+        let x:Double=cos(y)*point.x+sin(y)*point.z
+        let z:Double = -sin(y)*point.x+cos(y)*point.z
+        let vertical:Double=cos(p)*point.y-sin(p)*z
+        let depth:Double=sin(p)*point.y+cos(p)*z
+        return SIMD3<Double>(x,vertical,depth)
     }
 }
