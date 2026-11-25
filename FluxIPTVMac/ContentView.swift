@@ -15,6 +15,7 @@ private struct CatalogFocusRequest: Equatable {
     let group: String?
     let presetID: String?
     let resumeOnly: Bool
+    let countryCode: String?
 }
 
 #if FLUX_CATALOG_UI_TESTING
@@ -36,8 +37,14 @@ struct ContentView: View {
     @Environment(\.horizontalSizeClass) private var sizeClass
     #endif
     @State private var page: FluxPage = .catalogue
-    @State private var group: String? = nil
-    @State private var continueOnly = false
+    private var group: String? {
+        get { library.group }
+        nonmutating set { library.group = newValue }
+    }
+    private var continueOnly: Bool {
+        get { library.continueOnly }
+        nonmutating set { library.continueOnly = newValue }
+    }
     @State private var addingSource = false
     @State private var editingSource: IPTVSource?
     @State private var presetEditor: PresetEditor?
@@ -60,8 +67,12 @@ struct ContentView: View {
     @AppStorage(ClubInterfaceProfile.storageKey) private var clubProfile: ClubInterfaceProfile = .neoVideoClub
     @State private var remoteNavigationActive = false
     @State private var showingGroups = false
+    @State private var showingCountries = false
     @State private var showingNavigationMenu = false
-    @State private var groupSearch = ""
+    private var groupSearch: String {
+        get { library.groupSearch }
+        nonmutating set { library.groupSearch = newValue }
+    }
     @State private var liveSidebarVisible = false
     @State private var browserHeight: CGFloat = 900
     @FocusState private var liveGroupSearchFocus: Bool
@@ -88,7 +99,12 @@ struct ContentView: View {
     @State private var caseRemoteEvent: MediaDetailRemoteEvent?
     @State private var heldSeasonNumber: Int?
     @State private var heldEpisodeID: String?
-    @State private var catalogPage = 0
+    private var catalogPage: Int {
+        get { library.catalogPage }
+        nonmutating set { library.catalogPage = newValue }
+    }
+    @State private var pendingBrowseRestore = true
+    @State private var browseRestoreTask: Task<Void, Never>?
     @State private var resumeSlice = CatalogSlice()
     @State private var caseDetailTask: Task<Void, Never>?
     @State private var caseTransitionTask: Task<Void, Never>?
@@ -123,12 +139,16 @@ struct ContentView: View {
     #if FLUX_CATALOG_UI_TESTING
     private var fixtureSearchSubmission: String?
     private var fixtureSearchObservation: ((CatalogSearchFocusSnapshot) -> Void)?
+    private var fixtureRestoreBrowsing = false
     /// Seed only the initial selection; layout, controls and artwork remain the
     /// same production views used by the application.
-    init(fixtureSelection: IPTVItem? = nil, fixtureSeasons: [IPTVSeason] = [], fixtureOpenSeason: Int? = nil, fixtureEpisodeID: String? = nil, fixtureOpenItem: Bool = false, fixtureSearchSubmission: String? = nil, fixtureSearchObservation: ((CatalogSearchFocusSnapshot) -> Void)? = nil) {
+    init(fixtureSelection: IPTVItem? = nil, fixtureSeasons: [IPTVSeason] = [], fixtureOpenSeason: Int? = nil, fixtureEpisodeID: String? = nil, fixtureOpenItem: Bool = false, fixtureSearchSubmission: String? = nil, fixtureSearchObservation: ((CatalogSearchFocusSnapshot) -> Void)? = nil, fixtureOpenCountries: Bool = false, fixtureRestoreBrowsing: Bool = false) {
         self.fixtureSearchSubmission = fixtureSearchSubmission
         self.fixtureSearchObservation = fixtureSearchObservation
+        self.fixtureRestoreBrowsing = fixtureRestoreBrowsing
+        _pendingBrowseRestore = State(initialValue: fixtureRestoreBrowsing)
         _showingSearch = State(initialValue: fixtureSearchSubmission != nil)
+        _showingCountries = State(initialValue: fixtureOpenCountries)
         _previewID = State(initialValue: fixtureSelection?.id)
         _previewItem = State(initialValue: fixtureSelection)
         _focusID = State(initialValue: fixtureSelection?.id ?? "tab-live")
@@ -160,7 +180,8 @@ struct ContentView: View {
     private var catalogFocusContext: CatalogFocusRequest {
         CatalogFocusRequest(sourceID: library.selectedSourceID, kind: library.contentKind,
                             query: library.search, group: group,
-                            presetID: library.selectedPresetID, resumeOnly: continueOnly)
+                            presetID: library.selectedPresetID, resumeOnly: continueOnly,
+                            countryCode: library.contentKind == .live ? library.countryCode : nil)
     }
     private var visible: [IPTVItem] { visibleSlice.items }
     private var groups: [String] { library.catalogResults.groups }
@@ -197,7 +218,11 @@ struct ContentView: View {
         if let first = displayedItems.first { focusID=first.id; setPreview(first) }
     }
     private var modalOpen: Bool {
-        addingSource || editingSource != nil || presetEditor != nil || deletingPreset != nil || itemOptions != nil || showingSources || showingLists || showingEngines || showingGroups || showingNavigationMenu || library.alertMessage != nil
+        addingSource || editingSource != nil || presetEditor != nil || deletingPreset != nil || itemOptions != nil || showingSources || showingLists || showingEngines || showingGroups || showingCountries || showingNavigationMenu || library.alertMessage != nil
+    }
+    private var handlesCatalogueBack: Bool {
+        guard page == .catalogue, let id = focusID else { return false }
+        return !id.hasPrefix("tab-") && id != "search"
     }
     private var cardWidth: CGFloat {
         #if os(tvOS)
@@ -215,10 +240,13 @@ struct ContentView: View {
         visibleSlice.item(id:previewID) ?? visibleSlice.item(id:focusID) ?? visible.first
     }
     private var showingAllCatalog: Bool {
-        CatalogScope.isAll(group:group,search:library.search,presetID:library.selectedPresetID,resumeOnly:continueOnly)
+        CatalogScope.isAll(group:group,search:library.search,presetID:library.selectedPresetID,resumeOnly:continueOnly,
+                           countryCode: library.contentKind == .live ? library.countryCode : nil)
     }
     private func showAllCatalog() {
+        if library.contentKind == .live { library.countryCode = nil }
         continueOnly=false;group=nil;library.selectedPresetID=nil;library.search=""
+        groupSearch = ""
         clearPreview();resetCatalogWindow();focusID = library.contentKind == .live && !televisionLayout && !liveSidebarVisible ? "categories" : "group-all"
     }
     private func toggleResumeFilter() {
@@ -276,6 +304,7 @@ struct ContentView: View {
         browserPane(reader: reader)
         .onChange(of: page) { previous, destination in
             pendingCatalogFocus = nil
+            if destination == .catalogue, pendingBrowseRestore { restoreBrowsingContext(); return }
             guard previous == .series,destination == .catalogue,let target=focusID,visibleSlice.item(id:target) != nil else{return}
             revealCatalogItem(target)
             Task { @MainActor in
@@ -286,6 +315,7 @@ struct ContentView: View {
         }
         .onChange(of: heldItem?.id) { _, id in
             if id != nil { pendingCatalogFocus = nil }
+            if id == nil, page == .catalogue, pendingBrowseRestore { restoreBrowsingContext(); return }
             guard id == nil, page != .player, let target=focusID else{return}
             if page == .catalogue {revealCatalogItem(target)}
             Task { @MainActor in
@@ -377,7 +407,8 @@ struct ContentView: View {
             browserHeight = geometry.size.height; updateColumns(geometry.size.width)
             if library.sources.isEmpty { focusID = "add-source"; systemFocus = "add-source" }
             #if FLUX_CATALOG_UI_TESTING
-            if !library.sources.isEmpty, heldItem == nil { systemFocus = focusID }
+            if fixtureRestoreBrowsing { restoreBrowsingContext() }
+            else if !library.sources.isEmpty, heldItem == nil { systemFocus = focusID }
             if let query = fixtureSearchSubmission {
                 library.search = query
                 focusFirstItem()
@@ -386,11 +417,16 @@ struct ContentView: View {
                 activateFocus()
                 reportSearchFocusFixture()
             }
+            #else
+            restoreBrowsingContext()
             #endif
         }
         .onChange(of: geometry.size.height) { _, height in browserHeight = height }
         .onChange(of: geometry.size.width) { _, width in updateColumns(width) }
-        .onChange(of: library.contentKind) { _, _ in continueOnly = false; group = nil; groupSearch = ""; liveGroupSearchFocus = false; clearPreview(); updateColumns(geometry.size.width) }
+        .onChange(of: library.contentKind) { _, _ in
+            liveGroupSearchFocus = false; clearPreview(); updateColumns(geometry.size.width)
+            restoreBrowsingContext()
+        }
         .onChange(of: showRemote) { _, _ in updateColumns(geometry.size.width) }
         .onChange(of: density) { _, _ in updateColumns(geometry.size.width) }
         .onChange(of: clubProfile) { _, _ in updateColumns(geometry.size.width) }
@@ -420,7 +456,7 @@ struct ContentView: View {
     private var commandCatalogue: some View {
         platformCatalogue
         #if os(tvOS)
-        .fluxExit(heldItem != nil || page != .catalogue || showingSearch || !library.search.isEmpty || group != nil || continueOnly || library.selectedPresetID != nil) { if heldItem != nil { dispatch(.back) } else { back() } }
+        .fluxExit(heldItem != nil || page != .catalogue || showingSearch || handlesCatalogueBack) { if heldItem != nil { dispatch(.back) } else { back() } }
         .onPlayPauseCommand { dispatch(.playPause) }
         #else
         .onKeyPress(keys: [.upArrow, .downArrow, .leftArrow, .rightArrow, .return, .escape, .space, "f"], phases: [.down, .repeat]) { press in
@@ -467,6 +503,10 @@ struct ContentView: View {
         .sheet(isPresented: $showingSources) { sourcesPanel }
         .sheet(isPresented: $showingLists) { listsPanel }
         .sheet(isPresented: $showingGroups) { groupsPanel }
+        .sheet(isPresented: $showingCountries) {
+            LiveCountryPicker(countries: library.liveCountries, selection: library.countryCode,
+                              select: selectLiveCountry, close: { showingCountries = false })
+        }
         .sheet(isPresented: $showingEngines, onDismiss: { diagnosticSettings = false }) { enginesPanel }
         .sheet(item: $itemOptions) { item in itemPanel(item) }
     }
@@ -493,18 +533,29 @@ struct ContentView: View {
 
     private var sourceObservedCatalogue: some View {
         catalogueDialogs
-        .onChange(of: library.selectedSourceID) { _, _ in home(); group = nil; clearPreview() }
+        .onChange(of: library.selectedSourceID) { _, _ in home(); clearPreview(); restoreBrowsingContext() }
+        .onChange(of: library.browsingRevision) { _, _ in restoreBrowsingContext() }
+        .onChange(of: library.isLoading) { _, loading in
+            if !loading && pendingBrowseRestore { restoreBrowsingContext() }
+        }
         .onChange(of: library.sources.isEmpty) { _, empty in
             if empty { home(); focusID = "add-source"; systemFocus = "add-source" }
         }
-        .onChange(of: library.selectedPresetID) { _, id in if id != nil {continueOnly=false};if library.contentKind != .live {group=nil};clearPreview() }
-        .onChange(of: library.search) { _, _ in if library.contentKind != .live {group=nil};clearPreview() }
+        .onChange(of: library.selectedPresetID) { _, _ in clearPreview() }
+        .onChange(of: library.search) { _, _ in clearPreview() }
     }
 
     private var resultsObservedCatalogue: some View {
         sourceObservedCatalogue
-        .onChange(of: group) { _, _ in clearPreview(); resetCatalogWindow() }
-        .onChange(of: library.catalogResults.revision) { _, _ in resetCatalogWindow() }
+        .onChange(of: group) { _, _ in clearPreview(); rebuildResumeSlice() }
+        .onChange(of: library.countryCode) { _, _ in clearPreview() }
+        .onChange(of: library.catalogResults.revision) { _, _ in
+            rebuildResumeSlice()
+            if !library.isLoading && !library.isFiltering {
+                catalogPage = min(catalogPage, catalogPageCount - 1)
+                if pendingBrowseRestore { restoreBrowsingContext() }
+            }
+        }
         .onChange(of: catalogFocusContext) { _, context in
             if let request = pendingCatalogFocus, request != context { pendingCatalogFocus = nil }
             #if FLUX_CATALOG_UI_TESTING
@@ -512,16 +563,23 @@ struct ContentView: View {
             #endif
         }
         .onChange(of: library.isFiltering) { _, filtering in
-            if !filtering { resolveCatalogFocus() }
+            if !filtering {
+                if pendingBrowseRestore { restoreBrowsingContext() }
+                else { resolveCatalogFocus() }
+            }
             #if FLUX_CATALOG_UI_TESTING
             reportSearchFocusFixture()
             #endif
         }
-        .onChange(of: continueOnly) { _, _ in resetCatalogWindow(); clearPreview() }
+        .onChange(of: continueOnly) { _, _ in rebuildResumeSlice(); clearPreview() }
+        .onChange(of: modalOpen) { _, open in
+            if !open && pendingBrowseRestore { restoreBrowsingContext() }
+        }
         .onChange(of: playback.history.entries) { _, _ in
             if continueOnly { rebuildResumeSlice(); catalogPage=min(catalogPage,catalogPageCount-1) }
         }
         .onChange(of: catalogPageSize) { _, _ in
+            guard !library.isLoading, !library.isFiltering, !pendingBrowseRestore else { return }
             if let id=heldItem?.id ?? previewID { revealCatalogItem(id) }
             else { catalogPage=min(catalogPage,catalogPageCount-1) }
         }
@@ -537,7 +595,10 @@ struct ContentView: View {
                 livePreview.schedule(id: item.id, urls: urls, delay: livePreviewDelay, enabled: automaticLivePreview)
             } catch { livePreview.markUnavailable(id: item.id) }
         }
-        .onDisappear { caseDetailTask?.cancel(); caseTransitionTask?.cancel(); seriesTask?.cancel(); entranceTask?.cancel(); favoriteFeedbackTask?.cancel(); playerControlsTask?.cancel(); livePreview.stop() }
+        .onChange(of: scenePhase) { _, phase in
+            if phase != .active { library.flushBrowsingPreferences() }
+        }
+        .onDisappear { caseDetailTask?.cancel(); caseTransitionTask?.cancel(); seriesTask?.cancel(); entranceTask?.cancel(); favoriteFeedbackTask?.cancel(); playerControlsTask?.cancel(); browseRestoreTask?.cancel(); livePreview.stop(); library.flushBrowsingPreferences() }
     }
 
     #if !os(tvOS)
@@ -565,6 +626,7 @@ struct ContentView: View {
         }.accessibilityHidden(true)
     }
     private func setPreview(_ item: IPTVItem) {
+        if !library.isLoading && !library.isFiltering && !pendingBrowseRestore { library.browseItemID = item.id }
         guard previewID != item.id else { return }
         if item.kind == .live {
             livePreview.stop()
@@ -755,7 +817,7 @@ struct ContentView: View {
                 Spacer(minLength: 0)
                 HStack(spacing: televisionLayout ? 20 : compactNavigation ? 5 : 10) {
                     ForEach(IPTVMediaKind.allCases, id: \.self) { kind in modeButton(kind) }
-                    headerDestination("Recherche",symbol:"magnifyingglass",id:"search",selected:showingSearch || searchFocus,tint:.cyan) {search()}
+                    headerDestination("Recherche",symbol:"magnifyingglass",id:"search",selected:showingSearch || searchFocus || !library.search.isEmpty,tint:.cyan) {search()}
                 }
                 Spacer(minLength: 0)
                 if compactNavigation {
@@ -846,18 +908,41 @@ struct ContentView: View {
         let term = groupSearch.trimmingCharacters(in: .whitespacesAndNewlines)
         return term.isEmpty ? groups : groups.filter { $0.localizedStandardContains(term) }
     }
+    private var liveCountryTitle: String {
+        guard let code = library.countryCode else { return "Tous les pays" }
+        let name = LiveCountry.displayName(for: code)
+        return code == LiveCountry.unknownCode ? name : "\(name) · \(code)"
+    }
+    private var liveCountryButton: some View {
+        navButton(liveCountryTitle, icon: "globe.europe.africa", id: "countries",
+                  active: library.countryCode != nil) { showingCountries = true }
+        #if os(tvOS) && FLUX_CATALOG_UI_TESTING
+        .background(TVCatalogControlFrameProbe(identifier: "live-country-picker"))
+        #endif
+        .accessibilityLabel("Pays : \(liveCountryTitle)")
+    }
+    private func selectLiveCountry(_ code: String?) {
+        library.countryCode = code
+        showingCountries = false
+        clearPreview()
+        focusID = "countries"
+        Task { @MainActor in
+            await Task.yield()
+            guard !showingCountries, page == .catalogue, library.contentKind == .live else { return }
+            systemFocus = "countries"
+        }
+    }
     private var liveScopeID: String {
         if let group { return "live-category-\(group)" }
         if let preset = library.selectedPresetID { return "live-preset-\(preset)" }
         return "group-all"
     }
     private var liveSidebarIDs: [String] {
-        ["group-all"] + library.currentPresets.map { "live-preset-\($0.id)" }
+        ["countries", "group-all"] + library.currentPresets.map { "live-preset-\($0.id)" }
             + ["live-manage-lists"] + liveGroups.map { "live-category-\($0)" }
     }
     private func selectLiveGroup(_ name: String) {
         continueOnly = false
-        library.selectedPresetID = nil
         group = name
         liveGroupSearchFocus = false
         clearPreview()
@@ -865,28 +950,41 @@ struct ContentView: View {
     }
     private func selectLivePreset(_ id: String) {
         continueOnly = false
-        group = nil
-        library.search = ""
         library.selectedPresetID = id
         clearPreview()
         resetCatalogWindow()
     }
+    private func toggleLiveFavorites() {
+        let id = FavoritePresets.defaultID(for: .live)
+        if library.selectedPresetID == id {
+            library.selectedPresetID = nil
+            clearPreview()
+            resetCatalogWindow()
+        } else { selectLivePreset(id) }
+    }
+    private func liveScopeSelected(_ id: String) -> Bool {
+        if id == "group-all" { return showingAllCatalog }
+        if id.hasPrefix("live-category-") { return group == String(id.dropFirst("live-category-".count)) }
+        if id.hasPrefix("live-preset-") { return library.selectedPresetID == String(id.dropFirst("live-preset-".count)) }
+        return false
+    }
     private func liveScopeButton(_ title: String, symbol: String, id: String, count: Int? = nil, action: @escaping () -> Void) -> some View {
         Button { pointerSelect(id); action() } label: {
             LiveTVScopeLabel(title: title, symbol: symbol, count: count,
-                             selected: liveScopeID == id, focused: focusID == id, accent: themeAccent)
+                             selected: liveScopeSelected(id), focused: focusID == id, accent: themeAccent)
         }.buttonStyle(FluxBareButtonStyle()).fluxFocus($systemFocus, id: id).id(id)
             .accessibilityLabel(title)
-            .accessibilityValue(liveScopeID == id ? "Sélectionné" : "")
+            .accessibilityValue(liveScopeSelected(id) ? "Sélectionné" : "")
     }
     private var liveSidebar: some View {
         VStack(alignment: .leading, spacing: 12) {
             Label("VOTRE TÉLÉVISION", systemImage: "tv")
                 .font(.caption.weight(.semibold)).tracking(1.5).foregroundStyle(.secondary)
                 .padding(.horizontal, 10).padding(.top, 4)
+            liveCountryButton
             HStack(spacing: 8) {
                 Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
-                TextField("Filtrer les catégories", text: $groupSearch)
+                TextField("Filtrer les catégories", text: $library.groupSearch)
                     .focused($liveGroupSearchFocus)
                     .onSubmit {
                         liveGroupSearchFocus = false
@@ -929,7 +1027,8 @@ struct ContentView: View {
     }
     private var liveCompactScopes: some View {
         HStack(spacing: 8) {
-            Button { pointerSelect("categories"); groupSearch = ""; showingGroups = true } label: {
+            liveCountryButton
+            Button { pointerSelect("categories"); showingGroups = true } label: {
                 HStack(spacing: 8) {
                     Image(systemName: "line.3.horizontal.decrease")
                     Text(group ?? "Catégories").font(.callout.weight(.semibold)).lineLimit(1)
@@ -939,8 +1038,7 @@ struct ContentView: View {
                 .fluxNavigationGlass(selected: group != nil, tint: themeAccent, radius: 17)
             Spacer(minLength: 0)
             navButton("Favoris", icon: "star.fill", id: "favorites-quick", active: library.selectedPresetID == FavoritePresets.defaultID(for: .live), iconOnly: true) {
-                if library.selectedPresetID == FavoritePresets.defaultID(for: .live) { showAllCatalog() }
-                else { selectLivePreset(FavoritePresets.defaultID(for: .live)) }
+                toggleLiveFavorites()
             }.fluxNavigationGlass(radius: 17)
             navButton("Listes", icon: "text.badge.star", id: "lists", active: library.selectedPresetID != nil, iconOnly: true) { showingLists = true }
                 .fluxNavigationGlass(radius: 17)
@@ -956,7 +1054,7 @@ struct ContentView: View {
 
     #if os(tvOS)
     private var televisionScopeIDs: [String] {
-        ["favorites-quick", "group-all"] + groups.map { "live-category-\($0)" } + ["categories"]
+        ["countries", "favorites-quick", "group-all"] + groups.map { "live-category-\($0)" } + ["categories"]
     }
 
     /// Horizontal channel categories leave the full width for large 16:9 tiles.
@@ -984,16 +1082,16 @@ struct ContentView: View {
             ScrollViewReader { categoryReader in
                 ScrollView(.horizontal, showsIndicators: false) {
                     LazyHStack(spacing: 18) {
+                        liveCountryButton
                         televisionCategory("Favoris", id: "favorites-quick", selected: library.selectedPresetID == FavoritePresets.defaultID(for: .live)) {
-                            if library.selectedPresetID == FavoritePresets.defaultID(for: .live) { showAllCatalog() }
-                            else { selectLivePreset(FavoritePresets.defaultID(for: .live)) }
+                            toggleLiveFavorites()
                         }
                         televisionCategory("Toutes les chaînes", id: "group-all", selected: showingAllCatalog) { showAllCatalog() }
                         ForEach(groups, id: \.self) { name in
                             televisionCategory(name, id: "live-category-\(name)", selected: group == name) { selectLiveGroup(name) }
                         }
                         televisionCategory("Toutes les catégories", id: "categories", selected: false) {
-                            groupSearch = ""; showingGroups = true
+                            showingGroups = true
                         }
                     }.padding(.horizontal, 6).padding(.vertical, 8)
                 }
@@ -1048,7 +1146,8 @@ struct ContentView: View {
                     }
                     HStack(spacing: 10) {
                         if browserHeight < 580 && !liveSidebarVisible {
-                            Button { groupSearch = ""; showingGroups = true } label: { Image(systemName: "line.3.horizontal.decrease") }
+                            liveCountryButton
+                            Button { showingGroups = true } label: { Image(systemName: "line.3.horizontal.decrease") }
                                 .buttonStyle(FluxBareButtonStyle()).fluxFocus($systemFocus, id: "categories").id("categories")
                                 .accessibilityLabel("Catégories TV")
                         } else { Image(systemName: "magnifyingglass").foregroundStyle(.secondary) }
@@ -1240,7 +1339,7 @@ struct ContentView: View {
             }.padding(.horizontal, 30)
             HStack(spacing: 10) {
                 navButton("Toutes", icon: "square.grid.2x2", id: "group-all", active: showingAllCatalog) { showAllCatalog() }
-                navButton(group ?? "Catégories", icon: "line.3.horizontal.decrease", id: "categories", active: group != nil) { groupSearch = ""; showingGroups = true }
+                navButton(group ?? "Catégories", icon: "line.3.horizontal.decrease", id: "categories", active: group != nil) { showingGroups = true }
                 if group != nil { Button { self.group = nil } label: { Image(systemName: "xmark.circle.fill") }.buttonStyle(.plain).accessibilityLabel("Effacer le filtre") }
                 Spacer(minLength: 0)
                 if library.contentKind == .movie { navButton("À reprendre", icon: "clock.arrow.circlepath", id: "continue-only", active: continueOnly) { toggleResumeFilter() } }
@@ -1698,7 +1797,7 @@ struct ContentView: View {
 
     private var groupsPanel: some View {
         panel("Catégories · \(library.contentKind.frenchTitle)") {
-            TextField("Filtrer les catégories", text: $groupSearch).fluxFieldStyle()
+            TextField("Filtrer les catégories", text: $library.groupSearch).fluxFieldStyle()
             Button("Toutes les catégories") { group = nil; showingGroups = false }
             LazyVStack(alignment: .leading, spacing: 8) {
                 ForEach(groups.filter { groupSearch.isEmpty || $0.localizedStandardContains(groupSearch) }, id: \.self) { name in
@@ -1726,7 +1825,11 @@ struct ContentView: View {
             Button("Catalogue complet") { showAllCatalog(); showingLists = false }
             ForEach(library.currentPresets) { preset in
                 HStack {
-                    Button { continueOnly=false; group=nil; library.selectedPresetID = preset.id; showingLists = false } label: { Label(preset.name + " (\(preset.itemIDs.count))", systemImage: "star").frame(maxWidth: .infinity, alignment: .leading) }.buttonStyle(.bordered)
+                    Button {
+                        if library.contentKind == .live { selectLivePreset(preset.id) }
+                        else { continueOnly=false; group=nil; library.selectedPresetID = preset.id }
+                        showingLists = false
+                    } label: { Label(preset.name + " (\(preset.itemIDs.count))", systemImage: "star").frame(maxWidth: .infinity, alignment: .leading) }.buttonStyle(.bordered)
                     if !preset.isDefault {
                         Button("Renommer") { showingLists = false; DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { presetEditor = PresetEditor(kind: preset.kind, existing: preset) } }
                         Button(role: .destructive) { showingLists = false; DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { deletingPreset = preset } } label: { Image(systemName: "trash") }
@@ -1780,7 +1883,46 @@ struct ContentView: View {
         #endif
         focusID = id
     }
-    private func changeKind(_ kind: IPTVMediaKind) { home(); library.contentKind = kind; showAllCatalog(); focusID = "tab-\(kind.rawValue)" }
+    private func changeKind(_ kind: IPTVMediaKind) {
+        library.flushBrowsingPreferences()
+        home()
+        library.contentKind = kind
+        restoreBrowsingContext()
+    }
+    /// Wait for the matching source and filters before restoring a channel or
+    /// poster. A remembered selection never opens a player on app launch.
+    private func restoreBrowsingContext() {
+        browseRestoreTask?.cancel()
+        pendingBrowseRestore = true
+        pendingCatalogFocus = nil
+        showingSearch = !library.search.isEmpty
+        guard library.browsingCatalogReady, !library.isLoading, !library.isFiltering, !library.sources.isEmpty,
+              library.credentialIssue == nil else { return }
+        let revision = library.browsingRevision
+        let source = library.selectedSourceID
+        let kind = library.contentKind
+        let rememberedItemID = library.browseItemID
+        browseRestoreTask = Task { @MainActor in
+            await Task.yield()
+            guard !Task.isCancelled, library.browsingRevision == revision,
+                  library.selectedSourceID == source, library.contentKind == kind,
+                  !library.isLoading, !library.isFiltering, page == .catalogue,
+                  heldItem == nil, !modalOpen else { return }
+            rebuildResumeSlice()
+            catalogPage = min(catalogPage, catalogPageCount - 1)
+            if let item = visibleSlice.item(id: rememberedItemID) {
+                revealCatalogItem(item.id)
+                setPreview(item)
+                focusID = item.id
+                systemFocus = item.id
+            } else {
+                focusID = "tab-\(kind.rawValue)"
+                systemFocus = focusID
+            }
+            pendingBrowseRestore = false
+            browseRestoreTask = nil
+        }
+    }
     private func focusFirstItem() {
         guard page == .catalogue, heldItem == nil, !modalOpen, !searchFocus, !liveGroupSearchFocus else { return }
         pendingCatalogFocus = catalogFocusContext
@@ -1942,8 +2084,7 @@ struct ContentView: View {
         case .series:
             let id = series?.id; home(); focusID = id ?? "tab-series"
         case .catalogue:
-            if showingSearch { showingSearch = false; searchFocus = false; library.search = "" }
-            else if continueOnly || group != nil || library.selectedPresetID != nil || !library.search.isEmpty { showAllCatalog() }
+            if showingSearch { showingSearch = false; searchFocus = false }
             else { focusID = "tab-\(library.contentKind.rawValue)" }
         }
     }
@@ -1998,7 +2139,7 @@ struct ContentView: View {
                 #if os(tvOS)
                 rows.append(televisionScopeIDs)
                 #else
-                if !liveSidebarVisible { rows.append(browserHeight < 580 ? ["categories"] : ["categories", "favorites-quick", "lists"]) }
+                if !liveSidebarVisible { rows.append(browserHeight < 580 ? ["countries", "categories"] : ["countries", "categories", "favorites-quick", "lists"]) }
                 #endif
                 if visible.isEmpty && !library.sources.isEmpty && library.credentialIssue == nil { rows.append(["live-reset"]) }
             } else {
@@ -2114,12 +2255,12 @@ struct ContentView: View {
         case "search": search()
         case "remote": showRemote.toggle()
         case "lists": showingLists = true
-        case "categories": groupSearch = ""; showingGroups = true
+        case "categories": showingGroups = true
+        case "countries": showingCountries = true
         case "continue-only": toggleResumeFilter()
         case "favorites-quick":
             if library.contentKind == .live {
-                if library.selectedPresetID == FavoritePresets.defaultID(for: .live) { showAllCatalog() }
-                else { selectLivePreset(FavoritePresets.defaultID(for: .live)) }
+                toggleLiveFavorites()
             } else { toggleQuickFavorites() }
         case "volume-down": playback.adjustVolume(-0.1)
         case "volume-up": playback.adjustVolume(0.1)

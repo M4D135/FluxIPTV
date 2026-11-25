@@ -13,10 +13,65 @@ final class IPTVLibrary: ObservableObject {
     private var detailOrder: [String] = []
     @Published private(set) var selectedSourceID: UUID?
     @Published var selectedItemID: String?
-    @Published var search = "" { didSet { if oldValue != search { updateResults(debounce: true) } } }
-    @Published var contentKind: IPTVMediaKind = .live { didSet { if oldValue != contentKind { updateResults(clear: true) } } }
-    @Published private(set) var presets = FavoritePresets() { didSet { if selectedPresetID != nil { updateResults() } } }
-    @Published private(set) var selectedPresetIDs: [IPTVMediaKind: String] = [:] { didSet { if oldValue != selectedPresetIDs { updateResults(clear: true) } } }
+    @Published var search = "" {
+        didSet { if oldValue != search && !restoringBrowsing { browsingFilterChanged(); updateResults(debounce: true) } }
+    }
+    @Published var contentKind: IPTVMediaKind = .live {
+        didSet { if oldValue != contentKind && !restoringBrowsing { changeBrowsingKind() } }
+    }
+    @Published var group: String? {
+        didSet { if oldValue != group && !restoringBrowsing { browsingFilterChanged() } }
+    }
+    @Published var groupSearch = "" {
+        didSet { if oldValue != groupSearch { rememberBrowsingChange() } }
+    }
+    @Published var continueOnly = false {
+        didSet {
+            guard oldValue != continueOnly && !restoringBrowsing else { return }
+            if continueOnly && selectedPresetID != nil {
+                restoringBrowsing = true
+                selectedPresetIDs.removeValue(forKey: contentKind)
+                restoringBrowsing = false
+                updateResults(clear: true)
+            }
+            browsingFilterChanged()
+        }
+    }
+    @Published var countryCode: String? {
+        didSet {
+            guard oldValue != countryCode && !restoringBrowsing else { return }
+            restoringBrowsing = true
+            if let group, let countryCode,
+               (LiveCountry.detectCode(in: group) ?? LiveCountry.unknownCode) != countryCode {
+                self.group = nil
+            }
+            restoringBrowsing = false
+            browsingFilterChanged()
+            updateResults(clear: true)
+        }
+    }
+    @Published var catalogPage = 0 {
+        didSet { if oldValue != catalogPage { rememberBrowsingChange() } }
+    }
+    @Published var browseItemID: String? {
+        didSet { if oldValue != browseItemID { rememberBrowsingChange() } }
+    }
+    @Published private(set) var browsingRevision = UUID()
+    @Published private(set) var presets = FavoritePresets() {
+        didSet { if selectedPresetID != nil && !restoringBrowsing { updateResults() } }
+    }
+    @Published private(set) var selectedPresetIDs: [IPTVMediaKind: String] = [:] {
+        didSet {
+            if oldValue[contentKind] != selectedPresetIDs[contentKind] && !restoringBrowsing {
+                if selectedPresetIDs[contentKind] != nil {
+                    restoringBrowsing = true
+                    continueOnly = false
+                    restoringBrowsing = false
+                }
+                browsingFilterChanged(); updateResults(clear: true)
+            }
+        }
+    }
     @Published private(set) var isLoading = false
     @Published var alertMessage: String?
     @Published private(set) var credentialIssue: String?
@@ -24,12 +79,21 @@ final class IPTVLibrary: ObservableObject {
     private let sourcesKey = "fluxiptv.savedSources.v1"
     private let favoritesKey = "fluxiptv.favorites.v1"
     private let presetsKey = "fluxiptv.favoritePresets.v2"
+    private var browsingPreferences = CatalogBrowsingPreferences()
+    private var browsingDefaults: UserDefaults? = .standard
+    private var browsingContext: (sourceID: UUID, kind: IPTVMediaKind)?
+    private var loadedCatalogSourceID: UUID?
+    private var restoringBrowsing = false
+    private var browsingSaveTask: Task<Void, Never>?
+    private var browsingDirty = false
     private var seriesCache: [String: [IPTVSeason]] = [:]
     private var loadID = UUID()
     // Keep successful reads in RAM only. Never prompt while changing media.
     private var sessionCredentials = SessionCredentialCache<IPTVSecret>()
 
     init() {
+        browsingPreferences = CatalogBrowsingPreferences.decoded(
+            UserDefaults.standard.data(forKey: CatalogBrowsingPreferences.storageKey))
         if let data = UserDefaults.standard.data(forKey: sourcesKey),
            let saved = try? JSONDecoder().decode([IPTVSource].self, from: data) {
             sources = saved
@@ -42,7 +106,8 @@ final class IPTVLibrary: ObservableObject {
             presets = FavoritePresets(legacyIDs: Set(UserDefaults.standard.stringArray(forKey: favoritesKey) ?? []))
             persistPresets()
         }
-        if let first = sources.first {
+        browsingPreferences.retainSources(Set(sources.map(\.id)))
+        if let first = sources.first(where: { $0.id == browsingPreferences.lastSourceID }) ?? sources.first {
             Task { await selectSource(first.id) }
         }
     }
@@ -50,23 +115,41 @@ final class IPTVLibrary: ObservableObject {
     #if FLUX_CATALOG_UI_TESTING
     /// Empty first-run state without reading or modifying real saved sources.
     init(emptyCatalogFixture kind: IPTVMediaKind) {
+        browsingDefaults = nil
         contentKind = kind
     }
 
     /// Isolated local catalogue for the native UI capture harness. This path
     /// neither loads saved accounts nor starts a source refresh.
-    init(catalogFixture source: IPTVSource, items: [IPTVItem], kind: IPTVMediaKind) {
+    init(catalogFixture source: IPTVSource, items: [IPTVItem], kind: IPTVMediaKind,
+         browsingDefaults: UserDefaults? = nil) {
         precondition(source.kind == .m3uFile)
         precondition(items.allSatisfy {
             $0.sourceID == source.id && $0.directURL == nil && $0.xtreamStreamID == nil
                 && ($0.logoURL == nil || $0.logoURL?.isFileURL == true)
                 && $0.backdropURL == nil && $0.details.trailerURL == nil
         })
+        self.browsingDefaults = browsingDefaults
+        browsingPreferences = CatalogBrowsingPreferences.decoded(
+            browsingDefaults?.data(forKey: CatalogBrowsingPreferences.storageKey))
+        if let data = browsingDefaults?.data(forKey: presetsKey),
+           let saved = try? JSONDecoder().decode(FavoritePresets.self, from: data) {
+            presets = saved
+        }
         sources = [source]
         selectedSourceID = source.id
         catalogIndex = CatalogIndex(items)
+        loadedCatalogSourceID = source.id
         contentKind = kind
+        restoreBrowsingContext()
         updateResults(clear: true)
+    }
+
+    /// Reload the same isolated source through the production installation and
+    /// preference reconciliation path, without network requests or accounts.
+    func reloadCatalogFixture(_ items: [IPTVItem]) {
+        precondition(items.allSatisfy { $0.sourceID == selectedSourceID && $0.directURL == nil && $0.xtreamStreamID == nil })
+        installCatalog(CatalogIndex(items))
     }
     #endif
 
@@ -79,6 +162,8 @@ final class IPTVLibrary: ObservableObject {
     }
 
     var currentPresets: [FavoritePreset] { presets.lists(for: contentKind) }
+    var liveCountries: [LiveCountry] { catalogIndex.liveCountries }
+    var browsingCatalogReady: Bool { selectedSourceID != nil && loadedCatalogSourceID == selectedSourceID }
 
     var selectedPresetID: String? {
         get { selectedPresetIDs[contentKind] }
@@ -97,12 +182,145 @@ final class IPTVLibrary: ObservableObject {
 
     func catalogItem(id: String?) -> IPTVItem? { catalogIndex.item(id: id) }
 
+    private func currentBrowsingState(kind: IPTVMediaKind) -> CatalogBrowsingState {
+        CatalogBrowsingState(countryCode: countryCode, group: group, search: search,
+                             groupSearch: groupSearch, presetID: selectedPresetIDs[kind],
+                             continueOnly: continueOnly, catalogPage: catalogPage, browseItemID: browseItemID)
+    }
+
+    /// Memory is updated immediately; writing UserDefaults is coalesced while
+    /// the remote moves across channels. Lifecycle/source changes flush it.
+    private func storeActiveBrowsingState() {
+        guard !restoringBrowsing, let context = browsingContext,
+              context.sourceID == selectedSourceID, loadedCatalogSourceID == context.sourceID else { return }
+        browsingPreferences.remember(currentBrowsingState(kind: context.kind),
+                                     sourceID: context.sourceID, kind: context.kind)
+        browsingDirty = true
+    }
+
+    private func rememberBrowsingChange() {
+        guard !restoringBrowsing, browsingContext?.kind == contentKind else { return }
+        storeActiveBrowsingState()
+        scheduleBrowsingSave()
+    }
+
+    private func browsingFilterChanged() {
+        guard !restoringBrowsing else { return }
+        restoringBrowsing = true
+        catalogPage = 0
+        browseItemID = nil
+        restoringBrowsing = false
+        rememberBrowsingChange()
+    }
+
+    private func scheduleBrowsingSave() {
+        guard browsingDefaults != nil, browsingDirty else { return }
+        browsingSaveTask?.cancel()
+        browsingSaveTask = Task { @MainActor [weak self] in
+            do { try await Task.sleep(nanoseconds: 350_000_000) }
+            catch { return }
+            guard !Task.isCancelled else { return }
+            self?.writeBrowsingPreferences()
+        }
+    }
+
+    private func writeBrowsingPreferences() {
+        browsingSaveTask?.cancel()
+        browsingSaveTask = nil
+        guard browsingDirty, let defaults = browsingDefaults,
+              let data = try? JSONEncoder().encode(browsingPreferences) else { return }
+        defaults.set(data, forKey: CatalogBrowsingPreferences.storageKey)
+        browsingDirty = false
+    }
+
+    func flushBrowsingPreferences() {
+        storeActiveBrowsingState()
+        writeBrowsingPreferences()
+    }
+
+    private func changeBrowsingKind() {
+        // The fields still belong to browsingContext.kind even though this
+        // property observer already sees the new contentKind.
+        storeActiveBrowsingState()
+        if let sourceID = selectedSourceID {
+            browsingPreferences.select(sourceID: sourceID, kind: contentKind)
+            browsingDirty = true
+        }
+        restoreBrowsingContext()
+        updateResults(clear: true)
+        flushBrowsingPreferences()
+    }
+
+    private func applyBrowsingState(_ state: CatalogBrowsingState) {
+        countryCode = state.countryCode
+        group = state.group
+        search = state.search
+        groupSearch = state.groupSearch
+        continueOnly = state.continueOnly
+        catalogPage = state.catalogPage
+        browseItemID = state.browseItemID
+        if let id = state.presetID { selectedPresetIDs[contentKind] = id }
+        else { selectedPresetIDs.removeValue(forKey: contentKind) }
+    }
+
+    private func restoreBrowsingContext() {
+        restoringBrowsing = true
+        if let sourceID = selectedSourceID, loadedCatalogSourceID == sourceID {
+            let saved = browsingPreferences.state(for: sourceID, kind: contentKind)
+                .validated(kind: contentKind, index: catalogIndex, presets: presets)
+            applyBrowsingState(saved)
+            browsingContext = (sourceID, contentKind)
+        } else {
+            // Loading/error states must never validate against an empty index
+            // or save these temporary defaults over the stored filters.
+            browsingContext = nil
+            applyBrowsingState(CatalogBrowsingState())
+        }
+        restoringBrowsing = false
+        browsingRevision = UUID()
+        rememberBrowsingChange()
+    }
+
+    private func prepareBrowsingSource(_ id: UUID) {
+        flushBrowsingPreferences()
+        let kind = browsingPreferences.preferredKind(for: id) ?? .live
+        restoringBrowsing = true
+        browsingContext = nil
+        selectedSourceID = id
+        contentKind = kind
+        selectedPresetIDs = [:]
+        applyBrowsingState(CatalogBrowsingState())
+        clearCatalog()
+        restoringBrowsing = false
+        browsingPreferences.select(sourceID: id, kind: kind)
+        browsingDirty = true
+        browsingRevision = UUID()
+        scheduleBrowsingSave()
+    }
+
+    private func reconcileVisibleBrowsingSelection() {
+        guard !restoringBrowsing, !isFiltering,
+              browsingContext?.sourceID == selectedSourceID,
+              browsingContext?.kind == contentKind,
+              loadedCatalogSourceID == selectedSourceID,
+              let id = browseItemID,
+              catalogResults.slice(group: group).item(id: id) == nil else { return }
+        restoringBrowsing = true
+        browseItemID = nil
+        catalogPage = 0
+        restoringBrowsing = false
+        rememberBrowsingChange()
+    }
+
     private func updateResults(debounce: Bool = false, clear: Bool = false) {
         filterTask?.cancel(); filterToken = UUID()
         let token = filterToken
         let kind = contentKind, term = search, membership = selectedPreset?.itemIDs
-        if term.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && membership == nil {
-            catalogResults = catalogIndex.unfiltered(kind); isFiltering = false; return
+        let country = kind == .live ? countryCode : nil
+        if term.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && membership == nil && country == nil {
+            catalogResults = catalogIndex.unfiltered(kind); isFiltering = false
+            reconcileVisibleBrowsingSelection()
+            return
         }
         if clear || catalogResults.kind != kind { catalogResults = CatalogResults(kind:kind) }
         isFiltering = true
@@ -110,22 +328,29 @@ final class IPTVLibrary: ObservableObject {
         filterTask = Task { @MainActor [weak self] in
             if debounce { try? await Task.sleep(nanoseconds:150_000_000) }
             guard !Task.isCancelled else { return }
-            let worker = Task.detached(priority:.userInitiated) { try index.matching(kind:kind,search:term,membership:membership) }
+            let worker = Task.detached(priority:.userInitiated) { try index.matching(kind:kind,search:term,membership:membership,countryCode:country) }
             let result = await withTaskCancellationHandler(operation: { try? await worker.value }, onCancel: { worker.cancel() })
             guard let self, !Task.isCancelled, self.filterToken == token else { return }
             if let result { self.catalogResults = result }
             self.isFiltering = false
+            self.reconcileVisibleBrowsingSelection()
         }
     }
 
     private func installCatalog(_ index: CatalogIndex) {
+        storeActiveBrowsingState()
         catalogIndex = index
+        loadedCatalogSourceID = selectedSourceID
         detailCache.removeAll(); detailOrder.removeAll()
+        restoringBrowsing = true
         reconcileCatalog(index.items)
+        restoringBrowsing = false
+        restoreBrowsingContext()
         updateResults(clear: true)
     }
 
     private func clearCatalog() {
+        loadedCatalogSourceID = nil
         catalogIndex = CatalogIndex()
         detailCache.removeAll(); detailOrder.removeAll()
         updateResults(clear: true)
@@ -219,12 +444,12 @@ final class IPTVLibrary: ObservableObject {
     private func activate(_ source: IPTVSource, loaded: CatalogIndex) {
         credentialIssue = nil
         loadID = UUID()
-        selectedSourceID = source.id
+        if selectedSourceID != source.id { prepareBrowsingSource(source.id) }
         selectedItemID = nil
         seriesCache.removeAll()
-        search = ""
         isLoading = false
         installCatalog(loaded)
+        flushBrowsingPreferences()
     }
 
     private func reconcileCatalog(_ loaded: [IPTVItem]) {
@@ -240,13 +465,11 @@ final class IPTVLibrary: ObservableObject {
         loadID = UUID()
         let token = loadID
         let refreshing = selectedSourceID == id
-        selectedSourceID = id
         if !refreshing {
+            prepareBrowsingSource(id)
             selectedItemID = nil
-            clearCatalog()
-            search = ""
             seriesCache.removeAll()
-        }
+        } else { flushBrowsingPreferences() }
         isLoading = true
         credentialIssue = nil
 
@@ -391,10 +614,14 @@ final class IPTVLibrary: ObservableObject {
     }
 
     private func persistPresets() {
-        if let bytes = try? JSONEncoder().encode(presets) { UserDefaults.standard.set(bytes, forKey: presetsKey) }
+        if let bytes = try? JSONEncoder().encode(presets) { browsingDefaults?.set(bytes, forKey: presetsKey) }
     }
 
     func removeSource(_ source: IPTVSource) {
+        storeActiveBrowsingState()
+        browsingPreferences.removeSource(source.id)
+        browsingDirty = true
+        if selectedSourceID == source.id { browsingContext = nil }
         if selectedSourceID == source.id { loadID = UUID() } // invalidate this source’s in-flight refresh
         sessionCredentials.remove(for: source.id)
         IPTVSecretStore.delete(source)
@@ -405,13 +632,19 @@ final class IPTVLibrary: ObservableObject {
         persistSources()
         if selectedSourceID == source.id {
             seriesCache.removeAll()
+            restoringBrowsing = true
             selectedSourceID = nil
+            selectedPresetIDs = [:]
+            applyBrowsingState(CatalogBrowsingState())
             credentialIssue = nil
             selectedItemID = nil
             clearCatalog()
+            restoringBrowsing = false
+            browsingRevision = UUID()
             isLoading = false
             if let first = sources.first { Task { await selectSource(first.id) } }
         }
+        writeBrowsingPreferences()
     }
 
     func reloadSelected() {
@@ -437,7 +670,7 @@ final class IPTVLibrary: ObservableObject {
 
     private func persistSources() {
         if let bytes = try? JSONEncoder().encode(sources) {
-            UserDefaults.standard.set(bytes, forKey: sourcesKey)
+            browsingDefaults?.set(bytes, forKey: sourcesKey)
         }
     }
 

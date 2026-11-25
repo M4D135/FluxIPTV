@@ -1,6 +1,10 @@
-# FLUX IPTV 0.8.8 — Une interface pour la télévision
+# FLUX IPTV 0.8.9 — Pays TV et filtres mémorisés
 
 Application native SwiftUI pour macOS, iOS et tvOS.
+
+**0.8.9 ajoute le filtre par pays aux chaînes TV et mémorise la navigation.** Les préfixes des catégories (`FR | Généralistes`, `[FR] Cinéma`, `ES - Deportes`, `UK | News`), les noms de pays et les drapeaux reconnus alimentent le menu **Tous les pays**. Choisir France conserve les catégories françaises et leurs chaînes. Les catégories sans pays reconnu restent accessibles dans **Pays non identifié**. La liste des pays vient du catalogue complet, même si la recherche ou les favoris ne donnent aucun résultat.
+
+Le pays, la catégorie, la recherche, la recherche de catégories, la liste de favoris, le filtre À reprendre des films, la page et la dernière sélection sont mémorisés **par source et par section**. Revenir dans TV ou relancer l’application retrouve ce contexte sans lancer une chaîne automatiquement. Le changement de section et Retour conservent les filtres ; **Toutes les chaînes** réinitialise explicitement les filtres TV, et **Tous les pays** dans le sélecteur retire seulement la restriction de pays. Une catégorie ou une chaîne supprimée par le fournisseur est écartée lors du prochain chargement réussi.
 
 **0.8.8 refond la consultation des films et séries :** sélectionner un film ouvre une fiche plein écran avec grand synopsis et bande-annonce. Une série ouvre son rayon de saisons, puis les épisodes de la saison choisie. La scène de boîtes manipulables et ses voisins ont été retirés.
 

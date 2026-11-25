@@ -18,7 +18,10 @@ struct FluxIPTVApp: App {
                 .environmentObject(playback)
                 .preferredColorScheme(.dark)
                 #if os(macOS)
-                .onReceive(NotificationCenter.default.publisher(for:NSApplication.willTerminateNotification)) { _ in playback.stop() }
+                .onReceive(NotificationCenter.default.publisher(for:NSApplication.willTerminateNotification)) { _ in
+                    library.flushBrowsingPreferences()
+                    playback.stop()
+                }
                 #endif
         }
         #if os(macOS)

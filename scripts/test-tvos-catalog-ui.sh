@@ -159,7 +159,7 @@ run_bounded 30 xcrun simctl install "$simulator_id" "$fixture_app" >> "$capture_
 data_container="$(run_bounded 15 xcrun simctl get_app_container "$simulator_id" "$bundle_id" data)"
 ready_file="$data_container/Library/Caches/FluxTVCatalogUI-ready.json"
 failed=0
-for scenario in movie movies series live welcome search-empty search-result; do
+for scenario in movie movies series live welcome search-empty search-result live-fr live-es country-picker live-restored; do
   case "$scenario" in
     movie) filename='movie-detail.png' ;;
     movies) filename='movie-catalog.png' ;;
@@ -168,6 +168,10 @@ for scenario in movie movies series live welcome search-empty search-result; do
     welcome) filename='welcome.png' ;;
     search-empty) filename='search-empty.png' ;;
     search-result) filename='search-result.png' ;;
+    live-fr) filename='live-france.png' ;;
+    live-es) filename='live-spain.png' ;;
+    country-picker) filename='live-country-picker.png' ;;
+    live-restored) filename='live-restored.png' ;;
   esac
   rm -f "$ready_file" "$capture_root/$scenario-ready.json" "$capture_root/$filename"
   if ! run_bounded 30 env "SIMCTL_CHILD_FLUX_UI_SCENARIO=$scenario" xcrun simctl launch \
@@ -236,6 +240,44 @@ if sys.argv[2].startswith("search-"):
             or report.get("searchResultIDs") != expected_results):
         print("The search scenario did not target its expected movie tab/result.", file=sys.stderr)
         sys.exit(1)
+if sys.argv[2] in ("live-fr", "live-es", "country-picker", "live-restored"):
+    required = ("countryFilterTested", "countrySelectionMatches", "countryFilteringSettled",
+                "countryResultsMatch", "countryAvailableCountsMatch", "countryUnclassifiedRetained",
+                "fullyVisibleNativeFocus")
+    if any(report.get(key) is not True for key in required):
+        print("The production country filter, inventory or visible focus assertions did not pass.", file=sys.stderr)
+        sys.exit(1)
+    if sys.argv[2] == "live-restored":
+        expected_code, expected_ids = "FR", ["fixture-country-fr-1"]
+    elif sys.argv[2] == "live-es":
+        expected_code, expected_ids = "ES", ["fixture-country-es-0", "fixture-country-es-1"]
+    else:
+        expected_code, expected_ids = "FR", ["fixture-country-fr-0", "fixture-country-fr-1", "fixture-country-fr-2"]
+    expected_control = "live-country-option-FR" if sys.argv[2] == "country-picker" else "live-channel-" + expected_ids[0]
+    if (report.get("countryCode") != expected_code
+            or report.get("countryResultIDs") != expected_ids
+            or report.get("selectedItemID") != expected_ids[0]
+            or report.get("expectedInitialControlIdentifier") != expected_control
+            or report.get("countryAvailableCounts") != {"FR": 3, "ES": 2, "GB": 2, "unclassified": 2}
+            or report.get("countryPickerRequested") is not (sys.argv[2] == "country-picker")):
+        print("The country scenario did not preserve the intended mixed catalogue and selected control.", file=sys.stderr)
+        sys.exit(1)
+if sys.argv[2] == "live-restored":
+    if (report.get("browsingUIRestorationTested") is not True
+            or report.get("browsingUIRestorationMatches") is not True
+            or report.get("browsingUISelectionSeeded") is not False
+            or report.get("browsingRestoredGroup") != "[FR] Cinéma"
+            or report.get("browsingRestoredSearch") != "Grand écran"
+            or report.get("browsingRestoredGroupSearch") != "Cin"
+            or report.get("browsingRestoredItemID") != "fixture-country-fr-1"):
+        print("The actual UI did not restore persisted filters and native focus without a seeded selection.", file=sys.stderr)
+        sys.exit(1)
+if sys.argv[2] == "country-picker":
+    required = ("browsingPersistenceTested", "browsingSectionRoundTripPassed", "browsingStoredDataObserved",
+                "browsingRecreationPassed", "browsingRefreshPassed", "browsingMediaContextsIndependent")
+    if any(report.get(key) is not True for key in required):
+        print("Browsing filters did not survive section changes, preferences recreation and catalogue refresh.", file=sys.stderr)
+        sys.exit(1)
 PY
   then failed=1; fi
   run_bounded 15 xcrun simctl terminate "$simulator_id" "$bundle_id" >> "$capture_root/simulator.log" 2>&1 || true
@@ -276,6 +318,7 @@ SWIFT
 if ! run_bounded 120 xcrun swift -module-cache-path "$smoke_root/ModuleCache" "$smoke_root/ValidateCaptures.swift" \
   "$capture_root/movie-detail.png" "$capture_root/movie-catalog.png" "$capture_root/series-s12-e15-detail.png" \
   "$capture_root/live-catalog.png" "$capture_root/welcome.png" "$capture_root/search-empty.png" "$capture_root/search-result.png" \
+  "$capture_root/live-france.png" "$capture_root/live-spain.png" "$capture_root/live-country-picker.png" "$capture_root/live-restored.png" \
   > "$capture_root/capture-validation.log" 2>&1; then failed=1; fi
 cat "$capture_root/capture-validation.log"
 
@@ -283,6 +326,6 @@ if [[ "$failed" -ne 0 ]]; then
   printf 'FAIL: Native tvOS UI capture checks failed. Review PNGs and logs in %s\n' "$capture_root" >&2
   exit 1
 fi
-printf 'PASS: Seven native tvOS scenarios have bounded focus matching the measured intended control and nonempty compositor captures; both production search submissions reject stale activation.\n'
-printf 'Review the PNGs in %s for actual glass, readable menus, channel size, clipping and episode restoration.\n' "$capture_root"
+printf 'PASS: Eleven native tvOS scenarios have bounded focus matching the measured intended control and nonempty compositor captures; both production search submissions reject stale activation; France, Spain and the country picker preserve the mixed catalogue; browsing filters survive section changes, preferences recreation and catalogue refresh; the actual UI restores saved filters and native focus without a seeded selection.\n'
+printf 'Review the PNGs in %s for actual glass, readable menus, channel size, clipping, episode restoration and country selection.\n' "$capture_root"
 printf 'This checks initial focus, programmatic production search submission and native layout; physical remote navigation, Apple TV hardware rendering and trailer playback still need their own verification.\n'

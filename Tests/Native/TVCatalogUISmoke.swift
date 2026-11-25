@@ -56,6 +56,7 @@ final class TVCatalogControlProbeView: UIView {
     @StateObject private var playback: PlaybackController
     @StateObject private var searchObservations = TVCatalogSearchObservations()
     private let fixture: TVCatalogFixture
+    private let restoredDefaultsSuite: String?
 
     init() {
         do {
@@ -64,16 +65,30 @@ final class TVCatalogControlProbeView: UIView {
             TVCatalogCapture.configureDefaults()
             let fixture = try TVCatalogFixture.make()
             let library: IPTVLibrary
+            var restoredDefaultsSuite: String?
             if fixture.scenario == "welcome" {
                 library = IPTVLibrary(emptyCatalogFixture: .live)
                 try TVCatalogCapture.require(library.sources.isEmpty, "The welcome fixture unexpectedly contains a source.")
+            } else if fixture.restoresBrowsing {
+                let restored = try TVCatalogCapture.makeRestoredBrowsingLibrary(fixture: fixture)
+                library = restored.library
+                restoredDefaultsSuite = restored.suiteName
+                // A restored nonempty search genuinely starts asynchronous
+                // filtering. Only this scenario accepts that initial state.
+                try TVCatalogCapture.require(!library.isLoading &&
+                                             library.catalogItem(id: fixture.selection?.id) != nil,
+                                             "The restored library did not install its complete local catalogue.")
             } else {
                 library = IPTVLibrary(catalogFixture: fixture.source, items: fixture.items, kind: fixture.kind)
                 try TVCatalogCapture.require(!library.isLoading && !library.isFiltering &&
                                              library.catalogItem(id: fixture.selection?.id) != nil,
                                              "The local catalogue was not installed synchronously.")
+                // Use the actual library filter, not a prefiltered fixture.
+                // Its asynchronous result is checked before capture readiness.
+                if let countryCode = fixture.countryCode { library.countryCode = countryCode }
             }
             self.fixture = fixture
+            self.restoredDefaultsSuite = restoredDefaultsSuite
             _library = StateObject(wrappedValue: library)
             _playback = StateObject(wrappedValue: PlaybackController())
         } catch {
@@ -83,17 +98,23 @@ final class TVCatalogControlProbeView: UIView {
 
     var body: some Scene {
         WindowGroup {
-            ContentView(fixtureSelection: fixture.selection, fixtureSeasons: fixture.seasons,
+            ContentView(fixtureSelection: fixture.restoresBrowsing ? nil : fixture.selection, fixtureSeasons: fixture.seasons,
                         fixtureOpenSeason: fixture.openSeason, fixtureEpisodeID: fixture.episodeID,
                         fixtureOpenItem: fixture.scenario == "movie",
                         fixtureSearchSubmission: fixture.searchQuery,
-                        fixtureSearchObservation: { searchObservations.snapshots.append($0) })
+                        fixtureSearchObservation: { searchObservations.snapshots.append($0) },
+                        fixtureOpenCountries: fixture.opensCountryPicker,
+                        fixtureRestoreBrowsing: fixture.restoresBrowsing)
                 .environmentObject(library)
                 .environmentObject(playback)
                 .preferredColorScheme(.dark)
                 .task {
                     await TVCatalogCapture.awaitInitialFocus(fixture: fixture, library: library,
                                                              playback: playback, searches: searchObservations)
+                    if let restoredDefaultsSuite {
+                        library.flushBrowsingPreferences()
+                        UserDefaults(suiteName: restoredDefaultsSuite)?.removePersistentDomain(forName: restoredDefaultsSuite)
+                    }
                 }
         }
     }
@@ -112,6 +133,10 @@ final class TVCatalogControlProbeView: UIView {
     var expectedInitialControl: String {
         switch scenario {
         case "live": return "live-channel-fixture-live-0"
+        case "live-fr": return "live-channel-fixture-country-fr-0"
+        case "live-es": return "live-channel-fixture-country-es-0"
+        case "live-restored": return "live-channel-fixture-country-fr-1"
+        case "country-picker": return "live-country-option-FR"
         case "movies": return "catalog-card-fixture-movie-1"
         case "search-empty": return "navigation-tab-movie"
         case "search-result": return "catalog-card-fixture-movie-0"
@@ -122,7 +147,8 @@ final class TVCatalogControlProbeView: UIView {
 
     var minimumFocusSize: CGSize {
         switch scenario {
-        case "live": return CGSize(width: 300, height: 230)
+        case "live", "live-fr", "live-es", "live-restored": return CGSize(width: 300, height: 230)
+        case "country-picker": return CGSize(width: 240, height: 54)
         case "movies", "search-result": return CGSize(width: 240, height: 350)
         case "search-empty": return CGSize(width: 150, height: 112)
         case "welcome": return CGSize(width: 300, height: 72)
@@ -152,9 +178,30 @@ final class TVCatalogControlProbeView: UIView {
 
     var usesPortraitControl: Bool { scenario == "movies" || scenario == "search-result" }
 
+    var countryCode: String? {
+        switch scenario {
+        case "live-fr", "country-picker", "live-restored": return "FR"
+        case "live-es": return "ES"
+        default: return nil
+        }
+    }
+
+    var opensCountryPicker: Bool { scenario == "country-picker" }
+    var restoresBrowsing: Bool { scenario == "live-restored" }
+
+    var expectedCountryResults: [String] {
+        if restoresBrowsing { return ["fixture-country-fr-1"] }
+        switch countryCode {
+        case "FR": return ["fixture-country-fr-0", "fixture-country-fr-1", "fixture-country-fr-2"]
+        case "ES": return ["fixture-country-es-0", "fixture-country-es-1"]
+        default: return []
+        }
+    }
+
     static func make() throws -> TVCatalogFixture {
         let scenario = ProcessInfo.processInfo.environment["FLUX_UI_SCENARIO"] ?? ""
-        try TVCatalogCapture.require(["movie", "movies", "series", "live", "welcome", "search-empty", "search-result"].contains(scenario),
+        try TVCatalogCapture.require(["movie", "movies", "series", "live", "welcome", "search-empty", "search-result",
+                                      "live-fr", "live-es", "country-picker", "live-restored"].contains(scenario),
                                      "FLUX_UI_SCENARIO must name a supported catalogue, detail, welcome or search scenario.")
         let source = IPTVSource(id: UUID(uuidString: "00000000-0000-0000-0000-000000000003")!,
                                 name: "Catalogue local de démonstration", kind: .m3uFile)
@@ -163,6 +210,37 @@ final class TVCatalogControlProbeView: UIView {
                                     selection: nil, seasons: [], openSeason: nil, episodeID: nil)
         }
         let artworkRoot = FileManager.default.temporaryDirectory.appendingPathComponent("FluxTVUIArtwork", isDirectory: true)
+        if ["live-fr", "live-es", "country-picker", "live-restored"].contains(scenario) {
+            // Mixed provider prefixes share one catalogue. Unclassified rows
+            // must remain selectable through the country picker, and must not
+            // leak into FR or ES. The old live fixture stays unchanged.
+            let entries: [(id: String, name: String, group: String)] = [
+                ("fr-0", "Horizon France", "FR | Généralistes"),
+                ("fr-1", "Grand écran France", "[FR] Cinéma"),
+                ("fr-2", "Découverte France", "FR - Documentaires"),
+                ("es-0", "Deporte España", "ES - Deportes"),
+                ("es-1", "Noticias España", "[ES] Noticias"),
+                ("gb-0", "World News UK", "UK | News"),
+                ("gb-1", "Discover UK", "[UK] Documentary"),
+                ("unknown-0", "Canal local", "Généralistes"),
+                ("unknown-1", "Monde partagé", "International")
+            ]
+            let channels = try entries.enumerated().map { index, entry in
+                let url = artworkRoot.appendingPathComponent("country-\(entry.id).png")
+                cache(try artwork(width: 480, height: 270, index: index, title: entry.name.uppercased(),
+                                  subtitle: entry.group.uppercased()), at: url)
+                return IPTVItem(id: "fixture-country-\(entry.id)", sourceID: source.id, name: entry.name,
+                                group: entry.group, logoURL: url, kind: .live,
+                                directURL: nil, xtreamStreamID: nil, fileExtension: nil)
+            }
+            let selectedID = scenario == "live-es" ? "fixture-country-es-0"
+                : scenario == "live-restored" ? "fixture-country-fr-1" : "fixture-country-fr-0"
+            guard let selected = channels.first(where: { $0.id == selectedID }) else {
+                throw TVCatalogUIFailure.assertion("The expected country channel is absent from the mixed fixture.")
+            }
+            return TVCatalogFixture(scenario: scenario, source: source, items: channels, kind: .live,
+                                    selection: selected, seasons: [], openSeason: nil, episodeID: nil)
+        }
         if scenario == "live" {
             let categories = ["Généralistes", "Cinéma", "Documentaires", "Jeunesse", "Musique", "Sports"]
             let channelNames = ["Horizon", "Panorama", "Grand écran", "Découverte", "Évasion", "Scène"]
@@ -286,9 +364,52 @@ final class TVCatalogControlProbeView: UIView {
         ], forName: UserDefaults.argumentDomain)
     }
 
+    /// Write with one real library, then recreate another from the same
+    /// isolated preferences. ContentView receives no selected-item fixture;
+    /// its production restore path must recover the intended native focus.
+    static func makeRestoredBrowsingLibrary(fixture: TVCatalogFixture) throws
+        -> (library: IPTVLibrary, suiteName: String) {
+        let suiteName = "\(bundleID).RestoredUI.\(UUID().uuidString)"
+        guard let storedDefaults = UserDefaults(suiteName: suiteName) else {
+            throw TVCatalogUIFailure.assertion("Cannot create the isolated UI restoration suite.")
+        }
+        do {
+            let original = IPTVLibrary(catalogFixture: fixture.source, items: fixture.items, kind: .live,
+                                       browsingDefaults: storedDefaults)
+            original.countryCode = "FR"
+            original.group = "[FR] Cinéma"
+            original.search = "Grand écran"
+            original.groupSearch = "Cin"
+            original.browseItemID = "fixture-country-fr-1"
+            original.flushBrowsingPreferences()
+            guard let data = storedDefaults.data(forKey: CatalogBrowsingPreferences.storageKey), !data.isEmpty else {
+                throw TVCatalogUIFailure.assertion("UI restoration has no persisted browsing state to read.")
+            }
+            let saved = CatalogBrowsingPreferences.decoded(data).state(for: fixture.source.id, kind: .live)
+            try require(saved.countryCode == "FR" && saved.group == "[FR] Cinéma" && saved.search == "Grand écran" &&
+                        saved.groupSearch == "Cin" && saved.browseItemID == "fixture-country-fr-1",
+                        "The initial library did not persist the exact UI restoration fixture.")
+            guard let reopenedDefaults = UserDefaults(suiteName: suiteName) else {
+                throw TVCatalogUIFailure.assertion("Cannot reopen the isolated UI restoration suite.")
+            }
+            let reopened = IPTVLibrary(catalogFixture: fixture.source, items: fixture.items, kind: .live,
+                                       browsingDefaults: reopenedDefaults)
+            return (reopened, suiteName)
+        } catch {
+            storedDefaults.removePersistentDomain(forName: suiteName)
+            throw error
+        }
+    }
+
     static func awaitInitialFocus(fixture: TVCatalogFixture, library: IPTVLibrary,
                                   playback: PlaybackController, searches: TVCatalogSearchObservations) async {
         do {
+            let persistence: [String: Any]
+            if fixture.opensCountryPicker {
+                persistence = try await verifyBrowsingPersistence(fixture: fixture)
+            } else {
+                persistence = ["browsingPersistenceTested": false]
+            }
             // Wait for real SwiftUI tasks and the native compositor, not a
             // synthetic scenePhase override or an image-renderer snapshot.
             try await Task.sleep(nanoseconds: 2_000_000_000)
@@ -302,6 +423,9 @@ final class TVCatalogControlProbeView: UIView {
                             "The visual fixture unexpectedly started main playback.")
                 let search = searchEvidence(fixture: fixture, library: library, observations: searches.snapshots)
                 lastObservation = search.report
+                let country = countryEvidence(fixture: fixture, library: library)
+                lastObservation.merge(country.report) { _, new in new }
+                lastObservation.merge(persistence) { _, new in new }
                 let windows = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
                     .filter { $0.activationState == .foregroundActive }.flatMap(\.windows)
                 if let window = windows.first(where: { $0.isKeyWindow && !$0.isHidden }),
@@ -346,7 +470,7 @@ final class TVCatalogControlProbeView: UIView {
                         let fullyVisible = valid(frame) && valid(expectedFrame) && valid(viewport) &&
                             viewport.insetBy(dx: -1, dy: -1).contains(frame) &&
                             viewport.insetBy(dx: -1, dy: -1).contains(expectedFrame)
-                        let visibilityAccepted = !fixture.usesPortraitControl || fullyVisible
+                        let visibilityAccepted = !(fixture.usesPortraitControl || fixture.countryCode != nil) || fullyVisible
                         let nativeReport: [String: Any] = [
                             "windowPoints": [window.bounds.width, window.bounds.height],
                             "focusedType": String(describing: type(of: focused)),
@@ -380,7 +504,7 @@ final class TVCatalogControlProbeView: UIView {
                         ]
                         lastObservation.merge(nativeReport) { _, new in new }
                         let key = "\(identity.identifier)|\(frame)|\(expectedFrame)|\(viewport)"
-                        stableSamples = bounded && expectedFocus && largeEnough && visibilityAccepted && search.passed && key == precedingFocus ? stableSamples + 1 : 0
+                        stableSamples = bounded && expectedFocus && largeEnough && visibilityAccepted && search.passed && country.passed && key == precedingFocus ? stableSamples + 1 : 0
                         previousFocus = key
                         if stableSamples >= 4 {
                             var report = lastObservation
@@ -389,9 +513,13 @@ final class TVCatalogControlProbeView: UIView {
                             report["selectedItemID"] = fixture.selection?.id ?? ""
                             report["requestedSeason"] = fixture.openSeason ?? 0
                             report["requestedEpisodeID"] = fixture.episodeID ?? ""
-                            report["captureMode"] = fixture.searchQuery == nil
-                                ? "native tvOS Simulator; measured actual initial focus"
-                                : "native tvOS Simulator; production search-submit hook and measured actual resulting focus"
+                            if fixture.restoresBrowsing {
+                                report["captureMode"] = "native tvOS Simulator; recreated library and production browsing restoration with no initial UI selection fixture"
+                            } else {
+                                report["captureMode"] = fixture.searchQuery == nil
+                                    ? "native tvOS Simulator; measured actual initial focus"
+                                    : "native tvOS Simulator; production search-submit hook and measured actual resulting focus"
+                            }
                             report["physicalRemoteNavigationTested"] = false
                             report["mediaPlaybackTested"] = false
                             report["mediaFixture"] = "Local artwork only; no playable URL. Trailer and live playback are not exercised."
@@ -447,6 +575,117 @@ final class TVCatalogControlProbeView: UIView {
             "searchObservations": trace,
             "searchSubmissionMethod": "Existing fixture hook invokes the production submit handler and immediate activation while the real debounced filter runs; no Siri Remote input is injected"
         ])
+    }
+
+    private static func countryEvidence(fixture: TVCatalogFixture, library: IPTVLibrary)
+        -> (passed: Bool, report: [String: Any]) {
+        guard let expectedCode = fixture.countryCode else { return (true, ["countryFilterTested": false]) }
+        let resultIDs = library.catalogResults.all.items.map(\.id)
+        let counts = Dictionary(uniqueKeysWithValues: library.liveCountries.map { ($0.code, $0.channelCount) })
+        let expectedCounts = ["FR": 3, "ES": 2, "GB": 2, LiveCountry.unknownCode: 2]
+        let countryMatches = library.contentKind == .live && library.countryCode == expectedCode
+        let resultsMatch = !library.isFiltering && resultIDs == fixture.expectedCountryResults
+        let countriesMatch = counts == expectedCounts
+        let restorationMatches = !fixture.restoresBrowsing ||
+            (library.group == "[FR] Cinéma" && library.search == "Grand écran" && library.groupSearch == "Cin" &&
+             library.browseItemID == "fixture-country-fr-1" && library.catalogPage == 0)
+        return (countryMatches && resultsMatch && countriesMatch && restorationMatches, [
+            "countryFilterTested": true,
+            "countryExpectedCode": expectedCode,
+            "countryCode": library.countryCode ?? "",
+            "countrySelectionMatches": countryMatches,
+            "countryFilteringSettled": !library.isFiltering,
+            "countryResultIDs": resultIDs,
+            "countryExpectedResultIDs": fixture.expectedCountryResults,
+            "countryResultsMatch": resultsMatch,
+            "countryAvailableCounts": counts,
+            "countryAvailableCountsMatch": countriesMatch,
+            "countryUnclassifiedRetained": counts[LiveCountry.unknownCode] == 2,
+            "countryPickerRequested": fixture.opensCountryPicker,
+            "browsingUIRestorationTested": fixture.restoresBrowsing,
+            "browsingUIRestorationMatches": fixture.restoresBrowsing && restorationMatches,
+            "browsingUISelectionSeeded": !fixture.restoresBrowsing && fixture.selection != nil,
+            "browsingRestoredGroup": library.group ?? "",
+            "browsingRestoredSearch": library.search,
+            "browsingRestoredGroupSearch": library.groupSearch,
+            "browsingRestoredItemID": library.browseItemID ?? "",
+            "countryFilterMethod": "A single mixed catalogue is filtered by the production IPTVLibrary.countryCode; expected IDs are checked after asynchronous filtering."
+        ])
+    }
+
+    /// Exercise storage and restoration through the real library in a second,
+    /// isolated fixture. The on-screen country picker remains untouched.
+    private static func verifyBrowsingPersistence(fixture: TVCatalogFixture) async throws -> [String: Any] {
+        let suiteName = "\(bundleID).BrowsingPersistence.\(UUID().uuidString)"
+        guard let defaults = UserDefaults(suiteName: suiteName) else {
+            throw TVCatalogUIFailure.assertion("Cannot create an isolated browsing preferences suite.")
+        }
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let original = IPTVLibrary(catalogFixture: fixture.source, items: fixture.items, kind: .live,
+                                   browsingDefaults: defaults)
+        original.countryCode = "FR"
+        original.group = "[FR] Cinéma"
+        original.search = "Grand écran"
+        original.groupSearch = "Cin"
+        try await awaitFilter(original, stage: "initial country/category/search selection")
+        original.browseItemID = "fixture-country-fr-1"
+
+        func requireRestored(_ candidate: IPTVLibrary, stage: String) throws {
+            try require(candidate.contentKind == .live && candidate.countryCode == "FR" &&
+                        candidate.group == "[FR] Cinéma" && candidate.search == "Grand écran" &&
+                        candidate.groupSearch == "Cin" && candidate.browseItemID == "fixture-country-fr-1" &&
+                        candidate.catalogPage == 0 && !candidate.isFiltering,
+                        "Browsing preferences were not restored after \(stage).")
+            try require(candidate.catalogResults.all.items.map(\.id) == ["fixture-country-fr-1"],
+                        "The restored filters produced the wrong channels after \(stage).")
+        }
+        try requireRestored(original, stage: "initial selection")
+        original.contentKind = .movie
+        try await awaitFilter(original, stage: "switch to Films")
+        try require(original.countryCode == nil && original.group == nil && original.search.isEmpty,
+                    "TV filters leaked into a previously unused Films context.")
+        original.search = "choix de film"
+        try await awaitFilter(original, stage: "separate Films search")
+        original.contentKind = .live
+        try await awaitFilter(original, stage: "return from Films")
+        try requireRestored(original, stage: "return from Films")
+
+        original.flushBrowsingPreferences()
+        try require(defaults.data(forKey: CatalogBrowsingPreferences.storageKey)?.isEmpty == false,
+                    "No browsing preferences were written to the isolated persistent suite.")
+        guard let reopenedDefaults = UserDefaults(suiteName: suiteName) else {
+            throw TVCatalogUIFailure.assertion("Cannot reopen the isolated preferences suite.")
+        }
+        let reopened = IPTVLibrary(catalogFixture: fixture.source, items: fixture.items, kind: .live,
+                                   browsingDefaults: reopenedDefaults)
+        try await awaitFilter(reopened, stage: "new library instance")
+        try requireRestored(reopened, stage: "new library instance reading persisted preferences")
+        reopened.reloadCatalogFixture(fixture.items)
+        try await awaitFilter(reopened, stage: "catalogue refresh")
+        try requireRestored(reopened, stage: "catalogue refresh")
+        reopened.contentKind = .movie
+        try await awaitFilter(reopened, stage: "restored Films context")
+        try require(reopened.search == "choix de film" && reopened.countryCode == nil,
+                    "The separate Films search was not preserved across recreation and refresh.")
+        reopened.flushBrowsingPreferences()
+        return [
+            "browsingPersistenceTested": true,
+            "browsingSectionRoundTripPassed": true,
+            "browsingStoredDataObserved": true,
+            "browsingRecreationPassed": true,
+            "browsingRefreshPassed": true,
+            "browsingMediaContextsIndependent": true,
+            "browsingPersistenceMethod": "Separate IPTVLibrary instances share one disposable UserDefaults suite; TV country/category/search/category-search/item survive Films round-trip, persisted preferences recreation and the production catalogue-install path. No account or real source is read."
+        ]
+    }
+
+    private static func awaitFilter(_ library: IPTVLibrary, stage: String) async throws {
+        let deadline = Date().addingTimeInterval(4)
+        while library.isFiltering {
+            try Task.checkCancellation()
+            try require(Date() < deadline, "Catalogue filtering did not settle during \(stage).")
+            try await Task.sleep(nanoseconds: 50_000_000)
+        }
     }
 
     private static func controlProbes(in view: UIView) -> [TVCatalogControlProbeView] {

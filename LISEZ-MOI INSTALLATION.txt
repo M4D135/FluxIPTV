@@ -1,4 +1,4 @@
-FLUX IPTV 0.8.8 — CINÉMA, VIDÉOCLUB ET SALON TV - Installation sur votre Mac
+FLUX IPTV 0.8.9 — CINÉMA, VIDÉOCLUB ET SALON TV - Installation sur votre Mac
 
 1. Quittez FLUX IPTV et arrêtez le projet s'il tourne dans Xcode.
 2. Décompressez l'archive et double-cliquez sur « Installer Flux IPTV.command ».
@@ -9,7 +9,7 @@ FLUX IPTV 0.8.8 — CINÉMA, VIDÉOCLUB ET SALON TV - Installation sur votre Mac
    L'installateur contrôle que le processus reste actif et restaure l'ancien
    bundle en cas d'échec du démarrage. Ce contrôle ne valide pas la lecture.
 4. Ensuite ouvrez uniquement FluxIPTV.app depuis le Finder ou le Dock.
-   Ne relancez pas l'installateur à chaque utilisation. Vérifiez le numéro 0.8.8
+   Ne relancez pas l'installateur à chaque utilisation. Vérifiez le numéro 0.8.9
    dans la barre FLUX et les thèmes dans Réglages > Interface.
 
 Sur Mac, VLC intégré est désactivé. En cas de format incompatible, installez le
@@ -36,7 +36,13 @@ binaire macOS précompilé ; l'installateur n'a pas été exécuté sous macOS i
 
 Sources > Modifier permet de choisir « Sur ce Mac, sans Trousseau ». Les identifiants sont alors dans un fichier privé non chiffré (permissions 600) ; le Trousseau demeure plus sûr. Les favoris sont conservés.
 
-NOUVEAUTÉS 0.8.8
+NOUVEAUTÉS 0.8.9
+TV : menu pays détectés dans les catégories (FR, ES, UK, noms ou drapeaux),
+avec maintien des catégories sans pays reconnu. Filtres et dernière sélection
+mémorisés séparément pour chaque source et chaque section, y compris après
+fermeture de l’application. Retour et changement de section conservent ces choix.
+
+REFONTE 0.8.8 CONSERVÉE
 
 Sans liste enregistrée, le démarrage affiche « Charger une liste ».
 TV, Films, Séries et Recherche ont de grandes icônes avec une sélection nette.
@@ -57,7 +63,7 @@ vidéo publique sur tvOS. Les refus de lecture sont affichés dans l’app ;
 aucun QR code ni transfert sur iPhone. La disponibilité distante dépend
 du fournisseur vidéo. La lecture principale garde ses commandes flottantes.
 
-Voir README.md et docs/VALIDATION-0.8.8.md pour les comportements et les limites.
+Voir README.md et docs/VALIDATION-0.8.9.md pour les comportements et les limites.
 
 APPLE TV : ouvrez FluxIPTV-AppleTV.xcodeproj (schéma FluxIPTVTV), puis
 choisissez la destination Apple TV. Voir LISEZ-MOI APPLE TV.txt.

@@ -84,8 +84,10 @@ public struct CatalogResults: Sendable {
 
 public struct CatalogIndex: Sendable {
     public let items: [IPTVItem]
+    public let liveCountries: [LiveCountry]
     private let all: CatalogSlice
     private let kinds: [IPTVMediaKind: CatalogResults]
+    private let liveCountryByGroup: [String: String]
     public init(_ items: [IPTVItem] = []) {
         // Provider duplicates would otherwise violate SwiftUI's stable identity contract.
         var seen = Set<String>(); seen.reserveCapacity(items.count)
@@ -94,18 +96,36 @@ public struct CatalogIndex: Sendable {
         all = CatalogSlice(unique)
         let grouped = Dictionary(grouping: unique, by: \.kind)
         kinds = Dictionary(uniqueKeysWithValues: IPTVMediaKind.allCases.map { ($0,CatalogResults(kind:$0,items:grouped[$0] ?? [])) })
+        // Parse each distinct provider category once while building the index,
+        // never while the user moves the focus or redraws a channel card.
+        let liveGroups = Dictionary(grouping: grouped[.live] ?? [], by: \.group)
+        var codes: [String: String] = [:]
+        var counts: [String: Int] = [:]
+        for (name, channels) in liveGroups {
+            let code = LiveCountry.detectCode(in: name) ?? LiveCountry.unknownCode
+            codes[name] = code
+            counts[code, default: 0] += channels.count
+        }
+        liveCountryByGroup = codes
+        liveCountries = counts.map { LiveCountry(code: $0.key, channelCount: $0.value) }.sorted {
+            if $0.code == LiveCountry.unknownCode { return false }
+            if $1.code == LiveCountry.unknownCode { return true }
+            return $0.name.localizedStandardCompare($1.name) == .orderedAscending
+        }
     }
     public func item(id: String?) -> IPTVItem? { all.item(id:id) }
     public func unfiltered(_ kind: IPTVMediaKind) -> CatalogResults { kinds[kind] ?? CatalogResults(kind:kind) }
-    public func matching(kind: IPTVMediaKind, search: String, membership: Set<String>? = nil) throws -> CatalogResults {
+    public func matching(kind: IPTVMediaKind, search: String, membership: Set<String>? = nil, countryCode: String? = nil) throws -> CatalogResults {
         let term = search.trimmingCharacters(in: .whitespacesAndNewlines)
         let base = unfiltered(kind)
-        if term.isEmpty && membership == nil { return base }
+        let country = kind == .live ? countryCode : nil
+        if term.isEmpty && membership == nil && country == nil { return base }
         let candidates = membership.map { base.all.retaining(ids:$0).items } ?? base.all.items
         var found: [IPTVItem] = []
         found.reserveCapacity(candidates.count)
         for (i,item) in candidates.enumerated() {
             if i.isMultiple(of:256) { try Task.checkCancellation() }
+            if let country, liveCountryByGroup[item.group] != country { continue }
             if term.isEmpty || item.name.localizedStandardContains(term) || item.group.localizedStandardContains(term) { found.append(item) }
         }
         try Task.checkCancellation()
@@ -115,7 +135,7 @@ public struct CatalogIndex: Sendable {
 
 /// The all-content filter is active only when *every* restriction is clear.
 public enum CatalogScope {
-    public static func isAll(group: String?, search: String, presetID: String?, resumeOnly: Bool) -> Bool {
-        group == nil && search.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty && presetID == nil && !resumeOnly
+    public static func isAll(group: String?, search: String, presetID: String?, resumeOnly: Bool, countryCode: String? = nil) -> Bool {
+        group == nil && search.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty && presetID == nil && !resumeOnly && countryCode == nil
     }
 }
