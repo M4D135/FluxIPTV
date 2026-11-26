@@ -149,6 +149,10 @@ struct ContentView: View {
     private var themeAccent:Color {let p=theme.palette.accent;return Color(red:p.x,green:p.y,blue:p.z)}
     @State private var zapBanner = false
     @State private var zapToken = UUID()
+    /// The channel was changed from the bare picture: the picture stays bare.
+    /// Only the banner tells what the stream does, until the commands are
+    /// asked for: Up and Down go on changing channel.
+    @State private var zapSurfing = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @FocusState private var systemFocus: String?
     @FocusState private var searchFocus: Bool
@@ -232,7 +236,8 @@ struct ContentView: View {
     /// Seed only the initial selection; layout, controls and artwork remain the
     /// same production views used by the application.
     init(fixtureSelection: IPTVItem? = nil, fixtureSeasons: [IPTVSeason] = [], fixtureOpenSeason: Int? = nil, fixtureEpisodeID: String? = nil, fixtureOpenItem: Bool = false, fixtureSearchSubmission: String? = nil, fixtureSearchObservation: ((CatalogSearchFocusSnapshot) -> Void)? = nil, fixtureOpenCountries: Bool = false, fixtureRestoreBrowsing: Bool = false, fixtureSettingsPage: PlaybackSettingsView.Page? = nil, fixtureFavorites: Bool = false, fixtureHome: Bool = false, fixturePlayerSettings: Bool = false, fixtureZone: DeskZone? = nil, fixtureActions: [RemoteAction] = [], fixtureZapList: Bool = false, fixtureAddSource: Bool = false, fixtureLists: Bool = false,
-         fixturePlayer: Bool = false, fixtureHoldsControls: Bool = false, fixtureTracksPanel: Bool = false) {
+         fixturePlayer: Bool = false, fixtureHoldsControls: Bool = false, fixtureTracksPanel: Bool = false,
+         fixtureBanner: Bool = false) {
         self.fixtureActions = fixtureActions
         self.fixtureHoldsControls = fixtureHoldsControls
         if fixturePlayer {
@@ -278,7 +283,15 @@ struct ContentView: View {
         #endif
         _previewID = State(initialValue: fixtureSelection?.id)
         _previewItem = State(initialValue: fixtureSelection)
-        _focusID = State(initialValue: fixturePlayer ? "playpause" : fixtureSelection?.id ?? "tab-live")
+        if fixtureBanner {
+            // The bare picture just after a change of channel: its banner alone.
+            fixturePictureStandIn = true
+            _page = State(initialValue: .player)
+            _cinemaControls = State(initialValue: false)
+            _zapSurfing = State(initialValue: true)
+            _zapBanner = State(initialValue: true)
+        }
+        _focusID = State(initialValue: fixtureBanner ? "cinema-controls" : fixturePlayer ? "playpause" : fixtureSelection?.id ?? "tab-live")
         if let fixtureSelection, !fixtureSelection.isSeriesCollection, fixtureOpenItem {
             _heldItem = State(initialValue: fixtureSelection)
             _heldDetails = State(initialValue: fixtureSelection.details)
@@ -2009,7 +2022,7 @@ struct ContentView: View {
     private var playerPage: some View {
         GeometryReader { geometry in
             ZStack {
-                PlayerSurface(playback: playback, immersive: cinema)
+                PlayerSurface(playback: playback, immersive: cinema, quiet: liveBannerShown)
                     #if os(tvOS)
                     // The picture fills the television. What is written over
                     // it keeps to the safe area.
@@ -2026,7 +2039,7 @@ struct ContentView: View {
                         // A click beside the list of channels closes it.
                         if zapListVisible { closeZapList() }
                         else if playerControlsVisible { hidePlayerControls() }
-                        else { revealPlayerControls() }
+                        else { zapSurfing = false; revealPlayerControls() }
                     }
                     #endif
                 #if os(tvOS)
@@ -2044,6 +2057,9 @@ struct ContentView: View {
                     .id("cinema-controls")
                     .accessibilityLabel("Afficher les commandes")
                     .accessibilityIdentifier("player-catcher")
+                    #if FLUX_CATALOG_UI_TESTING
+                    .background(TVCatalogControlFrameProbe(identifier: "player-catcher").allowsHitTesting(false))
+                    #endif
                     .onMoveCommand { direction in
                         switch direction {
                         case .left: dispatch(.left)
@@ -2068,10 +2084,9 @@ struct ContentView: View {
                     }
                     .transition(.opacity)
                 }
-                // The heading of the commands already names the channel.
-                // Nor does it stand beside the list, which marks that channel.
-                if zapBanner && !playerChromeShown && !playerCovered
-                    && playback.playingItem?.kind == .live && playback.playbackError == nil {
+                if liveBannerShown {
+                    // What is written at the foot stays readable over a bright picture.
+                    PlayerScrim(top: false).transition(.opacity)
                     VStack { Spacer(); liveBanner }
                         .allowsHitTesting(false).transition(.opacity)
                 }
@@ -2087,6 +2102,8 @@ struct ContentView: View {
             .animation(reduceMotion ? nil : .spring(response: 0.32, dampingFraction: 0.88), value: zapListVisible)
             .onContinuousHover { phase in
                 if case .active(let location) = phase {
+                    // The pointer asks for the commands.
+                    zapSurfing = false
                     revealPlayerControls()
                     // The left edge of the picture calls the channel list.
                     if location.x < 14, !zapListVisible { openZapList() }
@@ -2097,7 +2114,11 @@ struct ContentView: View {
             .onChange(of: geometry.size.width) { _, width in playerWidth = width }
         }
         .onChange(of: playback.isPlaying) { _, _ in revealPlayerControls() }
-        .onChange(of: playback.opening) { _, _ in revealPlayerControls() }
+        .onChange(of: playback.opening) { _, opening in
+            // The picture has come: its banner stays a moment more.
+            if zapSurfing && !opening { showZapBanner() }
+            revealPlayerControls()
+        }
         .onChange(of: playback.playbackError) { _, _ in revealPlayerControls() }
         .onChange(of: playback.position) { _, position in if !scrubbing { scrubPosition = position } }
         .onChange(of: playback.playingItem?.id) { _, _ in
@@ -2112,6 +2133,7 @@ struct ContentView: View {
             playerControlsTask?.cancel(); playerControlsTask = nil; hoveredPlayerControls.removeAll()
             zapListTask?.cancel(); zapListTask = nil; zapListVisible = false
             playerSettings = nil; playerTracks = false; hoveredPlayerButton = nil
+            zapSurfing = false; zapBanner = false
         }
     }
 
@@ -2208,7 +2230,7 @@ struct ContentView: View {
         if zapOpenedFromKey { revealPlayerControls(on: "zap-list"); return }
         hidePlayerControls()
         // A stream that is opening or has failed keeps its commands on screen.
-        if playerControlsVisible { revealPlayerControls(focus: true) }
+        if playerControlsVisible { revealPlayerControls(focus: true) } else { focusPicture() }
     }
     #if os(tvOS)
     /// The stream takes the remote back where a message found it: in the
@@ -2240,6 +2262,8 @@ struct ContentView: View {
     }
     private func zap(to item: IPTVItem) {
         zapFocusID = item.id
+        // A list called from the bare picture leaves it bare.
+        if !zapOpenedFromKey { zapSurfing = true }
         if item.id != playback.playingItem?.id { playItem(item) }
         armZapListTimer()
     }
@@ -2324,7 +2348,7 @@ struct ContentView: View {
                 .font(Desk.font(.caption2)).foregroundStyle(.white.opacity(0.6))
                 .multilineTextAlignment(.center).frame(maxWidth: .infinity)
         }
-        .padding(Desk.pt(12)).frame(width: Desk.pt(400))
+        .padding(Desk.pt(12)).frame(width: Desk.pt(460))
         .frame(maxHeight: .infinity)
         .fluxMediaGlass(radius: Desk.pt(28))
         .padding(playerChromeInset)
@@ -2417,7 +2441,17 @@ struct ContentView: View {
     }
 
     private var playerControlsVisible: Bool {
-        cinemaControls || playback.opening || !playback.isPlaying || playback.playbackError != nil || voiceOverEnabled
+        if cinemaControls || voiceOverEnabled { return true }
+        // A stream that opens, waits or fails keeps its commands on screen,
+        // but not while the channels are walked: the banner says it then.
+        return !zapSurfing && (playback.opening || !playback.isPlaying || playback.playbackError != nil)
+    }
+    /// The banner stands alone at the foot of the bare picture: when the
+    /// channel has just changed, and for as long as it opens or fails.
+    private var liveBannerShown: Bool {
+        guard !playerChromeShown, !playerCovered, series == nil, playback.playingItem?.kind == .live else { return false }
+        if zapSurfing { return zapBanner || playback.opening || playback.playbackError != nil }
+        return zapBanner && playback.playbackError == nil
     }
     private var narrowPlayer: Bool { playerWidth < 520 }
     private var playerChromeInset: CGFloat {
@@ -2757,6 +2791,12 @@ struct ContentView: View {
     /// `on`: the key that receives the remote; `focus` alone means play/pause.
     private func revealPlayerControls(focus: Bool = false, on target: String? = nil) {
         guard page == .player else { return }
+        // While the channels are walked nothing brings the commands back by
+        // itself; a request made for a key of theirs ends the walk.
+        if zapSurfing {
+            guard focus || target != nil else { return }
+            zapSurfing = false
+        }
         playerControlsTask?.cancel()
         if !cinemaControls {
             withAnimation(reduceMotion ? nil : .easeOut(duration: 0.18)) { cinemaControls = true }
@@ -2781,15 +2821,20 @@ struct ContentView: View {
         }
     }
     private func hidePlayerControls() {
-        guard playback.isPlaying, !playback.opening, playback.playbackError == nil, !playerCovered, !playerControlsHeld,
-              !scrubbing, !modalOpen, !voiceOverEnabled else { return }
+        guard zapSurfing || (playback.isPlaying && !playback.opening && playback.playbackError == nil),
+              !playerCovered, !playerControlsHeld, !scrubbing, !modalOpen, !voiceOverEnabled else { return }
         playerControlsTask?.cancel(); playerControlsTask = nil
         hoveredPlayerControls.removeAll()
         withAnimation(reduceMotion ? nil : .easeOut(duration: 0.22)) { cinemaControls = false }
         focusID = "cinema-controls"
+        focusPicture()
+    }
+    /// The bare picture takes the remote: the control that waits there comes
+    /// back with this update, and can take the focus only after it.
+    private func focusPicture() {
         Task { @MainActor in
             await Task.yield()
-            guard page == .player, !playerControlsVisible else { return }
+            guard page == .player, !playerControlsVisible, !playerCovered else { return }
             systemFocus = "cinema-controls"
         }
     }
@@ -3153,17 +3198,26 @@ struct ContentView: View {
     }
     private func startPlayback(_ item: IPTVItem, urls: [URL], entering: Bool) {
         page = .player
+        // A channel opens as on a television: its picture, bare, under its
+        // banner, where Up and Down change channel at once. A film or an
+        // episode opens under its commands. VoiceOver keeps them in any case.
+        let bare = entering && item.kind == .live && series == nil && !voiceOverEnabled
         // A change of channel keeps the remote where it is: on Suivante, to
-        // go on, or in the list. Only a stream that opens goes to Pause.
-        if entering { focusID = "playpause" }
+        // go on, or in the list.
+        if entering { zapSurfing = bare; focusID = bare ? "cinema-controls" : "playpause" }
         playback.play(item, urls: urls)
         if entering && !cinema { toggleCinema() }
-        #if os(tvOS)
-        // Its commands come with this update: they take the remote after it.
-        revealPlayerControls(focus: entering)
-        #else
-        revealPlayerControls()
-        #endif
+        if bare {
+            cinemaControls = false
+            focusPicture()
+        } else {
+            #if os(tvOS)
+            // Its commands come with this update: they take the remote after it.
+            revealPlayerControls(focus: entering)
+            #else
+            revealPlayerControls()
+            #endif
+        }
         if item.kind == .live { showZapBanner() }
     }
     private func cancelEntrance() {
@@ -3173,33 +3227,38 @@ struct ContentView: View {
     private func showZapBanner() {
         let token=UUID();zapToken=token;withAnimation(.easeInOut(duration:0.18)){zapBanner=true}
         Task { @MainActor in
-            try? await Task.sleep(nanoseconds:3_600_000_000)
+            try? await Task.sleep(nanoseconds:4_000_000_000)
             guard zapToken==token else{return};withAnimation(.easeOut(duration:0.22)){zapBanner=false}
         }
     }
     /// Shown alone when a channel changes while the commands are hidden.
-    private var liveBanner: some View {
-        HStack(spacing: Desk.pt(14)) {
-            if let item = playback.playingItem {
-                if let number = visibleSlice.index(of: item.id) {
-                    Text("\(number + 1)").font(Desk.font(.title, .bold).monospacedDigit()).foregroundStyle(themeAccent)
-                }
-                ArtworkView(url: item.logoURL, fit: true) { Image(systemName: "tv").font(Desk.font(.title3)) }
-                    .frame(width: Desk.pt(48), height: Desk.pt(36))
-                VStack(alignment: .leading, spacing: Desk.pt(3)) {
-                    Text(item.name).font(Desk.font(.headline)).lineLimit(1)
-                    Text(item.group.isEmpty ? "EN DIRECT" : "EN DIRECT  ·  \(item.group)")
-                        .font(Desk.font(.caption)).foregroundStyle(.white.opacity(0.72)).lineLimit(1)
-                }
-                Spacer(minLength: 0)
-            }
+    @ViewBuilder private var liveBanner: some View {
+        if let item = playback.playingItem {
+            PlayerChannelBanner(number: visibleSlice.index(of: item.id).map { $0 + 1 },
+                                name: item.name, group: item.group, logoURL: item.logoURL,
+                                favorite: library.isFavorite(item), status: liveBannerStatus,
+                                accent: themeAccent, hints: liveBannerHints, compact: narrowPlayer)
+                #if os(tvOS) && FLUX_CATALOG_UI_TESTING
+                .background(TVCatalogControlFrameProbe(identifier: "player-banner").allowsHitTesting(false))
+                #endif
+                .padding(playerChromeInset)
+                .allowsHitTesting(false)
         }
-        .foregroundStyle(.white)
-        .padding(.horizontal, Desk.pt(16)).padding(.vertical, Desk.pt(12))
-        .frame(maxWidth: Desk.pt(460))
-        .fluxMediaGlass(radius: Desk.pt(24))
-        .padding(playerChromeInset)
-        .allowsHitTesting(false)
+    }
+    private var liveBannerStatus: PlayerChannelBanner.Status {
+        if playback.playbackError != nil { return .failed }
+        return playback.opening ? .opening : .live
+    }
+    /// What the bare picture answers to, written where it is looked at.
+    private var liveBannerHints: [PlayerChannelBanner.Hint] {
+        #if os(tvOS)
+        [.init(symbol: "chevron.up.chevron.down", action: "Chaîne"), .init(symbol: "chevron.left", action: "Liste"),
+         .init(text: "OK", action: "Commandes")]
+        #elseif os(macOS)
+        [.init(text: "↑ ↓", action: "Chaîne"), .init(text: "←", action: "Liste")]
+        #else
+        []
+        #endif
     }
     private func adjacent(_ delta: Int) {
         guard let item = playback.playingItem else { return }
@@ -3382,12 +3441,18 @@ struct ContentView: View {
             openZapList(keyboard: true); return
         }
         if page == .player && !playerControlsVisible {
+            // A television changes channel under its banner alone: the
+            // commands stay away, and Up and Down go on.
+            if series == nil, playback.playingItem?.kind == .live, action == .up || action == .down {
+                zapSurfing = true
+                adjacent(action == .up ? 1 : -1)
+                // At an end of the list the banner says which channel this is.
+                showZapBanner()
+                return
+            }
             switch action {
             case .left: playback.skip(seconds: -Double(playback.settings.skipSeconds))
             case .right: playback.skip(seconds: Double(playback.settings.skipSeconds))
-            case .up: if playback.playingItem?.kind == .live { adjacent(1) }
-            case .down: if playback.playingItem?.kind == .live { adjacent(-1) }
-            case .select: break
             default: break
             }
             if [.left, .right, .up, .down, .select].contains(action) {
@@ -3421,7 +3486,14 @@ struct ContentView: View {
             #endif
         case .search: search()
         case .playPause:
-            if page == .player { playback.togglePause() }
+            if page == .player {
+                // A pause is told by the commands, on their key.
+                #if os(tvOS)
+                if !playerControlsVisible, !playerCovered { revealPlayerControls(focus: true) }
+                #endif
+                zapSurfing = false
+                playback.togglePause()
+            }
             else if page == .series {activateFocus()}
             else if let item = visibleSlice.item(id:focusID) { openItem(item) }
         case .rewind: playback.skip(seconds: -Double(playback.settings.skipSeconds))

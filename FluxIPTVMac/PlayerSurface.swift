@@ -58,6 +58,9 @@ struct VLCVideoSurface: UIViewRepresentable {
 struct PlayerSurface: View {
     @ObservedObject var playback: PlaybackController
     var immersive = false
+    /// The banner of the channel tells what the stream does: nothing is
+    /// drawn in the middle of the picture.
+    var quiet = false
 
     var body: some View {
         ZStack {
@@ -75,7 +78,7 @@ struct PlayerSurface: View {
             .ignoresSafeArea(.container, edges: immersive ? .all : [])
             #endif
             #endif
-            if playback.opening {
+            if playback.opening && !quiet {
                 VStack(spacing: Desk.pt(10)) {
                     ProgressView()
                         #if !os(tvOS)
@@ -92,7 +95,7 @@ struct PlayerSurface: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .allowsHitTesting(false)
             }
-            if let error = playback.playbackError {
+            if let error = playback.playbackError, !quiet {
                 VStack(spacing: Desk.pt(12)) {
                     Image(systemName: "play.slash.fill").font(Desk.font(.largeTitle))
                     Text("Impossible de lire ce flux").font(Desk.font(.headline))

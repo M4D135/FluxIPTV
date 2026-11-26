@@ -69,17 +69,164 @@ struct PlayerProgressTrack: View {
 /// Darkens the top and the foot of the picture, so that what is written
 /// there stays readable over a bright image.
 struct PlayerScrim: View {
+    /// The banner of a channel stands at the foot only.
+    var top = true
+
     var body: some View {
         GeometryReader { geometry in
             VStack(spacing: 0) {
-                LinearGradient(colors: [.black.opacity(0.66), .black.opacity(0)], startPoint: .top, endPoint: .bottom)
-                    .frame(height: geometry.size.height * 0.26)
+                if top {
+                    LinearGradient(colors: [.black.opacity(0.66), .black.opacity(0)], startPoint: .top, endPoint: .bottom)
+                        .frame(height: geometry.size.height * 0.26)
+                }
                 Spacer(minLength: 0)
-                LinearGradient(colors: [.black.opacity(0), .black.opacity(0.72)], startPoint: .top, endPoint: .bottom)
-                    .frame(height: geometry.size.height * 0.42)
+                LinearGradient(colors: [.black.opacity(0), .black.opacity(top ? 0.72 : 0.6)], startPoint: .top, endPoint: .bottom)
+                    .frame(height: geometry.size.height * (top ? 0.42 : 0.3))
             }
         }
         .ignoresSafeArea().allowsHitTesting(false).accessibilityHidden(true)
+    }
+}
+
+/// The banner of a channel at the foot of the picture, as a television
+/// shows it when the channel changes: its number, its logo, its name on one
+/// line, its category, what the stream is doing, the time, and what the
+/// remote does from there. It stands alone over the picture: the commands
+/// stay away while the channels are walked.
+struct PlayerChannelBanner: View {
+    enum Status: Equatable {
+        case live, opening, failed
+    }
+    /// A key of the remote or of the keyboard, and what it does.
+    struct Hint: Identifiable {
+        var symbol: String? = nil
+        var text: String? = nil
+        let action: String
+        var id: String { action }
+    }
+
+    let number: Int?
+    let name: String
+    let group: String
+    let logoURL: URL?
+    let favorite: Bool
+    let status: Status
+    let accent: Color
+    var hints: [Hint] = []
+    /// A narrow window keeps the channel and leaves the clock and the hints out.
+    var compact = false
+
+    var body: some View {
+        HStack(alignment: .center, spacing: Desk.pt(compact ? 10 : 18)) {
+            if let number {
+                // A channel number is read at a glance, and never wraps.
+                Text(String(number))
+                    .font(.system(size: Desk.pt(compact ? 26 : 40), weight: .bold, design: .rounded).monospacedDigit())
+                    .foregroundStyle(accent).lineLimit(1).fixedSize()
+            }
+            ArtworkView(url: logoURL, fit: true) {
+                Image(systemName: "tv").font(Desk.font(.title2)).foregroundStyle(.white.opacity(0.7))
+            }
+            .frame(width: Desk.pt(compact ? 46 : 74), height: Desk.pt(compact ? 32 : 48))
+            .padding(Desk.pt(6))
+            .background(.black.opacity(0.38), in: RoundedRectangle(cornerRadius: Desk.pt(12), style: .continuous))
+            VStack(alignment: .leading, spacing: Desk.pt(6)) {
+                // The name is what the banner is for: it has the whole line,
+                // up to the time, and shrinks before it is cut.
+                HStack(alignment: .firstTextBaseline, spacing: Desk.pt(14)) {
+                    Text(name).font(Desk.font(compact ? .headline : .title, .bold))
+                        .lineLimit(1).minimumScaleFactor(0.6)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    if !compact {
+                        TimelineView(.everyMinute) { context in
+                            Text(context.date.formatted(.dateTime.hour().minute()))
+                                .font(Desk.font(.title3, .semibold).monospacedDigit())
+                        }
+                        .fixedSize()
+                    }
+                }
+                HStack(spacing: Desk.pt(9)) {
+                    statusBadge.fixedSize()
+                    if !group.isEmpty {
+                        Text(group).font(Desk.font(.callout)).foregroundStyle(.white.opacity(0.74)).lineLimit(1)
+                    }
+                    if favorite {
+                        Image(systemName: "star.fill").font(Desk.font(.caption)).foregroundStyle(.yellow)
+                    }
+                    Spacer(minLength: Desk.pt(10))
+                    if !compact && !hints.isEmpty {
+                        HStack(spacing: Desk.pt(12)) { ForEach(hints) { hint($0) } }.fixedSize()
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .foregroundStyle(.white)
+        .padding(.horizontal, Desk.pt(compact ? 14 : 24)).padding(.vertical, Desk.pt(compact ? 10 : 15))
+        .frame(maxWidth: Desk.pt(900))
+        .fluxMediaGlass(radius: Desk.pt(compact ? 20 : 30))
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(number.map { "Chaîne \($0), \(name)" } ?? name)
+        .accessibilityValue(spoken)
+        .accessibilityIdentifier("player-banner")
+    }
+
+    private var spoken: String {
+        let state: String
+        switch status {
+        case .live: state = "En direct"
+        case .opening: state = "Ouverture"
+        case .failed: state = "Indisponible"
+        }
+        return group.isEmpty ? state : state + ", " + group
+    }
+
+    @ViewBuilder private var statusBadge: some View {
+        switch status {
+        case .live:
+            HStack(spacing: Desk.pt(6)) {
+                Circle().fill(.red).frame(width: Desk.pt(8), height: Desk.pt(8))
+                Text("EN DIRECT").font(Desk.font(.caption, .bold)).tracking(0.8)
+            }
+        case .opening:
+            HStack(spacing: Desk.pt(7)) {
+                DeskSpinner().frame(width: Desk.pt(14), height: Desk.pt(14))
+                Text("OUVERTURE…").font(Desk.font(.caption, .bold)).tracking(0.8)
+            }
+        case .failed:
+            HStack(spacing: Desk.pt(6)) {
+                Image(systemName: "exclamationmark.triangle.fill").font(Desk.font(.caption)).foregroundStyle(.yellow)
+                Text("INDISPONIBLE").font(Desk.font(.caption, .bold)).tracking(0.8)
+            }
+        }
+    }
+
+    private func hint(_ hint: Hint) -> some View {
+        HStack(spacing: Desk.pt(5)) {
+            Group {
+                if let symbol = hint.symbol { Image(systemName: symbol).font(Desk.system(9, .bold)) }
+                else { Text(hint.text ?? "").font(Desk.system(9, .bold)) }
+            }
+            .padding(.horizontal, Desk.pt(6)).frame(minWidth: Desk.pt(22), minHeight: Desk.pt(20))
+            .background(.white.opacity(0.16), in: RoundedRectangle(cornerRadius: Desk.pt(6), style: .continuous))
+            Text(hint.action).font(Desk.font(.caption2)).foregroundStyle(.white.opacity(0.72))
+        }
+    }
+}
+
+/// A small turning arc: the wheel of the system is too large on a television
+/// to stand in a line of text.
+struct DeskSpinner: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1.0 / 30, paused: reduceMotion)) { context in
+            let turn = context.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 0.9) / 0.9
+            Circle().trim(from: 0.08, to: 0.78)
+                .stroke(.white, style: StrokeStyle(lineWidth: Desk.pt(2.2), lineCap: .round))
+                .rotationEffect(.degrees(reduceMotion ? 0 : turn * 360))
+        }
+        .accessibilityHidden(true)
     }
 }
 

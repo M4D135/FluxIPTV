@@ -51,6 +51,9 @@ catégories de chaque espace, sans fenêtre surgissante.
 TV : catégories, chaînes en une seule liste, puis l'aperçu et les informations
 de la chaîne. Le pointeur sélectionne, l'aperçu démarre après une seconde, un
 clic ouvre la chaîne.
+Une chaîne s'ouvre sur son image seule, sous un bandeau au pied de l'écran :
+numéro, logo, nom entier, catégorie, heure. Haut et Bas changent de chaîne
+sous ce bandeau, OK rappelle les commandes.
 Pendant un direct, la liste des chaînes se pose à gauche de l'image, à la
 place des commandes (bord gauche au pointeur, touche Chaînes, ou flèche
 gauche) pour zapper sans revenir au catalogue. Les réglages s'y ouvrent en panneaux de verre.

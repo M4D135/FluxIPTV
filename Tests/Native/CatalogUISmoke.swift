@@ -188,12 +188,15 @@ private enum CatalogUIFailure: Error, CustomStringConvertible {
         /// The channel list of the player, above a stand-in picture.
         var zapList = false
         /// The commands of the player on a media that plays, drawn without any
-        /// stream: "live", "film", or "tracks" for the languages of a film.
+        /// stream: "live", "film", "tracks" for the languages of a film, or
+        /// "banner" for the bare picture of a channel under its banner.
         var player: String? = nil
         /// Keys of a remote sent to the screen, and the control that must
         /// hold the selection after them.
         var actions: [RemoteAction] = []
         var expectedFocus: String? = nil
+        /// The channel those keys must leave on screen.
+        var expectedPlaying: String? = nil
         /// Titles relabelled the way playlists mark a language, with the
         /// language list open in the navigation column.
         var languages = false
@@ -276,6 +279,7 @@ private enum CatalogUIFailure: Error, CustomStringConvertible {
             Scenario(kind: .movie, filename: "player-languages.png", player: "tracks"),
             Scenario(kind: .live, filename: "player-settings.png", playerSettings: true, player: "live"),
             Scenario(kind: .live, filename: "player-zapping.png", zapList: true),
+            Scenario(kind: .live, filename: "player-banner.png", player: "banner"),
             Scenario(kind: .live, filename: "zones-tv.png", zone: .content),
             Scenario(kind: .movie, filename: "zones-dock.png", zone: .dock),
             // Back shows the compass of the zones: one arrow then jumps into
@@ -294,7 +298,12 @@ private enum CatalogUIFailure: Error, CustomStringConvertible {
             // closes it on the key that opened it.
             Scenario(kind: .movie, filename: "keys-player.png", player: "film",
                      actions: [.right, .right, .right, .select, .down, .back],
-                     expectedFocus: PlayerTracks.buttonID)
+                     expectedFocus: PlayerTracks.buttonID),
+            // The bare picture of a channel: Up and Down change channel under
+            // its banner, the commands stay away and the picture keeps the keys.
+            Scenario(kind: .live, filename: "keys-zap.png", player: "banner",
+                     actions: [.up, .up, .down],
+                     expectedFocus: "cinema-controls", expectedPlaying: "fixture-live-1")
         ]
         for theme in FluxDockTheme.allCases {
             scenarios.append(Scenario(kind: .live, filename: "dock-theme-\(theme.rawValue).png",
@@ -342,7 +351,7 @@ private enum CatalogUIFailure: Error, CustomStringConvertible {
             if let mode = scenario.player, let item = selected {
                 // The published state of a media that plays, and nothing else:
                 // no engine starts and no connection opens.
-                if mode == "live" {
+                if mode == "live" || mode == "banner" {
                     playback.showFixture(item, playing: true,
                                          audio: [PlaybackTrack(id: "a1", title: "Français", selected: true),
                                                  PlaybackTrack(id: "a2", title: "Audiodescription", selected: false)])
@@ -367,7 +376,8 @@ private enum CatalogUIFailure: Error, CustomStringConvertible {
                                    fixtureZone: scenario.zone, fixtureActions: scenario.actions,
                                    fixtureZapList: scenario.zapList,
                                    fixturePlayer: scenario.player != nil, fixtureHoldsControls: scenario.player != nil,
-                                   fixtureTracksPanel: scenario.player == "tracks")
+                                   fixtureTracksPanel: scenario.player == "tracks",
+                                   fixtureBanner: scenario.player == "banner")
                 .environmentObject(library).environmentObject(playback)
                 .preferredColorScheme(.dark)
                 .environment(\.scenePhase, .active)
@@ -392,6 +402,10 @@ private enum CatalogUIFailure: Error, CustomStringConvertible {
                 try require(observedFocus == expected,
                             "\(filename): the keys \(scenario.actions) left the selection on \(observedFocus ?? "nothing"), not on \(expected).")
                 print("Keys \(scenario.actions.map { "\($0)" }.joined(separator: " ")) → \(expected).")
+            }
+            if let expected = scenario.expectedPlaying {
+                try require(playback.playingItem?.id == expected && playback.isPlaying,
+                            "\(filename): the keys \(scenario.actions) left \(playback.playingItem?.id ?? "nothing") on screen, not \(expected).")
             }
             do {
                 try await capture(host, window: window, to: output.appendingPathComponent(filename))

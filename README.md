@@ -121,13 +121,17 @@ La touche sous la télécommande, le clavier ou le pointeur devient blanche et g
 
 Les commandes se retirent seules — après trois secondes au pointeur, cinq sur Apple TV — et tout geste les rappelle ; pause, chargement, erreur ou VoiceOver les maintiennent. Sur Apple TV, commandes masquées : **OK** les rappelle, **Haut** et **Bas** changent de chaîne, **Gauche** ouvre la liste des chaînes ou recule dans un film, **Droite** avance, **Lecture/Pause** suspend, **Menu** revient à l’écran d’où la lecture est partie.
 
+### Le bandeau d’une chaîne
+
+Une chaîne s’ouvre comme sur un téléviseur : son image, nue, et au pied de l’écran un bandeau de verre — son numéro, son logo, son nom sur une ligne entière, sa catégorie, l’heure et le rappel des touches. Le bandeau se retire après quatre secondes. **Haut** et **Bas** (**↑ ↓** au clavier) changent de chaîne sous ce seul bandeau : les commandes ne reviennent pas, et la pression suivante continue. Tant que le flux s’ouvre, le bandeau le dit à la place de « En direct » et reste affiché ; une chaîne qui ne répond pas y est marquée indisponible, et l’on passe à la suivante sans rien fermer. **OK**, un clic ou le pointeur rappellent les commandes, où le détail d’une erreur et **Réessayer** attendent. Un film ou un épisode s’ouvre, lui, sous ses commandes.
+
 ### Langues
 
 **Langues** remplace la barre par un panneau à deux colonnes : les pistes audio à gauche, les sous-titres à droite, avec « Désactivés ». Le choix s’applique aussitôt, quel que soit le moteur — Apple ou VLC. Retour referme le panneau et la sélection revient sur la touche Langues.
 
 ### Zapper sans quitter l’image
 
-Pendant une chaîne en direct, la liste des chaînes vient se poser à gauche de l’image, en verre, sans arrêter la lecture : bord gauche de la fenêtre au pointeur, touche **Chaînes** des commandes, ou **←** quand les commandes sont masquées — sur Mac, iPad et Apple TV. Elle prend la place des commandes. **↑ ↓** choisissent, sans limite : la liste tourne sa page toutes les soixante chaînes. **Entrée** ou **OK** change de chaîne, la liste restant ouverte pour continuer ; sur Apple TV, **Lecture/Pause** fait de même. **← →** passent à la catégorie voisine, **Échap**, **Menu** ou un clic à côté referme : les commandes reviennent sur la touche Chaînes si elle avait ouvert la liste, sinon l’image reste nue. La liste s’ouvre sur la chaîne regardée et se retire seule après douze secondes sans geste, deux secondes après que le pointeur l’a quittée. Sans la liste, **↑** et **↓** zappent toujours directement, et **Suivante** garde la sélection pour continuer.
+Pendant une chaîne en direct, la liste des chaînes vient se poser à gauche de l’image, en verre, sans arrêter la lecture : bord gauche de la fenêtre au pointeur, touche **Chaînes** des commandes, ou **←** quand les commandes sont masquées — sur Mac, iPad et Apple TV. Elle prend la place des commandes. **↑ ↓** choisissent, sans limite : la liste tourne sa page toutes les soixante chaînes. **Entrée** ou **OK** change de chaîne, la liste restant ouverte pour continuer ; sur Apple TV, **Lecture/Pause** fait de même. **← →** passent à la catégorie voisine, **Échap**, **Menu** ou un clic à côté referme : les commandes reviennent sur la touche Chaînes si elle avait ouvert la liste, sinon l’image reste nue. La liste s’ouvre sur la chaîne regardée et se retire seule après douze secondes sans geste, deux secondes après que le pointeur l’a quittée. Sans la liste, **↑** et **↓** zappent toujours directement, sous le bandeau de la chaîne, et **Suivante** garde la sélection pour continuer. Les noms longs d’une liste de lecture y tiennent entiers : la liste est plus large, et un nom rétrécit avant d’être coupé.
 
 ### Réglages pendant la lecture
 

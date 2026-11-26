@@ -179,7 +179,9 @@ struct LiveTVChannelRow: View {
             .background(.white.opacity(0.09), in: RoundedRectangle(cornerRadius: 11 * k, style: .continuous))
             .clipped()
             VStack(alignment: .leading, spacing: 3 * k) {
-                Text(item.name).font(.system(size: 17 * k, weight: .semibold)).lineLimit(1)
+                // Names of a playlist are long, and differ by their end: a
+                // number, a mark of quality. They shrink before they are cut.
+                Text(item.name).font(.system(size: 17 * k, weight: .semibold)).lineLimit(1).minimumScaleFactor(0.78)
                 Text(item.group).font(.system(size: small)).foregroundStyle(.secondary).lineLimit(1)
             }.frame(maxWidth: .infinity, alignment: .leading)
             if favorite { Image(systemName: "star.fill").font(.system(size: 12 * k)).foregroundStyle(.yellow) }

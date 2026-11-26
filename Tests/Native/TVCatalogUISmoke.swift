@@ -110,7 +110,10 @@ final class TVCatalogControlProbeView: UIView {
                                                      PlaybackTrack(id: "s2", title: "Français (malentendants)", selected: false),
                                                      PlaybackTrack(id: "s3", title: "Anglais", selected: false)])
                 } else {
-                    playback.showFixture(item, playing: true,
+                    // "player-banner-opening": the channel has just changed
+                    // and its stream is still opening.
+                    let opening = fixture.scenario == "player-banner-opening"
+                    playback.showFixture(item, playing: !opening, opening: opening,
                                          audio: [PlaybackTrack(id: "a1", title: "Français", selected: true),
                                                  PlaybackTrack(id: "a2", title: "Audiodescription", selected: false)])
                     // The simulated playback changes channel as an engine
@@ -118,6 +121,8 @@ final class TVCatalogControlProbeView: UIView {
                     // ordinary path, which fails for a catalogue without
                     // addresses and raises its message.
                     playback.fixtureUnplayable = ["fixture-live-59"]
+                    // And one is a dead channel: its stream opens, then fails.
+                    playback.fixtureFailing = ["fixture-live-55"]
                 }
             }
             _playback = StateObject(wrappedValue: playback)
@@ -143,7 +148,8 @@ final class TVCatalogControlProbeView: UIView {
                         fixtureLists: fixture.scenario == "lists",
                         fixturePlayer: fixture.showsPlayer,
                         fixtureHoldsControls: fixture.holdsPlayerControls,
-                        fixtureTracksPanel: fixture.scenario == "player-tracks")
+                        fixtureTracksPanel: fixture.scenario == "player-tracks",
+                        fixtureBanner: fixture.showsBanner)
                 .environmentObject(library)
                 .environmentObject(playback)
                 .preferredColorScheme(.dark)
@@ -192,6 +198,8 @@ final class TVCatalogControlProbeView: UIView {
         // The commands of the player open on play and pause; its languages
         // on the audio in use.
         case "player", "player-film", "player-flow", "player-film-flow", "player-deep": return "player-playpause"
+        // Under the banner of a channel the picture itself holds the remote.
+        case "player-banner", "player-banner-opening": return "player-catcher"
         case "player-tracks": return "track-audio-a1"
         // The desk: the bar of the home screen, the destination of the
         // settings, the channel on screen in the list of the player.
@@ -257,7 +265,9 @@ final class TVCatalogControlProbeView: UIView {
 
     /// Screens of the desk shown over the catalogue of the live scenario.
     static let deskScenarios = ["home", "settings", "settings-dock", "zapping", "player-settings",
-                                "player", "player-flow", "player-deep"]
+                                "player", "player-flow", "player-deep", "player-banner", "player-banner-opening"]
+    /// The bare picture just after a change of channel, under its banner.
+    var showsBanner: Bool { scenario.hasPrefix("player-banner") }
     /// The commands of a film: its timeline, its languages.
     static let filmPlayerScenarios = ["player-film", "player-film-flow", "player-tracks"]
     var showsPlayer: Bool { scenario.hasPrefix("player") }
@@ -354,13 +364,38 @@ final class TVCatalogControlProbeView: UIView {
             // at a time, and than a page of the catalogue. Their logos are
             // smaller, so that the cache of the application keeps them all.
             let deep = scenario == "player-deep"
-            let channels = try (0..<(deep ? 110 : 18)).map { (index: Int) in
-                let url = artworkRoot.appendingPathComponent("live-\(index).png")
-                let name = "\(channelNames[index % channelNames.count]) \(index + 1)"
-                cache(try artwork(width: deep ? 240 : 480, height: deep ? 135 : 270, index: index,
-                                  title: name.uppercased(), subtitle: "CHAÎNE LOCALE"), at: url)
+            // The banner is read on the catalogue of a real subscription:
+            // tens of thousands of channels, so a number of five digits.
+            let banner = scenario.hasPrefix("player-banner")
+            let watched = banner ? 24_013 : deep ? 58 : 0
+            // What is drawn over the picture is read with names shaped like
+            // those of a real playlist: a prefix, a long title, a mark of
+            // quality, and categories that carry their country.
+            let real = scenario.hasPrefix("player") || scenario == "zapping"
+            let realNames = ["FR: HORIZON INFO", "PRISME: GRAND ÉCRAN FESTIVAL", "FR| DÉCOUVERTE NATURE & VOYAGES",
+                             "PRISME: PANORAMA JEUNESSE", "ÉVASION MUSIQUE HITS", "FR: SCÈNE SPORT 360"]
+            let marks = ["ᴴᴰ", "ᴿᴬᵂ", "ᶠᴴᴰ", "⁴ᴷ", "ᴴᴰ", "ᴿᴬᵂ"]
+            let channels = try (0..<(banner ? 24_665 : deep ? 110 : 18)).map { (index: Int) in
+                let kind = index % channelNames.count
+                let name: String
+                if real {
+                    // The first of each keeps its bare title; the others are numbered.
+                    name = index < realNames.count || index == watched && banner
+                        ? "\(realNames[kind]) \(marks[kind])" : "\(realNames[kind]) \(index / realNames.count + 1) \(marks[kind])"
+                } else { name = "\(channelNames[kind]) \(index + 1)" }
+                // A logo for what can come on screen: the cache of the
+                // application would not keep thousands of them.
+                var url: URL? = nil
+                if !banner || abs(index - watched) < 40 {
+                    let file = artworkRoot.appendingPathComponent("live-\(index).png")
+                    let small = deep || banner
+                    cache(try artwork(width: small ? 240 : 480, height: small ? 135 : 270, index: index,
+                                      title: (real ? realNames[kind] : name).uppercased(), subtitle: "CHAÎNE LOCALE"), at: file)
+                    url = file
+                }
                 return IPTVItem(id: "fixture-live-\(index)", sourceID: source.id, name: name,
-                                group: categories[index % categories.count], logoURL: url, kind: .live,
+                                group: real ? "DIRECT - FR| " + categories[kind].uppercased() : categories[kind],
+                                logoURL: url, kind: .live,
                                 directURL: nil, xtreamStreamID: nil, fileExtension: nil)
             }
             // The home screen leads to every section: its catalogue has films too.
@@ -369,7 +404,7 @@ final class TVCatalogControlProbeView: UIView {
             // one row before the end of the sixty it builds.
             return TVCatalogFixture(scenario: scenario, source: source,
                                     items: channels + (scenario == "home" ? try films() : []), kind: .live,
-                                    selection: channels[deep ? 58 : 0], seasons: [], openSeason: nil, episodeID: nil)
+                                    selection: channels[watched], seasons: [], openSeason: nil, episodeID: nil)
         }
         var items = try films()
         let seriesURL = artworkRoot.appendingPathComponent("series.png")
@@ -552,6 +587,8 @@ final class TVCatalogControlProbeView: UIView {
                     lastObservation.merge(detail.report) { _, new in new }
                     let form = sourceFormEvidence(fixture: fixture, window: window)
                     lastObservation.merge(form.report) { _, new in new }
+                    let banner = bannerEvidence(fixture: fixture, playback: playback, window: window)
+                    lastObservation.merge(banner.report) { _, new in new }
                     if let focused = UIFocusSystem.focusSystem(for: window)?.focusedItem {
                         let native = nativeFrame(focused, in: window)
                         let frame = native.frame
@@ -575,8 +612,11 @@ final class TVCatalogControlProbeView: UIView {
                         // and labels. Keep the tighter bound for all controls
                         // and landscape tiles in the other scenarios.
                         let maximumHeightFraction: CGFloat = fixture.usesPortraitControl ? 0.60 : 0.45
-                        let bounded = valid(frame) && fraction.isFinite &&
-                            fraction < 0.18 && frame.width < window.bounds.width * 0.75 && frame.height < window.bounds.height * maximumHeightFraction
+                        // Under the banner of a channel the picture itself
+                        // holds the remote: what waits for it covers the
+                        // screen by design, and is not a control to bound.
+                        let bounded = valid(frame) && fraction.isFinite && (fixture.showsBanner ||
+                            fraction < 0.18 && frame.width < window.bounds.width * 0.75 && frame.height < window.bounds.height * maximumHeightFraction)
                         let identity = focusIdentity(focused)
                         // An empty accessibility identifier supplies no proof.
                         // Every pass requires the native focused item's real
@@ -626,7 +666,7 @@ final class TVCatalogControlProbeView: UIView {
                         ]
                         lastObservation.merge(nativeReport) { _, new in new }
                         let key = "\(identity.identifier)|\(frame)|\(expectedFrame)|\(viewport)"
-                        stableSamples = bounded && expectedFocus && largeEnough && visibilityAccepted && search.passed && country.passed && detail.passed && form.passed && key == precedingFocus ? stableSamples + 1 : 0
+                        stableSamples = bounded && expectedFocus && largeEnough && visibilityAccepted && search.passed && country.passed && detail.passed && form.passed && banner.passed && key == precedingFocus ? stableSamples + 1 : 0
                         previousFocus = key
                         if stableSamples >= 4 {
                             var report = lastObservation
@@ -836,6 +876,34 @@ final class TVCatalogControlProbeView: UIView {
             "sourceFormScrolls": scrolls,
             "sourceFormSubmitFrame": frames.first.map(coordinates) ?? [],
             "sourceFormSafeArea": coordinates(safe)
+        ])
+    }
+
+    /// The banner of a channel stands alone at the foot of the picture, wide
+    /// enough for a name that is not cut, inside the safe area, and nothing
+    /// else is drawn over the picture: no command, no card in its middle.
+    private static func bannerEvidence(fixture: TVCatalogFixture, playback: PlaybackController, window: UIWindow)
+        -> (passed: Bool, report: [String: Any]) {
+        guard fixture.showsBanner else { return (true, ["channelBannerTested": false]) }
+        let probes = controlProbes(in: window).filter { $0.window === window }
+        let frames = probes.filter { $0.controlIdentifier == "player-banner" }
+            .map { $0.convert($0.bounds, to: window) }.filter { $0.width > 1 && $0.height > 1 }
+        let safe = window.bounds.inset(by: window.safeAreaInsets).insetBy(dx: -1, dy: -1)
+        let frame = frames.first ?? .null
+        let placed = frames.count == 1 && safe.contains(frame)
+            && frame.width >= window.bounds.width * 0.5 && frame.height <= window.bounds.height * 0.16
+            && frame.minY >= window.bounds.height * 0.7
+        // The commands of the player have probes of their own.
+        let commands = probes.map(\.controlIdentifier).filter { $0.hasPrefix("player-") && $0 != "player-banner" && $0 != "player-catcher" }
+        let state = fixture.scenario == "player-banner-opening" ? playback.opening && !playback.isPlaying : playback.isPlaying && !playback.opening
+        return (placed && commands.isEmpty && state, [
+            "channelBannerTested": true,
+            "channelBannerProbeCount": frames.count,
+            "channelBannerFrame": frames.first.map(coordinates) ?? [],
+            "channelBannerInsideSafeArea": frames.count == 1 && safe.contains(frame),
+            "channelBannerPlaced": placed,
+            "channelBannerCommandsOnScreen": commands,
+            "channelBannerPlaybackStateMatches": state
         ])
     }
 

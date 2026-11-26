@@ -177,9 +177,9 @@ final class PlaybackController: ObservableObject {
     private var fixtureTracks = false
     /// A capture or a remote flow shows the commands of a media that plays,
     /// without opening any connection: only the published state is set.
-    func showFixture(_ item: IPTVItem, playing: Bool, fraction: Double = 0, elapsed: String = "0:00", duration: String = "–:––",
-                     audio: [PlaybackTrack] = [], subtitles: [PlaybackTrack] = []) {
-        playingItem = item; opening = false; isPlaying = playing; playbackError = nil
+    func showFixture(_ item: IPTVItem, playing: Bool, opening: Bool = false, fraction: Double = 0, elapsed: String = "0:00",
+                     duration: String = "–:––", audio: [PlaybackTrack] = [], subtitles: [PlaybackTrack] = []) {
+        playingItem = item; self.opening = opening; isPlaying = playing; playbackError = nil
         seekable = item.kind != .live; position = fraction
         self.elapsed = elapsed; self.duration = duration
         fixtureTracks = true; audioTracks = audio; subtitleTracks = subtitles
@@ -195,6 +195,8 @@ final class PlaybackController: ObservableObject {
     var showsFixture: Bool { fixtureTracks }
     /// Titles the fixture cannot show: they take the ordinary path.
     var fixtureUnplayable: Set<String> = []
+    /// Titles whose simulated stream opens and then fails, as a dead channel does.
+    var fixtureFailing: Set<String> = []
     /// Showing this title only changes the simulated state: the catalogue of
     /// a fixture has no address to open.
     func simulates(_ item: IPTVItem) -> Bool { fixtureTracks && !fixtureUnplayable.contains(item.id) }
@@ -263,8 +265,19 @@ final class PlaybackController: ObservableObject {
 
     func play(_ item: IPTVItem, urls: [URL]) {
         #if FLUX_CATALOG_UI_TESTING
-        // The fixture changes channel as an engine would, without a connection.
-        if fixtureTracks { showFixture(item, playing: true, audio: audioTracks, subtitles: subtitleTracks); return }
+        // The fixture changes channel as an engine would, without a connection:
+        // the stream opens for a moment, then plays.
+        if fixtureTracks {
+            showFixture(item, playing: false, opening: true, audio: audioTracks, subtitles: subtitleTracks)
+            let fails = fixtureFailing.contains(item.id)
+            Task { @MainActor [weak self] in
+                try? await Task.sleep(nanoseconds: 400_000_000)
+                guard let self, self.playingItem?.id == item.id, self.opening else { return }
+                self.opening = false
+                if fails { self.playbackError = "Le flux de démonstration ne répond pas." } else { self.isPlaying = true }
+            }
+            return
+        }
         #endif
         stop()
         playingItem = item

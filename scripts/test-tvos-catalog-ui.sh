@@ -164,10 +164,10 @@ ready_file="$data_container/Library/Caches/FluxTVCatalogUI-ready.json"
 failed=0
 capture_paths=()
 # Retain every restoration attempt while exposing only the last successful one
-# through the twenty-one canonical gallery paths. Never reuse an older run's pair.
+# through the twenty-three canonical gallery paths. Never reuse an older run's pair.
 rm -f "$capture_root/live-restored-ready.json" "$capture_root/live-restored.png" \
   "$capture_root/live-restored-stdout.log" "$capture_root/live-restored-stderr.log"
-for capture_case in home movie movies lists series seasons live player player-film player-tracks player-settings zapping settings welcome add-source search-empty search-result live-fr live-es country-picker live-restored:1 live-restored:2 live-restored:3; do
+for capture_case in home movie movies lists series seasons live player player-film player-tracks player-settings player-banner player-banner-opening zapping settings welcome add-source search-empty search-result live-fr live-es country-picker live-restored:1 live-restored:2 live-restored:3; do
   scenario="${capture_case%%:*}"
   capture_label="$scenario"
   scenario_root="$capture_root"
@@ -190,6 +190,8 @@ for capture_case in home movie movies lists series seasons live player player-fi
     player-film) filename='player-film.png' ;;
     player-tracks) filename='player-languages.png' ;;
     player-settings) filename='player-settings.png' ;;
+    player-banner) filename='player-banner.png' ;;
+    player-banner-opening) filename='player-banner-opening.png' ;;
     zapping) filename='player-zapping.png' ;;
     settings) filename='settings-sources.png' ;;
     welcome) filename='welcome.png' ;;
@@ -245,6 +247,13 @@ if (report.get("status") != "ready" or report.get("scenario") != sys.argv[2]
         or report.get("sceneKitViewMounted") is not False):
     print("Native focus/detail readiness failed; screenshot retained for inspection.", file=sys.stderr)
     sys.exit(1)
+if sys.argv[2] in ("player-banner", "player-banner-opening"):
+    if (any(report.get(key) is not True for key in ("channelBannerTested", "channelBannerInsideSafeArea", "channelBannerPlaced",
+                                                    "channelBannerPlaybackStateMatches"))
+            or report.get("channelBannerProbeCount") != 1
+            or report.get("channelBannerCommandsOnScreen") != []):
+        print("The banner of the channel is not alone at the foot of the picture, inside the safe area.", file=sys.stderr)
+        sys.exit(1)
 if sys.argv[2] == "series" and report.get("requestedEpisodeID") != "fixture-series-s12-e15":
     print("The episode 15 restoration fixture was not selected.", file=sys.stderr)
     sys.exit(1)
@@ -383,7 +392,7 @@ cat "$capture_root/capture-validation.log"
 
 # Add the UI-test runner only after the unchanged capture checks. The delivered
 # projects stay untouched, and XCTest attachments live inside this xcresult,
-# keeping the twenty-one canonical gallery PNG paths unchanged.
+# keeping the twenty-three canonical gallery PNG paths unchanged.
 rm -rf "$capture_root/remote-navigation.xcresult" "$capture_root/remote-navigation-attachments"
 rm -f "$capture_root/remote-navigation.log" "$capture_root/remote-attachments-export.log"
 if python3 "$repo_root/scripts/add-tvos-remote-test-target.py" \
@@ -434,7 +443,7 @@ if [[ "$failed" -ne 0 ]]; then
   printf 'FAIL: Native tvOS UI capture or remote-navigation checks failed. Review PNGs, xcresult and logs in %s\n' "$capture_root" >&2
   exit 1
 fi
-printf 'PASS: Twenty-one native tvOS scenarios have bounded focus matching the measured intended control and nonempty compositor captures; both production search submissions reject stale activation; France, Spain and the country picker preserve the mixed catalogue; browsing filters survive section changes, preferences recreation and catalogue refresh; the actual UI restores saved filters and native focus without a seeded selection on all three cold launches.\n'
+printf 'PASS: Twenty-three native tvOS scenarios have native focus matching the measured intended control, bounded everywhere but on the bare picture of a channel, whose banner stands alone inside the safe area, and nonempty compositor captures; both production search submissions reject stale activation; France, Spain and the country picker preserve the mixed catalogue; browsing filters survive section changes, preferences recreation and catalogue refresh; the actual UI restores saved filters and native focus without a seeded selection on all three cold launches.\n'
 printf 'Review the PNGs in %s for actual glass, readable menus, channel size, clipping, episode restoration and country selection.\n' "$capture_root"
 printf 'XCUIRemote also checks native simulator navigation with retained XCTest screenshots; physical Apple TV hardware rendering and provider playback still need their own verification.
 '

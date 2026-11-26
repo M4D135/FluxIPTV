@@ -432,10 +432,40 @@ final class TVRemoteNavigationTests: XCTestCase {
         assertCondition("exists == false", on: play, in: app)
         assertFocus(catcher, in: app)
 
-        // Commands hidden, Left brings the list of channels.
+        // Commands hidden, Down and Up change channel as a television does:
+        // under the banner of the channel alone. The picture keeps the
+        // remote, the commands stay away, and the next press goes on.
+        let banner = element("player-banner", in: app)
+        XCUIRemote.shared.press(.down)
+        assertCondition(NSPredicate(format: "label BEGINSWITH %@", "Chaîne 58,"), on: banner, in: app)
+        assertFocus(catcher, in: app)
+        XCTAssertFalse(play.exists, "Changing channel does not bring the commands back.")
+        retainScreenshot("zap-00-banner-of-the-channel", in: app)
+        XCUIRemote.shared.press(.down)
+        assertCondition(NSPredicate(format: "label BEGINSWITH %@", "Chaîne 57,"), on: banner, in: app)
+        // A channel that does not answer says so in its banner, which stays;
+        // nothing has to be closed, and the next press goes on.
+        XCUIRemote.shared.press(.down)
+        assertCondition(NSPredicate(format: "label BEGINSWITH %@", "Chaîne 56,"), on: banner, in: app)
+        assertCondition(NSPredicate(format: "value BEGINSWITH %@", "Indisponible"), on: banner, in: app)
+        assertFocus(catcher, in: app)
+        XCTAssertFalse(play.exists, "A dead channel does not bring the commands back either.")
+        XCTAssertFalse(element("player-retry", in: app).exists)
+        retainScreenshot("zap-00-channel-that-does-not-answer", in: app)
+        XCUIRemote.shared.press(.up)
+        assertCondition(NSPredicate(format: "label BEGINSWITH %@", "Chaîne 57,"), on: banner, in: app)
+        XCUIRemote.shared.press(.up)
+        XCUIRemote.shared.press(.up)
+        assertCondition(NSPredicate(format: "label BEGINSWITH %@", "Chaîne 59,"), on: banner, in: app)
+        assertCondition(NSPredicate(format: "value BEGINSWITH %@", "En direct"), on: banner, in: app)
+        assertFocus(catcher, in: app)
+        XCTAssertFalse(play.exists)
+
+        // Left brings the list of channels, on the one being watched.
         XCUIRemote.shared.press(.left)
         assertFocus(watched, in: app)
         assertCondition(playing, on: watched, in: app)
+        assertCondition("exists == false", on: banner, in: app)
         retainScreenshot("zap-01-on-the-watched-channel", in: app)
         // Right shows the first category, where that channel is not: the
         // remote is on its first channel. Left returns to all the channels,
@@ -551,12 +581,23 @@ final class TVRemoteNavigationTests: XCTestCase {
         assertCondition("exists == false", on: acknowledge, in: app)
         assertFocus(unplayable, logical: "fixture-live-59", in: app)
 
-        // A channel opened from the catalogue shows its commands on Pause.
+        // A channel opened from the catalogue shows its picture, bare, under
+        // its banner: Down changes channel at once, and OK brings the commands.
         XCUIRemote.shared.press(.up)
         assertFocus(watched, logical: "fixture-live-58", in: app)
         XCUIRemote.shared.press(.select)
+        let banner = element("player-banner", in: app)
+        assertCondition(NSPredicate(format: "label BEGINSWITH %@", "Chaîne 59,"), on: banner, in: app)
+        assertFocus(catcher, in: app)
+        XCTAssertFalse(play.exists, "A channel opens without its commands.")
+        retainScreenshot("message-02-channel-opened-under-its-banner", in: app)
+        XCUIRemote.shared.press(.down)
+        assertCondition(NSPredicate(format: "label BEGINSWITH %@", "Chaîne 58,"), on: banner, in: app)
+        assertFocus(catcher, in: app)
+        XCUIRemote.shared.press(.select)
         assertFocus(play, in: app)
-        print("PASS: TV_REMOTE a message took the remote over the channel list and over the catalogue, OK and Menu closed it and returned the remote where it was, and a channel opened from the catalogue put the remote on Pause")
+        assertCondition("exists == false", on: banner, in: app)
+        print("PASS: TV_REMOTE a message took the remote over the channel list and over the catalogue, OK and Menu closed it and returned the remote where it was, and a channel opened from the catalogue showed its banner alone, changed channel at once and gave its commands on OK")
     }
 
     /// Keys of the dock, in their default order.
