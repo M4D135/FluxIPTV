@@ -77,6 +77,8 @@ Le premier envoi du portage sur Apple TV (`1e609c7`) a échoué sur deux étapes
 
 L’envoi suivant (`d51e0ac`) y a passé le Mac, les dix-sept scénarios et cinq parcours sur six, et a révélé un défaut de l’application que tvOS 27.2 ne montre pas : sous tvOS 26.5, annuler la liste des pays par Menu laissait le focus natif sur le filtre des catégories, voisin, alors que le bouton Pays était dessiné sélectionné. Ce bouton ne revient dans la colonne qu’avec la fermeture de la liste, et le focus lui était demandé trop tôt. Il lui est maintenant donné une fois le bouton revenu, comme après le choix d’un pays.
 
+L’envoi de ce correctif (`9390c8e`) a passé cinq parcours, celui des pays compris, et a été interrompu pendant le sixième : la machine hébergée, plus lente ce jour-là, a mis plus que les dix minutes que le banc accordait aux parcours quand ils étaient quatre. Le banc leur accorde maintenant vingt minutes, et l’étape trente-cinq.
+
 ### Essai réel
 
 L’application signée localement a été lancée sur le Mac avec la source Xtream déjà enregistrée, sans saisie d’identifiants, puis pilotée par des clics en arrière-plan. **Cet essai a porté sur un état antérieur au dock en bas, à la boussole, aux réglages en verre du lecteur et au portage sur Apple TV.**

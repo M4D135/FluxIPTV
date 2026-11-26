@@ -35,6 +35,8 @@ Le contrôle des SDK exige son marqueur de réussite exact dans le journal. Son 
 
 Le banc Apple TV garde le Liquid Glass actif, comme l’application : ses contrôles de focus et de géométrie sont mesurés sur les panneaux de verre. Le rendu du verre sur appareil n’est pas mesuré ici.
 
+Les six parcours XCUIRemote disposent de vingt minutes, compilation de leur cible comprise, et l’étape Apple TV de trente-cinq : une machine hébergée lente a dépassé les dix minutes prévues pour quatre parcours.
+
 Deux échecs de ces bancs ne se voient que sur les machines hébergées et ont été corrigés dans les bancs eux-mêmes : sous tvOS 26, l’identifiant du champ de recherche nomme aussi l’icône voisine, et le parcours interroge désormais le champ ; dans une fenêtre au premier plan, le premier focus natif arrive après l’ouverture et écrasait le résultat de touches envoyées trop tôt, que le banc Mac attend maintenant.
 
 Le build 35 ajoute à cette même copie temporaire un bundle XCUITest tvOS. `XCUIRemote` envoie les directions, Valider et Menu au simulateur ; les tests attendent le focus réellement exposé par UIKit. Ils couvrent le passage France → Espagne, la réouverture et la fermeture du sélecteur, les déplacements après restauration et les commandes de reconnexion après un échec de source. Un marqueur d’accessibilité non interactif, compilé uniquement dans la fixture, permet de comparer ce focus avec la sélection dessinée par ContentView. Le résultat `.xcresult` et ses captures sont conservés ; aucun target de test n’est ajouté aux projets livrés.
