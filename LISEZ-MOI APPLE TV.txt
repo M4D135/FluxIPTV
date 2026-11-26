@@ -1,4 +1,9 @@
-FLUX IPTV 0.9.1 — BUILD 39 — PROJET APPLE TV
+FLUX IPTV 0.9.2 — BUILD 40 — PROJET APPLE TV
+
+NOUVEAUTÉ DE LA 0.9.2 : le dock suit de nouveau la télécommande. En tvOS 26,
+la sélection avançait dans la barre — on l'entendait — mais le dock restait
+dessiné sur l'icône de l'écran, sans grossir. L'icône sélectionnée grossit
+maintenant avec ses voisines, comme sous le pointeur d'un Mac.
 
 1. Décompressez tout le dossier, en conservant Sources et FluxIPTVMac à côté
    des fichiers .xcodeproj. Les sources et les 18 décors 4K sont partagés.

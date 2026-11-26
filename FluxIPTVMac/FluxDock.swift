@@ -295,6 +295,13 @@ struct FluxDock: View {
     @State private var dragStartIndex = 0
     @State private var dragTranslation = 0.0
     @State private var suppressActivation = false
+    #if os(tvOS)
+    /// Where the remote is in the bar, as its icons and the titles of its
+    /// folder say it themselves. tvOS 26 does not draw the bar again for a
+    /// focus binding read here: on an Apple TV the bar stayed drawn on the
+    /// icon of the screen, not magnified, wherever the remote went.
+    @State private var remote: String?
+    #endif
     #if FLUX_CATALOG_UI_TESTING && !os(tvOS)
     /// A capture has no pointer: the icon that one is placed on.
     @State private var fixturePointer: Int?
@@ -331,15 +338,21 @@ struct FluxDock: View {
         case .trailing: return EdgeInsets(top: room, leading: room, bottom: room, trailing: 0)
         }
     }
-    /// Icon drawn as selected. The bar reads the focus of a television
+    /// Icon drawn as selected. The bar learns the focus of a television
     /// by itself: the screen behind it is not rebuilt when the remote moves.
     private var shownID: String? {
         #if os(tvOS)
-        systemFocus.wrappedValue
+        remote
         #else
         focusedID
         #endif
     }
+    #if os(tvOS)
+    /// An icon or a title of the folder has taken the remote, or let it go.
+    private func heard(_ id: String, focused: Bool) {
+        if focused { if remote != id { remote = id } } else if remote == id { remote = nil }
+    }
+    #endif
     /// A remote has no pointer: the icon it selects is the one that grows.
     /// While it walks an open folder, that folder stays the one.
     private var focusIndex: Int? {
@@ -427,6 +440,16 @@ struct FluxDock: View {
             #endif
             .accessibilityElement(children: .contain)
             .accessibilityLabel("Barre des destinations")
+            #if os(tvOS) && FLUX_CATALOG_UI_TESTING
+            // What the bar draws, for a flow that compares it with the focus
+            // of the system: the icon drawn as selected, and whether it grows.
+            .background(alignment: .topLeading) {
+                Color.clear.frame(width: 1, height: 1).allowsHitTesting(false)
+                    .accessibilityElement().accessibilityLabel("Dock dessiné")
+                    .accessibilityIdentifier(hero == nil ? "flux-dock-drawn" : "flux-home-dock-drawn")
+                    .accessibilityValue("\(shownID ?? "-") \(magnification > 0 ? "agrandi" : "plat")")
+            }
+            #endif
             #if FLUX_CATALOG_UI_TESTING && !os(tvOS)
             .onAppear {
                 // A capture has no pointer: place one on the requested icon.
@@ -477,7 +500,10 @@ struct FluxDock: View {
                 #if os(tvOS)
                 // The magnifier already grows the icon: it only follows the thumb.
                 .fluxFocusLean(focused, grow: 1, angle: 8, shift: 5)
-                .background(DeskFocusReport { FluxFocusLedger.shared.report(id, focused: $0) })
+                .background(DeskFocusReport { now in
+                    FluxFocusLedger.shared.report(id, focused: now)
+                    heard(id, focused: now)
+                })
                 #endif
         }
         .buttonStyle(FluxBareButtonStyle())
@@ -525,9 +551,14 @@ struct FluxDock: View {
                 .id("bubble-\(named)")
         }
         if let fan, let index = tiles.firstIndex(where: { $0.id == fan.anchorID }), centers.indices.contains(index) {
+            #if os(tvOS)
+            let tell: (String, Bool) -> Void = { heard($0, focused: $1) }
+            #else
+            let tell: (String, Bool) -> Void = { _, _ in }
+            #endif
             FluxDockFanView(fan: fan, metrics: metrics, placement: placement, accent: accent,
                             focusedID: showsFocus ? shownID : nil, systemFocus: systemFocus,
-                            open: { openFanRow?($0) }, openList: { openFanList?() })
+                            open: { openFanRow?($0) }, openList: { openFanList?() }, heard: tell)
                 .fixedSize()
                 .modifier(FluxDockAnchored(placement: placement, along: centers[index], rise: metrics.label * 0.9, metrics: metrics, centred: false))
                 // It unfolds from its icon and folds back onto it, as the
@@ -722,6 +753,9 @@ private struct FluxDockFanView: View {
     let systemFocus: FocusState<String?>.Binding
     let open: (DockFanRow) -> Void
     let openList: () -> Void
+    /// A title has taken the remote of a television, or let it go: the
+    /// bar keeps the icon of its folder magnified meanwhile.
+    var heard: (String, Bool) -> Void = { _, _ in }
     @Environment(\.fluxFanFolded) private var folded
 
     private var side: CGFloat { metrics.tile * 0.9 }
@@ -850,6 +884,9 @@ private struct FluxDockFanView: View {
                             }
                     }
                     .scaleEffect(focused ? 1.05 : 1, anchor: namesFirst ? .trailing : .leading)
+                    #if os(tvOS)
+                    .background(DeskFocusReport { heard(id, $0) })
+                    #endif
             }
         }
         .buttonStyle(FluxBareButtonStyle())

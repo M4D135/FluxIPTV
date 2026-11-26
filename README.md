@@ -1,6 +1,8 @@
-# FLUX IPTV 0.9.1 — build 39 — Bureau Mac : dock, colonnes et panneaux de verre
+# FLUX IPTV 0.9.2 — build 40 — Bureau Mac : dock, colonnes et panneaux de verre
 
 Application native SwiftUI pour macOS, iOS et tvOS.
+
+**La 0.9.2 répare le dock sur Apple TV** : en tvOS 26, la sélection avançait dans la barre — on l’entendait — mais le dock restait dessiné sur l’icône de l’écran, sans grossir. Il suit de nouveau la télécommande, et l’icône sélectionnée grossit avec ses voisines comme sous le pointeur d’un Mac.
 
 **La 0.9.1 ouvre les Réglages au clavier du Mac** : ses flèches les parcourent comme la télécommande d’une Apple TV, et **O** ouvre « Favoris, listes et dock » pour le titre sélectionné.
 
@@ -191,7 +193,7 @@ L’archive contient les sources et l’installateur Mac, pas un binaire Apple p
 
 1. Sur Mac, quitter l’ancienne app et arrêter le lancement depuis Xcode.
 2. Décompresser, puis ouvrir **Installer Flux IPTV.command**. L’installateur compile sur ce Mac et vérifie le démarrage ; cette vérification ne remplace pas un essai de lecture.
-3. Vérifier **FLUX 0.9.1 · build 39** en bas de la colonne de Réglages.
+3. Vérifier **FLUX 0.9.2 · build 40** en bas de la colonne de Réglages.
 
 Prérequis de déploiement : macOS 14, iOS 17 ou tvOS 17. Installer Xcode complet pour compiler ; le verre natif demande la version 26 des systèmes, les versions antérieures reçoivent un matériau translucide. Sur iPhone/iPad ou Apple TV, ouvrir `FluxIPTV.xcodeproj`, choisir **FluxIPTViOS** ou **FluxIPTVTV**, puis renseigner l’équipe de signature pour un appareil physique.
 
@@ -205,7 +207,7 @@ Ouvrir **`FluxIPTV-AppleTV.xcodeproj`**, ou lancer **`Ouvrir Flux IPTV Apple TV.
 
 ## Validation
 
-Le périmètre vérifié pour cette version est dans [docs/VALIDATION-0.9.1.md](docs/VALIDATION-0.9.1.md), qui s’ajoute à celui de la 0.9.0 dans [docs/VALIDATION-0.9.0.md](docs/VALIDATION-0.9.0.md), avec ce qui ne l’a pas été. Les tests unitaires du cœur ne démontrent ni la compilation des frameworks Apple, ni la fluidité réelle, ni la lecture des flux du fournisseur. Les résultats des versions précédentes ne valident pas la nouvelle interface du Mac.
+Le périmètre vérifié pour cette version est dans [docs/VALIDATION-0.9.2.md](docs/VALIDATION-0.9.2.md), qui s’ajoute à ceux de la 0.9.1 dans [docs/VALIDATION-0.9.1.md](docs/VALIDATION-0.9.1.md) et de la 0.9.0 dans [docs/VALIDATION-0.9.0.md](docs/VALIDATION-0.9.0.md), avec ce qui ne l’a pas été. Les tests unitaires du cœur ne démontrent ni la compilation des frameworks Apple, ni la fluidité réelle, ni la lecture des flux du fournisseur. Les résultats des versions précédentes ne valident pas la nouvelle interface du Mac.
 
 ## GitHub Actions et pack complet
 

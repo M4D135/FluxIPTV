@@ -273,15 +273,10 @@ struct PlayerTracksPanel: View {
 
     private static var rowHeight: CGFloat { Desk.pt(42) }
     private static var rowGap: CGFloat { Desk.pt(5) }
-    /// Row drawn as selected. A television reads its focus here, so that
-    /// this panel alone follows the remote.
-    private var shownID: String? {
-        #if os(tvOS)
-        systemFocus.wrappedValue
-        #else
-        focusedID
-        #endif
-    }
+    /// Row drawn as selected with the keyboard of a Mac. On a television
+    /// each row reads the focus of the system from itself: tvOS 26 does not
+    /// draw the panel again for a focus binding read here.
+    private var shownID: String? { focusedID }
 
     var body: some View {
         VStack(alignment: .leading, spacing: Desk.pt(12)) {
@@ -317,13 +312,15 @@ struct PlayerTracksPanel: View {
 
     private var closeButton: some View {
         let id = PlayerTracks.closeID
-        let lit = shownID == id || hovered == id
         return Button(action: close) {
-            Image(systemName: "xmark").font(Desk.system(13, .bold))
-                .foregroundStyle(lit ? Color.black : .white)
-                .frame(width: Desk.pt(34), height: Desk.pt(34))
-                .background(lit ? Color.white : Color.white.opacity(0.12), in: Circle())
-                .contentShape(Circle())
+            FluxFocused(logical: shownID == id) { focused in
+                let lit = focused || hovered == id
+                Image(systemName: "xmark").font(Desk.system(13, .bold))
+                    .foregroundStyle(lit ? Color.black : .white)
+                    .frame(width: Desk.pt(34), height: Desk.pt(34))
+                    .background(lit ? Color.white : Color.white.opacity(0.12), in: Circle())
+                    .contentShape(Circle())
+            }
         }
         .buttonStyle(FluxBareButtonStyle())
         .playerFocus(systemFocus, id: id).id(id)
@@ -358,20 +355,22 @@ struct PlayerTracksPanel: View {
     }
 
     private func row(_ id: String, title: String, selected: Bool, action: @escaping () -> Void) -> some View {
-        let lit = shownID == id || hovered == id
         let shape = RoundedRectangle(cornerRadius: Desk.pt(12), style: .continuous)
         return Button(action: action) {
-            HStack(spacing: Desk.pt(10)) {
-                Image(systemName: selected ? "checkmark.circle.fill" : "circle")
-                    .font(Desk.font(.body))
-                    .foregroundStyle(lit ? Color.black : selected ? accent : Color.white.opacity(0.5))
-                Text(title).font(Desk.font(.callout, selected ? .semibold : .regular)).lineLimit(1)
-                    .foregroundStyle(lit ? Color.black : .white)
-                Spacer(minLength: 0)
+            FluxFocused(logical: shownID == id) { focused in
+                let lit = focused || hovered == id
+                HStack(spacing: Desk.pt(10)) {
+                    Image(systemName: selected ? "checkmark.circle.fill" : "circle")
+                        .font(Desk.font(.body))
+                        .foregroundStyle(lit ? Color.black : selected ? accent : Color.white.opacity(0.5))
+                    Text(title).font(Desk.font(.callout, selected ? .semibold : .regular)).lineLimit(1)
+                        .foregroundStyle(lit ? Color.black : .white)
+                    Spacer(minLength: 0)
+                }
+                .padding(.horizontal, Desk.pt(12)).frame(height: Self.rowHeight)
+                .background(lit ? Color.white : Color.white.opacity(selected ? 0.14 : 0.06), in: shape)
+                .contentShape(shape)
             }
-            .padding(.horizontal, Desk.pt(12)).frame(height: Self.rowHeight)
-            .background(lit ? Color.white : Color.white.opacity(selected ? 0.14 : 0.06), in: shape)
-            .contentShape(shape)
         }
         .buttonStyle(FluxBareButtonStyle())
         .playerFocus(systemFocus, id: id).id(id)

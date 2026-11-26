@@ -240,17 +240,6 @@ struct DeskTargetFrames: PreferenceKey {
     }
 }
 
-private struct DeskTargetedKey: EnvironmentKey { static let defaultValue = false }
-
-extension EnvironmentValues {
-    /// The keyboard of a Mac is on this control of the settings: it shows the
-    /// ring that the remote of a television shows.
-    var deskTargeted: Bool {
-        get { self[DeskTargetedKey.self] }
-        set { self[DeskTargetedKey.self] = newValue }
-    }
-}
-
 private struct DeskTarget: ViewModifier {
     let id: String
     let follows: Bool

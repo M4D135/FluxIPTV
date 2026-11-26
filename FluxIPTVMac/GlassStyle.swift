@@ -9,6 +9,18 @@ struct FluxBareButtonStyle: ButtonStyle {
     }
 }
 
+private struct DeskTargetedKey: EnvironmentKey { static let defaultValue = false }
+
+extension EnvironmentValues {
+    /// The keyboard of a Mac is on this control of the settings: it shows the
+    /// ring that the remote of a television shows. Declared beside the styles
+    /// that read it: the harness of the YouTube session builds them alone.
+    var deskTargeted: Bool {
+        get { self[DeskTargetedKey.self] }
+        set { self[DeskTargetedKey.self] = newValue }
+    }
+}
+
 /// A control that draws nothing of its own for the focus. On a television a
 /// white ring shows where the remote stands; elsewhere it is the bare style.
 struct DeskFocusStyle: ButtonStyle {

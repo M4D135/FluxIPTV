@@ -775,6 +775,73 @@ final class TVRemoteNavigationTests: XCTestCase {
         print("PASS: TV_REMOTE a folder of the dock opened the folder it holds, Menu and its first row led back, and a film opened from two folders deep")
     }
 
+    /// The bar draws its selection, magnified with its neighbours, where the
+    /// remote is: along the bar of a screen, along the bar of the home
+    /// screen, and on the icon of a folder while its titles are walked. On
+    /// an Apple TV in tvOS 26 the bar stayed drawn on the icon of the screen,
+    /// not magnified: the remote moved, with its sound, and nothing else did.
+    @MainActor
+    func testTheDockIsDrawnWhereTheRemoteIs() {
+        let keys = Self.dockKeys
+        var app = launch("movies")
+        let drawn = element("flux-dock-drawn", in: app)
+        assertFocus(element("catalog-card-fixture-movie-1", in: app), logical: "fixture-movie-1", in: app)
+        XCTAssertTrue(appears(drawn), "The fixture shows what the bar draws.")
+        assertCondition(NSPredicate(format: "value == %@", "- plat"), on: drawn, in: app)
+        XCUIRemote.shared.press(.down)
+        walkDock(to: element("navigation-tab-movie", in: app), in: app)
+        assertDrawn(drawn, among: keys, in: app)
+        for direction in [XCUIRemote.Button.right, .right, .left, .left, .left] {
+            XCUIRemote.shared.press(direction)
+            assertDrawn(drawn, among: keys, in: app)
+        }
+        retainScreenshot("dock-drawn-01-along-the-bar", in: app)
+        // Back in the screen: nothing of the bar is drawn as selected.
+        XCUIRemote.shared.press(.up)
+        assertCondition(NSPredicate(format: "value == %@", "- plat"), on: drawn, in: app)
+        app.terminate()
+
+        app = launch("home")
+        let home = element("flux-home-dock-drawn", in: app)
+        assertFocus(element("navigation-tab-live", in: app), logical: "tab-live", in: app)
+        assertDrawn(home, among: keys, in: app)
+        for direction in [XCUIRemote.Button.right, .right, .left] {
+            XCUIRemote.shared.press(direction)
+            assertDrawn(home, among: keys, in: app)
+        }
+        retainScreenshot("dock-drawn-02-home-screen", in: app)
+        app.terminate()
+
+        // A folder open on its first title: the icon of the folder stays the magnified one.
+        app = launch("dock-folder")
+        defer { app.terminate() }
+        assertFocus(element("dock-fan-fixture-movie-0", in: app), in: app)
+        assertCondition(NSPredicate(format: "value == %@", "dock-fan-fixture-movie-0 agrandi"),
+                        on: element("flux-dock-drawn", in: app), in: app)
+        retainScreenshot("dock-drawn-03-folder", in: app)
+        print("PASS: TV_REMOTE the bar drew its selection magnified where the remote was, on a screen, on the home screen and in a folder, and nothing once the remote left it")
+    }
+
+    /// The icon of the bar that has the focus of the system is the one the
+    /// bar draws as selected, and the bar is magnified around it.
+    @MainActor
+    private func assertDrawn(_ drawn: XCUIElement, among keys: [String], in app: XCUIApplication,
+                             file: StaticString = #filePath, line: UInt = #line) {
+        let deadline = Date().addingTimeInterval(10 * Self.patience)
+        var focused: String?
+        while focused == nil, Date() < deadline {
+            focused = keys.first { holdsFocus(element($0, in: app)) }
+            if focused == nil { RunLoop.current.run(until: Date().addingTimeInterval(0.2)) }
+        }
+        guard let focused else {
+            retainScreenshot("failure-dock-none-focused", in: app)
+            XCTFail("No icon of the bar has the focus.", file: file, line: line)
+            return
+        }
+        let id = String(focused.dropFirst("navigation-".count))
+        assertCondition(NSPredicate(format: "value == %@", id + " agrandi"), on: drawn, in: app, file: file, line: line)
+    }
+
     /// Keys of the dock, in their default order.
     /// Back returns one screen at a time, as in a web browser. Held, it goes
     /// straight to the home screen: the Back key of the bar under OK held

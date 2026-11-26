@@ -1,6 +1,6 @@
 # Feuille de route FLUX IPTV
 
-## Intégré dans les sources 0.9.1 — build 39
+## Intégré dans les sources 0.9.2 — build 40
 
 Le Mac et l’Apple TV reçoivent la même interface de bureau. iPhone et iPad conservent la disposition de la 0.8.9.
 
