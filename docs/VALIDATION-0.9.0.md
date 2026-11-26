@@ -75,6 +75,8 @@ Les captures Mac d’avant et d’après le portage des fiches ont été compar�
 
 Le premier envoi du portage sur Apple TV (`1e609c7`) a échoué sur deux étapes des machines hébergées, qui utilisent tvOS 26.5 et un Mac Intel sous macOS 26. Les deux causes étaient dans les bancs et y sont corrigées. Sous tvOS 26.5 le parcours de la boussole interrogeait l’icône de la recherche, qui porte le même identifiant que le champ : le champ avait bien le focus, comme le montrent la capture et l’arbre d’accessibilité de l’échec. Sur le Mac hébergé, la fenêtre reçoit son premier focus natif après son ouverture ; les deux touches du scénario étaient envoyées avant, et ce premier focus écrasait leur résultat. Le banc attend maintenant ce focus quand la fenêtre est au premier plan.
 
+L’envoi suivant (`d51e0ac`) y a passé le Mac, les dix-sept scénarios et cinq parcours sur six, et a révélé un défaut de l’application que tvOS 27.2 ne montre pas : sous tvOS 26.5, annuler la liste des pays par Menu laissait le focus natif sur le filtre des catégories, voisin, alors que le bouton Pays était dessiné sélectionné. Ce bouton ne revient dans la colonne qu’avec la fermeture de la liste, et le focus lui était demandé trop tôt. Il lui est maintenant donné une fois le bouton revenu, comme après le choix d’un pays.
+
 ### Essai réel
 
 L’application signée localement a été lancée sur le Mac avec la source Xtream déjà enregistrée, sans saisie d’identifiants, puis pilotée par des clics en arrière-plan. **Cet essai a porté sur un état antérieur au dock en bas, à la boussole, aux réglages en verre du lecteur et au portage sur Apple TV.**

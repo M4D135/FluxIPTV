@@ -3443,7 +3443,7 @@ extension ContentView {
     /// before this one, down to the home screen.
     func deskBack() {
         if page == .catalogue {
-            if sidebarCountries { sidebarCountries = false; focusID = "countries"; systemFocus = "countries"; return }
+            if sidebarCountries { closeCountries(); return }
             if newListKind != nil || renamingList || confirmingListDeletion {
                 newListKind = nil; renamingList = false; confirmingListDeletion = false
                 return
@@ -3454,6 +3454,21 @@ extension ContentView {
             }
         }
         deskLeaveScreen()
+    }
+
+    /// Closes the list of countries or languages, back on the button that
+    /// opened it. That button returns to the column with this update: it can
+    /// take the focus only once it is there, and before that a television
+    /// settles on the nearest control, the filter of the categories.
+    private func closeCountries() {
+        sidebarCountries = false
+        focusID = "countries"
+        Task { @MainActor in
+            await Task.yield()
+            guard !sidebarCountries, page == .catalogue, focusID == "countries" else { return }
+            liveGroupSearchFocus = false
+            systemFocus = "countries"
+        }
     }
 
     /// Shows the screen that came before this one, down to the home screen.
@@ -3706,7 +3721,7 @@ extension ContentView {
         if id == DeskZone.backID { deskLeaveScreen(); return true }
         if id == DeskZone.homeID { showHome(); return true }
         if id == DeskZone.searchID { search(); return true }
-        if id == "countries-back" { sidebarCountries = false; focusID = "countries"; return true }
+        if id == "countries-back" { closeCountries(); return true }
         if id.hasPrefix("favorite-new-"), let kind = IPTVMediaKind(rawValue: String(id.dropFirst("favorite-new-".count))) {
             beginNewList(kind); return true
         }
@@ -4093,7 +4108,7 @@ extension ContentView {
 
     @ViewBuilder private var countriesSidebar: some View {
         let focusedBack = focusID == "countries-back"
-        Button { pointerSelect("countries"); sidebarCountries = false } label: {
+        Button { pointerSelect("countries"); closeCountries() } label: {
             HStack(spacing: Desk.pt(8)) {
                 Image(systemName: "chevron.left").font(Desk.font(.caption, .bold))
                 Text(library.contentKind == .live ? "Pays des chaînes" : library.contentKind == .movie ? "Langue des films" : "Langue des séries")
