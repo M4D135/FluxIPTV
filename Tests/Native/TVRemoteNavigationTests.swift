@@ -134,7 +134,9 @@ final class TVRemoteNavigationTests: XCTestCase {
         sleep(3)
         let channel = element("live-channel-fixture-live-0", in: app)
         let compass = element("zone-compass", in: app)
-        let search = element("desk-search", in: app)
+        // The glass around the field carries its identifier, and tvOS 26 also
+        // gives it to the icon beside the field: ask for the field itself.
+        let search = app.textFields.matching(identifier: "desk-search").firstMatch
         let logical = element("flux-catalog-logical-focus", in: app)
         assertFocus(channel, logical: "fixture-live-0", in: app)
 
@@ -180,6 +182,147 @@ final class TVRemoteNavigationTests: XCTestCase {
         assertFocus(element("desk-back", in: app), logical: "desk-back", in: app)
         retainScreenshot("compass-04-dock-and-back", in: app)
         print("PASS: TV_REMOTE Menu then one arrow reached the search field, the list, the column and the dock; OK kept the selection; the arrows walked the bar to Back")
+    }
+
+    @MainActor
+    func testFilmFicheHoldsTheRemoteAndGivesItBack() {
+        let app = launch("movies")
+        defer { app.terminate() }
+        let card = element("catalog-card-fixture-movie-1", in: app)
+        let play = element("media-detail-play", in: app)
+        let favorite = element("media-detail-favorite", in: app)
+        let description = element("media-detail-description", in: app)
+        let close = element("media-detail-back", in: app)
+        assertFocus(card, logical: "fixture-movie-1", in: app)
+
+        // OK opens the glass fiche over the catalogue, on its play control.
+        XCUIRemote.shared.press(.select)
+        assertFocus(play, in: app)
+        XCTAssertTrue(element("navigation-tab-movie", in: app).exists, "The dock stays under the fiche.")
+        retainScreenshot("fiche-01-film", in: app)
+
+        // The actions are one row, and its ends hold the remote.
+        XCUIRemote.shared.press(.right)
+        assertFocus(favorite, in: app)
+        XCUIRemote.shared.press(.right)
+        assertFocus(description, in: app)
+        XCUIRemote.shared.press(.right)
+        assertFocus(description, in: app)
+        // Nothing under the fiche takes the remote: neither the dock nor the catalogue.
+        XCUIRemote.shared.press(.down)
+        XCUIRemote.shared.press(.down)
+        assertFocus(description, in: app)
+        // Up reaches the close button, at the far end of the sheet.
+        move(.left, to: play, maximumPresses: 3, in: app)
+        XCUIRemote.shared.press(.up)
+        assertFocus(close, in: app)
+        XCUIRemote.shared.press(.down)
+        assertOneHasFocus([play, favorite, description], in: app)
+        retainScreenshot("fiche-02-back-in-the-actions", in: app)
+
+        // Favourites are a panel above the fiche, opened on the first list.
+        move(.left, to: play, maximumPresses: 3, in: app)
+        XCUIRemote.shared.press(.right)
+        assertFocus(favorite, in: app)
+        XCUIRemote.shared.press(.select)
+        let firstList = element("favorite-list-0", in: app)
+        let create = element("favorite-create", in: app)
+        let save = element("favorite-save", in: app)
+        assertFocus(firstList, in: app)
+        retainScreenshot("fiche-03-lists", in: app)
+        XCUIRemote.shared.press(.down)
+        assertFocus(create, in: app)
+        // Menu closes the panel without saving, back on the control it came from.
+        XCUIRemote.shared.press(.menu)
+        assertCondition("exists == false", on: firstList, in: app)
+        assertFocus(favorite, in: app)
+        XCTAssertEqual(favorite.label, "Favoris")
+
+        // Choosing the list and saving marks the title, and returns as well.
+        XCUIRemote.shared.press(.select)
+        assertFocus(firstList, in: app)
+        XCUIRemote.shared.press(.select)
+        assertCondition(NSPredicate(format: "value == %@", "Sélectionnée"), on: firstList, in: app)
+        XCUIRemote.shared.press(.down)
+        XCUIRemote.shared.press(.down)
+        move(.right, to: save, maximumPresses: 3, in: app)
+        XCUIRemote.shared.press(.select)
+        assertCondition("exists == false", on: firstList, in: app)
+        assertFocus(favorite, in: app)
+        assertCondition(NSPredicate(format: "label == %@", "Dans les favoris"), on: favorite, in: app)
+        retainScreenshot("fiche-04-saved", in: app)
+
+        // The full description is a panel of its own; Menu returns to the fiche.
+        XCUIRemote.shared.press(.right)
+        assertFocus(description, in: app)
+        XCUIRemote.shared.press(.select)
+        assertFocus(element("media-detail-description-back", in: app), in: app)
+        retainScreenshot("fiche-05-description", in: app)
+        XCUIRemote.shared.press(.menu)
+        assertFocus(description, in: app)
+
+        // Menu closes the fiche and the sleeve takes the remote back.
+        XCUIRemote.shared.press(.menu)
+        assertCondition("exists == false", on: play, in: app)
+        assertFocus(card, logical: "fixture-movie-1", in: app)
+        print("PASS: TV_REMOTE film fiche kept the remote in its sheet, reached Close, opened and closed the lists and the description, saved a favourite and returned to its sleeve")
+    }
+
+    @MainActor
+    func testSeriesFicheColumnsOpenOnWhatIsSelected() {
+        let app = launch("series")
+        defer { app.terminate() }
+        let play = element("media-detail-play", in: app)
+        let episode15 = element("media-detail-episode-fixture-series-s12-e15", in: app)
+        let episode14 = element("media-detail-episode-fixture-series-s12-e14", in: app)
+        let season12 = element("media-detail-season-12", in: app)
+        let season11 = element("media-detail-season-11", in: app)
+        assertFocus(play, in: app)
+        retainScreenshot("series-01-fiche", in: app)
+
+        // Left: the episodes, on the selected one rather than on the nearest row.
+        XCUIRemote.shared.press(.left)
+        assertFocus(episode15, in: app)
+        XCUIRemote.shared.press(.up)
+        assertFocus(episode14, in: app)
+        assertCondition(NSPredicate(format: "label CONTAINS %@", "E14"), on: play, in: app)
+
+        // Left again: the seasons, on the one in use. Entering changes nothing.
+        XCUIRemote.shared.press(.left)
+        assertFocus(season12, in: app)
+        XCTAssertTrue(episode14.exists)
+        // Up: the season before, whose episodes replace the list at once.
+        XCUIRemote.shared.press(.up)
+        assertFocus(season11, in: app)
+        let firstOfEleven = element("media-detail-episode-fixture-series-s11-e1", in: app)
+        XCTAssertTrue(firstOfEleven.waitForExistence(timeout: 10))
+        retainScreenshot("series-02-season-11", in: app)
+
+        // Right: its first episode; right again: the actions of that episode.
+        XCUIRemote.shared.press(.right)
+        assertFocus(firstOfEleven, in: app)
+        XCUIRemote.shared.press(.right)
+        assertFocus(play, in: app)
+        assertCondition(NSPredicate(format: "label CONTAINS %@", "S11"), on: play, in: app)
+
+        // Menu: the shelf of the seasons, on the season that was open.
+        XCUIRemote.shared.press(.menu)
+        assertCondition("exists == false", on: play, in: app)
+        assertFocus(element("season-sleeve-11", in: app), logical: "season-11", in: app)
+        retainScreenshot("series-03-shelf", in: app)
+        print("PASS: TV_REMOTE series fiche entered its episodes and its seasons on the selected row, followed the season under the remote and returned to that season on the shelf")
+    }
+
+    @MainActor
+    private func assertOneHasFocus(_ controls: [XCUIElement], in app: XCUIApplication,
+                                   file: StaticString = #filePath, line: UInt = #line) {
+        let deadline = Date().addingTimeInterval(10)
+        while Date() < deadline {
+            if controls.contains(where: { $0.exists && $0.hasFocus }) { return }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+        }
+        retainScreenshot("failure-none-focused", in: app)
+        XCTFail("None of \(controls.map(\.identifier)) has the focus.", file: file, line: line)
     }
 
     @MainActor

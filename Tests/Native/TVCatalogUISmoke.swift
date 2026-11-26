@@ -117,7 +117,8 @@ final class TVCatalogControlProbeView: UIView {
                         fixturePlayerSettings: fixture.scenario == "player-settings",
                         fixtureZone: fixture.zone,
                         fixtureZapList: fixture.scenario == "zapping",
-                        fixtureAddSource: fixture.scenario == "add-source")
+                        fixtureAddSource: fixture.scenario == "add-source",
+                        fixtureLists: fixture.scenario == "lists")
                 .environmentObject(library)
                 .environmentObject(playback)
                 .preferredColorScheme(.dark)
@@ -159,6 +160,10 @@ final class TVCatalogControlProbeView: UIView {
         case "search-result": return "catalog-card-fixture-movie-0"
         case "welcome": return "welcome-load-source"
         case "add-source": return "source-server"
+        // The shelf of a series opens on its first season.
+        case "seasons": return "season-sleeve-1"
+        // The lists of a title open on the first of them.
+        case "lists": return "favorite-list-0"
         // The desk: the bar of the home screen, the destination of the
         // settings, the channel on screen in the list of the player.
         case "home": return "navigation-tab-live"
@@ -178,10 +183,11 @@ final class TVCatalogControlProbeView: UIView {
         case "settings": return CGSize(width: 90, height: 90)
         case "live-error": return CGSize(width: 150, height: 50)
         case "country-picker": return CGSize(width: 240, height: 54)
-        case "movies", "search-result": return CGSize(width: 240, height: 350)
+        case "movies", "search-result", "seasons": return CGSize(width: 240, height: 350)
         case "search-empty": return CGSize(width: 90, height: 90)
         case "welcome": return CGSize(width: 300, height: 72)
         case "add-source": return CGSize(width: 500, height: 50)
+        case "lists": return CGSize(width: 400, height: 48)
         default: return CGSize(width: 180, height: 64)
         }
     }
@@ -250,7 +256,7 @@ final class TVCatalogControlProbeView: UIView {
         let scenario = ProcessInfo.processInfo.environment["FLUX_UI_SCENARIO"] ?? ""
         // A screen of the desk reuses the catalogue of the live scenario.
         let content = deskScenarios.contains(scenario) ? "live" : scenario
-        try TVCatalogCapture.require((["movie", "movies", "series", "live", "welcome", "add-source", "search-empty", "search-result",
+        try TVCatalogCapture.require((["movie", "movies", "lists", "series", "seasons", "live", "welcome", "add-source", "search-empty", "search-result",
                                        "live-fr", "live-es", "country-picker", "live-restored", "live-error"] + deskScenarios).contains(scenario),
                                      "FLUX_UI_SCENARIO must name a supported catalogue, detail, welcome or search scenario.")
         let source = IPTVSource(id: UUID(uuidString: "00000000-0000-0000-0000-000000000003")!,
@@ -342,11 +348,11 @@ final class TVCatalogControlProbeView: UIView {
         let episodeID = "fixture-series-s12-e15"
         try TVCatalogCapture.require(seasons.first(where: { $0.number == 12 })?.episodes.contains(where: { $0.id == episodeID }) == true,
                                      "The exact requested S12/E15 fixture identifier is absent.")
-        let isMovie = scenario == "movie" || scenario == "movies" || scenario.hasPrefix("search-")
+        let isMovie = scenario == "movie" || scenario == "movies" || scenario == "lists" || scenario.hasPrefix("search-")
         return TVCatalogFixture(scenario: scenario, source: source, items: items,
                                 kind: isMovie ? .movie : .series,
                                 selection: isMovie ? items[1] : collection,
-                                seasons: scenario == "series" ? seasons : [],
+                                seasons: scenario == "series" || scenario == "seasons" ? seasons : [],
                                 openSeason: scenario == "series" ? 12 : nil,
                                 episodeID: scenario == "series" ? episodeID : nil)
     }

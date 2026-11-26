@@ -58,7 +58,8 @@ Au clavier ou à la télécommande : les flèches vont au contrôle voisin, OK
 valide, Retour affiche la boussole des zones (haut, colonne, contenu, aperçu,
 dock) où une flèche saute dans la zone voisine, et Retour une seconde fois
 revient à l'écran précédent. Tab change de zone.
-L'Apple TV reprend la même interface : accueil, dock, colonnes, zapping.
+L'Apple TV reprend la même interface : accueil, dock, colonnes, fiches en
+verre, favoris et listes d'un titre, zapping.
 Films et séries : filtre par langue reconnue dans les titres et catégories.
 Fiche d'un film : panneau de verre sur le catalogue flouté, boîtier à gauche.
 Fiche d'une série : saisons, épisodes en liste, visuel de l'épisode.

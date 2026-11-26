@@ -216,9 +216,10 @@ struct ContentView: View {
     private var fixtureZapList = false
     /// Seed only the initial selection; layout, controls and artwork remain the
     /// same production views used by the application.
-    init(fixtureSelection: IPTVItem? = nil, fixtureSeasons: [IPTVSeason] = [], fixtureOpenSeason: Int? = nil, fixtureEpisodeID: String? = nil, fixtureOpenItem: Bool = false, fixtureSearchSubmission: String? = nil, fixtureSearchObservation: ((CatalogSearchFocusSnapshot) -> Void)? = nil, fixtureOpenCountries: Bool = false, fixtureRestoreBrowsing: Bool = false, fixtureSettingsPage: PlaybackSettingsView.Page? = nil, fixtureFavorites: Bool = false, fixtureHome: Bool = false, fixturePlayerSettings: Bool = false, fixtureZone: DeskZone? = nil, fixtureActions: [RemoteAction] = [], fixtureZapList: Bool = false, fixtureAddSource: Bool = false) {
+    init(fixtureSelection: IPTVItem? = nil, fixtureSeasons: [IPTVSeason] = [], fixtureOpenSeason: Int? = nil, fixtureEpisodeID: String? = nil, fixtureOpenItem: Bool = false, fixtureSearchSubmission: String? = nil, fixtureSearchObservation: ((CatalogSearchFocusSnapshot) -> Void)? = nil, fixtureOpenCountries: Bool = false, fixtureRestoreBrowsing: Bool = false, fixtureSettingsPage: PlaybackSettingsView.Page? = nil, fixtureFavorites: Bool = false, fixtureHome: Bool = false, fixturePlayerSettings: Bool = false, fixtureZone: DeskZone? = nil, fixtureActions: [RemoteAction] = [], fixtureZapList: Bool = false, fixtureAddSource: Bool = false, fixtureLists: Bool = false) {
         self.fixtureActions = fixtureActions
         _addingSource = State(initialValue: fixtureAddSource)
+        if fixtureLists { _itemOptions = State(initialValue: fixtureSelection) }
         if fixtureZapList {
             self.fixtureZapList = true
             fixturePictureStandIn = true
@@ -583,6 +584,14 @@ struct ContentView: View {
             if !fixtureActions.isEmpty {
                 Task { @MainActor in
                     try? await Task.sleep(nanoseconds: 500_000_000)
+                    #if os(macOS)
+                    // A key window receives its first native focus a little
+                    // after it appears, and that focus would overwrite the
+                    // result of keys sent before it. Off screen it never comes.
+                    if ProcessInfo.processInfo.environment["FLUX_CATALOG_UI_BACKGROUND"] != "1" {
+                        for _ in 0..<14 where systemFocus == nil { try? await Task.sleep(nanoseconds: 50_000_000) }
+                    }
+                    #endif
                     for action in fixtureActions {
                         dispatch(action)
                         try? await Task.sleep(nanoseconds: 60_000_000)
@@ -641,7 +650,26 @@ struct ContentView: View {
         #if os(tvOS)
         // The home screen is the first one: Menu leaves the application
         // there, and returns one step everywhere else.
-        .fluxExit(heldItem != nil || (page != .home && !library.sources.isEmpty)) { if heldItem != nil { dispatch(.back) } else { back() } }
+        .fluxExit(heldItem != nil || deskCovered || (page != .home && !library.sources.isEmpty)) {
+            #if os(tvOS)
+            // Menu first closes what stands above the screen.
+            if library.alertMessage != nil { library.alertMessage = nil; return }
+            if itemOptions != nil { itemOptions = nil; return }
+            #endif
+            if heldItem != nil { dispatch(.back) } else { back() }
+        }
+        #if os(tvOS)
+        // The screen takes the remote back where it was when a panel closes.
+        .onChange(of: deskCovered) { _, covered in
+            guard !covered, page != .player else { return }
+            let id = focusID
+            Task { @MainActor in
+                await Task.yield()
+                guard !deskCovered, focusID == id else { return }
+                systemFocus = id
+            }
+        }
+        #endif
         .onPlayPauseCommand { dispatch(.playPause) }
         #else
         .onKeyPress(keys: [.upArrow, .downArrow, .leftArrow, .rightArrow, .return, .escape, .space, "f", .tab, "\u{19}"], phases: [.down, .repeat]) { press in
@@ -1874,14 +1902,25 @@ struct ContentView: View {
         .animation(reduceMotion ? nil : .spring(response: 0.28, dampingFraction: 0.85), value: focused)
     }
 
+    /// The shelf of the seasons spans the screen. On a television its sleeves
+    /// keep the size they have in the catalogue, which a column narrows.
+    private var shelfColumns: Int {
+        #if os(tvOS)
+        let estimated = (deskWidth - 40) / (cardWidth + 4)
+        return estimated.isFinite ? max(columns, Int(min(10, estimated))) : columns
+        #else
+        return columns
+        #endif
+    }
+
     private var seriesDetail: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .center, spacing: 18) {
                 navButton("Retour aux séries", icon: "chevron.backward", id: "series-back") { back() }
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(series?.name ?? "Série").font(.title2.bold()).lineLimit(2)
+                    Text(series?.name ?? "Série").font(Desk.font(.title2, .bold)).lineLimit(2)
                     Text(episodesLoading ? "Chargement des saisons…" : "\(seasons.count) saisons · Choisissez une saison")
-                        .font(.callout).foregroundStyle(.secondary)
+                        .font(Desk.font(.callout)).foregroundStyle(.secondary)
                 }.frame(maxWidth: .infinity, alignment: .leading)
                 if let series {
                     navButton("Favoris et listes", icon: "star", id: "series-favorite") { itemOptions = series }
@@ -1902,14 +1941,14 @@ struct ContentView: View {
                     .foregroundStyle(.secondary).frame(maxWidth: .infinity).padding(24)
                 Spacer()
             } else if let series {
-                SeriesSeasonShelf(series: series, seasons: seasons, columns: columns,
+                SeriesSeasonShelf(series: series, seasons: seasons, columns: shelfColumns,
                                   focusedID: focusID, systemFocus: $systemFocus,
                                   focus: focusSeason, open: {showSeason($0)},
                                   heroNamespace: usesDesk ? caseNamespace : nil,
                                   heldSeason: heldItem?.id == series.id ? heldSeasonNumber : nil,
                                   heroExpanded: caseExpanded)
                 Text("Choisissez une saison pour voir ses épisodes · Retour : catalogue des séries")
-                    .font(.caption).foregroundStyle(.secondary).frame(maxWidth: .infinity).padding(.bottom, 10)
+                    .font(Desk.font(.caption)).foregroundStyle(.secondary).frame(maxWidth: .infinity).padding(.bottom, 10)
             }
         }.frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -2144,7 +2183,8 @@ struct ContentView: View {
                 .onChange(of: group) { _, _ in if let id = zapFocusID { reader.scrollTo("zap-\(id)", anchor: .center) } }
             }
             Text(zapHint)
-                .font(Desk.font(.caption2)).foregroundStyle(.white.opacity(0.6)).frame(maxWidth: .infinity)
+                .font(Desk.font(.caption2)).foregroundStyle(.white.opacity(0.6))
+                .multilineTextAlignment(.center).frame(maxWidth: .infinity)
         }
         .padding(Desk.pt(12)).frame(width: Desk.pt(400))
         .frame(maxHeight: .infinity)
@@ -2158,7 +2198,8 @@ struct ContentView: View {
     }
     private var zapHint: String {
         #if os(tvOS)
-        "Haut, bas : choisir  ·  OK : regarder  ·  Gauche, droite : catégorie  ·  Retour : fermer"
+        // Two lines by design: one would break after a separator.
+        "Haut, bas : choisir  ·  OK : regarder\nGauche, droite : catégorie  ·  Retour : fermer"
         #else
         "↑ ↓ choisir  ·  Entrée regarder  ·  ← → catégorie  ·  Échap fermer"
         #endif
@@ -3068,12 +3109,12 @@ extension ContentView {
     /// The home screen is the bar itself, in the middle of the window.
     var showsHome: Bool { page == .home && !library.sources.isEmpty }
     private var dockVisible: Bool {
-        #if os(tvOS)
-        // A fiche takes the whole screen of a television.
-        if heldItem != nil { return false }
-        #endif
-        return page != .player && !cinema && entranceItem == nil && !showsHome
+        page != .player && !cinema && entranceItem == nil && !showsHome
     }
+    /// A fiche, the lists of a title or a message stand above the screen. A
+    /// pointer cannot reach what is under them; on a television nothing under
+    /// them takes the focus of the remote either.
+    private var deskCovered: Bool { heldItem != nil || itemOptions != nil || library.alertMessage != nil }
     private var dockAlignment: Alignment {
         switch dockPosition {
         case .bottom: .bottom
@@ -3125,21 +3166,40 @@ extension ContentView {
     func deskPane(reader: ScrollViewProxy) -> some View {
         ZStack {
             if showsHome {
-                deskHome.transition(homeTransition)
+                deskHome
+                    .allowsHitTesting(!deskCovered)
+                    #if os(tvOS)
+                    .disabled(deskCovered)
+                    #endif
+                    .transition(homeTransition)
             } else {
                 deskPage
                     .padding(dockInsets)
                     // The catalogue stays in place, out of focus, behind a fiche.
-                    .blur(radius: fichePresented ? 22 : 0)
-                    .allowsHitTesting(heldItem == nil && itemOptions == nil && library.alertMessage == nil)
+                    .blur(radius: fichePresented || itemOptions != nil || library.alertMessage != nil ? 22 : 0)
+                    .allowsHitTesting(!deskCovered)
+                    #if os(tvOS)
+                    .disabled(deskCovered)
+                    #endif
                     .opacity(entranceItem == nil ? 1 : 0)
                     .transition(.opacity)
             }
             if let heldItem {
                 Color.black.opacity(fichePresented ? 0.36 : 0).ignoresSafeArea().allowsHitTesting(false)
                 heldOverlay(heldItem, reader: reader).padding(ficheInsets)
+                    // What stands above the fiche puts it out of focus too.
+                    .blur(radius: itemOptions != nil || library.alertMessage != nil ? 16 : 0)
+                    #if os(tvOS)
+                    .disabled(itemOptions != nil || library.alertMessage != nil)
+                    #endif
             }
-            if dockVisible { deskDock.transition(.opacity) }
+            if dockVisible {
+                deskDock
+                    #if os(tvOS)
+                    .disabled(deskCovered)
+                    #endif
+                    .transition(.opacity)
+            }
             if page == .player, let request = playerSettings { deskPlayerSettings(request) }
             if zoneMode {
                 Color.black.opacity(0.34).ignoresSafeArea().allowsHitTesting(false).transition(.opacity)
@@ -3297,6 +3357,8 @@ extension ContentView {
             itemPanel(item)
                 .fluxGlass(radius: Desk.pt(28))
                 .shadow(color: .black.opacity(0.45), radius: Desk.pt(30), y: 16)
+                // Like a fiche, the panel never slides under the dock.
+                .padding(ficheInsets)
         }
         .transition(.opacity)
     }
@@ -3925,7 +3987,9 @@ extension ContentView {
         // The field of the television opens its own keyboard.
         HStack(spacing: Desk.pt(8)) {
             Image(systemName: "magnifyingglass").font(Desk.font(.callout)).foregroundStyle(.secondary)
-            TextField("Filtrer les catégories", text: $library.groupSearch)
+            TextField("Filtrer les catégories", text: $library.groupSearch,
+                      prompt: Text("Filtrer les catégories")
+                        .foregroundStyle(liveGroupSearchFocus ? Color.black.opacity(0.55) : Color.white.opacity(0.55)))
                 .textFieldStyle(.plain).font(Desk.font(.callout))
                 .focused($liveGroupSearchFocus)
                 .onSubmit {
@@ -4249,7 +4313,10 @@ extension ContentView {
         return HStack(spacing: Desk.pt(10)) {
             Image(systemName: "magnifyingglass").font(Desk.font(.body, .semibold))
                 .foregroundStyle(searchFocus ? .primary : .secondary)
-            TextField(prompt, text: $library.search)
+            // Under the remote the system draws the field light: its prompt
+            // then needs a dark ink to stay readable.
+            TextField(prompt, text: $library.search,
+                      prompt: Text(prompt).foregroundStyle(searchFocus ? Color.black.opacity(0.55) : Color.white.opacity(0.55)))
                 .textFieldStyle(.plain).font(Desk.font(.body))
                 .focused($searchFocus).onSubmit { searchFocus = false; focusFirstItem() }
         }

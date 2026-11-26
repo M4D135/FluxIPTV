@@ -1,6 +1,6 @@
 # Validation de FLUX IPTV 0.9.0 — build 38
 
-La 0.9.0 donne au Mac et à l’Apple TV la même interface de bureau : accueil, dock en bas au centre, boussole des zones pour le clavier et la télécommande, colonne de navigation, télévision en trois colonnes, liste de zapping, réglages en verre, filtre par langue pour les films et les séries. iPhone et iPad conservent la disposition de la 0.8.9. Ce rapport distingue ce qui a été exécuté de ce qui ne l’a pas été.
+La 0.9.0 donne au Mac et à l’Apple TV la même interface de bureau : accueil, dock en bas au centre, boussole des zones pour le clavier et la télécommande, colonne de navigation, télévision en trois colonnes, fiches et listes d’un titre en verre, liste de zapping, réglages en verre, filtre par langue pour les films et les séries. iPhone et iPad conservent la disposition de la 0.8.9. Ce rapport distingue ce qui a été exécuté de ce qui ne l’a pas été.
 
 Les vérifications ci-dessous ont été faites les 25 et 26 novembre 2026 sur un Mac Apple Silicon, macOS 27.2, Xcode 27.2 (Swift 6.4.2), sur l’état final des sources. **Le résultat de GitHub Actions sur le commit livré reste la référence** : le workflow compile avec Xcode 26.3 sur un Mac Intel et teste le cœur sous Linux avec Swift 6.2.
 
@@ -14,7 +14,7 @@ Les vérifications ci-dessous ont été faites les 25 et 26 novembre 2026 sur un
 | `scripts/generate-xcodeproj.py` | les deux projets générés sont à jour |
 | Compilations | macOS, iOS Simulator, tvOS Simulator et tvOS appareil |
 | `scripts/test-catalog-ui.sh` en mode local, avec la galerie | 30 captures de la vraie interface du Mac ; les quatre parcours de touches aboutissent |
-| `scripts/test-tvos-catalog-ui.sh` | quinze scénarios natifs, trois démarrages à froid et quatre parcours XCUIRemote réussis |
+| `scripts/test-tvos-catalog-ui.sh` | dix-sept scénarios natifs, trois démarrages à froid et six parcours XCUIRemote réussis |
 | Application réelle sur le Mac, source Xtream enregistrée | voir « Essai réel » |
 
 ### Tests du cœur ajoutés
@@ -52,16 +52,28 @@ Ces captures ont été prises fenêtres hors écran, sans prendre le premier pla
 
 Le banc a été exécuté sur l’état final des sources, dans un simulateur qu’il crée (tvOS 27.2, Apple TV 4K à 1080p), avec le Liquid Glass actif comme dans l’application.
 
-Quinze scénarios lancent l’application sur un écran et exigent que le focus natif soit sur le contrôle attendu, mesuré dans la fenêtre : l’accueil, la télévision, les films, la fiche d’un film, la saison 12 et son épisode 15, la liste de zapping, les réglages, l’accueil sans source, le formulaire d’une source, deux recherches, la France, l’Espagne, les pays dans la colonne et la restauration d’une chaîne. Le formulaire d’une source doit tenir dans la zone sûre de l’écran, hors de toute vue défilante.
+Dix-sept scénarios lancent l’application sur un écran et exigent que le focus natif soit sur le contrôle attendu, mesuré dans la fenêtre : l’accueil, la télévision, les films, la fiche d’un film, les listes d’un titre, le rayon des saisons, la saison 12 et son épisode 15, la liste de zapping, les réglages, l’accueil sans source, le formulaire d’une source, deux recherches, la France, l’Espagne, les pays dans la colonne et la restauration d’une chaîne. Le formulaire d’une source doit tenir dans la zone sûre de l’écran, hors de toute vue défilante.
 
-Quatre parcours passent par XCUIRemote, donc par le vrai moteur de focus :
+Six parcours passent par XCUIRemote, donc par le vrai moteur de focus :
 
 - **Boussole** : depuis la liste des chaînes, Menu puis Haut mène au champ de recherche ; Menu puis Bas, à la chaîne sélectionnée ; Menu puis Gauche, à la colonne ; Menu puis OK ne change rien ; Menu puis Bas, au dock, que les flèches parcourent jusqu’au bouton Retour.
 - **Pays** : de la liste à la colonne, ouverture des pays sur celui en cours, passage de la France à l’Espagne, réouverture, annulation par Menu, puis Menu jusqu’à l’accueil et sortie de l’application.
+- **Fiche d’un film** : OK sur une jaquette ouvre le panneau de verre sur sa commande de lecture ; les bouts de la rangée de commandes retiennent la télécommande, Bas ne sort pas vers le dock ni vers le catalogue, Haut atteint la croix ; Favoris ouvre les listes sur la première, Menu les referme sans rien enregistrer, puis le choix d’une liste et Enregistrer marquent le titre, la télécommande revenant chaque fois sur Favoris ; Description complète s’ouvre et Menu en revient ; Menu referme la fiche et rend le focus à la jaquette.
+- **Fiche d’une série** : depuis la commande de lecture, Gauche entre dans les épisodes sur l’épisode 15 sélectionné et non sur la ligne la plus proche ; Gauche encore entre dans les saisons sur la saison 12 sans rien changer ; Haut passe à la saison 11, dont les épisodes remplacent aussitôt la liste ; Droite mène à son premier épisode puis aux commandes ; Menu revient au rayon, sur la saison 11.
 - **Chaîne restaurée** : la chaîne mémorisée perd puis retrouve le focus.
 - **Source en erreur** : le bouton de reconnexion suit la télécommande.
 
-Ces parcours ont fait apparaître deux défauts corrigés : depuis la première icône du dock, Gauche partait dans la liste au lieu du bouton Retour ; et la sonde de mesure du banc, placée entre un bouton et son focus, empêchait d’entrer dans la liste des pays.
+Ces parcours ont fait apparaître quatre défauts corrigés : depuis la première icône du dock, Gauche partait dans la liste au lieu du bouton Retour ; la sonde de mesure du banc, placée entre un bouton et son focus, empêchait d’entrer dans la liste des pays ; à l’ouverture d’une fiche depuis le catalogue, le focus restait sur la jaquette devenue inactive, le panneau encore invisible ne pouvant pas le prendre ; et Menu ne refermait pas les listes d’un titre.
+
+Le nouveau scénario du rayon des saisons a montré deux choses que l’œil ne voyait pas. Ses jaquettes, calculées pour la largeur du catalogue, occupaient 53 % de la hauteur de l’écran : le rayon reprend maintenant celles du catalogue, sept par rangée. Et son défilement, qui touchait le bord de la zone sûre, s’étendait dessous : le moteur de focus plaçait les jaquettes à une marge de l’endroit où elles sont dessinées. Deux points de retrait le gardent dans la zone sûre, et la mesure coïncide avec le dessin.
+
+### Captures Mac comparées
+
+Les captures Mac d’avant et d’après le portage des fiches ont été comparées pixel à pixel, hors bandeau de l’heure : la fiche d’un film, la télévision, les films, les favoris et les réglages sont identiques. Seul change le rayon des saisons, dont la rangée du bas se fond au lieu d’être coupée.
+
+### GitHub Actions
+
+Le premier envoi du portage sur Apple TV (`1e609c7`) a échoué sur deux étapes des machines hébergées, qui utilisent tvOS 26.5 et un Mac Intel sous macOS 26. Les deux causes étaient dans les bancs et y sont corrigées. Sous tvOS 26.5 le parcours de la boussole interrogeait l’icône de la recherche, qui porte le même identifiant que le champ : le champ avait bien le focus, comme le montrent la capture et l’arbre d’accessibilité de l’échec. Sur le Mac hébergé, la fenêtre reçoit son premier focus natif après son ouverture ; les deux touches du scénario étaient envoyées avant, et ce premier focus écrasait leur résultat. Le banc attend maintenant ce focus quand la fenêtre est au premier plan.
 
 ### Essai réel
 
@@ -90,7 +102,9 @@ L’application signée localement a été lancée sur le Mac avec la source Xtr
 ## Limites connues
 
 - Sur Mac, les pages des Réglages se parcourent au pointeur : les flèches ne les traversent pas. Sur Apple TV, la télécommande les atteint.
-- Sur Apple TV, la fiche d’un film ou d’une série est encore la fiche plein écran de la 0.8.9, pas le panneau de verre du Mac.
+- Sur Apple TV, rien ne défile sous la télécommande dans une fiche : le synopsis montre les lignes qui tiennent, le reste se lit dans Description complète.
+- Le panneau des listes d’un titre garde sur Mac ses boutons du système ; sur Apple TV il a les tailles et les surbrillances du bureau.
+- Le champ de recherche qui a le focus de la télécommande est dessiné clair par le système, dans son cadre de verre.
 - Le rayon des saisons n’a pas de boussole : Retour y ramène directement au catalogue.
 - Depuis une liste, Retour demande deux pressions pour changer d’écran, la première montrant la boussole ; sur Mac, Réglages › Interface supprime cette étape.
 - La recherche porte sur la section en cours, pas sur les trois catalogues.

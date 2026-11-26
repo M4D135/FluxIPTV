@@ -55,6 +55,10 @@ La fiche d’un film est un panneau de verre posé sur le catalogue, qui reste v
 
 La fiche d’une série reprend le principe de la télévision : les saisons sous le boîtier, les épisodes en liste de haut en bas, puis le visuel et la description de l’épisode sélectionné. L’épisode sous le pointeur grossit ; un clic le lit. Changer de saison se fait sans quitter la fiche.
 
+Sur Apple TV ce sont les mêmes panneaux, le dock restant dessous. La fiche garde la télécommande : rien de ce qui est sous elle ne prend le focus, **Menu** la referme et rend la sélection à la jaquette. Dans une série, **Gauche** et **Droite** passent des saisons aux épisodes puis aux commandes, et chaque colonne s’ouvre sur ce qui y est sélectionné ; parcourir les saisons affiche aussitôt leurs épisodes. Rien ne défilant sous une télécommande, le synopsis montre les lignes qui tiennent et **Description complète** donne le texte entier, en verre lui aussi.
+
+**Favoris et listes** d’un titre s’ouvre au-dessus de l’écran ou de la fiche, qui passent au flou : les listes, la création d’une liste, puis Lire, Annuler et Enregistrer. **Menu** le referme sans rien enregistrer et la télécommande retrouve le bouton d’où elle venait.
+
 ### Favoris, réglages et sources
 
 **Favoris** réunit les listes des trois types de contenu dans la colonne de navigation ; une liste se crée, se renomme et se supprime sur place.
@@ -79,16 +83,13 @@ Les 18 fonds 4K sont fabriqués par un script Blender à partir de géométrie e
 
 ## Apple TV
 
-L’Apple TV reprend le bureau du Mac : accueil, dock en bas au centre, colonne de navigation, télévision en trois colonnes avec l’aperçu, catalogue des films et des séries, favoris, réglages et sources dans l’écran, liste des chaînes sur l’image pendant un direct. Les pays et les langues se choisissent dans la colonne. Ce qui diffère encore du Mac :
-
-- la fiche d’un film ou d’une série reste la fiche plein écran de la 0.8.9, et non le panneau de verre du Mac ;
-- le dock ne se réordonne pas à la télécommande ; son emplacement et son thème se règlent dans Réglages › Dock.
+L’Apple TV reprend le bureau du Mac : accueil, dock en bas au centre, colonne de navigation, télévision en trois colonnes avec l’aperçu, catalogue des films et des séries, rayon des saisons, fiches en verre, favoris, réglages et sources dans l’écran, liste des chaînes sur l’image pendant un direct. Les pays et les langues se choisissent dans la colonne. Ce qui diffère encore du Mac : le dock ne se réordonne pas à la télécommande ; son emplacement et son thème se règlent dans Réglages › Dock.
 
 **Charger une liste** et **Modifier la source** occupent tout l’écran : le type de source à gauche, les champs et les deux boutons à droite, visibles d’un coup, sans défilement.
 
 ## iPhone et iPad
 
-La disposition de la 0.8.9 est conservée : bandeau TV, Films, Séries et Recherche, fiches plein écran, feuilles pour les catégories, les pays, les listes et les sources. Le tableau ci-dessous décrit cette disposition ; sur Apple TV, les fiches suivent encore ses lignes Fiche et Épisodes.
+La disposition de la 0.8.9 est conservée : bandeau TV, Films, Séries et Recherche, fiches plein écran, feuilles pour les catégories, les pays, les listes et les sources. Le tableau ci-dessous décrit cette disposition.
 
 | Écran | Commande | Résultat |
 |---|---|---|

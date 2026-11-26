@@ -16,6 +16,14 @@ struct SeriesSeasonShelf: View {
     var heroExpanded = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
+    #if os(tvOS)
+    // A remote scrolls one row at a time and leaves the foot of the row above
+    // at the top of the shelf: it fades there, clear of the lifted sleeve.
+    private static let topRoom: CGFloat = 48, topFade: CGFloat = 0.035
+    #else
+    private static let topRoom: CGFloat = 32, topFade: CGFloat = 0
+    #endif
+
     static func focusID(_ season: IPTVSeason) -> String { "season-\(season.number)" }
     static func title(_ season: IPTVSeason) -> String { season.number == 0 ? "Spéciaux" : "Saison \(season.number)" }
 
@@ -33,8 +41,19 @@ struct SeriesSeasonShelf: View {
                 ForEach(seasons) { season in seasonButton(season) }
             }
             // Leave room for the selected sleeve's upward lift and zoom.
-            .padding(.horizontal, 20).padding(.top, 32).padding(.bottom, 24)
+            .padding(.horizontal, 20).padding(.top, Self.topRoom).padding(.bottom, 24)
         }
+        #if os(tvOS)
+        // A scroll view that touches the edge of the safe area spreads under
+        // it, and the focus engine then places its sleeves a margin away from
+        // where they are drawn. Two points keep it inside.
+        .padding(.horizontal, 2)
+        #endif
+        // A row that is only partly in view fades out instead of being cut.
+        .mask(LinearGradient(stops: [.init(color: Self.topFade > 0 ? .clear : .black, location: 0),
+                                     .init(color: .black, location: Self.topFade),
+                                     .init(color: .black, location: 0.955), .init(color: .clear, location: 1)],
+                             startPoint: .top, endPoint: .bottom))
     }
 
     private func seasonButton(_ season: IPTVSeason) -> some View {
@@ -47,12 +66,12 @@ struct SeriesSeasonShelf: View {
                     .modifier(SeasonSleeveHero(namespace: heroNamespace, id: "sleeve-\(series.id)::season::\(season.number)",
                                                held: heldSeason == season.number, expanded: heroExpanded))
                 HStack(spacing: 5) {
-                    Text(title).font(.headline).lineLimit(1)
+                    Text(title).font(Desk.font(.headline)).lineLimit(1)
                     Spacer(minLength: 0)
                     Text(CasePackageFormat.resolve(year: series.details.year).title)
-                        .font(.caption2.weight(.semibold)).foregroundStyle(.secondary)
+                        .font(Desk.font(.caption2, .semibold)).foregroundStyle(.secondary)
                 }
-                Text("\(season.episodes.count) épisodes").font(.caption).foregroundStyle(.secondary)
+                Text("\(season.episodes.count) épisodes").font(Desk.font(.caption)).foregroundStyle(.secondary)
             }
             .padding(.horizontal, 3).padding(.bottom, 9)
             .background(.white.opacity(selected ? 0.12 : 0.025), in: RoundedRectangle(cornerRadius: 8))
@@ -72,8 +91,12 @@ struct SeriesSeasonShelf: View {
          .zIndex(selected ? 1 : 0)
          .accessibilityLabel("\(title), \(season.episodes.count) épisodes")
          .accessibilityHint("Ouvrir cette saison pour choisir un épisode.")
+         .accessibilityIdentifier("season-sleeve-\(season.number)")
         #if os(tvOS)
          .focused(systemFocus, equals: id).focusEffectDisabled()
+        #if FLUX_CATALOG_UI_TESTING
+         .background(TVCatalogControlFrameProbe(identifier: "season-sleeve-\(season.number)").allowsHitTesting(false))
+        #endif
         #else
          .focusable().focused(systemFocus, equals: id).focusEffectDisabled()
          .onHover { inside in if inside { focus(season) } }

@@ -234,13 +234,18 @@ enum Desk {
         #endif
     }
 
+    /// A text size stated for the Mac layout, as a television needs it.
+    static func size(_ value: CGFloat) -> CGFloat {
+        #if os(tvOS)
+        max(17, value * 1.6)
+        #else
+        value
+        #endif
+    }
+
     /// A size stated for the Mac layout.
     static func system(_ size: CGFloat, _ weight: Font.Weight = .regular) -> Font {
-        #if os(tvOS)
-        return .system(size: max(17, size * 1.6), weight: weight)
-        #else
-        return .system(size: size, weight: weight)
-        #endif
+        .system(size: Desk.size(size), weight: weight)
     }
 }
 

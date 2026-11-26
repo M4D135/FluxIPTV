@@ -11,11 +11,11 @@ Le Mac et l’Apple TV reçoivent la même interface de bureau. iPhone et iPad c
 - **Télévision** en trois colonnes : catégories, chaînes en une seule liste, puis l’aperçu avec ce que la liste sait de la chaîne. La ligne sous le pointeur grossit et devient la sélection, l’aperçu démarre après une seconde, un clic ouvre la chaîne.
 - **Zapping** : pendant un direct, la liste des chaînes se pose à gauche de l’image sans arrêter la lecture ; elle change de chaîne et de catégorie. Sur Mac, iPad et Apple TV.
 - **Films et séries filtrés par langue**, sur le modèle du pays des chaînes : la langue est lue dans l’étiquette du titre (`FR - …`, `4K-EN - …`) puis dans celle de sa catégorie (`FRANCE SÉRIES`). Ce qui ne porte aucune étiquette reste accessible sous « Langue non identifiée ».
-- **Fiche d’un film** : panneau de verre posé sur le catalogue flouté, boîtier à gauche, puis titre, repères, commandes, synopsis et crédits fournis. Le boîtier quitte le rayon et vient se placer dans la fiche.
-- **Fiche d’une série** : saisons sous le boîtier, épisodes en liste de haut en bas, puis le visuel et la description de l’épisode sélectionné.
+- **Fiche d’un film**, sur Mac et sur Apple TV : panneau de verre posé sur le catalogue flouté, boîtier à gauche, puis titre, repères, commandes, synopsis et crédits fournis. Le boîtier quitte le rayon et vient se placer dans la fiche.
+- **Fiche d’une série** : saisons sous le boîtier, épisodes en liste de haut en bas, puis le visuel et la description de l’épisode sélectionné. À la télécommande, chaque colonne s’ouvre sur ce qui y est sélectionné.
 - **Favoris** : destination du dock qui réunit les listes des trois types, avec création, renommage et suppression sur place.
 - **Réglages** : écran de la fenêtre, avec les sources (ajout, modification, suppression sans feuille) et le dock. Pendant la lecture, ce sont deux panneaux de verre sur l’image, sur Mac comme sur Apple TV.
-- Messages de la bibliothèque et choix des listes d’un titre dessinés dans la fenêtre.
+- Messages de la bibliothèque et choix des listes d’un titre dessinés dans la fenêtre, au-dessus de l’écran ou de la fiche passés au flou ; sur Apple TV, Menu les referme.
 - **Apple TV** : le bureau du Mac — accueil, dock, colonnes, pays et langues dans la colonne, réglages dans l’écran, zapping, boussole par Menu — avec des tailles lues depuis un canapé et le Liquid Glass actif par défaut. Le formulaire d’une source occupe tout l’écran, type à gauche, champs et boutons à droite, sans rien à faire défiler.
 
 ## Conservé de la 0.8.9
@@ -33,7 +33,7 @@ Le Mac et l’Apple TV reçoivent la même interface de bureau. iPhone et iPad c
 3. **Télécommandes et clavier : tous les boutons, le moins de pressions possible.** Fait pour la télécommande sur Apple TV, où le moteur de focus atteint chaque contrôle et où la boussole met toute zone à deux pressions ; quatre parcours XCUIRemote le vérifient. Restent : sur Mac, les pages des Réglages et les boutons des jaquettes, que les flèches ne parcourent pas encore ; les gestes du pavé tactile ; la détection de la télécommande ou son choix dans les réglages. Le modèle des zones, l’historique de Retour et la navigation du bureau sont dans le cœur, sans dépendance à SwiftUI, pour un portage.
 4. **Lecture sans coupure.** Non commencé. Tampon qui télécharge le plus possible ce qui est regardé ; réglages complets du cache, du traitement et de la correction du flux, avec des valeurs par défaut soignées et des libellés compréhensibles.
 5. **Liquid Glass partout.** Sur Mac et sur Apple TV, plus aucune feuille dans le bureau : les réglages du lecteur sont en verre. À qualifier sur une Apple TV physique. Sur iPhone et iPad, les feuilles du système demeurent.
-6. **La même interface sur Apple TV que sur Mac.** Fait pour l’accueil, le dock, les colonnes, les réglages, les favoris et le zapping. Reste la fiche d’un film ou d’une série, encore celle de la 0.8.9 en plein écran, à remplacer par le panneau de verre du Mac. L’iPad reste à porter.
+6. **La même interface sur Apple TV que sur Mac.** Fait pour l’accueil, le dock, les colonnes, le rayon des saisons, les fiches, les listes d’un titre, les réglages, les favoris et le zapping. L’iPad reste à porter.
 7. **Mesures sur l’Apple TV « Chambre ».** Non commencé : journal des temps de réaction et des délais d’ouverture, pour optimiser par itérations.
 8. **Android TV** : application distincte, le code SwiftUI ne s’y exécutant pas ; le modèle de commande du cœur sert de référence.
 9. **Choix des maquettes** : les captures des écrans sont produites par le banc ; la sélection reste à faire.
@@ -44,7 +44,7 @@ Le Mac et l’Apple TV reçoivent la même interface de bureau. iPhone et iPad c
 - GitHub Actions compile macOS, iOS Simulator, tvOS Simulator et tvOS ARM64 Release, exécute les tests du cœur et vérifie les 18 fonds et les deux projets générés.
 - Les tests du cœur couvrent le dock (ordre, agrandissement, navigation selon le bord), l’historique de Retour, les zones (chacune atteignable depuis chaque autre, pour chaque bord du dock), la navigation du bureau entre colonne, grille, commandes du haut et actions, et la détection des langues.
 - Le banc Mac capture la vraie interface dans une fenêtre native : accueil, télévision, films, fiche film, rayon des saisons, fiche série, favoris, réglages des sources et du dock, réglages et liste de zapping posés sur le lecteur, boussole des zones. Quatre scénarios y envoient les touches d’une télécommande et vérifient où la sélection arrive.
-- Le banc Apple TV lance quinze écrans dans son simulateur et exige le focus natif sur le contrôle attendu, puis quatre parcours XCUIRemote : la boussole, les pays dans la colonne avec le retour par Menu jusqu’à l’accueil, la chaîne restaurée, la source en erreur.
+- Le banc Apple TV lance dix-sept écrans dans son simulateur et exige le focus natif sur le contrôle attendu, puis six parcours XCUIRemote : la boussole, les pays dans la colonne avec le retour par Menu jusqu’à l’accueil, la fiche d’un film avec ses listes et sa description, la fiche d’une série colonne par colonne, la chaîne restaurée, la source en erreur.
 
 ## Validation restant à faire sur Apple
 

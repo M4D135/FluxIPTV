@@ -134,6 +134,10 @@ struct MediaDetailPresentation: View {
                     .transition(.opacity)
             } else {
                 GeometryReader { geometry in
+                    #if os(tvOS)
+                    // A television always has the room of the desk sheet.
+                    deskLayout(geometry.size)
+                    #else
                     let metrics = MediaDetailMetrics(size: geometry.size, series: item.isSeriesCollection, safeAreaInsets: geometry.safeAreaInsets)
                     #if os(macOS)
                     if geometry.size.width >= 900 && geometry.size.height >= 500 { deskLayout(geometry.size) }
@@ -147,12 +151,13 @@ struct MediaDetailPresentation: View {
                         else { narrowLayout(metrics) }
                     }
                     #endif
+                    #endif
                 }
                 .transition(.opacity)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        #if !os(macOS)
+        #if os(iOS)
         .background(Color(red: 0.025, green: 0.035, blue: 0.055))
         #endif
         .foregroundStyle(.white)
@@ -168,17 +173,42 @@ struct MediaDetailPresentation: View {
             guard let event else { return }
             handle(event.action)
         }
-        .onChange(of: nativeFocus) { _, value in
+        .onChange(of: nativeFocus) { old, value in
             guard let value else { return }
+            #if os(tvOS)
+            if let selected = columnSelection(entering: value, from: old) {
+                // The remote enters a column on what is selected there, not on
+                // the row that happens to be the nearest.
+                nativeFocus = selected
+                return
+            }
+            #endif
             focusedID = value
             if value.hasPrefix("episode:") { selectedEpisodeID = String(value.dropFirst("episode:".count)) }
+            #if os(tvOS)
+            // Moving through the seasons shows each one's episodes at once.
+            if value.hasPrefix("season:"), let number = Int(value.dropFirst("season:".count)) { chooseSeason(number) }
+            #endif
         }
         .onChange(of: scenePhase) { _, phase in if phase != .active { cancelHandoff() } }
-        .onChange(of: suspended) { _, value in if value { cancelHandoff() } }
+        .onChange(of: suspended) { _, value in
+            if value { cancelHandoff() }
+            #if os(tvOS)
+            // A panel above the fiche has closed: the remote returns to the
+            // control it left.
+            if !value { claimFocus() }
+            #endif
+        }
+        #if os(tvOS)
+        // The sheet fades in, and nothing invisible can take the remote: its
+        // controls claim it once they show.
+        .onChange(of: expanded) { _, value in if value { claimFocus() } }
+        #endif
         .onAppear { setFocus(item.isSeriesCollection && selectedEpisode == nil ? "back" : "play") }
         .onDisappear { cancelHandoff() }
     }
 
+    #if !os(tvOS)
     private var backdrop: some View {
         GeometryReader { geometry in
             ZStack {
@@ -228,11 +258,7 @@ struct MediaDetailPresentation: View {
             control("back", title: item.isSeriesCollection ? "Les saisons" : "Retour", icon: "chevron.left", action: dismiss)
             if !compact {
                 Text(item.isSeriesCollection ? "SÉRIE" : item.kind == .live ? "EN DIRECT" : "CINÉMA")
-                    #if os(tvOS)
-                    .font(.system(size: 22, weight: .bold))
-                    #else
                     .font(.system(size: 13, weight: .bold))
-                    #endif
                     .tracking(2.2).foregroundStyle(.white.opacity(0.65))
             }
             Spacer(minLength: 4)
@@ -261,6 +287,7 @@ struct MediaDetailPresentation: View {
             playbackControl
         }
     }
+    #endif
 
     private var descriptionControl: some View {
         control("description", title: "Description complète", icon: "text.alignleft") {
@@ -272,6 +299,7 @@ struct MediaDetailPresentation: View {
         control("play", title: startingPlayback ? "Ouverture…" : playbackTitle, icon: "play.fill", primary: true, action: startPlayback)
             .disabled(startingPlayback || (item.isSeriesCollection && selectedEpisode == nil))
     }
+    #if !os(tvOS)
     private func caseSection(_ metrics: MediaDetailMetrics) -> some View {
         MediaDetailCaseArtwork(item: item, year: details.year ?? item.details.year)
             .frame(height: metrics.caseHeight)
@@ -357,10 +385,9 @@ struct MediaDetailPresentation: View {
         .accessibilityIdentifier("media-detail-episode-\(episode.id)")
         .accessibilityLabel("Épisode \(number), \(episode.name)")
         .accessibilityHint("Lire cet épisode.")
-        #if !os(tvOS)
         .onHover { inside in if inside { focusedID = id; selectedEpisodeID = episode.id } }
-        #endif
     }
+    #endif
 
     private var controlsHint: some View {
         Text("Directions : choisir  ·  Valider : ouvrir  ·  Lecture : regarder  ·  Retour : fermer")
@@ -413,9 +440,9 @@ struct MediaDetailPresentation: View {
     private var descriptionScreen: some View {
         GeometryReader { geometry in
             #if os(tvOS)
-            let titleSize: CGFloat = 56
-            let textSize: CGFloat = 34
-            let contentWidth: CGFloat = 1600
+            let titleSize: CGFloat = 44
+            let textSize: CGFloat = 30
+            let contentWidth: CGFloat = 1500
             #else
             let titleSize: CGFloat = geometry.size.width > 1000 ? 42 : 28
             let textSize: CGFloat = geometry.size.width > 1000 ? 28 : 22
@@ -446,15 +473,15 @@ struct MediaDetailPresentation: View {
                     .font(.system(size: textSize * 0.6)).foregroundStyle(.white.opacity(0.65)).frame(maxWidth: .infinity)
             }
             .padding(geometry.size.width > 1000 ? 60 : 24)
-            #if os(macOS)
-            .frame(maxWidth: min(contentWidth, geometry.size.width - 96), maxHeight: geometry.size.height - 40)
-            .fluxGlass(radius: 34)
+            #if os(macOS) || os(tvOS)
+            .frame(maxWidth: min(contentWidth, geometry.size.width - 96), maxHeight: geometry.size.height - Desk.pt(40))
+            .fluxGlass(radius: Desk.pt(34))
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             #else
             .frame(maxWidth: contentWidth).frame(maxWidth: .infinity, maxHeight: .infinity)
             #endif
         }
-        #if !os(macOS)
+        #if os(iOS)
         .background(Color(red: 0.025, green: 0.035, blue: 0.055))
         #endif
         #if os(tvOS)
@@ -484,6 +511,23 @@ struct MediaDetailPresentation: View {
         }
     }
     private func setFocus(_ id: String) { focusedID = id; nativeFocus = id }
+    #if os(tvOS)
+    /// Gives the remote to the selected control, again while the system
+    /// declines it: a control that is still appearing cannot take the focus.
+    /// Stops as soon as the remote itself goes elsewhere.
+    private func claimFocus() {
+        let id = focusedID
+        Task { @MainActor in
+            await Task.yield()
+            guard focusedID == id, !suspended else { return }
+            // A request the system declined still reads as granted: ask anew.
+            nativeFocus = nil
+            await Task.yield()
+            guard focusedID == id, !suspended else { return }
+            nativeFocus = id
+        }
+    }
+    #endif
     private func closeDescription() { expandedDescription = false; setFocus("description") }
     private func moveDescription(_ delta: Int) { descriptionPage = max(0, min(descriptionPages.count - 1, descriptionPage + delta)) }
     private func cancelHandoff() { handoffToken = UUID(); handoffTask?.cancel(); handoffTask = nil; startingPlayback = false }
@@ -585,7 +629,7 @@ private struct MediaDetailCaseArtwork: View {
                     #endif
                 if showsFormat {
                     Text(format.title)
-                        .font(.system(size: max(12, min(18, height * 0.028)), weight: .semibold))
+                        .font(.system(size: max(Desk.size(12), min(Desk.pt(18), height * 0.028)), weight: .semibold))
                         .tracking(3).foregroundStyle(.white.opacity(0.55))
                         .opacity(expanded ? 1 : 0)
                 }
@@ -683,6 +727,7 @@ private struct MediaDetailCaseFlourish: ViewModifier {
     }
 }
 
+#if !os(tvOS)
 private struct MediaDetailMetrics {
     let wide: Bool
     let horizontalPadding: CGFloat
@@ -708,19 +753,6 @@ private struct MediaDetailMetrics {
 
     init(size: CGSize, series: Bool, safeAreaInsets: EdgeInsets) {
         wide = size.width >= 920 && size.height >= 680
-        #if os(tvOS)
-        // Keep the full TV safe zone without counting native insets twice.
-        horizontalPadding = max(24, 90 - min(safeAreaInsets.leading, safeAreaInsets.trailing))
-        verticalPadding = max(24, 60 - min(safeAreaInsets.top, safeAreaInsets.bottom))
-        headerHeight = 72
-        hintHeight = 26
-        titleSize = 60
-        bodySize = 30
-        metadataSize = 24
-        titleLines = 2
-        metadataLines = 1
-        informationGap = 18
-        #else
         horizontalPadding = wide ? max(28, min(56, size.width * 0.028)) : 20
         verticalPadding = horizontalPadding
         headerHeight = 54
@@ -731,21 +763,13 @@ private struct MediaDetailMetrics {
         titleLines = 3
         metadataLines = 2
         informationGap = 18
-        #endif
         gap = wide ? 22 : 18
         let usableWidth = max(1, size.width - horizontalPadding * 2)
         informationWidth = usableWidth * 0.4
-        #if os(tvOS)
-        episodeHeight = series ? 256 : 0
-        episodeWidth = 420
-        episodeCardHeight = 200
-        episodeLabelSize = 26
-        #else
         episodeHeight = series ? max(190, min(240, size.height * 0.235)) : 0
         episodeWidth = wide ? max(250, min(330, usableWidth * 0.225)) : 270
         episodeCardHeight = max(142, episodeHeight - 48)
         episodeLabelSize = metadataSize
-        #endif
         episodeThumbnailHeight = min(82, max(58, episodeCardHeight * 0.42))
         let available = size.height - verticalPadding * 2 - headerHeight - hintHeight - gap * (series ? 3 : 2) - episodeHeight
         mainHeight = max(280, available)
@@ -756,6 +780,7 @@ private struct MediaDetailMetrics {
         synopsisLines = wide ? min(series ? 5 : 9, fittingLines) : 7
     }
 }
+#endif
 
 private struct MediaDetailControlStyle: ButtonStyle {
     let highlighted: Bool
@@ -766,9 +791,9 @@ private struct MediaDetailControlStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             #if os(tvOS)
-            .font(.system(size: 28, weight: .semibold))
-            .padding(.horizontal, compact ? 18 : 24).padding(.vertical, 16)
-            .frame(minWidth: compact ? 72 : nil, minHeight: 72)
+            .font(.system(size: 25, weight: .semibold))
+            .padding(.horizontal, compact ? 16 : 24).padding(.vertical, 12)
+            .frame(minWidth: compact ? 66 : nil, minHeight: 66)
             #else
             .font(.system(size: 16, weight: .semibold))
             .padding(.horizontal, compact ? 12 : 19).padding(.vertical, compact ? 12 : 14)
@@ -799,18 +824,43 @@ private struct MediaDetailEpisodeStyle: ButtonStyle {
     }
 }
 
-#if os(macOS)
-// MARK: - Desk fiche (Mac): a glass sheet over the blurred catalogue
+#if os(macOS) || os(tvOS)
+// MARK: - Desk fiche (Mac and Apple TV): a glass sheet over the blurred catalogue
+
+private extension View {
+    /// On a television, leads the remote to the controls of this group from
+    /// anywhere beside it, however far they stand from the focused one.
+    @ViewBuilder func deskFocusSection() -> some View {
+        #if os(tvOS)
+        focusSection()
+        #else
+        self
+        #endif
+    }
+}
 
 extension MediaDetailPresentation {
     private var sectionTint: Color { item.isSeriesCollection ? .purple : item.kind == .live ? .cyan : .orange }
     private var sectionTitle: String { item.isSeriesCollection ? "SÉRIE" : item.kind == .live ? "EN DIRECT" : "CINÉMA" }
     private var sectionSymbol: String { item.isSeriesCollection ? "square.stack.3d.up.fill" : item.kind == .live ? "tv.fill" : "film.fill" }
     private var caseYear: String? { details.year ?? item.details.year }
+    private static var television: Bool {
+        #if os(tvOS)
+        true
+        #else
+        false
+        #endif
+    }
 
     func deskLayout(_ size: CGSize) -> some View {
+        #if os(tvOS)
+        // Read from a sofa, the sheet takes the room the dock leaves.
+        let sheet = CGSize(width: min(size.width - 40, item.isSeriesCollection ? 1700 : 1540),
+                           height: min(size.height - 8, 800))
+        #else
         let sheet = CGSize(width: min(size.width - 96, item.isSeriesCollection ? 1340 : 1160),
                            height: min(size.height - 30, 720))
+        #endif
         return Group {
             if item.isSeriesCollection { seriesSheet(sheet) } else { filmSheet(sheet) }
         }
@@ -821,7 +871,7 @@ extension MediaDetailPresentation {
     /// The glass and its text appear with the fiche; the case travels on its
     /// own, fully opaque, from the sleeve that was picked.
     private func sheetSurface<Content: View>(_ sheet: CGSize, padding: CGFloat, @ViewBuilder content: () -> Content) -> some View {
-        let shape = RoundedRectangle(cornerRadius: 34, style: .continuous)
+        let shape = RoundedRectangle(cornerRadius: Desk.pt(34), style: .continuous)
         return content()
             .padding(padding)
             .frame(width: sheet.width, height: sheet.height, alignment: .topLeading)
@@ -833,23 +883,26 @@ extension MediaDetailPresentation {
                     .clipShape(shape).allowsHitTesting(false).accessibilityHidden(true)
             }
             .background(.black.opacity(0.18), in: shape)
-            .fluxGlass(radius: 34)
+            .fluxGlass(radius: Desk.pt(34))
             .shadow(color: .black.opacity(0.5), radius: 36, x: 0, y: 20)
-            .opacity(expanded ? 1 : 0)
+            // A television gives its focus to nothing invisible: there the
+            // sheet starts just above nothing, so that its controls can take
+            // the remote as soon as the catalogue under it stops answering.
+            .opacity(expanded ? 1 : Self.television ? 0.02 : 0)
             .scaleEffect(expanded ? 1 : 0.96)
     }
 
     private var kindBadge: some View {
         Label(sectionTitle, systemImage: sectionSymbol)
-            .font(.system(size: 12, weight: .bold)).tracking(1.6)
+            .font(Desk.system(12, .bold)).tracking(1.6)
             .foregroundStyle(sectionTint)
-            .padding(.horizontal, 11).padding(.vertical, 6)
+            .padding(.horizontal, Desk.pt(11)).padding(.vertical, Desk.pt(6))
             .background(sectionTint.opacity(0.16), in: Capsule())
             .overlay(Capsule().strokeBorder(sectionTint.opacity(0.35), lineWidth: 1))
     }
 
     private func caption(_ text: String) -> some View {
-        Text(text).font(.system(size: 11, weight: .bold)).tracking(1.6).foregroundStyle(.white.opacity(0.55))
+        Text(text).font(Desk.system(11, .bold)).tracking(1.6).foregroundStyle(.white.opacity(0.55))
     }
 
     private func clean(_ value: String?) -> String? {
@@ -887,17 +940,17 @@ extension MediaDetailPresentation {
     }
 
     private func chip(_ text: String, symbol: String? = nil, tint: Color = .white) -> some View {
-        HStack(spacing: 5) {
-            if let symbol { Image(systemName: symbol).font(.system(size: 11, weight: .bold)).foregroundStyle(tint) }
-            Text(text).font(.system(size: 13, weight: .semibold)).lineLimit(1)
+        HStack(spacing: Desk.pt(5)) {
+            if let symbol { Image(systemName: symbol).font(Desk.system(11, .bold)).foregroundStyle(tint) }
+            Text(text).font(Desk.system(13, .semibold)).lineLimit(1)
         }
-        .padding(.horizontal, 11).padding(.vertical, 6)
+        .padding(.horizontal, Desk.pt(11)).padding(.vertical, Desk.pt(6))
         .background(.white.opacity(0.10), in: Capsule())
         .overlay(Capsule().strokeBorder(.white.opacity(0.14), lineWidth: 1))
     }
 
     private var chips: some View {
-        MediaDetailFlow(spacing: 8) {
+        MediaDetailFlow(spacing: Desk.pt(8)) {
             if let year = yearText(details.year) { chip(year, symbol: "calendar") }
             if let duration = durationText(details.duration) { chip(duration, symbol: "clock") }
             if let rating = ratingText(details.rating) { chip(rating, symbol: "star.fill", tint: .yellow) }
@@ -909,10 +962,10 @@ extension MediaDetailPresentation {
         let entry = playback.history.entries[id]
         return Group {
             if let entry, entry.fraction > 0 {
-                HStack(spacing: 10) {
-                    ProgressView(value: entry.fraction).tint(sectionTint).frame(maxWidth: 220)
+                HStack(spacing: Desk.pt(10)) {
+                    ProgressView(value: entry.fraction).tint(sectionTint).frame(maxWidth: Desk.pt(220))
                     Text(entry.resumable ? "Déjà vu à \(Int((entry.fraction * 100).rounded())) %" : "Déjà vu")
-                        .font(.caption.weight(.medium)).foregroundStyle(.white.opacity(0.7))
+                        .font(Desk.font(.caption, .medium)).foregroundStyle(.white.opacity(0.7))
                 }
             }
         }
@@ -922,10 +975,10 @@ extension MediaDetailPresentation {
         Group {
             if let value = clean(value) {
                 GridRow {
-                    Text(label).font(.system(size: 13, weight: .semibold)).foregroundStyle(.white.opacity(0.55))
+                    Text(label).font(Desk.system(13, .semibold)).foregroundStyle(.white.opacity(0.55))
                         .gridColumnAlignment(.leading)
-                    Text(value).font(.system(size: 14)).foregroundStyle(.white.opacity(0.9))
-                        .lineLimit(3).frame(maxWidth: .infinity, alignment: .leading)
+                    Text(value).font(Desk.system(14)).foregroundStyle(.white.opacity(0.9))
+                        .lineLimit(Self.television ? 2 : 3).frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
         }
@@ -934,11 +987,11 @@ extension MediaDetailPresentation {
     // MARK: Film
 
     private func filmSheet(_ sheet: CGSize) -> some View {
-        let padding: CGFloat = 30
-        let caseWidth = min(360, max(220, sheet.width * 0.31))
+        let padding = Desk.pt(30)
+        let caseWidth = min(Desk.pt(360), max(Desk.pt(220), sheet.width * 0.31))
         return ZStack(alignment: .topLeading) {
             sheetSurface(sheet, padding: padding) {
-                HStack(alignment: .top, spacing: 30) {
+                HStack(alignment: .top, spacing: Desk.pt(30)) {
                     Color.clear.frame(width: caseWidth)
                     filmInformation
                 }
@@ -950,70 +1003,106 @@ extension MediaDetailPresentation {
     }
 
     private var filmInformation: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(spacing: 12) {
+        VStack(alignment: .leading, spacing: Desk.pt(14)) {
+            HStack(spacing: Desk.pt(12)) {
                 kindBadge
                 Spacer(minLength: 0)
                 control("back", title: "Fermer la fiche", icon: "xmark", iconOnly: true, action: dismiss)
             }
+            .deskFocusSection()
             Text(item.name)
-                .font(.system(size: 34, weight: .bold, design: .rounded)).tracking(-0.4)
-                .lineLimit(3).fixedSize(horizontal: false, vertical: true)
+                .font(.system(size: Desk.size(34), weight: .bold, design: .rounded)).tracking(-0.4)
+                .lineLimit(Self.television ? 2 : 3).fixedSize(horizontal: false, vertical: true)
                 .accessibilityAddTraits(.isHeader)
             chips
-            HStack(spacing: 10) {
+            HStack(spacing: Desk.pt(10)) {
                 playbackControl
                 control("favorite", title: isFavorite ? "Dans les favoris" : "Favoris", icon: isFavorite ? "star.fill" : "star", action: favorite)
                 descriptionControl
             }
+            #if os(tvOS)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .focusSection()
+            #endif
             progressNote(for: item.id)
             Divider().overlay(.white.opacity(0.18))
-            ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
-                    VStack(alignment: .leading, spacing: 8) {
-                        caption("SYNOPSIS")
-                        Text(synopsis).font(.system(size: 17)).lineSpacing(5)
-                            .foregroundStyle(.white.opacity(0.92))
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                    Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 18, verticalSpacing: 9) {
-                        creditRow("Réalisation", details.director)
-                        creditRow("Distribution", details.cast)
-                        creditRow("Catégorie", item.group)
-                        creditRow("Format", CasePackageFormat.resolve(year: caseYear).title)
-                    }
-                }
-                .padding(.trailing, 8).padding(.bottom, 4)
+            #if os(tvOS)
+            // Nothing scrolls under a remote: the sheet keeps the lines that
+            // fit, and « Description complète » has the whole text.
+            ViewThatFits(in: .vertical) {
+                filmDetails(lines: 8, credits: true)
+                filmDetails(lines: 6, credits: true)
+                filmDetails(lines: 5, credits: true)
+                filmDetails(lines: 4, credits: true)
+                filmDetails(lines: 3, credits: true)
+                filmDetails(lines: 3, credits: false)
+                filmDetails(lines: 2, credits: false)
             }
+            .frame(maxHeight: .infinity, alignment: .top)
+            #else
+            ScrollView {
+                filmDetails(lines: nil, credits: true).padding(.trailing, 8).padding(.bottom, 4)
+            }
+            #endif
             controlsHint
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
+    /// `lines`: nil shows the whole synopsis, for a sheet that scrolls.
+    private func filmDetails(lines: Int?, credits: Bool) -> some View {
+        VStack(alignment: .leading, spacing: Desk.pt(18)) {
+            VStack(alignment: .leading, spacing: Desk.pt(8)) {
+                caption("SYNOPSIS")
+                Text(synopsis).font(Desk.system(17)).lineSpacing(Desk.pt(5))
+                    .foregroundStyle(.white.opacity(0.92))
+                    .lineLimit(lines).fixedSize(horizontal: false, vertical: lines != nil)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            if credits {
+                Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: Desk.pt(18), verticalSpacing: Desk.pt(9)) {
+                    creditRow("Réalisation", details.director)
+                    creditRow("Distribution", details.cast)
+                    creditRow("Catégorie", item.group)
+                    #if !os(tvOS)
+                    // On a television the format is already printed under the case.
+                    creditRow("Format", CasePackageFormat.resolve(year: caseYear).title)
+                    #endif
+                }
+            }
+        }
+    }
+
     // MARK: Series: seasons, episodes from top to bottom, then the episode
 
     private func seriesSheet(_ sheet: CGSize) -> some View {
-        let padding: CGFloat = 26
+        let padding = Desk.pt(26), gap = Desk.pt(12)
         let inner = CGSize(width: sheet.width - padding * 2, height: sheet.height - padding * 2)
+        #if os(tvOS)
+        // Five seasons stay in view under a case that remains readable.
+        let left: CGFloat = 310, backHeight: CGFloat = 66, boxHeight: CGFloat = 300
+        let right = min(600, max(440, inner.width * 0.35))
+        #else
         let left: CGFloat = 232, backHeight: CGFloat = 48
         let right = min(470, max(320, inner.width * 0.35))
         let boxHeight = min(320, max(282, inner.height * 0.46))
+        #endif
         return ZStack(alignment: .topLeading) {
             sheetSurface(sheet, padding: padding) {
-                HStack(alignment: .top, spacing: 22) {
-                    VStack(alignment: .leading, spacing: 12) {
+                HStack(alignment: .top, spacing: Desk.pt(22)) {
+                    VStack(alignment: .leading, spacing: gap) {
                         control("back", title: "Les saisons", icon: "chevron.left", action: dismiss)
                             .frame(height: backHeight, alignment: .leading)
                         Color.clear.frame(height: boxHeight)
                         seasonList
-                    }.frame(width: left)
-                    episodeColumn
-                    episodePanel.frame(width: right)
+                    }.frame(width: left).deskFocusSection()
+                    episodeColumn.deskFocusSection()
+                    episodePanel.frame(width: right).deskFocusSection()
                 }
             }
             MediaDetailCaseArtwork(item: item, year: caseYear, expanded: expanded, hero: hero, showsFormat: false, sideMargin: 14)
                 .frame(width: left, height: boxHeight)
-                .padding(.leading, padding).padding(.top, padding + backHeight + 12)
+                .padding(.leading, padding).padding(.top, padding + backHeight + gap)
         }
     }
 
@@ -1025,7 +1114,7 @@ extension MediaDetailPresentation {
     private var seasonList: some View {
         ScrollViewReader { reader in
             ScrollView {
-                VStack(alignment: .leading, spacing: 5) {
+                VStack(alignment: .leading, spacing: Desk.pt(5)) {
                     ForEach(seasons) { season in seasonRow(season) }
                 }.padding(.vertical, 2)
             }
@@ -1040,25 +1129,30 @@ extension MediaDetailPresentation {
         let id = "season:\(season.number)"
         let selected = season.number == selectedSeason?.number
         let focused = focusedID == id
-        let shape = RoundedRectangle(cornerRadius: 12, style: .continuous)
+        let shape = RoundedRectangle(cornerRadius: Desk.pt(12), style: .continuous)
         return Button { setFocus(id); chooseSeason(season.number) } label: {
-            HStack(spacing: 8) {
-                Text(seasonTitle(season)).font(.callout.weight(selected ? .semibold : .regular)).lineLimit(1)
+            HStack(spacing: Desk.pt(8)) {
+                Text(seasonTitle(season)).font(Desk.font(.callout, selected ? .semibold : .regular)).lineLimit(1)
                 Spacer(minLength: 4)
-                Text("\(season.episodes.count)").font(.caption.monospacedDigit()).foregroundStyle(.white.opacity(0.6))
-                if selected { Image(systemName: "checkmark").font(.caption.weight(.bold)).foregroundStyle(sectionTint) }
+                Text("\(season.episodes.count)").font(Desk.font(.caption).monospacedDigit()).foregroundStyle(.white.opacity(0.6))
+                if selected { Image(systemName: "checkmark").font(Desk.font(.caption, .bold)).foregroundStyle(sectionTint) }
             }
-            .padding(.horizontal, 12).padding(.vertical, 10)
+            .padding(.horizontal, Desk.pt(12)).padding(.vertical, Desk.pt(10))
             .background(selected ? sectionTint.opacity(0.24) : .white.opacity(focused ? 0.11 : 0.04), in: shape)
-            .overlay(shape.strokeBorder(focused ? Color.white.opacity(0.8) : .clear, lineWidth: 2).allowsHitTesting(false))
+            .overlay(shape.strokeBorder(focused ? Color.white.opacity(0.8) : .clear, lineWidth: Desk.pt(2)).allowsHitTesting(false))
             .contentShape(shape)
         }
         .buttonStyle(FluxBareButtonStyle())
-        .focusable().focused($nativeFocus, equals: id).focusEffectDisabled().id(id)
+        #if os(macOS)
+        .focusable()
+        #endif
+        .focused($nativeFocus, equals: id).focusEffectDisabled().id(id)
         .accessibilityIdentifier("media-detail-season-\(season.number)")
         .accessibilityLabel("\(seasonTitle(season)), \(season.episodes.count) épisodes")
         .accessibilityValue(selected ? "Sélectionnée" : "")
+        #if os(macOS)
         .onHover { inside in if inside { focusedID = id } }
+        #endif
     }
 
     func chooseSeason(_ number: Int) {
@@ -1067,33 +1161,44 @@ extension MediaDetailPresentation {
     }
 
     private var episodeColumn: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: Desk.pt(10)) {
             kindBadge
             Text(item.name)
-                .font(.system(size: 26, weight: .bold, design: .rounded)).tracking(-0.3)
-                .lineLimit(2).fixedSize(horizontal: false, vertical: true)
+                .font(.system(size: Desk.size(26), weight: .bold, design: .rounded)).tracking(-0.3)
+                .lineLimit(Self.television ? 1 : 2).fixedSize(horizontal: false, vertical: true)
                 .accessibilityAddTraits(.isHeader)
-            HStack(alignment: .firstTextBaseline, spacing: 10) {
-                Text(seasonTitle(selectedSeason)).font(.title3.weight(.semibold)).accessibilityAddTraits(.isHeader)
+            HStack(alignment: .firstTextBaseline, spacing: Desk.pt(10)) {
+                Text(seasonTitle(selectedSeason)).font(Desk.font(.title3, .semibold)).accessibilityAddTraits(.isHeader)
                 if !episodes.isEmpty {
                     Text("\(episodes.count) \(episodes.count == 1 ? "épisode" : "épisodes")")
-                        .font(.callout).foregroundStyle(.white.opacity(0.6))
+                        .font(Desk.font(.callout)).foregroundStyle(.white.opacity(0.6))
                 }
             }
             if seasonLoading {
-                HStack(spacing: 12) { ProgressView(); Text("Chargement des épisodes…") }.font(.headline)
+                HStack(spacing: 12) { ProgressView(); Text("Chargement des épisodes…") }.font(Desk.font(.headline))
             } else if seasonFailed {
                 control("retry-episodes", title: "Réessayer les épisodes", icon: "arrow.clockwise") { seasonReload = UUID() }
             } else if episodes.isEmpty {
-                Text("Aucun épisode fourni pour cette saison.").foregroundStyle(.secondary)
+                Text("Aucun épisode fourni pour cette saison.").font(Desk.font(.body)).foregroundStyle(.secondary)
             } else {
                 ScrollViewReader { reader in
                     ScrollView {
-                        LazyVStack(spacing: 7) {
+                        LazyVStack(spacing: Desk.pt(7)) {
                             ForEach(episodes) { episode in episodeRow(episode) }
-                        }.padding(.horizontal, 8).padding(.vertical, 6)
+                        }.padding(.horizontal, Desk.pt(8)).padding(.vertical, Desk.pt(6))
                     }
                     .onAppear { if let id = selectedEpisodeID { reader.scrollTo("episode:\(id)", anchor: .center) } }
+                    #if os(tvOS)
+                    // The focus engine places the list when the sheet opens:
+                    // bring the selected episode into view once it has settled.
+                    .task(id: selectedSeason?.number) {
+                        try? await Task.sleep(nanoseconds: 150_000_000)
+                        guard !Task.isCancelled, let id = selectedEpisode?.id else { return }
+                        // A lazy list knows a row that is not built yet by the
+                        // identity of its episode, not by the name given to its view.
+                        reader.scrollTo(id, anchor: .center)
+                    }
+                    #endif
                     .onChange(of: selectedSeason?.number) { _, _ in
                         if let id = selectedEpisodeID ?? episodes.first?.id { reader.scrollTo("episode:\(id)", anchor: .top) }
                     }
@@ -1103,7 +1208,7 @@ extension MediaDetailPresentation {
                         withAnimation(reduceMotion ? nil : .easeOut(duration: 0.18)) { reader.scrollTo("episode:\(id)", anchor: .center) }
                     }
                 }
-                .background(.black.opacity(0.18), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .background(.black.opacity(0.18), in: RoundedRectangle(cornerRadius: Desk.pt(18), style: .continuous))
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -1117,85 +1222,105 @@ extension MediaDetailPresentation {
         let id = "episode:\(episode.id)"
         let selected = episode.id == selectedEpisodeID
         let focused = focusedID == id
-        let shape = RoundedRectangle(cornerRadius: 14, style: .continuous)
+        let shape = RoundedRectangle(cornerRadius: Desk.pt(14), style: .continuous)
         let progress = playback.history.entries[episode.id]?.fraction ?? 0
         return Button {
             selectedEpisodeID = episode.id; setFocus(id); startPlayback()
         } label: {
-            HStack(spacing: 12) {
+            HStack(spacing: Desk.pt(12)) {
                 Color.black.opacity(0.4)
-                    .frame(width: 116, height: 65)
+                    .frame(width: Desk.pt(116), height: Desk.pt(65))
                     .overlay {
                         ArtworkView(url: episode.backdropURL ?? episode.logoURL ?? item.logoURL, fit: false) {
-                            Image(systemName: "play.rectangle").font(.title3).foregroundStyle(.white.opacity(0.5))
+                            Image(systemName: "play.rectangle").font(Desk.font(.title3)).foregroundStyle(.white.opacity(0.5))
                         }
                     }
-                    .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Épisode \(episodeNumber(episode))").font(.system(size: 12, weight: .bold)).foregroundStyle(sectionTint)
-                    Text(episode.name).font(.system(size: 15, weight: .semibold)).lineLimit(2)
+                    .clipShape(RoundedRectangle(cornerRadius: Desk.pt(9), style: .continuous))
+                VStack(alignment: .leading, spacing: Desk.pt(4)) {
+                    Text("Épisode \(episodeNumber(episode))").font(Desk.system(12, .bold)).foregroundStyle(sectionTint)
+                    Text(episode.name).font(Desk.system(15, .semibold)).lineLimit(2)
                         .frame(maxWidth: .infinity, alignment: .leading)
                     if progress > 0 { ProgressView(value: progress).tint(sectionTint).frame(height: 3) }
                 }
                 if let duration = durationText(episode.details.duration) {
-                    Text(duration).font(.caption.monospacedDigit()).foregroundStyle(.white.opacity(0.65))
+                    Text(duration).font(Desk.font(.caption).monospacedDigit()).foregroundStyle(.white.opacity(0.65))
                 }
-                Image(systemName: "play.fill").font(.caption).foregroundStyle(.white.opacity(selected ? 0.95 : 0))
+                Image(systemName: "play.fill").font(Desk.font(.caption)).foregroundStyle(.white.opacity(selected ? 0.95 : 0))
             }
-            .padding(9)
+            .padding(Desk.pt(9))
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(selected ? sectionTint.opacity(0.26) : .white.opacity(0.06), in: shape)
             .overlay(shape.strokeBorder(focused ? Color.white.opacity(0.9) : selected ? sectionTint.opacity(0.7) : Color.white.opacity(0.10),
-                                        lineWidth: focused ? 2 : 1).allowsHitTesting(false))
+                                        lineWidth: focused ? Desk.pt(2) : 1).allowsHitTesting(false))
             .contentShape(shape)
         }
-        .buttonStyle(MediaDetailEpisodeStyle(highlighted: focused, lift: 1.035))
-        .focusable().focused($nativeFocus, equals: id).focusEffectDisabled()
+        .buttonStyle(MediaDetailEpisodeStyle(highlighted: focused, lift: Self.television ? 1.02 : 1.035))
+        #if os(macOS)
+        .focusable()
+        #endif
+        .focused($nativeFocus, equals: id).focusEffectDisabled()
         .id(id)
         .zIndex(focused ? 1 : 0)
         .accessibilityIdentifier("media-detail-episode-\(episode.id)")
         .accessibilityLabel("Épisode \(episodeNumber(episode)), \(episode.name)")
         .accessibilityHint("Lire cet épisode.")
+        #if os(macOS)
         .onHover { inside in
             if inside { keyboardSelection = false; focusedID = id; selectedEpisodeID = episode.id }
         }
+        #endif
+    }
+
+    /// Picture of the selected episode. Under a pointer it also starts it; a
+    /// remote has the play control for that, and no focus without a highlight.
+    @ViewBuilder private func episodeStill(_ episode: IPTVItem, season: Int) -> some View {
+        let frame = RoundedRectangle(cornerRadius: Desk.pt(18), style: .continuous)
+        let picture = Color.black.opacity(0.45)
+            .aspectRatio(16.0 / 9.0, contentMode: .fit)
+            .overlay {
+                ArtworkView(url: episode.backdropURL ?? episode.logoURL ?? item.backdropURL ?? item.logoURL, fit: false) {
+                    Image(systemName: "play.rectangle").font(.system(size: Desk.pt(44), weight: .light)).foregroundStyle(.white.opacity(0.45))
+                }
+            }
+            .clipShape(frame)
+            .overlay(frame.strokeBorder(.white.opacity(0.28), lineWidth: 1).allowsHitTesting(false))
+            .overlay(alignment: .bottomLeading) {
+                Text("S\(season) · E\(episodeNumber(episode))")
+                    .font(Desk.system(12, .bold)).tracking(0.6)
+                    .padding(.horizontal, Desk.pt(10)).padding(.vertical, Desk.pt(6))
+                    .background(.black.opacity(0.7), in: Capsule()).padding(Desk.pt(12))
+            }
+            .shadow(color: .black.opacity(0.45), radius: 18, x: 0, y: 10)
+            .contentShape(frame)
+        #if os(tvOS)
+        picture.layoutPriority(1).accessibilityHidden(true)
+        #else
+        Button { startPlayback() } label: { picture }
+            .buttonStyle(FluxBareButtonStyle())
+            .accessibilityLabel("Lire l’épisode \(episodeNumber(episode))")
+        #endif
+    }
+
+    private func episodeSynopsis(_ episode: IPTVItem, lines: Int?) -> some View {
+        Text(clean(episode.details.synopsis) ?? synopsis)
+            .font(Desk.system(15)).lineSpacing(Desk.pt(4)).foregroundStyle(.white.opacity(0.9))
+            .lineLimit(lines).fixedSize(horizontal: false, vertical: lines != nil)
+            .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var episodePanel: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: Desk.pt(12)) {
             if let episode = selectedEpisode {
-                let season = episode.seasonNumber ?? selectedSeason?.number ?? 1
-                let frame = RoundedRectangle(cornerRadius: 18, style: .continuous)
-                Button { startPlayback() } label: {
-                    Color.black.opacity(0.45)
-                        .aspectRatio(16.0 / 9.0, contentMode: .fit)
-                        .overlay {
-                            ArtworkView(url: episode.backdropURL ?? episode.logoURL ?? item.backdropURL ?? item.logoURL, fit: false) {
-                                Image(systemName: "play.rectangle").font(.system(size: 44, weight: .light)).foregroundStyle(.white.opacity(0.45))
-                            }
-                        }
-                        .clipShape(frame)
-                        .overlay(frame.strokeBorder(.white.opacity(0.28), lineWidth: 1).allowsHitTesting(false))
-                        .overlay(alignment: .bottomLeading) {
-                            Text("S\(season) · E\(episodeNumber(episode))")
-                                .font(.system(size: 12, weight: .bold)).tracking(0.6)
-                                .padding(.horizontal, 10).padding(.vertical, 6)
-                                .background(.black.opacity(0.7), in: Capsule()).padding(12)
-                        }
-                        .shadow(color: .black.opacity(0.45), radius: 18, x: 0, y: 10)
-                        .contentShape(frame)
-                }
-                .buttonStyle(FluxBareButtonStyle())
-                .accessibilityLabel("Lire l’épisode \(episodeNumber(episode))")
-                Text(episode.name).font(.system(size: 20, weight: .bold)).lineLimit(2)
+                episodeStill(episode, season: episode.seasonNumber ?? selectedSeason?.number ?? 1)
+                Text(episode.name).font(Desk.system(20, .bold)).lineLimit(2)
                     .fixedSize(horizontal: false, vertical: true)
-                MediaDetailFlow(spacing: 8) {
+                MediaDetailFlow(spacing: Desk.pt(8)) {
                     if let duration = durationText(episode.details.duration ?? details.duration) { chip(duration, symbol: "clock") }
                     if let year = yearText(details.year) { chip(year, symbol: "calendar") }
                     if let rating = ratingText(episode.details.rating ?? details.rating) { chip(rating, symbol: "star.fill", tint: .yellow) }
                     ForEach(genres.prefix(2), id: \.self) { genre in chip(genre) }
                 }
-                HStack(spacing: 8) {
+                HStack(spacing: Desk.pt(8)) {
                     playbackControl
                     control("favorite", title: isFavorite ? "Dans les favoris" : "Favoris", icon: isFavorite ? "star.fill" : "star", iconOnly: true, action: favorite)
                     control("description", title: "Description complète", icon: "text.alignleft", iconOnly: true) {
@@ -1204,19 +1329,40 @@ extension MediaDetailPresentation {
                 }
                 progressNote(for: episode.id)
                 Divider().overlay(.white.opacity(0.18))
-                ScrollView {
-                    Text(clean(episode.details.synopsis) ?? synopsis)
-                        .font(.system(size: 15)).lineSpacing(4).foregroundStyle(.white.opacity(0.9))
-                        .frame(maxWidth: .infinity, alignment: .leading).padding(.trailing, 6)
+                #if os(tvOS)
+                ViewThatFits(in: .vertical) {
+                    episodeSynopsis(episode, lines: 6)
+                    episodeSynopsis(episode, lines: 4)
+                    episodeSynopsis(episode, lines: 3)
+                    episodeSynopsis(episode, lines: 2)
+                    episodeSynopsis(episode, lines: 1)
                 }
+                .frame(maxHeight: .infinity, alignment: .top)
+                #else
+                ScrollView { episodeSynopsis(episode, lines: nil).padding(.trailing, 6) }
+                #endif
             } else {
-                Text(seasonLoading ? "Chargement…" : "Choisissez un épisode.").font(.title3).foregroundStyle(.secondary)
+                Text(seasonLoading ? "Chargement…" : "Choisissez un épisode.").font(Desk.font(.title3)).foregroundStyle(.secondary)
             }
             Spacer(minLength: 0)
         }
-        .frame(maxHeight: .infinity, alignment: .topLeading)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
+    #if os(tvOS)
+    /// Row to focus instead of `value` when the remote comes into the seasons
+    /// or the episodes from another column: the one selected there. Entering
+    /// the seasons on the nearest row would change the season by itself.
+    func columnSelection(entering value: String, from old: String?) -> String? {
+        let selected: String?
+        if value.hasPrefix("episode:"), old?.hasPrefix("episode:") != true {
+            selected = selectedEpisode.map { "episode:\($0.id)" }
+        } else if value.hasPrefix("season:"), old?.hasPrefix("season:") != true {
+            selected = selectedSeason.map { "season:\($0.number)" }
+        } else { return nil }
+        return selected == value ? nil : selected
+    }
+    #else
     /// Seasons, episodes and actions are three columns: left and right change
     /// column, up and down move inside it.
     func deskSeriesMove(_ action: RemoteAction) {
@@ -1259,6 +1405,7 @@ extension MediaDetailPresentation {
         // Moving through the seasons shows each one's episodes at once.
         if target.hasPrefix("season:"), let number = Int(target.dropFirst("season:".count)) { chooseSeason(number) }
     }
+    #endif
 }
 
 /// Wraps chips onto as many lines as the width requires.
