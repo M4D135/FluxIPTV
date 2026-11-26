@@ -125,6 +125,11 @@ jobs:
         if: ${{ !cancelled() && matrix.platform == 'tvOS' && steps.apple_build.outcome == 'success' }}
         # Thirty-three launches, then fifteen remote flows bounded to seventy minutes.
         timeout-minutes: 95
+        env:
+          # These machines answer the remote flows three times more slowly
+          # than a Mac: the screen keeps as much longer what leaves by
+          # itself, and the flows wait as much longer for it. See docs/CI.md.
+          TEST_RUNNER_FLUX_UI_PATIENCE: '3'
         run: bash scripts/test-tvos-catalog-ui.sh 2>&1 | tee build/logs/tvos-catalog-ui-native.log
       - name: Package the unsigned application
         run: |

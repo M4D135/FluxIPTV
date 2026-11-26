@@ -50,6 +50,20 @@ struct CatalogSearchFocusSnapshot {
     /// path on a slow machine is not over after a delay chosen in advance.
     var keysPlayed = false
 }
+
+/// How many times longer the delays of the screen last under a remote flow
+/// on a slow machine. The commands of the player stay five seconds, the
+/// banner of a channel four, its list twelve; a hosted machine answers the
+/// bench three times more slowly than a Mac, and now and then not at all
+/// for several seconds: a flow written at the pace of a hand could not
+/// always act within them there. One wherever nothing asks otherwise, and
+/// the application never reads it.
+enum FluxFixturePatience {
+    static let factor: Double = {
+        let asked = Double(ProcessInfo.processInfo.environment["FLUX_UI_PATIENCE"] ?? "") ?? 1
+        return min(10, max(1, asked))
+    }()
+}
 #endif
 
 /// One living-room UI for Mac, iPhone, iPad and Apple TV. All actual tvOS navigation
@@ -2600,7 +2614,7 @@ struct FluxScreen: View, Equatable {
     private func armZapListTimer(seconds: UInt64 = 12) {
         zapListTask?.cancel()
         zapListTask = Task { @MainActor in
-            try? await Task.sleep(nanoseconds: seconds * 1_000_000_000)
+            try? await Task.sleep(nanoseconds: patient(seconds * 1_000_000_000))
             guard !Task.isCancelled else { return }
             // Nothing moves under a message until it is acknowledged.
             if library.alertMessage != nil { armZapListTimer(seconds: seconds); return }
@@ -3136,6 +3150,15 @@ struct FluxScreen: View, Equatable {
         3_000_000_000
         #endif
     }
+    /// A delay within which the remote has to act, as long as on a device.
+    /// Only a remote flow on a slow machine stretches it.
+    private func patient(_ nanoseconds: UInt64) -> UInt64 {
+        #if FLUX_CATALOG_UI_TESTING
+        UInt64(Double(nanoseconds) * FluxFixturePatience.factor)
+        #else
+        nanoseconds
+        #endif
+    }
     /// The commands stay while a capture or a remote flow needs them.
     private var playerControlsHeld: Bool {
         #if FLUX_CATALOG_UI_TESTING
@@ -3173,7 +3196,7 @@ struct FluxScreen: View, Equatable {
         guard playback.isPlaying, !playback.opening, playback.playbackError == nil, !playerCovered, !playerControlsHeld,
               hoveredPlayerControls.isEmpty, !scrubbing, !modalOpen, !voiceOverEnabled else { return }
         playerControlsTask = Task { @MainActor in
-            try? await Task.sleep(nanoseconds: playerControlsDelay)
+            try? await Task.sleep(nanoseconds: patient(playerControlsDelay))
             guard !Task.isCancelled, page == .player, playback.isPlaying,
                   !playback.opening, playback.playbackError == nil, !playerCovered,
                   hoveredPlayerControls.isEmpty, !scrubbing, !modalOpen, !voiceOverEnabled else { return }
@@ -3651,7 +3674,7 @@ struct FluxScreen: View, Equatable {
     private func showZapBanner() {
         let token=UUID();zapToken=token;withAnimation(.easeInOut(duration:0.18)){zapBanner=true}
         Task { @MainActor in
-            try? await Task.sleep(nanoseconds:4_000_000_000)
+            try? await Task.sleep(nanoseconds: patient(4_000_000_000))
             guard zapToken==token else{return};withAnimation(.easeOut(duration:0.22)){zapBanner=false}
         }
     }

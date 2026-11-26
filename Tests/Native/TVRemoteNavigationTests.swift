@@ -378,7 +378,7 @@ final class TVRemoteNavigationTests: XCTestCase {
         retainScreenshot("player-02-settings", in: app)
         // Longer than the delay of the commands: nothing takes the remote
         // from the panels while the stream goes on.
-        sleep(7)
+        sleep(Self.pastTheCommands)
         assertFocus(video, in: app)
         XCTAssertFalse(catcher.exists, "Nothing invisible stands under the settings.")
         // Walking the pages shows each one; Right enters the page.
@@ -409,7 +409,7 @@ final class TVRemoteNavigationTests: XCTestCase {
         XCUIRemote.shared.press(.select)
         assertCondition(NSPredicate(format: "value == %@", "Sélectionnée"), on: described, in: app)
         retainScreenshot("player-04-languages", in: app)
-        sleep(7)
+        sleep(Self.pastTheCommands)
         assertFocus(described, in: app)
         XCUIRemote.shared.press(.menu)
         assertCondition("exists == false", on: described, in: app)
@@ -974,6 +974,20 @@ final class TVRemoteNavigationTests: XCTestCase {
         XCTFail("None of the \(controls.count) expected controls has the focus.", file: file, line: line)
     }
 
+    /// How many times longer the screen keeps what leaves by itself: the
+    /// commands of the player five seconds, the banner of a channel four,
+    /// its list twelve. One here. A hosted machine answers three times more
+    /// slowly, and once left a question seven seconds without an answer:
+    /// the list was gone when the next key came. The run says so there
+    /// (FLUX_UI_PATIENCE), the screen stretches those delays and the flows
+    /// wait as much longer for what must leave.
+    private static let patience: Double = {
+        let asked = Double(ProcessInfo.processInfo.environment["FLUX_UI_PATIENCE"] ?? "") ?? 1
+        return min(10, max(1, asked))
+    }()
+    /// Longer than the commands of the player stay.
+    private static var pastTheCommands: UInt32 { UInt32((5 * patience + 2).rounded(.up)) }
+
     @MainActor
     private func launch(_ scenario: String, environment: [String: String] = [:]) -> XCUIApplication {
         let app = XCUIApplication(bundleIdentifier: "com.m4d135.FluxIPTV.TVCatalogUISmoke")
@@ -982,6 +996,7 @@ final class TVRemoteNavigationTests: XCTestCase {
         // "light": every flow on the dark surfaces and the immediate focus
         // that an Apple TV HD starts with.
         if let effects = ProcessInfo.processInfo.environment["FLUX_UI_EFFECTS"] { app.launchEnvironment["FLUX_UI_EFFECTS"] = effects }
+        if Self.patience > 1 { app.launchEnvironment["FLUX_UI_PATIENCE"] = String(Self.patience) }
         for (name, value) in environment { app.launchEnvironment[name] = value }
         app.launch()
         XCTAssertTrue(appears(element("flux-catalog-logical-focus", in: app), timeout: 15))
@@ -1060,7 +1075,7 @@ final class TVRemoteNavigationTests: XCTestCase {
     private func assertCondition(_ predicate: NSPredicate, on control: XCUIElement, in app: XCUIApplication,
                                  file: StaticString = #filePath, line: UInt = #line) {
         let expectation = XCTNSPredicateExpectation(predicate: predicate, object: control)
-        let result = XCTWaiter.wait(for: [expectation], timeout: 10)
+        let result = XCTWaiter.wait(for: [expectation], timeout: 10 * Self.patience)
         guard result != .completed else { return }
         // A control that has left the screen cannot be asked its name: the
         // question itself would be recorded as a second failure.

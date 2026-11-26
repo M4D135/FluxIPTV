@@ -411,6 +411,10 @@ if python3 "$repo_root/scripts/add-tvos-remote-test-target.py" \
   # Fifteen flows: thirteen minutes on a recent Mac. A hosted Intel runner
   # took close to twenty-five for fourteen of them, and a runner twice as
   # slow has been met.
+  # TEST_RUNNER_FLUX_UI_PATIENCE, when the caller sets it, reaches the flows
+  # as FLUX_UI_PATIENCE: how many times longer the screen keeps what leaves
+  # by itself, for a machine that answers slowly.
+  printf 'Remote flows: patience %s\n' "${TEST_RUNNER_FLUX_UI_PATIENCE:-1}"
   if run_bounded 4200 xcodebuild -project "$smoke_repo/FluxIPTV-AppleTV.xcodeproj" \
     -scheme FluxIPTVTVRemoteNavigation -configuration Debug \
     -destination "platform=tvOS Simulator,id=$simulator_id" \
