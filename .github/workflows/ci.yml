@@ -53,7 +53,9 @@ jobs:
     # Keep Xcode 26 / Liquid Glass on the standard Intel runner pool.
     # Native harnesses follow the host architecture; device builds stay ARM64.
     runs-on: macos-26-intel
-    timeout-minutes: 60
+    # The Apple TV entry took fifty minutes with fourteen remote flows on
+    # the hosted machine of 65875ef, and a machine twice as slow has been met.
+    timeout-minutes: 110
     env:
       DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
     strategy:
@@ -121,8 +123,8 @@ jobs:
         run: bash scripts/test-catalog-ui.sh 2>&1 | tee build/logs/catalog-ui-native.log
       - name: Capture and navigate the native Apple TV interface
         if: ${{ !cancelled() && matrix.platform == 'tvOS' && steps.apple_build.outcome == 'success' }}
-        # Thirty-three launches, then fourteen remote flows bounded to forty minutes.
-        timeout-minutes: 60
+        # Thirty-three launches, then fifteen remote flows bounded to seventy minutes.
+        timeout-minutes: 95
         run: bash scripts/test-tvos-catalog-ui.sh 2>&1 | tee build/logs/tvos-catalog-ui-native.log
       - name: Package the unsigned application
         run: |

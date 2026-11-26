@@ -107,14 +107,23 @@ private struct TVProbeReadout: View {
                 // Use the actual library filter, not a prefiltered fixture.
                 // Its asynchronous result is checked before capture readiness.
                 if let countryCode = fixture.countryCode { library.countryCode = countryCode }
-                if fixture.fillsDock { try TVCatalogCapture.fillDock(of: library, source: fixture.source) }
+                if fixture.fillsDock {
+                    try TVCatalogCapture.fillDock(of: library, source: fixture.source)
+                    if let series = library.catalogItem(id: "fixture-series") {
+                        library.cacheFixtureSeasons(fixture.dockSeasons, for: series)
+                    }
+                }
             }
             self.fixture = fixture
             self.restoredDefaultsSuite = restoredDefaultsSuite
             _library = StateObject(wrappedValue: library)
             let playback = PlaybackController()
             // The film that the dock offers to go on with.
-            if fixture.fillsDock { playback.recordFixtureProgress(id: "fixture-movie-2", seconds: 2_520, duration: 6_480) }
+            if fixture.fillsDock {
+                playback.recordFixtureProgress(id: "fixture-movie-2", seconds: 2_520, duration: 6_480)
+                // The shortcut of a channel plays it: shown as playing, without a connection.
+                playback.simulateFixturePlayback()
+            }
             if fixture.showsPlayer, let item = fixture.selection {
                 // A media that plays, without any connection: the commands
                 // hide and the remote behaves as during a stream.
@@ -212,6 +221,9 @@ private struct TVProbeReadout: View {
     let seasons: [IPTVSeason]
     let openSeason: Int?
     let episodeID: String?
+    /// The seasons that the shortcuts of the dock lead to: the library
+    /// serves them, and the screen does not start on them.
+    var dockSeasons: [IPTVSeason] = []
 
     var expectedInitialControl: String {
         switch scenario {
@@ -530,7 +542,8 @@ private struct TVProbeReadout: View {
                                 selection: isMovie ? items[1] : collection,
                                 seasons: scenario == "series" || scenario == "seasons" ? seasons : [],
                                 openSeason: scenario == "series" ? 12 : nil,
-                                episodeID: scenario == "series" ? episodeID : nil)
+                                episodeID: scenario == "series" ? episodeID : nil,
+                                dockSeasons: dockScenarios.contains(scenario) ? seasons : [])
     }
 
     private static func cache(_ image: CGImage, at url: URL) {

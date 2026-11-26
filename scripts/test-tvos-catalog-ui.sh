@@ -408,8 +408,10 @@ if python3 "$repo_root/scripts/add-tvos-remote-test-target.py" \
   > "$capture_root/remote-target.log" 2>&1 \
   && run_bounded 30 plutil -lint "$smoke_repo/FluxIPTV-AppleTV.xcodeproj/project.pbxproj" \
   >> "$capture_root/remote-target.log" 2>&1; then
-  # Fourteen flows: a hosted Intel runner needed more than ten minutes for six.
-  if run_bounded 2400 xcodebuild -project "$smoke_repo/FluxIPTV-AppleTV.xcodeproj" \
+  # Fifteen flows: thirteen minutes on a recent Mac. A hosted Intel runner
+  # took close to twenty-five for fourteen of them, and a runner twice as
+  # slow has been met.
+  if run_bounded 4200 xcodebuild -project "$smoke_repo/FluxIPTV-AppleTV.xcodeproj" \
     -scheme FluxIPTVTVRemoteNavigation -configuration Debug \
     -destination "platform=tvOS Simulator,id=$simulator_id" \
     -derivedDataPath "$smoke_root/DerivedData" -parallel-testing-enabled NO \
@@ -417,7 +419,7 @@ if python3 "$repo_root/scripts/add-tvos-remote-test-target.py" \
     'SWIFT_ACTIVE_COMPILATION_CONDITIONS=DEBUG FLUX_CATALOG_UI_TESTING' \
     CODE_SIGNING_ALLOWED=NO ONLY_ACTIVE_ARCH=YES test \
     > "$capture_root/remote-navigation.log" 2>&1; then
-    echo 'PASS: XCUIRemote country selection in the column, every zone by the arrows alone, Menu retracing the screens down to the home screen, film fiche with its lists and description, series fiche by columns, player panels during a stream, zapping by the list and by the commands back to the watched channel, a message taking the remote and returning it, the pages of a large catalogue of films, what a move of the remote rebuilds in catalogues of real size, the dock with its shortcuts and its folder opened as a fan, Back held straight to the home screen, restored-channel reentry and failed-source reconnect highlight.'
+    echo 'PASS: XCUIRemote country selection in the column, every zone by the arrows alone, Menu retracing the screens down to the home screen, film fiche with its lists and description, series fiche by columns, player panels during a stream, zapping by the list and by the commands back to the watched channel, a message taking the remote and returning it, the pages of a large catalogue of films, what a move of the remote rebuilds in catalogues of real size, the dock with its shortcuts to a film, a channel, a series, a season and an episode and its folder opened as a fan, Back held straight to the home screen, restored-channel reentry and failed-source reconnect highlight.'
   else
     failed=1
     tail -100 "$capture_root/remote-navigation.log" >&2

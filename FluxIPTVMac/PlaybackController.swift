@@ -193,6 +193,9 @@ final class PlaybackController: ObservableObject {
         subtitleTracks = subtitleTracks.map { PlaybackTrack(id: $0.id, title: $0.title, selected: $0.id == id) }
     }
     var showsFixture: Bool { fixtureTracks }
+    /// What is asked to play is shown as playing, without a connection,
+    /// for a scenario that starts outside the player.
+    func simulateFixturePlayback() { fixtureTracks = true }
     /// A title left unfinished, for what the dock then shows of it. Kept
     /// for the scenario only: nothing is written to the preferences.
     func recordFixtureProgress(id: String, seconds: Double, duration: Double) {

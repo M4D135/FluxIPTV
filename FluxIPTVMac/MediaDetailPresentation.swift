@@ -64,6 +64,10 @@ struct MediaDetailPresentation: View {
     /// True when the last episode selection came from the keyboard or remote;
     /// only then does the list scroll to it. A pointer never moves the list.
     @State private var keyboardSelection = false
+    #if os(tvOS)
+    /// Control that is being handed the remote, until it says it has it.
+    @State private var claiming: String?
+    #endif
 
     init(item: IPTVItem, details: IPTVDetails, close: @escaping () -> Void,
          play: @escaping () -> Void, playEpisode: @escaping (IPTVItem, [IPTVSeason]) -> Void,
@@ -190,6 +194,9 @@ struct MediaDetailPresentation: View {
         .onChange(of: nativeFocus) { old, value in
             guard let value else { return }
             #if os(tvOS)
+            // A control is being handed the remote: where the system rests
+            // meanwhile is not a move of the user.
+            if let claiming, value != claiming { return }
             if let selected = columnSelection(entering: value, from: old) {
                 // The remote enters a column on what is selected there, not on
                 // the row that happens to be the nearest.
@@ -215,10 +222,16 @@ struct MediaDetailPresentation: View {
         }
         #if os(tvOS)
         // The sheet fades in, and nothing invisible can take the remote: its
-        // controls claim it once they show.
-        .onChange(of: expanded) { _, value in if value { claimFocus() } }
+        // controls claim it once they show. Meanwhile the system has rested
+        // the remote on the first control it found, which is not a move of
+        // the user: the sheet opens on its own control all the same.
+        .onChange(of: expanded) { _, value in
+            guard value else { return }
+            focusedID = openingFocus
+            claimFocus()
+        }
         #endif
-        .onAppear { setFocus(item.isSeriesCollection && selectedEpisode == nil ? "back" : "play") }
+        .onAppear { setFocus(openingFocus) }
         .onDisappear { cancelHandoff() }
     }
 
@@ -417,8 +430,13 @@ struct MediaDetailPresentation: View {
 
     private func control(_ id: String, title: String, icon: String, primary: Bool = false, iconOnly: Bool = false, action: @escaping () -> Void) -> some View {
         Button { setFocus(id); action() } label: {
-            if iconOnly { Image(systemName: icon).accessibilityLabel(title) }
-            else { Label(title, systemImage: icon).lineLimit(1) }
+            Group {
+                if iconOnly { Image(systemName: icon).accessibilityLabel(title) }
+                else { Label(title, systemImage: icon).lineLimit(1) }
+            }
+            #if os(tvOS)
+            .background(focusReport(id))
+            #endif
         }
             .buttonStyle(MediaDetailControlStyle(highlighted: focusedID == id, primary: primary, compact: iconOnly))
             #if os(macOS)
@@ -528,21 +546,36 @@ struct MediaDetailPresentation: View {
         }
     }
     private func setFocus(_ id: String) { focusedID = id; nativeFocus = id }
+    /// The control that a fiche opens on: what plays the title, or Back
+    /// while a series has no episode to play yet.
+    private var openingFocus: String { item.isSeriesCollection && selectedEpisode == nil ? "back" : "play" }
     #if os(tvOS)
     /// Gives the remote to the selected control, again while the system
-    /// declines it: a control that is still appearing cannot take the focus.
-    /// Stops as soon as the remote itself goes elsewhere.
+    /// declines it: a control that is still appearing cannot take the
+    /// focus, and a request the system declined still reads as granted.
+    /// Between two requests the system rests the remote on the first
+    /// control it finds, which must not be read as a move of the user:
+    /// the request is held until the control itself says it has the remote.
     private func claimFocus() {
         let id = focusedID
+        claiming = id
         Task { @MainActor in
-            await Task.yield()
-            guard focusedID == id, !suspended else { return }
-            // A request the system declined still reads as granted: ask anew.
-            nativeFocus = nil
-            await Task.yield()
-            guard focusedID == id, !suspended else { return }
-            nativeFocus = id
+            for _ in 0..<12 {
+                await Task.yield()
+                guard claiming == id, focusedID == id, !suspended else { break }
+                if FluxFocusLedger.shared.real == "fiche-" + id { break }
+                nativeFocus = nil
+                await Task.yield()
+                guard claiming == id, focusedID == id, !suspended else { break }
+                nativeFocus = id
+                try? await Task.sleep(nanoseconds: 100_000_000)
+            }
+            if claiming == id { claiming = nil }
         }
+    }
+    /// A control of the fiche says when it really has the remote.
+    private func focusReport(_ id: String) -> some View {
+        DeskFocusReport { FluxFocusLedger.shared.report("fiche-" + id, focused: $0) }
     }
     #endif
     private func closeDescription() { expandedDescription = false; setFocus("description") }
@@ -1144,6 +1177,9 @@ extension MediaDetailPresentation {
             .padding(.horizontal, Desk.pt(12)).padding(.vertical, Desk.pt(10))
             .background(selected ? sectionTint.opacity(0.24) : .white.opacity(focused ? 0.11 : 0.04), in: shape)
             .overlay(shape.strokeBorder(focused ? Color.white.opacity(0.8) : .clear, lineWidth: Desk.pt(2)).allowsHitTesting(false))
+            #if os(tvOS)
+            .background(focusReport(id))
+            #endif
             .contentShape(shape)
         }
         .buttonStyle(FluxBareButtonStyle())
@@ -1256,6 +1292,9 @@ extension MediaDetailPresentation {
             .background(selected ? sectionTint.opacity(0.26) : .white.opacity(0.06), in: shape)
             .overlay(shape.strokeBorder(focused ? Color.white.opacity(0.9) : selected ? sectionTint.opacity(0.7) : Color.white.opacity(0.10),
                                         lineWidth: focused ? Desk.pt(2) : 1).allowsHitTesting(false))
+            #if os(tvOS)
+            .background(focusReport(id))
+            #endif
             .contentShape(shape)
         }
         .buttonStyle(MediaDetailEpisodeStyle(highlighted: focused, lift: Self.television ? 1.02 : 1.035))

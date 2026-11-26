@@ -178,6 +178,14 @@ final class IPTVLibrary: ObservableObject {
         precondition(items.allSatisfy { $0.sourceID == selectedSourceID && $0.directURL == nil && $0.xtreamStreamID == nil })
         installCatalog(CatalogIndex(items))
     }
+
+    /// The seasons of a series of the fixture, as its source would give
+    /// them: asked for, they come from here and nothing is downloaded.
+    func cacheFixtureSeasons(_ seasons: [IPTVSeason], for series: IPTVItem) {
+        precondition(series.sourceID == selectedSourceID && series.isSeriesCollection
+                     && seasons.allSatisfy { $0.episodes.allSatisfy { $0.directURL == nil && $0.xtreamStreamID == nil } })
+        seriesCache[series.id] = seasons
+    }
     #endif
 
     var selectedItem: IPTVItem? {

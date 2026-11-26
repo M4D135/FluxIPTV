@@ -595,12 +595,11 @@ struct FluxScreen: View, Equatable {
         // A control of the player is being handed the remote: where the
         // system rests meanwhile is not a move of the user.
         if let held = remoteHold, id != held { return }
-        #endif
-        #if os(macOS) || os(tvOS)
         // The remote left the open folder for another icon: it closes.
+        // Only where the focus of the system is the remote itself: on a
+        // Mac the keys and the pointer close it, and the focus of the
+        // window, which follows them, may still be on its way.
         if let fan = dockFan, let id, id != fan, !id.hasPrefix(DockEntry.fanPrefix) { dockFan = nil }
-        #endif
-        #if os(tvOS)
         // The first native entry into a list that has just replaced the
         // content of the column is redirected to its selected row. The
         // request is consumed before the binding is written, so that
@@ -797,6 +796,19 @@ struct FluxScreen: View, Equatable {
                     for action in fixtureActions {
                         dispatch(action)
                         try? await Task.sleep(nanoseconds: 60_000_000)
+                        #if os(macOS)
+                        // A key window follows each key with its own focus, a
+                        // little later: later than the next key on a slow
+                        // machine, where that focus would then arrive after
+                        // the selection has moved on and be read as a move
+                        // of the pointer, back to where it was. The next
+                        // key waits for it, as a hand on a keyboard does.
+                        if ProcessInfo.processInfo.environment["FLUX_CATALOG_UI_BACKGROUND"] != "1" {
+                            for _ in 0..<12 where systemFocus != nil && focusID != nil && systemFocus != focusID {
+                                try? await Task.sleep(nanoseconds: 50_000_000)
+                            }
+                        }
+                        #endif
                     }
                     reportSearchFocusFixture()
                 }

@@ -361,7 +361,7 @@ final class TVRemoteNavigationTests: XCTestCase {
         let languages = element("player-tracks", in: app)
         let video = element("settings-page-video", in: app)
         let network = element("settings-page-network", in: app)
-        assertFocus(play, in: app)
+        assertFocus(play, in: app, leavesByItself: true)
         retainScreenshot("player-01-commands", in: app)
 
         // The stream plays: the commands leave the picture by themselves.
@@ -436,7 +436,7 @@ final class TVRemoteNavigationTests: XCTestCase {
         // list, which must scroll to it before it can take the remote.
         let watched = row(58)
         let playing = NSPredicate(format: "value == %@", "En cours")
-        assertFocus(play, in: app)
+        assertFocus(play, in: app, leavesByItself: true)
         assertCondition("exists == false", on: play, in: app)
         assertFocus(catcher, in: app)
 
@@ -553,7 +553,7 @@ final class TVRemoteNavigationTests: XCTestCase {
         // The sixtieth channel of the fixture cannot be shown: it raises the
         // message of a source whose credentials are missing.
         let refused = element("zap-channel-fixture-live-59", in: app)
-        assertFocus(play, in: app)
+        assertFocus(play, in: app, leavesByItself: true)
         assertCondition("exists == false", on: play, in: app)
         assertFocus(catcher, in: app)
 
@@ -694,6 +694,75 @@ final class TVRemoteNavigationTests: XCTestCase {
         print("PASS: TV_REMOTE Back held on the bar went straight to the home screen, past the films")
     }
 
+    /// The shortcuts of a series: a season opens the fiche of the series on
+    /// that season, an episode on that episode, the series its shelf of
+    /// seasons. Each time from the films, another section.
+    @MainActor
+    func testDockShortcutsOfASeriesOpenItsSeasonsAndItsEpisodes() {
+        let app = launch("dock")
+        defer { app.terminate() }
+        func shortcut(_ label: String) -> XCUIElement {
+            app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@ AND label == %@",
+                                             "navigation-dock-item-", label)).firstMatch
+        }
+        let card = element("catalog-card-fixture-movie-1", in: app)
+        let series = shortcut("Les saisons")
+        let season = shortcut("Les saisons · Saison 3")
+        let episode = shortcut("Les saisons · S12 E15")
+        let play = element("media-detail-play", in: app)
+        let sleeve = element("catalog-card-fixture-series", in: app)
+        assertFocus(card, logical: "fixture-movie-1", in: app)
+        XCTAssertTrue(series.exists && season.exists && episode.exists,
+                      "The dock must show the series, its season and its episode that the fixture keeps.")
+
+        // A season: the fiche of the series, on that season.
+        XCUIRemote.shared.press(.down)
+        walkDock(to: season, in: app)
+        XCUIRemote.shared.press(.select)
+        XCTAssertTrue(play.waitForExistence(timeout: 10))
+        assertCondition("hasFocus == true", on: play, in: app)
+        XCUIRemote.shared.press(.left)
+        assertFocus(element("media-detail-episode-fixture-series-s3-e1", in: app), in: app)
+        XCUIRemote.shared.press(.left)
+        assertFocus(element("media-detail-season-3", in: app), in: app)
+        retainScreenshot("dock-series-01-season", in: app)
+        // Menu: the shelf of the seasons, on that one; then the series.
+        XCUIRemote.shared.press(.menu)
+        assertCondition("exists == false", on: play, in: app)
+        assertFocus(element("season-sleeve-3", in: app), logical: "season-3", in: app)
+        XCUIRemote.shared.press(.menu)
+        assertFocus(sleeve, logical: "fixture-series", in: app)
+        print("PASS: TV_REMOTE dock shortcut of a season opened the fiche of its series on that season")
+
+        // An episode: the fiche on its season and on it.
+        XCUIRemote.shared.press(.down)
+        walkDock(to: episode, in: app)
+        XCUIRemote.shared.press(.select)
+        XCTAssertTrue(play.waitForExistence(timeout: 10))
+        assertCondition("hasFocus == true", on: play, in: app)
+        assertCondition(NSPredicate(format: "label CONTAINS %@", "E15"), on: play, in: app)
+        XCUIRemote.shared.press(.left)
+        assertFocus(element("media-detail-episode-fixture-series-s12-e15", in: app), in: app)
+        retainScreenshot("dock-series-02-episode", in: app)
+        XCUIRemote.shared.press(.menu)
+        assertCondition("exists == false", on: play, in: app)
+        assertFocus(element("season-sleeve-12", in: app), logical: "season-12", in: app)
+        XCUIRemote.shared.press(.menu)
+        assertFocus(sleeve, logical: "fixture-series", in: app)
+        print("PASS: TV_REMOTE dock shortcut of an episode opened the fiche of its series on that episode")
+
+        // The series: its shelf of seasons, on the first one.
+        XCUIRemote.shared.press(.down)
+        walkDock(to: series, in: app)
+        XCUIRemote.shared.press(.select)
+        assertFocus(element("season-sleeve-1", in: app), logical: "season-1", in: app)
+        XCTAssertFalse(play.exists)
+        retainScreenshot("dock-series-03-seasons", in: app)
+        XCUIRemote.shared.press(.menu)
+        assertFocus(sleeve, logical: "fixture-series", in: app)
+        print("PASS: TV_REMOTE dock shortcut of a series opened its shelf of seasons")
+    }
+
     /// The dock as a user fills it: shortcuts, a video in progress, and a
     /// list of favourites as a folder. The remote walks all of it, opens the
     /// folder as a fan and closes it, opens a film from its shortcut, and
@@ -763,10 +832,49 @@ final class TVRemoteNavigationTests: XCTestCase {
         assertFocus(card, logical: "fixture-movie-1", in: app)
         print("PASS: TV_REMOTE dock shortcut opened the fiche of its film, and Menu returned to its sleeve")
 
-        // Held, OK opens the lists of the title, where the dock keeps it.
+        // From another section the shortcut shows the films first, then
+        // the fiche: Menu puts the sleeve back among them.
+        let live = element("navigation-tab-live", in: app)
+        let channelRow = element("live-channel-fixture-live-0", in: app)
         XCUIRemote.shared.press(.down)
-        move(.right, to: film, maximumPresses: 14, in: app)
-        if !film.hasFocus { move(.left, to: film, maximumPresses: 14, in: app) }
+        walkDock(to: live, in: app)
+        XCUIRemote.shared.press(.select)
+        assertFocus(channelRow, logical: "fixture-live-0", in: app)
+        // Three channels, then the dock under them.
+        for _ in 0..<4 { XCUIRemote.shared.press(.down) }
+        assertCondition("hasFocus == false", on: channelRow, in: app)
+        walkDock(to: film, in: app)
+        XCUIRemote.shared.press(.select)
+        XCTAssertTrue(play.waitForExistence(timeout: 10))
+        assertCondition("hasFocus == true", on: play, in: app)
+        XCTAssertFalse(channelRow.exists, "The fiche of a film stands over the films, not over the channels.")
+        retainScreenshot("dock-04b-film-from-another-section", in: app)
+        XCUIRemote.shared.press(.menu)
+        assertCondition("exists == false", on: play, in: app)
+        assertFocus(card, logical: "fixture-movie-1", in: app)
+        print("PASS: TV_REMOTE dock shortcut of a film opened from the television showed its fiche over the films")
+
+        // The shortcut of a channel shows the television and plays the
+        // channel: its picture takes the remote, under its banner, and
+        // Menu returns to its row in the list.
+        XCUIRemote.shared.press(.down)
+        walkDock(to: channel, in: app)
+        XCUIRemote.shared.press(.select)
+        // Its banner first: it stays four seconds.
+        XCTAssertTrue(appears(element("player-banner", in: app)))
+        retainScreenshot("dock-04c-channel-from-shortcut", in: app)
+        let picture = element("player-catcher", in: app)
+        XCTAssertTrue(picture.waitForExistence(timeout: 10))
+        assertCondition("hasFocus == true", on: picture, in: app)
+        XCUIRemote.shared.press(.menu)
+        assertCondition("exists == false", on: picture, in: app)
+        assertFocus(channelRow, logical: "fixture-live-0", in: app)
+        print("PASS: TV_REMOTE dock shortcut of a channel opened from the films played it, and Menu returned to its row")
+
+        // Held, OK opens the lists of the title, where the dock keeps it.
+        for _ in 0..<4 { XCUIRemote.shared.press(.down) }
+        assertCondition("hasFocus == false", on: channelRow, in: app)
+        walkDock(to: film, in: app)
         assertFocus(film, logical: "dock-item-shortcuts-fixture-movie-1", in: app)
         XCUIRemote.shared.press(.select, forDuration: 1.2)
         let list = element("favorite-list-0", in: app)
@@ -784,7 +892,7 @@ final class TVRemoteNavigationTests: XCTestCase {
         XCUIRemote.shared.press(.select)
         assertCondition("exists == false", on: list, in: app)
         assertCondition("exists == false", on: film, in: app)
-        assertFocus(element("navigation-tab-movie", in: app), logical: "tab-movie", in: app)
+        assertFocus(live, logical: "tab-live", in: app)
         XCTAssertTrue(channel.exists && folder.exists)
         retainScreenshot("dock-06-shortcut-removed", in: app)
         print("PASS: TV_REMOTE held OK opened the lists of a shortcut; unchecked and saved, it left the dock")
@@ -859,7 +967,7 @@ final class TVRemoteNavigationTests: XCTestCase {
                                    file: StaticString = #filePath, line: UInt = #line) {
         let deadline = Date().addingTimeInterval(10)
         while Date() < deadline {
-            if controls.contains(where: { $0.exists && $0.hasFocus }) { return }
+            if controls.contains(where: { holdsFocus($0) }) { return }
             RunLoop.current.run(until: Date().addingTimeInterval(0.2))
         }
         retainScreenshot("failure-none-focused", in: app)
@@ -876,7 +984,7 @@ final class TVRemoteNavigationTests: XCTestCase {
         if let effects = ProcessInfo.processInfo.environment["FLUX_UI_EFFECTS"] { app.launchEnvironment["FLUX_UI_EFFECTS"] = effects }
         for (name, value) in environment { app.launchEnvironment[name] = value }
         app.launch()
-        XCTAssertTrue(element("flux-catalog-logical-focus", in: app).waitForExistence(timeout: 15))
+        XCTAssertTrue(appears(element("flux-catalog-logical-focus", in: app), timeout: 15))
         return app
     }
 
@@ -885,20 +993,60 @@ final class TVRemoteNavigationTests: XCTestCase {
         app.descendants(matching: .any).matching(identifier: identifier).firstMatch
     }
 
+    /// What a control says of itself, read in one go; nil when it is not
+    /// there. The commands of the player and the banner of a channel leave
+    /// by themselves: asked for its name, then its focus, then its frame,
+    /// a control may leave between two questions, and a question put to a
+    /// control that is gone is recorded as a failure of its own. A hosted
+    /// machine lost a flow to that, after everything it asserts had
+    /// passed. One reading fails as a whole, and says so without failing
+    /// the flow; XCTest looks twice more for a control that is gone, two
+    /// seconds in all, hence the first question.
+    @MainActor
+    private func seen(_ control: XCUIElement) -> (any XCUIElementSnapshot)? {
+        guard control.exists else { return nil }
+        return try? control.snapshot()
+    }
+
+    @MainActor
+    private func holdsFocus(_ control: XCUIElement) -> Bool { seen(control)?.hasFocus ?? false }
+
+    /// A control that is there is seen at once. A wait of XCTest begins
+    /// with a second of its own, whatever the machine, and what shows for
+    /// four or five seconds cannot afford several of them.
+    @MainActor
+    private func appears(_ control: XCUIElement, timeout: TimeInterval = 10) -> Bool {
+        control.exists || control.waitForExistence(timeout: timeout)
+    }
+
+    /// `leavesByItself`: a command of the player, shown for five seconds.
+    /// It is looked at for two seconds before the waits of XCTest, which
+    /// take three of the five on any machine.
     @MainActor
     private func assertFocus(_ control: XCUIElement, logical: String? = nil, in app: XCUIApplication,
+                             leavesByItself: Bool = false,
                              file: StaticString = #filePath, line: UInt = #line) {
-        XCTAssertTrue(control.waitForExistence(timeout: 10), file: file, line: line)
-        assertCondition("hasFocus == true", on: control, in: app, file: file, line: line)
+        var state: (any XCUIElementSnapshot)?
+        if leavesByItself {
+            let deadline = Date().addingTimeInterval(2)
+            while Date() < deadline {
+                if let now = seen(control), now.hasFocus { state = now; break }
+                RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+            }
+        }
+        if state == nil {
+            XCTAssertTrue(control.waitForExistence(timeout: 10), file: file, line: line)
+            assertCondition("hasFocus == true", on: control, in: app, file: file, line: line)
+            state = seen(control)
+        }
         if let logical {
             assertCondition(NSPredicate(format: "value == %@", logical),
                             on: element("flux-catalog-logical-focus", in: app), in: app, file: file, line: line)
         }
-        // Told only while the control is there: the commands of the player
-        // hide by themselves, and a slow machine reads this line after they
-        // have. What is asserted is above.
-        if control.exists {
-            print("TV_REMOTE focus: \(control.identifier), native=\(control.hasFocus), logical=\(logical ?? "picker-local"), frame=\(control.frame)")
+        // Told from one reading, and only if the control was still there
+        // for it. What is asserted is above.
+        if let state {
+            print("TV_REMOTE focus: \(state.identifier), native=\(state.hasFocus), logical=\(logical ?? "picker-local"), frame=\(state.frame)")
         }
     }
 
@@ -913,16 +1061,15 @@ final class TVRemoteNavigationTests: XCTestCase {
                                  file: StaticString = #filePath, line: UInt = #line) {
         let expectation = XCTNSPredicateExpectation(predicate: predicate, object: control)
         let result = XCTWaiter.wait(for: [expectation], timeout: 10)
+        guard result != .completed else { return }
         // A control that has left the screen cannot be asked its name: the
         // question itself would be recorded as a second failure.
-        let name = control.exists ? control.identifier : "\(control)"
-        if result != .completed {
-            retainScreenshot("failure-\(name)", in: app)
-            let tree = XCTAttachment(string: app.debugDescription)
-            tree.name = "failed-remote-navigation-accessibility-tree"
-            tree.lifetime = .keepAlways
-            add(tree)
-        }
+        let name = seen(control)?.identifier ?? "\(control)"
+        retainScreenshot("failure-\(name)", in: app)
+        let tree = XCTAttachment(string: app.debugDescription)
+        tree.name = "failed-remote-navigation-accessibility-tree"
+        tree.lifetime = .keepAlways
+        add(tree)
         XCTAssertEqual(result, .completed, "\(name): \(predicate.predicateFormat)", file: file, line: line)
     }
 
@@ -932,9 +1079,19 @@ final class TVRemoteNavigationTests: XCTestCase {
         // Each press synchronizes with XCTest's UI idleness. A bounded row walk
         // tolerates the native engine landing on either neighbour above a tile.
         for _ in 0..<maximumPresses {
-            if target.exists && target.hasFocus { return }
+            if holdsFocus(target) { return }
             XCUIRemote.shared.press(direction)
         }
+        assertFocus(target, in: app, file: file, line: line)
+    }
+
+    /// Along the dock to one of its icons, whichever side of it the remote
+    /// came down on: to the left as far as it goes, then to the right.
+    @MainActor
+    private func walkDock(to target: XCUIElement, in app: XCUIApplication,
+                          file: StaticString = #filePath, line: UInt = #line) {
+        for _ in 0..<18 where !holdsFocus(target) { XCUIRemote.shared.press(.left) }
+        for _ in 0..<18 where !holdsFocus(target) { XCUIRemote.shared.press(.right) }
         assertFocus(target, in: app, file: file, line: line)
     }
 
