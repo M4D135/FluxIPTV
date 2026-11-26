@@ -321,7 +321,23 @@ private enum CatalogUIFailure: Error, CustomStringConvertible {
             // its banner, the commands stay away and the picture keeps the keys.
             Scenario(kind: .live, filename: "keys-zap.png", player: "banner",
                      actions: [.up, .up, .down],
-                     expectedFocus: "cinema-controls", expectedPlaying: "fixture-live-1")
+                     expectedFocus: "cinema-controls", expectedPlaying: "fixture-live-1"),
+            // The settings at the keyboard of a Mac, as at the remote: Up
+            // from the dock enters the column on the page shown, Right
+            // enters the page, and OK does what a click does — the decors go.
+            Scenario(kind: .movie, filename: "keys-settings.png", settings: .appearance,
+                     actions: [.up, .right, .select], expectedFocus: "toggle-Afficher les décors"),
+            // Walking the column shows each page: two rows down is Vidéo,
+            // and Right lands on its first setting.
+            Scenario(kind: .movie, filename: "keys-settings-pages.png", settings: .appearance,
+                     actions: [.up, .down, .down, .right], expectedFocus: "choice-Saut avant / arrière-0"),
+            // On the page of the dock the arrows go from tile to tile and
+            // down into the themes, where OK gives the dock the one chosen.
+            Scenario(kind: .movie, filename: "keys-settings-themes.png", settings: .dock,
+                     actions: [.up, .right, .right, .down, .select], expectedFocus: "dock-theme-*"),
+            // Past the last row of the column the keyboard returns to the dock.
+            Scenario(kind: .movie, filename: "keys-settings-dock.png", settings: .appearance,
+                     actions: [.up] + Array(repeating: .down, count: 7), expectedFocus: FluxDockItem.settings.focusID)
         ]
         for theme in FluxDockTheme.allCases {
             scenarios.append(Scenario(kind: .live, filename: "dock-theme-\(theme.rawValue).png",

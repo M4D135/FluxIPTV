@@ -25,6 +25,8 @@ struct DeskFocusStyle: ButtonStyle {
         @Environment(\.accessibilityReduceMotion) private var reduceMotion
         #if os(macOS)
         @State private var hovered = false
+        /// The keyboard of the settings is on this control.
+        @Environment(\.deskTargeted) private var targeted
         #endif
 
         var body: some View {
@@ -36,9 +38,12 @@ struct DeskFocusStyle: ButtonStyle {
                 .scaleEffect(isFocused && !reduceMotion ? 1.02 : 1)
                 .animation(reduceMotion ? nil : .easeOut(duration: 0.14), value: isFocused)
                 #elseif os(macOS)
-                // A pointer shows what it is on, as the remote does.
+                // A pointer shows what it is on, as the remote does; the
+                // keyboard shows the ring of a television.
                 .overlay(RoundedRectangle(cornerRadius: radius, style: .continuous)
-                    .strokeBorder(.white.opacity(hovered ? 0.6 : 0), lineWidth: 2).allowsHitTesting(false))
+                    .strokeBorder(.white.opacity(targeted ? 0.92 : hovered ? 0.6 : 0), lineWidth: targeted ? 3 : 2).allowsHitTesting(false))
+                .scaleEffect(targeted && !reduceMotion ? 1.02 : 1)
+                .animation(reduceMotion ? nil : .easeOut(duration: 0.14), value: targeted)
                 .onHover { hovered = $0 }
                 #endif
         }

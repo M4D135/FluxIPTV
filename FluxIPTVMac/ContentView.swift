@@ -124,6 +124,10 @@ struct FluxScreen: View, Equatable {
     @AppStorage(FluxAppearance.densityKey) private var density = "cinema"
     @AppStorage(ClubInterfaceProfile.storageKey) private var clubProfile: ClubInterfaceProfile = .neoVideoClub
     @State private var remoteNavigationActive = false
+    #if os(macOS)
+    /// The keyboard in the settings: the screen gives it to them from the dock.
+    @State private var settingsKeys = DeskKeys()
+    #endif
     @State private var showingGroups = false
     @State private var showingCountries = false
     @State private var showingNavigationMenu = false
@@ -907,7 +911,7 @@ struct FluxScreen: View, Equatable {
         #endif
         .onPlayPauseCommand { dispatch(.playPause) }
         #else
-        .onKeyPress(keys: [.upArrow, .downArrow, .leftArrow, .rightArrow, .return, .escape, .space, "f", .tab, "\u{19}"], phases: [.down, .repeat]) { press in
+        .onKeyPress(keys: [.upArrow, .downArrow, .leftArrow, .rightArrow, .return, .escape, .space, "f", "o", .tab, "\u{19}"], phases: [.down, .repeat]) { press in
             #if os(macOS)
             if deskDismissWithKey(press.key) { return .handled }
             #endif
@@ -950,6 +954,9 @@ struct FluxScreen: View, Equatable {
             else if press.key == .return { dispatch(.select) }
             else if press.key == .escape { dispatch(.back) }
             else if press.key == .space { dispatch(.playPause) }
+            // O stands for OK held on a remote: the favourites, lists and
+            // dock of the selected title, or the settings of the player.
+            else if press.key == "o" && !press.modifiers.contains(.command) && press.phase == .down { dispatch(.options) }
             else { return .ignored }
             return .handled
         }
@@ -3552,6 +3559,10 @@ struct FluxScreen: View, Equatable {
     }
     #if FLUX_CATALOG_UI_TESTING
     private func reportSearchFocusFixture(keysPlayed: Bool = false) {
+        #if os(macOS)
+        // In the settings the keyboard is on a control of theirs, or in the dock.
+        let focusID = page == .settings ? settingsKeys.focus ?? self.focusID : self.focusID
+        #endif
         fixtureSearchObservation?(CatalogSearchFocusSnapshot(focusID: focusID, nativeFocusID: systemFocus, query: library.search,
             filtering: library.isFiltering, pending: pendingCatalogFocus != nil, heldItemID: heldItem?.id, keysPlayed: keysPlayed))
     }
@@ -3941,6 +3952,9 @@ struct FluxScreen: View, Equatable {
                 return
             }
         }
+        #if os(macOS)
+        if page == .settings, settingsKeyboard(action) { return }
+        #endif
         switch action {
         case .up, .down, .left, .right:
             #if os(macOS)
@@ -4521,6 +4535,9 @@ extension FluxScreen {
                              goBack: barFlanks ? nil : { back() }, goHome: barFlanks ? nil : { showHome() },
                              close: { leaveSettings() }, sourceSaved: { home() })
             .environmentObject(library)
+            #if os(macOS)
+            .environment(settingsKeys)
+            #endif
             .id(settingsRequest.revision)
     }
 
@@ -5139,6 +5156,9 @@ extension FluxScreen {
     /// press from the content to the bar, one more to the search, one more
     /// to the column, and one more back to the title that was left.
     func cycleZone(forward: Bool) -> Bool {
+        #if os(macOS)
+        if page == .settings, heldItem == nil, !modalOpen, dockFan == nil { return settingsHop(forward: forward) }
+        #endif
         guard page == .catalogue, heldItem == nil, !modalOpen, !deskCovered, dockFan == nil else { return false }
         let current = zoneMode ? zoneFocus : deskCurrentZone
         guard let next = DeskZoneMap.hop(from: current, forward: forward, available: deskZones) else { return false }
@@ -5149,6 +5169,16 @@ extension FluxScreen {
 
     /// An arrow held with Command goes straight to the zone on that side.
     func jumpZone(_ action: RemoteAction) -> Bool {
+        #if os(macOS)
+        if page == .settings, heldItem == nil, !modalOpen, dockFan == nil {
+            let keys = settingsKeys
+            remoteNavigationActive = true
+            if action == dockPosition.outward, dockVisible { keys.leave(); focusID = FluxDockItem.settings.focusID; return true }
+            if action == .left { keys.enterPages(); if keys.focus != nil { focusID = nil }; return keys.focus != nil }
+            if action == .right, keys.enterContent() { focusID = nil; return true }
+            return false
+        }
+        #endif
         guard page == .catalogue, heldItem == nil, !modalOpen, !deskCovered, dockFan == nil else { return false }
         let zones = deskZones
         let wanted: [DeskZone]
@@ -5164,6 +5194,59 @@ extension FluxScreen {
         enterZone(zone)
         return true
     }
+
+    #if os(macOS)
+    /// The keys of a Mac on the settings, as the remote of a television
+    /// walks them. From the dock, the way into the screen enters the column
+    /// on the page shown; there the arrows go from control to control and
+    /// show each page of the column, OK does what a click does, and past the
+    /// last control toward the dock the keyboard returns to the dock.
+    func settingsKeyboard(_ action: RemoteAction) -> Bool {
+        let keys = settingsKeys
+        guard keys.focus != nil else {
+            guard action == dockPosition.inward, dockVisible, dockFan == nil,
+                  let id = focusID, (barLeadIDs + dockPlan().ids).contains(id) else { return false }
+            keys.enterPages()
+            guard keys.focus != nil else { return false }
+            focusID = nil
+            return true
+        }
+        switch action {
+        case .up, .down, .left, .right:
+            if let next = keys.neighbour(action) { keys.place(next) }
+            else if action == dockPosition.outward, dockVisible { keys.leave(); focusID = FluxDockItem.settings.focusID }
+            return true
+        case .select:
+            keys.activate()
+            return true
+        case .options:
+            // The settings have no title to keep.
+            return true
+        default:
+            return false
+        }
+    }
+
+    /// Tab on the settings: the column, the page, then the dock.
+    func settingsHop(forward: Bool) -> Bool {
+        let keys = settingsKeys
+        remoteNavigationActive = true
+        var zone = keys.focus == nil ? 2 : keys.onPages ? 0 : 1
+        for _ in 0..<3 {
+            zone = (zone + (forward ? 1 : 2)) % 3
+            switch zone {
+            case 0:
+                keys.enterPages()
+                if keys.focus != nil { focusID = nil; return true }
+            case 1:
+                if keys.enterContent() { focusID = nil; return true }
+            default:
+                if dockVisible { keys.leave(); focusID = FluxDockItem.settings.focusID; return true }
+            }
+        }
+        return false
+    }
+    #endif
 
     /// Frame of a zone while Back shows the zones of the screen.
     @ViewBuilder func zoneFrame(_ zone: DeskZone, radius: CGFloat, outset: CGFloat = 0, labelled: Bool = true) -> some View {
@@ -5271,6 +5354,12 @@ extension FluxScreen {
         #if !os(tvOS)
         // On a television the settings take the remote on their own pages.
         systemFocus = focusID
+        #endif
+        #if os(macOS)
+        // Opened from the keyboard, they take it too, on the page shown.
+        settingsKeys.leave()
+        settingsKeys.entering = remoteNavigationActive
+        if remoteNavigationActive { focusID = nil }
         #endif
         recordPlace()
     }

@@ -403,10 +403,12 @@ struct DeskKeyStyle: ButtonStyle {
         @Environment(\.isFocused) private var isFocused
         @Environment(\.isEnabled) private var isEnabled
         @Environment(\.accessibilityReduceMotion) private var reduceMotion
+        /// The keyboard of the settings of a Mac is on this key.
+        @Environment(\.deskTargeted) private var targeted
         @State private var hovered = false
 
         var body: some View {
-            let lit = (isFocused || hovered) && isEnabled
+            let lit = (isFocused || hovered || targeted) && isEnabled
             let shape = RoundedRectangle(cornerRadius: Desk.pt(14), style: .continuous)
             configuration.label
                 .font(Desk.font(.body, .semibold)).lineLimit(1)

@@ -1,6 +1,8 @@
-# FLUX IPTV 0.9.0 — build 38 — Bureau Mac : dock, colonnes et panneaux de verre
+# FLUX IPTV 0.9.1 — build 39 — Bureau Mac : dock, colonnes et panneaux de verre
 
 Application native SwiftUI pour macOS, iOS et tvOS.
+
+**La 0.9.1 ouvre les Réglages au clavier du Mac** : ses flèches les parcourent comme la télécommande d’une Apple TV, et **O** ouvre « Favoris, listes et dock » pour le titre sélectionné.
 
 **La 0.9.0 donne au Mac et à l’Apple TV la même interface de bureau.** L’application s’ouvre sur un accueil où le dock occupe le milieu de l’écran ; il se range ensuite en bas, au centre, comme le Dock de macOS, sous les colonnes qui accompagnent les trois espaces. La télévision se lit en trois colonnes, les fiches flottent en verre sur le catalogue flouté, et plus aucune feuille ne recouvre la fenêtre : catégories, pays, langues, listes, sources et réglages sont dessinés dans l’interface, y compris pendant la lecture. Les films et les séries se filtrent par langue, comme les chaînes par pays. Le dock garde ce que l’on y range, comme celui d’un Mac : des raccourcis vers une chaîne, un film, une série, une saison ou un épisode, dans des sections que l’on nomme, la vidéo en cours, les derniers titres regardés, et des listes de favoris en dossiers qui s’ouvrent en éventail.
 
@@ -88,7 +90,9 @@ Sur Apple TV ce sont les mêmes panneaux, le dock restant dessous. La fiche gard
 
 ### Clavier
 
-Les flèches déplacent la sélection entre la colonne, la grille, l’aperçu et le dock, et parcourent le dock de l’accueil ; **Entrée** valide, **Échap** revient à l’écran précédent jusqu’à l’accueil — maintenue, droit à l’accueil —, **Tab** change de zone et **⌘ + flèche** va droit à la zone de ce côté, **Espace** ouvre l’élément sélectionné, **⌘F** place le curseur dans la recherche et **⌘⇧F** bascule le lecteur en plein écran. Les réglages se parcourent encore au pointeur.
+Les flèches déplacent la sélection entre la colonne, la grille, l’aperçu et le dock, et parcourent le dock de l’accueil ; **Entrée** valide, **Échap** revient à l’écran précédent jusqu’à l’accueil — maintenue, droit à l’accueil —, **Tab** change de zone et **⌘ + flèche** va droit à la zone de ce côté, **Espace** ouvre l’élément sélectionné, **⌘F** place le curseur dans la recherche et **⌘⇧F** bascule le lecteur en plein écran. **O** ouvre « Favoris, listes et dock » pour le titre sélectionné, comme OK maintenu sur une télécommande, et les réglages pendant la lecture.
+
+Dans **Réglages**, les flèches vont d’un contrôle à l’autre : parcourir la colonne affiche chaque page, **Droite** entre dans la page, **Gauche** revient sur la page en cours, **Entrée** fait ce que fait un clic, et au-delà de la dernière ligne la sélection revient au dock. **Tab** passe de la colonne à la page, puis au dock.
 
 ## Trois espaces, six thèmes chacun
 
@@ -175,11 +179,11 @@ Sur Mac et sur Apple TV, **Réglages** pose deux panneaux de verre sur l’image
 
 Un réglage est enregistré dès qu’il est choisi : il n’y a pas de bouton Enregistrer à ne pas manquer. Ceux que le moteur lit à l’ouverture d’un flux — moteur, décodage, cache, délais — s’appliquent au flux suivant ; pendant une lecture, une ligne le dit et propose **Relancer le flux**.
 
-Sur Apple TV, parcourir la liste des pages affiche chacune aussitôt, **Droite** entre dans la page et **Gauche** revient sur la page en cours. Les choix sont des touches du bureau, lisibles et jamais coupées, avec leur nom au-dessus.
+Sur Apple TV comme au clavier du Mac, parcourir la liste des pages affiche chacune aussitôt, **Droite** entre dans la page et **Gauche** revient sur la page en cours. Les choix sont des touches du bureau, lisibles et jamais coupées, avec leur nom au-dessus.
 
 ## Ce qui reste à faire pour le clavier du Mac
 
-Les pages des Réglages se parcourent encore au pointeur : les flèches ne les traversent pas sur Mac, alors que la télécommande les atteint sur Apple TV. Les boutons d’une jaquette (étoile, options) se déclenchent au pointeur ou par un appui long.
+Le curseur du volume, dans Réglages › Audio et sous-titres, se règle au pointeur ; **Sourdine** est au clavier. Le formulaire d’une source garde les champs du système, hors des flèches. Aucune touche réelle n’a encore parcouru les Réglages : le banc joue les touches par le traitement du clavier.
 
 ## Installer
 
@@ -187,7 +191,7 @@ L’archive contient les sources et l’installateur Mac, pas un binaire Apple p
 
 1. Sur Mac, quitter l’ancienne app et arrêter le lancement depuis Xcode.
 2. Décompresser, puis ouvrir **Installer Flux IPTV.command**. L’installateur compile sur ce Mac et vérifie le démarrage ; cette vérification ne remplace pas un essai de lecture.
-3. Vérifier **FLUX 0.9.0 · build 38** en bas de la colonne de Réglages.
+3. Vérifier **FLUX 0.9.1 · build 39** en bas de la colonne de Réglages.
 
 Prérequis de déploiement : macOS 14, iOS 17 ou tvOS 17. Installer Xcode complet pour compiler ; le verre natif demande la version 26 des systèmes, les versions antérieures reçoivent un matériau translucide. Sur iPhone/iPad ou Apple TV, ouvrir `FluxIPTV.xcodeproj`, choisir **FluxIPTViOS** ou **FluxIPTVTV**, puis renseigner l’équipe de signature pour un appareil physique.
 
@@ -201,7 +205,7 @@ Ouvrir **`FluxIPTV-AppleTV.xcodeproj`**, ou lancer **`Ouvrir Flux IPTV Apple TV.
 
 ## Validation
 
-Le périmètre vérifié pour cette version est dans [docs/VALIDATION-0.9.0.md](docs/VALIDATION-0.9.0.md), avec ce qui ne l’a pas été. Les tests unitaires du cœur ne démontrent ni la compilation des frameworks Apple, ni la fluidité réelle, ni la lecture des flux du fournisseur. Les résultats des versions précédentes ne valident pas la nouvelle interface du Mac.
+Le périmètre vérifié pour cette version est dans [docs/VALIDATION-0.9.1.md](docs/VALIDATION-0.9.1.md), qui s’ajoute à celui de la 0.9.0 dans [docs/VALIDATION-0.9.0.md](docs/VALIDATION-0.9.0.md), avec ce qui ne l’a pas été. Les tests unitaires du cœur ne démontrent ni la compilation des frameworks Apple, ni la fluidité réelle, ni la lecture des flux du fournisseur. Les résultats des versions précédentes ne valident pas la nouvelle interface du Mac.
 
 ## GitHub Actions et pack complet
 

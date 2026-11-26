@@ -116,6 +116,12 @@ struct PlaybackSettingsView: View {
     /// Page under the remote: walking the list shows each page at once.
     @FocusState private var focusedPage: Page?
     #endif
+    #if os(macOS)
+    /// The keyboard of the window, which the screen gives to the settings.
+    @Environment(DeskKeys.self) private var keys: DeskKeys?
+    /// The field being typed in: it takes the keys as soon as it shows.
+    @FocusState private var typing: String?
+    #endif
 
     /// Sources and the dock belong to the screen drawn in the window.
     private var pages: [Page] { Page.allCases.filter { (inline && !overPlayback) || ($0 != .sources && $0 != .dock) } }
@@ -145,7 +151,18 @@ struct PlaybackSettingsView: View {
                 Task { @MainActor in await Task.yield(); focusedPage = shown }
             }
             #endif
+            #if os(macOS)
+            // Opened from the keyboard, the settings take it on the row of
+            // the page shown, as a television gives them the remote.
+            if inline, let keys {
+                keys.pageID = DeskKeys.pagePrefix + page.rawValue
+                if keys.entering { keys.entering = false; keys.focus = keys.pageID }
+            }
+            #endif
         }
+        #if os(macOS)
+        .onChange(of: page) { _, shown in keys?.pageID = DeskKeys.pagePrefix + shown.rawValue }
+        #endif
         // In the window the settings are saved as they are chosen: nothing is
         // lost by closing the panel, and nothing waits for a Save key.
         .onChange(of: draft) { _, value in
@@ -218,7 +235,8 @@ struct PlaybackSettingsView: View {
                     ScrollView {
                         VStack(alignment: .leading, spacing: Desk.pt(5)) {
                             ForEach(pages) { destination in
-                                Button { page = destination; sourceEditor = nil; removingSource = nil } label: {
+                                let show = { page = destination; sourceEditor = nil; removingSource = nil }
+                                Button(action: show) {
                                     LiveTVScopeLabel(title: destination.title, symbol: destination.icon,
                                                      selected: page == destination, focused: false, accent: .cyan)
                                 }
@@ -231,6 +249,8 @@ struct PlaybackSettingsView: View {
                                 .background(TVCatalogControlFrameProbe(identifier: "settings-page-\(destination.rawValue)").allowsHitTesting(false))
                                 #endif
                                 .accessibilityValue(page == destination ? "Sélectionné" : "")
+                                // The keyboard of a Mac shows each page as it walks the column.
+                                .deskTarget(DeskKeys.pagePrefix + destination.rawValue, follows: true, perform: show)
                             }
                         }.padding(.vertical, Desk.pt(3))
                     }
@@ -251,11 +271,17 @@ struct PlaybackSettingsView: View {
                         Text(page.subtitle).font(Desk.font(.callout)).foregroundStyle(.secondary)
                     }
                     .padding(.horizontal, Desk.pt(26)).padding(.top, Desk.pt(22)).padding(.bottom, Desk.pt(14))
-                    ScrollView {
-                        settingsContent
-                            .frame(maxWidth: Desk.pt(960), alignment: .leading)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.horizontal, Desk.pt(26)).padding(.bottom, Desk.pt(24))
+                    ScrollViewReader { proxy in
+                        ScrollView {
+                            settingsContent
+                                .frame(maxWidth: Desk.pt(960), alignment: .leading)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.horizontal, Desk.pt(26)).padding(.bottom, Desk.pt(24))
+                        }
+                        #if os(macOS)
+                        // The control that the keyboard reaches comes into view.
+                        .onAppear { keys?.scroll = { id in withAnimation(.easeOut(duration: 0.18)) { proxy.scrollTo(id) } } }
+                        #endif
                     }.id(page)
                     if playback.restartPending { restartBar.padding(Desk.pt(14)) }
                 }
@@ -267,6 +293,11 @@ struct PlaybackSettingsView: View {
                 #endif
             }
         }
+        #if os(macOS)
+        // Where each control stands, for the arrows of the keyboard.
+        .coordinateSpace(name: DeskKeys.space)
+        .onPreferenceChange(DeskTargetFrames.self) { frames in keys?.update(frames) }
+        #endif
         .padding(.horizontal, Desk.pt(24))
         #if !os(tvOS)
         .controlSize(.large)
@@ -298,11 +329,18 @@ struct PlaybackSettingsView: View {
                 .font(Desk.font(.callout)).foregroundStyle(.white.opacity(0.86))
                 .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: Desk.pt(8))
-            Button("Relancer le flux") { playback.retry(preferred: nil); close() }
-                .deskKey(prominent: true)
+            settingsKey("Relancer le flux", prominent: true) { playback.retry(preferred: nil); close() }
                 .accessibilityIdentifier("settings-restart")
         }
         .padding(Desk.pt(12)).modifier(SettingsCard())
+    }
+
+    /// A key of the settings, which the keyboard of a Mac reaches as the pointer does.
+    private func settingsKey(_ title: String, role: ButtonRole? = nil, prominent: Bool = false,
+                             action: @escaping () -> Void) -> some View {
+        Button(title, role: role, action: action)
+            .deskKey(prominent: prominent)
+            .deskTarget("key-\(title)", perform: action)
     }
 
     private var saveBar: some View {
@@ -368,12 +406,15 @@ struct PlaybackSettingsView: View {
             case .network:
                 section("Profils réseau", "Ajustez le compromis entre zapping et stabilité.") {
                     ForEach(PlaybackSettings.Profile.allCases, id: \.self) { profile in
-                        Button {
+                        let apply = {
                             let old = draft
                             draft = profile.settings
                             draft.engine = old.engine; draft.hardware = old.hardware; draft.skipSeconds = old.skipSeconds
                             draft.bitrateMbps = old.bitrateMbps; draft.nativeWait = old.nativeWait; draft.reconnectLive = old.reconnectLive
-                        } label: { Label(profile.title, systemImage: "slider.horizontal.3") }.deskKey()
+                        }
+                        Button(action: apply) { Label(profile.title, systemImage: "slider.horizontal.3") }
+                            .deskKey()
+                            .deskTarget("profile-\(profile.title)", perform: apply)
                     }
                     choice("Cache réseau", value: $draft.cacheMS, values: [250, 500, 700, 1000, 1500, 2500, 5000, 10000, 15000], unit: "ms")
                     choice("Délai d’ouverture", value: $draft.timeout, values: [5, 10, 12, 15, 20, 30, 40, 60, 90], unit: "s")
@@ -400,6 +441,8 @@ struct PlaybackSettingsView: View {
                         Text("Volume")
                         Slider(value: Binding(get: { playback.localVolume }, set: { playback.setVolume($0) }), in: 0...1)
                         Button(playback.muted ? "Rétablir le son" : "Sourdine") { playback.toggleMute() }
+                            .deskKey()
+                            .deskTarget("key-mute") { playback.toggleMute() }
                     }
                     #endif
                 }
@@ -415,7 +458,7 @@ struct PlaybackSettingsView: View {
                             actionButton("Effacer", icon: "trash", tint: .red) { playback.clearHistory(); confirmingClear = false }
                         }
                     } else {
-                        Button("Effacer l’historique", role: .destructive) { confirmingClear = true }.deskKey()
+                        settingsKey("Effacer l’historique", role: .destructive) { confirmingClear = true }
                     }
                     Text("Les identifiants restent dans le stockage choisi pour chaque source. Les sources et les favoris ne sont pas supprimés par cette action.").font(Desk.font(.caption)).foregroundStyle(.secondary)
                 }
@@ -427,9 +470,9 @@ struct PlaybackSettingsView: View {
                     if let error = playback.playbackError { Text(error).foregroundStyle(.orange) }
                     if playback.recoveryMode {
                         Label("Session VLC précédente non terminée : AVPlayer uniquement", systemImage: "shield.lefthalf.filled").foregroundStyle(.orange)
-                        Button("Effacer le marqueur de récupération") { playback.resumeNormalMode() }.deskKey()
+                        settingsKey("Effacer le marqueur de récupération") { playback.resumeNormalMode() }
                     } else { Label("Mode normal", systemImage: "checkmark.circle") }
-                    if playback.playingItem != nil { Button("Réessayer le flux") { playback.retry(); close() }.deskKey() }
+                    if playback.playingItem != nil { settingsKey("Réessayer le flux") { playback.retry(); close() } }
                     Text("Si l’app se ferme brutalement, conservez le rapport de crash macOS (.ips) pour identifier la cause exacte.").font(Desk.font(.caption)).foregroundStyle(.secondary)
                 }
             }
@@ -491,6 +534,7 @@ struct PlaybackSettingsView: View {
                         .background(.white.opacity(0.09), in: Capsule())
                         .contentShape(Capsule())
                 }.buttonStyle(DeskFocusStyle(radius: Desk.pt(22))).accessibilityIdentifier("settings-sources-back")
+                .deskTarget("sources-back") { sourceEditor = nil }
                 AddSourceSheet(existing: edited(editor), onSaved: { sourceEditor = nil; sourceSaved() },
                                inlineClose: { sourceEditor = nil })
                     .environmentObject(library)
@@ -520,6 +564,7 @@ struct PlaybackSettingsView: View {
                     .overlay(shape.strokeBorder(style: StrokeStyle(lineWidth: 1.2, dash: [7, 6])).foregroundStyle(.white.opacity(0.28)).allowsHitTesting(false))
                     .contentShape(shape)
                 }.buttonStyle(DeskFocusStyle(radius: Desk.pt(20))).accessibilityIdentifier("settings-add-source")
+                .deskTarget("sources-add") { sourceEditor = .new; removingSource = nil }
                 Label("Les identifiants restent sur cet appareil, dans le stockage choisi pour chaque source.", systemImage: "lock.shield")
                     .font(Desk.font(.caption)).foregroundStyle(.secondary).padding(.top, Desk.pt(4))
             }
@@ -550,18 +595,19 @@ struct PlaybackSettingsView: View {
                 }
             }
             Spacer(minLength: Desk.pt(12))
+            let key = source.id.uuidString
             if removingSource == source {
                 Text("Supprimer cette source ?").font(Desk.font(.callout, .semibold))
-                actionButton("Annuler", icon: "xmark") { removingSource = nil }
-                actionButton("Supprimer", icon: "trash", tint: .red) { library.removeSource(source); removingSource = nil }
+                actionButton("Annuler", icon: "xmark", key: "keep-\(key)") { removingSource = nil }
+                actionButton("Supprimer", icon: "trash", tint: .red, key: "remove-\(key)") { library.removeSource(source); removingSource = nil }
             } else {
                 if active {
-                    actionButton("Actualiser", icon: "arrow.clockwise") { library.reloadSelected() }.disabled(library.isLoading)
+                    actionButton("Actualiser", icon: "arrow.clockwise", key: "reload-\(key)") { library.reloadSelected() }.disabled(library.isLoading)
                 } else {
-                    actionButton("Utiliser", icon: "checkmark.circle", tint: .cyan) { Task { await library.selectSource(source.id) } }
+                    actionButton("Utiliser", icon: "checkmark.circle", tint: .cyan, key: "use-\(key)") { Task { await library.selectSource(source.id) } }
                 }
-                if source.kind != .m3uFile { actionButton("Modifier", icon: "pencil") { sourceEditor = .existing(source) } }
-                actionButton("Supprimer", icon: "trash", iconOnly: true) { removingSource = source }
+                if source.kind != .m3uFile { actionButton("Modifier", icon: "pencil", key: "edit-\(key)") { sourceEditor = .existing(source) } }
+                actionButton("Supprimer", icon: "trash", iconOnly: true, key: "ask-\(key)") { removingSource = source }
             }
         }
         .padding(Desk.pt(16)).frame(maxWidth: .infinity, alignment: .leading)
@@ -571,7 +617,10 @@ struct PlaybackSettingsView: View {
         .accessibilityIdentifier("settings-source-\(source.id.uuidString)")
     }
 
-    private func actionButton(_ title: String, icon: String, tint: Color? = nil, iconOnly: Bool = false, action: @escaping () -> Void) -> some View {
+    /// `key` names the button for the keyboard of a Mac where its title
+    /// repeats on the page.
+    private func actionButton(_ title: String, icon: String, tint: Color? = nil, iconOnly: Bool = false, key: String? = nil,
+                              action: @escaping () -> Void) -> some View {
         let shape = RoundedRectangle(cornerRadius: Desk.pt(13), style: .continuous)
         return Button(action: action) {
             Group {
@@ -584,6 +633,7 @@ struct PlaybackSettingsView: View {
             .overlay(shape.strokeBorder((tint ?? .white).opacity(0.22), lineWidth: 1).allowsHitTesting(false))
             .contentShape(shape)
         }.buttonStyle(DeskFocusStyle(radius: Desk.pt(13))).accessibilityLabel(title)
+        .deskTarget("action-\(key ?? title)", perform: action)
     }
 
     // MARK: Dock
@@ -618,9 +668,9 @@ struct PlaybackSettingsView: View {
                     }
                 }
                 DeskToggle(title: "Agrandir les icônes au survol", isOn: $dockMagnifies)
-                Button("Dock par défaut") {
+                settingsKey("Dock par défaut") {
                     dockPosition = .defaultValue; dockTheme = .defaultValue; dockOrder = ""; dockMagnifies = true
-                }.deskKey()
+                }
             }
             section("Raccourcis et dossiers", "Une chaîne, un film, une série, une saison ou un épisode se gardent dans le dock depuis « Favoris, listes et dock » : l’étoile d’un titre, ou un appui long sur lui. Une section s’y tient à part, entre deux séparateurs. Un dossier y est une seule icône, qui s’ouvre en éventail ; il peut en contenir d’autres, et porter l’icône de votre choix. Une liste de favoris y devient aussi un dossier, depuis son écran.") {
                 DeskToggle(title: "Afficher la vidéo en cours et les récents", isOn: $dockRecents)
@@ -637,7 +687,7 @@ struct PlaybackSettingsView: View {
                                 .font(Desk.font(.caption)).foregroundStyle(.secondary)
                         }
                         Spacer(minLength: Desk.pt(8))
-                        actionButton("Retirer le dossier \(list.name) du dock", icon: "minus.circle", iconOnly: true) {
+                        actionButton("Retirer le dossier \(list.name) du dock", icon: "minus.circle", iconOnly: true, key: "stack-\(list.id)") {
                             library.setDockStack(list.id, shown: false)
                         }
                     }
@@ -663,11 +713,18 @@ struct PlaybackSettingsView: View {
                             .strokeBorder(newFolderInvalid ? Color.orange : .white.opacity(0.12), lineWidth: 1)
                     }
                     .accessibilityIdentifier("settings-dock-folder-name")
-                actionButton("Créer le dossier", icon: "checkmark", iconOnly: true) { createDockFolder() }
-                actionButton("Annuler", icon: "xmark", iconOnly: true) { creatingDockFolder = false }
+                    #if os(macOS)
+                    // The name is typed at once; Escape gives up, as Annuler.
+                    .focused($typing, equals: "new-folder")
+                    .onAppear { Task { @MainActor in await Task.yield(); typing = "new-folder" } }
+                    .onExitCommand { endFolderCreation() }
+                    #endif
+                    .deskTarget("field-new-folder") { typeIn("new-folder") }
+                actionButton("Créer le dossier", icon: "checkmark", iconOnly: true, key: "new-folder-create") { createDockFolder() }
+                actionButton("Annuler", icon: "xmark", iconOnly: true, key: "new-folder-cancel") { endFolderCreation() }
             }
         } else {
-            actionButton("Créer un dossier du dock", icon: "folder.badge.plus") {
+            actionButton("Créer un dossier du dock", icon: "folder.badge.plus", key: "new-folder") {
                 newFolderName = ""; newFolderInvalid = false; creatingDockFolder = true
             }
             .accessibilityIdentifier("settings-dock-new-folder")
@@ -675,8 +732,19 @@ struct PlaybackSettingsView: View {
     }
 
     private func createDockFolder() {
-        if library.createDockSection(name: newFolderName, folded: true) != nil { creatingDockFolder = false; newFolderInvalid = false }
+        if library.createDockSection(name: newFolderName, folded: true) != nil { endFolderCreation() }
         else { newFolderInvalid = true }
+    }
+    /// The row of the new folder closes; the keyboard returns to its key.
+    private func endFolderCreation() {
+        creatingDockFolder = false; newFolderInvalid = false
+        returnKeys(to: "action-new-folder")
+    }
+    /// The keyboard of a Mac types in a field of the settings.
+    private func typeIn(_ field: String) {
+        #if os(macOS)
+        typing = field
+        #endif
     }
 
     /// Where a folder may go from where it is: the bar, then each folder
@@ -713,8 +781,14 @@ struct PlaybackSettingsView: View {
                             .strokeBorder(sectionNameInvalid ? Color.orange : .white.opacity(0.12), lineWidth: 1)
                     }
                     .accessibilityIdentifier("settings-dock-section-name")
-                actionButton("Enregistrer le nom", icon: "checkmark", iconOnly: true) { renameDockSection(part) }
-                actionButton("Annuler", icon: "xmark", iconOnly: true) { renamingSection = nil }
+                    #if os(macOS)
+                    .focused($typing, equals: "rename-\(part.id)")
+                    .onAppear { Task { @MainActor in await Task.yield(); typing = "rename-\(part.id)" } }
+                    .onExitCommand { endRenaming(part) }
+                    #endif
+                    .deskTarget("field-rename-\(part.id)") { typeIn("rename-\(part.id)") }
+                actionButton("Enregistrer le nom", icon: "checkmark", iconOnly: true, key: "rename-save-\(part.id)") { renameDockSection(part) }
+                actionButton("Annuler", icon: "xmark", iconOnly: true, key: "rename-cancel-\(part.id)") { endRenaming(part) }
             } else {
                 VStack(alignment: .leading, spacing: Desk.pt(2)) {
                     Text(part.name).font(Desk.font(.body, .semibold)).lineLimit(1)
@@ -725,30 +799,30 @@ struct PlaybackSettingsView: View {
                 }
                 Spacer(minLength: Desk.pt(8))
                 if confirmingSection == part.id {
-                    actionButton("Garder", icon: "xmark") { confirmingSection = nil }
+                    actionButton("Garder", icon: "xmark", key: "keep-\(part.id)") { confirmingSection = nil }
                     actionButton(part.isFolder ? (inside > 0 ? "Supprimer le dossier et ceux qu’il contient" : "Supprimer le dossier") : "Supprimer la section",
-                                 icon: "trash", tint: .red) {
+                                 icon: "trash", tint: .red, key: "delete-\(part.id)") {
                         library.deleteDockSection(part.id); confirmingSection = nil
                     }
                 } else {
                     if part.isFolder {
-                        actionButton("Icône de \(part.name)", icon: "photo.on.rectangle.angled", iconOnly: true) {
+                        actionButton("Icône de \(part.name)", icon: "photo.on.rectangle.angled", iconOnly: true, key: "symbol-\(part.id)") {
                             pickingSymbol = pickingSymbol == part.id ? nil : part.id
                         }
-                        actionButton("Ranger \(part.name) ailleurs", icon: "arrow.turn.down.right", iconOnly: true) { moveDockFolder(part) }
+                        actionButton("Ranger \(part.name) ailleurs", icon: "arrow.turn.down.right", iconOnly: true, key: "move-\(part.id)") { moveDockFolder(part) }
                     }
                     if !part.isDefault, part.parentID == nil {
                         // One icon that opens as a fan, or its shortcuts side by side in the bar.
                         actionButton(part.folded ? "Afficher les raccourcis de \(part.name) dans le dock" : "Faire de \(part.name) un dossier",
-                                     icon: part.folded ? "rectangle.split.3x1" : "folder", iconOnly: true) {
+                                     icon: part.folded ? "rectangle.split.3x1" : "folder", iconOnly: true, key: "fold-\(part.id)") {
                             library.setDockFolded(part.id, !part.folded)
                         }
                     }
-                    actionButton("Renommer \(part.name)", icon: "pencil", iconOnly: true) {
+                    actionButton("Renommer \(part.name)", icon: "pencil", iconOnly: true, key: "rename-\(part.id)") {
                         sectionName = part.name; sectionNameInvalid = false; confirmingSection = nil; renamingSection = part.id
                     }
                     if !part.isDefault {
-                        actionButton("Supprimer \(part.name)", icon: "trash", iconOnly: true) { renamingSection = nil; confirmingSection = part.id }
+                        actionButton("Supprimer \(part.name)", icon: "trash", iconOnly: true, key: "ask-\(part.id)") { renamingSection = nil; confirmingSection = part.id }
                     }
                 }
             }
@@ -758,12 +832,14 @@ struct PlaybackSettingsView: View {
         if pickingSymbol == part.id, part.isFolder {
             // The icons a folder may be given, and the pictures of its titles.
             LazyVGrid(columns: [GridItem(.adaptive(minimum: Desk.pt(54)), spacing: Desk.pt(8))], alignment: .leading, spacing: Desk.pt(8)) {
-                actionButton("Images de ses titres", icon: "rectangle.stack.fill", tint: part.symbol == nil ? .cyan : nil, iconOnly: true) {
-                    library.setDockSymbol(part.id, nil); pickingSymbol = nil
+                actionButton("Images de ses titres", icon: "rectangle.stack.fill", tint: part.symbol == nil ? .cyan : nil, iconOnly: true,
+                             key: "symbol-\(part.id)-covers") {
+                    library.setDockSymbol(part.id, nil); pickingSymbol = nil; returnKeys(to: "action-symbol-\(part.id)")
                 }
                 ForEach(DockSection.symbols, id: \.self) { symbol in
-                    actionButton(DockSection.symbolTitle(symbol), icon: symbol, tint: part.symbol == symbol ? .cyan : nil, iconOnly: true) {
-                        library.setDockSymbol(part.id, symbol); pickingSymbol = nil
+                    actionButton(DockSection.symbolTitle(symbol), icon: symbol, tint: part.symbol == symbol ? .cyan : nil, iconOnly: true,
+                                 key: "symbol-\(part.id)-\(symbol)") {
+                        library.setDockSymbol(part.id, symbol); pickingSymbol = nil; returnKeys(to: "action-symbol-\(part.id)")
                     }
                 }
             }
@@ -776,7 +852,7 @@ struct PlaybackSettingsView: View {
                     .background(FluxDockItem(kind: shortcut.kind).tint.opacity(0.16), in: RoundedRectangle(cornerRadius: Desk.pt(9), style: .continuous))
                 Text(shortcut.title).font(Desk.font(.callout)).lineLimit(1)
                 Spacer(minLength: Desk.pt(8))
-                actionButton("Retirer \(shortcut.title) du dock", icon: "minus.circle", iconOnly: true) {
+                actionButton("Retirer \(shortcut.title) du dock", icon: "minus.circle", iconOnly: true, key: "unpin-\(part.id)-\(shortcut.id)") {
                     // From this section only: another one may keep it.
                     _ = library.assignDock(shortcut, to: library.dockShelf.sections(holding: shortcut.id).subtracting([part.id]))
                 }
@@ -786,8 +862,18 @@ struct PlaybackSettingsView: View {
     }
 
     private func renameDockSection(_ part: DockSection) {
-        if library.renameDockSection(part.id, name: sectionName) { renamingSection = nil; sectionNameInvalid = false }
+        if library.renameDockSection(part.id, name: sectionName) { endRenaming(part) }
         else { sectionNameInvalid = true }
+    }
+    private func endRenaming(_ part: DockSection) {
+        renamingSection = nil; sectionNameInvalid = false
+        returnKeys(to: "action-rename-\(part.id)")
+    }
+    /// The keyboard of a Mac goes back to a key when the row it was on closes.
+    private func returnKeys(to id: String) {
+        #if os(macOS)
+        if keys?.focus != nil { keys?.focus = id }
+        #endif
     }
 
     private func positionTile(_ choice: FluxDockPosition) -> some View {
@@ -815,6 +901,7 @@ struct PlaybackSettingsView: View {
         .buttonStyle(DeskFocusStyle(radius: Desk.pt(16)))
         .accessibilityLabel("Dock \(choice.title.lowercased())").accessibilityAddTraits(selected ? .isSelected : [])
         .accessibilityIdentifier("settings-dock-position-\(choice.rawValue)")
+        .deskTarget("position-\(choice.rawValue)") { dockPosition = choice }
     }
 
     private func themeTile(_ choice: FluxDockTheme) -> some View {
@@ -840,6 +927,7 @@ struct PlaybackSettingsView: View {
         .buttonStyle(DeskFocusStyle(radius: Desk.pt(14)))
         .accessibilityLabel("Thème \(choice.title)").accessibilityAddTraits(selected ? .isSelected : [])
         .accessibilityIdentifier("settings-dock-theme-\(choice.rawValue)")
+        .deskTarget("dock-theme-\(choice.rawValue)") { dockTheme = choice }
     }
 
     // MARK: Interface
@@ -874,11 +962,13 @@ struct PlaybackSettingsView: View {
                         }.padding(Desk.pt(10)).frame(maxWidth: .infinity, alignment: .leading)
                             .background(.white.opacity(clubProfile == concept ? 0.16 : 0.04), in: RoundedRectangle(cornerRadius: Desk.pt(12)))
                     }
-                    #if os(tvOS)
-                    .buttonStyle(DeskFocusStyle(radius: Desk.pt(12)))
-                    #else
+                    // The same card on a Mac as on a television.
+                    #if os(iOS)
                     .buttonStyle(.bordered)
+                    #else
+                    .buttonStyle(DeskFocusStyle(radius: Desk.pt(12)))
                     #endif
+                    .deskTarget("profile-\(concept.rawValue)") { clubProfile = concept }
                 }
                 #if os(tvOS)
                 DeskToggle(title: "Liquid Glass", isOn: $glass)
@@ -906,9 +996,10 @@ struct PlaybackSettingsView: View {
                 }
                 #endif
                 if let remoteVisible { DeskToggle(title: "Afficher la télécommande virtuelle", isOn: remoteVisible) }
-                Picker("Télécommande virtuelle", selection: $remoteAppearance) { Text("Noire tactile").tag(RemoteAppearance.black); Text("Aluminium").tag(RemoteAppearance.silver) }
+                DeskChoice(title: "Télécommande virtuelle", options: [(RemoteAppearance.black, "Noire tactile"), (RemoteAppearance.silver, "Aluminium")],
+                           selection: $remoteAppearance)
                 #endif
-                Button("Apparence par défaut") {
+                settingsKey("Apparence par défaut") {
                     glass = true; motion = true; artwork = true; density = "cinema"
                     clubProfile = .neoVideoClub; stage = .orbit
                     cinemaTheme = .neo90; seriesTheme = .neo90; tvTheme = .neo90
@@ -926,12 +1017,12 @@ struct PlaybackSettingsView: View {
                     .accessibilityLabel("Aperçu : " + environment.title + ", " + selection.wrappedValue.title)
             }
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 160), spacing: Desk.pt(10))], spacing: Desk.pt(10)) {
-                ForEach(VideoClubTheme.allCases, id: \.self) { candidate in themeButton(candidate, selection: selection) }
+                ForEach(VideoClubTheme.allCases, id: \.self) { candidate in themeButton(candidate, selection: selection, place: environment.title) }
             }
         }
     }
 
-    private func themeButton(_ candidate: VideoClubTheme, selection: Binding<VideoClubTheme>) -> some View {
+    private func themeButton(_ candidate: VideoClubTheme, selection: Binding<VideoClubTheme>, place: String) -> some View {
         let palette = candidate.palette
         let selected = selection.wrappedValue == candidate
         return Button { selection.wrappedValue = candidate } label: {
@@ -952,6 +1043,7 @@ struct PlaybackSettingsView: View {
         }.buttonStyle(DeskFocusStyle(radius: Desk.pt(14)))
         .accessibilityLabel(candidate.title + (selected ? ", sélectionné" : ""))
         .accessibilityAddTraits(selected ? .isSelected : [])
+        .deskTarget("theme-\(place)-\(candidate.rawValue)") { selection.wrappedValue = candidate }
     }
 
     private func choice(_ title: String, value: Binding<Int>, values: [Int], unit: String) -> some View {
@@ -969,13 +1061,13 @@ struct PlaybackSettingsView: View {
             if tracks.isEmpty {
                 Text(empty).font(Desk.font(.body)).foregroundStyle(.secondary)
             } else {
-                if off { trackRow("Désactivés", selected: !tracks.contains(where: \.selected)) { select(nil) } }
-                ForEach(tracks) { track in trackRow(track.title, selected: track.selected) { select(track.id) } }
+                if off { trackRow("Désactivés", list: title, selected: !tracks.contains(where: \.selected)) { select(nil) } }
+                ForEach(tracks) { track in trackRow(track.title, list: title, selected: track.selected) { select(track.id) } }
             }
         }
     }
 
-    private func trackRow(_ title: String, selected: Bool, action: @escaping () -> Void) -> some View {
+    private func trackRow(_ title: String, list: String, selected: Bool, action: @escaping () -> Void) -> some View {
         let shape = RoundedRectangle(cornerRadius: Desk.pt(12), style: .continuous)
         return Button(action: action) {
             HStack(spacing: Desk.pt(10)) {
@@ -991,6 +1083,7 @@ struct PlaybackSettingsView: View {
         }
         .buttonStyle(DeskFocusStyle(radius: Desk.pt(12)))
         .accessibilityLabel(title).accessibilityValue(selected ? "Sélectionnée" : "")
+        .deskTarget("track-\(list)-\(title)", perform: action)
     }
 }
 

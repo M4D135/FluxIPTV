@@ -1,6 +1,6 @@
 # Feuille de route FLUX IPTV
 
-## Intégré dans les sources 0.9.0 — build 38
+## Intégré dans les sources 0.9.1 — build 39
 
 Le Mac et l’Apple TV reçoivent la même interface de bureau. iPhone et iPad conservent la disposition de la 0.8.9.
 
@@ -34,7 +34,7 @@ Le Mac et l’Apple TV reçoivent la même interface de bureau. iPhone et iPad c
 
 1. **Trois univers nettement distincts.** Non commencé. Le vidéoclub ne convient pas aux séries : les films sont une sortie (cinéma, vidéoclub), les séries et la télévision se regardent à la maison. Au moins trois décors 3D par espace, réalisés avec FERRO ou Blender selon le meilleur rendu. Piste proposée, à valider : Films = la sortie du soir ; Séries = le marathon de nuit, lumière tamisée ; TV = le direct, salon de jour.
 2. **Animations 3D de transition** à chaque sélection. Fait pour le boîtier entre le rayon et la fiche, et pour l’accueil qui se replie vers le dock ; à étendre aux autres sélections et aux autres plateformes.
-3. **Télécommandes et clavier : tous les boutons, le moins de pressions possible.** Fait pour la télécommande sur Apple TV : le moteur de focus atteint chaque contrôle par les flèches seules, chaque colonne répondant comme un tout, et Menu revient en arrière ; huit parcours XCUIRemote le vérifient. Restent : sur Mac, les pages des Réglages et les boutons des jaquettes, que les flèches ne parcourent pas encore ; les gestes du pavé tactile ; la détection de la télécommande ou son choix dans les réglages. L’historique de Retour, le modèle des zones et la navigation du bureau sont dans le cœur, sans dépendance à SwiftUI, pour un portage.
+3. **Télécommandes et clavier : tous les boutons, le moins de pressions possible.** Fait pour la télécommande sur Apple TV : le moteur de focus atteint chaque contrôle par les flèches seules, chaque colonne répondant comme un tout, et Menu revient en arrière ; huit parcours XCUIRemote le vérifient. Fait sur Mac le 26 novembre : les flèches parcourent les Réglages comme la télécommande, et **O** ouvre « Favoris, listes et dock » du titre sélectionné. Restent : sur Mac, le curseur du volume et le formulaire d’une source, hors des flèches ; les gestes du pavé tactile ; la détection de la télécommande ou son choix dans les réglages. L’historique de Retour, le modèle des zones et la navigation du bureau sont dans le cœur, sans dépendance à SwiftUI, pour un portage.
 4. **Lecture sans coupure.** Commencé par l’interface : commandes de lecture refaites, langues des deux moteurs, réglages appliqués dès qu’ils sont choisis. Non commencé : tampon qui télécharge le plus possible ce qui est regardé ; réglages complets du traitement et de la correction du flux, avec des valeurs par défaut soignées.
 5. **Liquid Glass partout.** Sur Mac et sur Apple TV, plus aucune feuille dans le bureau : les réglages du lecteur sont en verre. Sur Apple TV, le verre fait partie des « effets complets », actifs au départ à partir de l’Apple TV 4K de 2ᵉ génération et coupés au départ sur l’Apple TV HD et la première 4K (26 novembre), où ils se réactivent dans Réglages › Interface. À qualifier sur une Apple TV physique. Sur iPhone et iPad, les feuilles du système demeurent.
 6. **La même interface sur Apple TV que sur Mac.** Fait pour l’accueil, le dock, les colonnes, le rayon des saisons, les fiches, les listes d’un titre, les réglages, les favoris et le zapping. L’iPad reste à porter.
@@ -58,7 +58,7 @@ Le Mac et l’Apple TV reçoivent la même interface de bureau. iPhone et iPad c
 
 - Apple TV physique : la nouvelle interface sur un téléviseur, avec une vraie télécommande : fluidité avec et sans les effets complets, inclinaison de ce qui a le focus sous le pouce (elle lit la surface tactile de la télécommande, qu’aucun simulateur ne fournit).
 - Pointeur réel sur le Mac : agrandissement du dock, glissement des icônes et des raccourcis dans leur section, menu d’un raccourci au clic secondaire, sélection des chaînes au survol.
-- Clavier réel sur le Mac : Tab entre les zones, Échap maintenue, les flèches dans « Favoris, listes et dock », et les animations de l’accueil.
+- Clavier réel sur le Mac : Tab entre les zones, Échap maintenue, les flèches dans « Favoris, listes et dock » et dans les Réglages, la touche O, et les animations de l’accueil.
 - Fenêtre du Mac redimensionnée à la main et plein écran sur un grand moniteur : le bureau doit suivre la fenêtre sans à-coup.
 - Liste de zapping, commandes de lecture et réglages en verre sur un vrai direct.
 - Pistes audio et sous-titres lus par VLC, et « Relancer le flux », sur un vrai flux.
