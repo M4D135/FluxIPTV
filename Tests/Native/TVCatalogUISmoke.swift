@@ -186,7 +186,7 @@ final class TVCatalogControlProbeView: UIView {
         case "live-es": return "live-channel-fixture-country-es-0"
         case "live-restored": return "live-channel-fixture-country-fr-1"
         case "country-picker": return "live-country-option-FR"
-        case "movies": return "catalog-card-fixture-movie-1"
+        case "movies", "movies-many": return "catalog-card-fixture-movie-1"
         case "search-empty": return "navigation-tab-movie"
         case "search-result": return "catalog-card-fixture-movie-0"
         case "welcome": return "welcome-load-source"
@@ -222,7 +222,7 @@ final class TVCatalogControlProbeView: UIView {
         case "settings", "player-settings": return CGSize(width: 240, height: 48)
         case "live-error": return CGSize(width: 150, height: 50)
         case "country-picker": return CGSize(width: 240, height: 54)
-        case "movies", "search-result", "seasons": return CGSize(width: 240, height: 350)
+        case "movies", "movies-many", "search-result", "seasons": return CGSize(width: 240, height: 350)
         case "search-empty": return CGSize(width: 90, height: 90)
         case "welcome": return CGSize(width: 300, height: 72)
         case "add-source": return CGSize(width: 500, height: 50)
@@ -253,7 +253,7 @@ final class TVCatalogControlProbeView: UIView {
         scenario == "search-result" ? ["fixture-movie-0"] : []
     }
 
-    var usesPortraitControl: Bool { scenario == "movies" || scenario == "search-result" }
+    var usesPortraitControl: Bool { scenario == "movies" || scenario == "movies-many" || scenario == "search-result" }
 
     var countryCode: String? {
         switch scenario {
@@ -300,7 +300,7 @@ final class TVCatalogControlProbeView: UIView {
         let scenario = ProcessInfo.processInfo.environment["FLUX_UI_SCENARIO"] ?? ""
         // A screen of the desk reuses the catalogue of the live scenario.
         let content = deskScenarios.contains(scenario) ? "live" : scenario
-        try TVCatalogCapture.require((["movie", "movies", "lists", "series", "seasons", "live", "welcome", "add-source", "search-empty", "search-result",
+        try TVCatalogCapture.require((["movie", "movies", "movies-many", "lists", "series", "seasons", "live", "welcome", "add-source", "search-empty", "search-result",
                                        "live-fr", "live-es", "country-picker", "live-restored", "live-error"] + deskScenarios + filmPlayerScenarios).contains(scenario),
                                      "FLUX_UI_SCENARIO must name a supported catalogue, detail, welcome or search scenario.")
         let source = IPTVSource(id: UUID(uuidString: "00000000-0000-0000-0000-000000000003")!,
@@ -407,6 +407,37 @@ final class TVCatalogControlProbeView: UIView {
                                     selection: channels[watched], seasons: [], openSeason: nil, episodeID: nil)
         }
         var items = try films()
+        if scenario == "movies-many" {
+            // The catalogue of a real subscription: tens of thousands of films,
+            // titles that carry their language and their year, categories by
+            // language. The first page alone has jackets, small enough for
+            // the cache of the application to keep them all.
+            let titles = ["La colline aux secrets", "Le dernier rivage", "Les ombres du fleuve", "Un hiver à Trieste", "La nuit des cerfs-volants",
+                          "Le chant des dunes", "Les portes du soir", "Minuit sur la baie", "La maison des vents", "Le passager du nord",
+                          "Trois jours en mer", "Les jardins suspendus", "Le silence des marées", "La route des orages"]
+            let categories = ["FR - LES DERNIERS AJOUTS", "FR - HORREUR", "FR - DRAME", "FR - ACTION", "FR - COMÉDIE", "FR - THRILLER",
+                              "FR - SCIENCE-FICTION", "FR - ANIMATION", "FR - FAMILLE", "FR - DOCUMENTAIRE", "FR - WESTERN", "FR - GUERRE",
+                              "FR - ROMANCE", "FR - POLICIER", "FR - FANTASTIQUE", "FR - AVENTURE", "FR - HISTOIRE", "FR - CLASSIQUES",
+                              "EN - ACTION", "EN - DRAMA", "EN - HORROR", "EN - COMEDY", "EN - THRILLER", "EN - FAMILY",
+                              "ES - ACCIÓN", "ES - DRAMA", "ES - COMEDIA", "IT - AZIONE", "IT - DRAMMA", "IT - COMMEDIA"]
+            for index in items.count..<58_093 {
+                let group = categories[index % categories.count]
+                let language = String(group.prefix(2))
+                let sequel = index / titles.count % 4
+                let name = "\(language) - \(titles[index % titles.count])\(sequel == 0 ? "" : " \(sequel + 1)") (\(1990 + index % 37))"
+                var url: URL? = nil
+                if index < 84 {
+                    let file = artworkRoot.appendingPathComponent("movie-many-\(index).png")
+                    cache(try artwork(width: 180, height: 270, index: index, title: titles[index % titles.count].uppercased(),
+                                      subtitle: "JAQUETTE LOCALE"), at: file)
+                    url = file
+                }
+                items.append(IPTVItem(id: "fixture-movie-\(index)", sourceID: source.id, name: name, group: group,
+                                      logoURL: url, kind: .movie, directURL: nil, xtreamStreamID: nil, fileExtension: nil,
+                                      details: IPTVDetails(synopsis: "Un film local de démonstration, sans adresse de flux.",
+                                                           year: "\(1990 + index % 37)", duration: "1 h 4\(index % 10) min")))
+            }
+        }
         let seriesURL = artworkRoot.appendingPathComponent("series.png")
         cache(try artwork(index: 3, title: "LES SAISONS", subtitle: "JAQUETTE LOCALE · 2014"), at: seriesURL)
         let collection = IPTVItem(id: "fixture-series", sourceID: source.id, name: "Les saisons",
@@ -431,7 +462,7 @@ final class TVCatalogControlProbeView: UIView {
         let episodeID = "fixture-series-s12-e15"
         try TVCatalogCapture.require(seasons.first(where: { $0.number == 12 })?.episodes.contains(where: { $0.id == episodeID }) == true,
                                      "The exact requested S12/E15 fixture identifier is absent.")
-        let isMovie = scenario == "movie" || scenario == "movies" || scenario == "lists" || scenario.hasPrefix("search-")
+        let isMovie = scenario == "movie" || scenario == "movies" || scenario == "movies-many" || scenario == "lists" || scenario.hasPrefix("search-")
             || filmPlayerScenarios.contains(scenario)
         return TVCatalogFixture(scenario: scenario, source: source, items: items,
                                 kind: isMovie ? .movie : .series,

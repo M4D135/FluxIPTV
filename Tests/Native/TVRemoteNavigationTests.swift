@@ -140,6 +140,16 @@ final class TVRemoteNavigationTests: XCTestCase {
         assertCondition(NSPredicate(format: "value BEGINSWITH %@ OR value == %@", "group-", "countries"), on: logical, in: app)
         XCUIRemote.shared.press(.right)
         assertFocus(channel, logical: "fixture-live-0", in: app)
+        // From a channel further down, the column is still entered on the
+        // row of what is shown, not on the one that faces that channel, and
+        // it is left for the channel the remote came from.
+        let fourth = element("live-channel-fixture-live-3", in: app)
+        move(.down, to: fourth, maximumPresses: 4, in: app)
+        assertFocus(fourth, logical: "fixture-live-3", in: app)
+        XCUIRemote.shared.press(.left)
+        assertCondition(NSPredicate(format: "value == %@", "group-all"), on: logical, in: app)
+        XCUIRemote.shared.press(.right)
+        assertFocus(fourth, logical: "fixture-live-3", in: app)
         XCUIRemote.shared.press(.right)
         assertFocus(element("live-watch", in: app), in: app)
         retainScreenshot("zones-01-actions", in: app)
@@ -598,6 +608,47 @@ final class TVRemoteNavigationTests: XCTestCase {
         assertFocus(play, in: app)
         assertCondition("exists == false", on: banner, in: app)
         print("PASS: TV_REMOTE a message took the remote over the channel list and over the catalogue, OK and Menu closed it and returned the remote where it was, and a channel opened from the catalogue showed its banner alone, changed channel at once and gave its commands on OK")
+    }
+
+    @MainActor
+    func testPagesOfALargeCatalogueTurnUnderTheRemote() {
+        // Fifty-eight thousand films: the catalogue of a real subscription.
+        let app = launch("movies-many")
+        defer { app.terminate() }
+        let card = element("catalog-card-fixture-movie-1", in: app)
+        let search = app.textFields.matching(identifier: "desk-search").firstMatch
+        let next = element("navigation-page-next", in: app)
+        let previous = element("navigation-page-prev", in: app)
+        assertFocus(card, logical: "fixture-movie-1", in: app)
+        XCTAssertTrue(app.staticTexts["Page 1 sur 969"].exists)
+        retainScreenshot("pages-01-films-of-a-large-catalogue", in: app)
+
+        // One press up is the line of the search, where the pages are; the
+        // jackets start right under it.
+        XCUIRemote.shared.press(.up)
+        assertCondition("hasFocus == true", on: search, in: app)
+        XCTAssertLessThan(card.frame.minY, 240, "The catalogue starts right under one line of controls.")
+        // Page suivante is the next key: the previous one has nothing to
+        // show yet. It keeps the remote, to turn the next page at once.
+        XCUIRemote.shared.press(.right)
+        assertFocus(next, in: app)
+        XCUIRemote.shared.press(.select)
+        XCTAssertTrue(app.staticTexts["Page 2 sur 969"].waitForExistence(timeout: 10))
+        assertFocus(next, in: app)
+        XCUIRemote.shared.press(.select)
+        XCTAssertTrue(app.staticTexts["Page 3 sur 969"].waitForExistence(timeout: 10))
+        assertFocus(next, in: app)
+        assertCondition("exists == false", on: card, in: app)
+        // Page précédente is beside it, and Down enters the page from its top.
+        XCUIRemote.shared.press(.left)
+        assertFocus(previous, in: app)
+        XCUIRemote.shared.press(.select)
+        XCTAssertTrue(app.staticTexts["Page 2 sur 969"].waitForExistence(timeout: 10))
+        assertFocus(previous, in: app)
+        XCUIRemote.shared.press(.down)
+        assertOneHasFocus((60..<65).map { element("catalog-card-fixture-movie-\($0)", in: app) }, in: app)
+        retainScreenshot("pages-02-second-page", in: app)
+        print("PASS: TV_REMOTE the pages of a catalogue of 58 093 films stood on the line of the search, Page suivante and Page précédente kept the remote while they turned, and Down entered the page from its top")
     }
 
     /// Keys of the dock, in their default order.

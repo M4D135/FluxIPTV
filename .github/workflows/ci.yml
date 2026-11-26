@@ -121,7 +121,7 @@ jobs:
         run: bash scripts/test-catalog-ui.sh 2>&1 | tee build/logs/catalog-ui-native.log
       - name: Capture and navigate the native Apple TV interface
         if: ${{ !cancelled() && matrix.platform == 'tvOS' && steps.apple_build.outcome == 'success' }}
-        # Twenty-five launches, then ten remote flows bounded to thirty minutes.
+        # Twenty-six launches, then eleven remote flows bounded to thirty minutes.
         timeout-minutes: 45
         run: bash scripts/test-tvos-catalog-ui.sh 2>&1 | tee build/logs/tvos-catalog-ui-native.log
       - name: Package the unsigned application

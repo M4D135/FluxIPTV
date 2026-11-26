@@ -193,6 +193,9 @@ struct ContentView: View {
     /// Row of the navigation column that must receive the remote when the
     /// content of the column changes under it.
     @State private var sidebarFocusRequest: String?
+    /// Row of the navigation column asked to take the remote when the column
+    /// is entered from the catalogue, until that row has it.
+    @State private var columnEntryRequest: String?
     @AppStorage(DeskZone.backKey) private var backShowsZones = true
     // Channel list over the picture, to change channel without leaving it.
     @State private var zapListVisible = false
@@ -358,7 +361,13 @@ struct ContentView: View {
         let target = max(0,min(catalogPageCount-1,catalogPage+delta))
         guard target != catalogPage else { return }
         catalogPage = target
-        if let first = displayedItems.first { focusID=first.id; setPreview(first) }
+        // The key that turned the page keeps the selection, to turn the next
+        // one at once: a large catalogue has hundreds of them. At an end of
+        // the catalogue that key goes, and the other one takes the selection.
+        if focusID == "page-next" { if target + 1 >= catalogPageCount { focusID = "page-prev" } }
+        else if focusID == "page-prev" { if target == 0 { focusID = "page-next" } }
+        else if let first = displayedItems.first { focusID = first.id }
+        if let first = displayedItems.first { setPreview(first) }
     }
     private var modalOpen: Bool {
         addingSource || editingSource != nil || presetEditor != nil || deletingPreset != nil || itemOptions != nil || showingSources || showingLists || showingEngines || showingGroups || showingCountries || showingNavigationMenu || library.alertMessage != nil || playerSettings != nil
@@ -496,7 +505,12 @@ struct ContentView: View {
             #endif
         }
         .onChange(of: catalogPage) { _, _ in
-            guard page == .catalogue, let id = heldItem?.id ?? focusID, displayedItems.contains(where: { $0.id == id }) else { return }
+            guard page == .catalogue else { return }
+            guard let id = heldItem?.id ?? focusID, displayedItems.contains(where: { $0.id == id }) else {
+                // Turned from its keys, the page is read from its top.
+                if let first = displayedItems.first { reader.scrollTo(first.id, anchor: .top) }
+                return
+            }
             Task { @MainActor in
                 await Task.yield()
                 reader.scrollTo(id,anchor:.center)
@@ -513,6 +527,24 @@ struct ContentView: View {
                 sidebarFocusRequest = nil
                 focusID = request
                 if id != request { systemFocus = request }
+                return
+            }
+            // The navigation column is entered on the row of what is shown,
+            // whatever stands at the height the remote came from.
+            // Not while the catalogue hands the remote back to a title: the
+            // system may then rest a moment on a control of the column.
+            if let id, columnEntryRequest == nil, !pendingBrowseRestore, page == .catalogue, heldItem == nil, !modalOpen,
+               deskSidebarIDs.contains(id), id != deskScopeID, visibleSlice.item(id: focusID) != nil {
+                enterColumn()
+                return
+            }
+            // And the catalogue is entered from the column on the title that
+            // was left there, not on the one that faces the row of the column.
+            if let id, columnEntryRequest == nil, !pendingBrowseRestore, page == .catalogue, heldItem == nil, !modalOpen,
+               let from = focusID, deskSidebarIDs.contains(from), visibleSlice.item(id: id) != nil,
+               let kept = library.browseItemID ?? previewID, kept != id, visibleSlice.item(id: kept) != nil {
+                library.browseItemID = kept
+                restoreBrowsingContext()
                 return
             }
             if id != nil, page == .catalogue, heldItem == nil, !modalOpen {
@@ -559,8 +591,40 @@ struct ContentView: View {
                 resolveBrowseRestoreFocus()
             }
         }
+        .onChange(of: liveGroupSearchFocus) { _, focused in
+            // The filter of the categories is the control nearest to the top
+            // of the catalogue: it is reached from the column, not from a title.
+            if focused, columnEntryRequest == nil, !pendingBrowseRestore, page == .catalogue, heldItem == nil, !modalOpen,
+               visibleSlice.item(id: focusID) != nil { enterColumn() }
+        }
         #endif
     }
+    #if os(tvOS)
+    /// Gives the remote to the row of the column that stands for what is
+    /// shown. That row may be far down a list that builds its rows as they
+    /// come on screen: the column is brought to it, and it is asked again
+    /// until it says it has the remote.
+    private func enterColumn() {
+        let id = deskScopeID
+        guard deskSidebarIDs.contains(id) else { return }
+        columnEntryRequest = id
+        focusID = id
+        Task { @MainActor in
+            for _ in 0..<10 {
+                await Task.yield()
+                guard columnEntryRequest == id, page == .catalogue else { return }
+                // A request the system declined still reads as granted.
+                liveGroupSearchFocus = false
+                systemFocus = nil
+                await Task.yield()
+                guard columnEntryRequest == id else { return }
+                systemFocus = id
+                try? await Task.sleep(nanoseconds: 100_000_000)
+            }
+            columnEntryRequest = nil
+        }
+    }
+    #endif
 
     private func browserChrome(width: CGFloat) -> some View {
         HStack(spacing: 0) {
@@ -1420,6 +1484,10 @@ struct ContentView: View {
         Button { pointerSelect(id); action() } label: {
             LiveTVScopeLabel(title: title, symbol: symbol, count: count,
                              selected: liveScopeSelected(id), focused: focusID == id, accent: themeAccent)
+                #if os(tvOS)
+                // The row says when it really has the remote.
+                .background(DeskFocusReport { focused in if focused, columnEntryRequest == id { columnEntryRequest = nil } })
+                #endif
         }.buttonStyle(FluxBareButtonStyle()).fluxFocus($systemFocus, id: id).id(id)
             .accessibilityLabel(title)
             .accessibilityValue(liveScopeSelected(id) ? "Sélectionné" : "")
@@ -1631,8 +1699,9 @@ struct ContentView: View {
         }
         if let issue = library.credentialIssue, let source = library.selectedSource, source.kind != .m3uFile {
             VStack(alignment: .leading, spacing: 9) {
-                Label("Reconnecter « \(source.name) »", systemImage: "person.crop.circle.badge.exclamationmark").font(.headline)
-                Text(issue).font(.caption).foregroundStyle(.secondary)
+                Label("Reconnecter « \(source.name) »", systemImage: "person.crop.circle.badge.exclamationmark")
+                    .font(usesDesk ? Desk.font(.headline) : .headline).lineLimit(2)
+                Text(issue).font(usesDesk ? Desk.font(.caption) : .caption).foregroundStyle(.secondary)
                 navButton("Reconnecter", icon: "arrow.clockwise", id: "reconnect-source") { presentEditSource(source) }
             }.padding(14).frame(maxWidth: .infinity, alignment: .leading).fluxFrosted(radius: 18)
         }
@@ -3341,6 +3410,9 @@ struct ContentView: View {
         }
         #endif
     }
+    /// On the desk the pages of films and series stand on the line of the
+    /// search; the channels keep theirs in their own panel.
+    private var deskPagerInBand: Bool { library.contentKind != .live && !visible.isEmpty && catalogPageCount > 1 }
     private var focusRows: [[String]] {
         if library.sources.isEmpty { return [["add-source"]] }
         var rows: [[String]] = []
@@ -3362,13 +3434,14 @@ struct ContentView: View {
             // Rows above the grid, from the controls along the top of the
             // window. The navigation column, the actions beside the preview
             // and the dock have their own zones.
-            rows.append(deskHeaderIDs + [DeskZone.searchID]
+            let pages = !visible.isEmpty && catalogPageCount > 1
+                ? (catalogPage > 0 ? ["page-prev"] : []) + (catalogPage + 1 < catalogPageCount ? ["page-next"] : []) : []
+            // The pages of films and series stand on the line of the search.
+            rows.append(deskHeaderIDs + [DeskZone.searchID] + (deskPagerInBand ? pages : [])
                         + (library.selectedSourceID != nil && !library.isLoading ? ["reload"] : []))
             if library.credentialIssue != nil { rows.append(["reconnect-source"]) }
             if visible.isEmpty && library.credentialIssue == nil && library.contentKind == .live { rows.append(["live-reset"]) }
-            if !visible.isEmpty && catalogPageCount > 1 {
-                rows.append((catalogPage > 0 ? ["page-prev"] : []) + (catalogPage + 1 < catalogPageCount ? ["page-next"] : []))
-            }
+            if !pages.isEmpty && !deskPagerInBand { rows.append(pages) }
         case .catalogue:
             if library.selectedSourceID != nil && !library.isLoading { rows.append(["reload"]) }
             if library.credentialIssue != nil { rows.append(["reconnect-source"]) }
@@ -4575,6 +4648,13 @@ extension ContentView {
             .onChange(of: focusID) { _, id in
                 if let id, remoteNavigationActive, deskSidebarIDs.contains(id) { reader.scrollTo(id, anchor: .center) }
             }
+            .onChange(of: columnEntryRequest) { _, id in
+                // A lazy list knows a row it has not built yet by its
+                // category, not by the name given to the row.
+                guard let id else { return }
+                if id.hasPrefix("live-category-") { reader.scrollTo(String(id.dropFirst("live-category-".count)), anchor: .center) }
+                reader.scrollTo(id, anchor: .center)
+            }
         }
     }
 
@@ -4801,28 +4881,57 @@ extension ContentView {
         case .series: noun = count == 1 ? "série" : "séries"
         }
         let amount = library.isFiltering ? "Recherche…" : "\(count.formatted(.number.locale(Locale(identifier: "fr_FR")))) \(noun)"
-        return "\(library.selectedSource?.name ?? "Bibliothèque") · \(amount)"
+        // The count first: a long name of source is what a narrow line cuts.
+        return "\(amount) · \(library.selectedSource?.name ?? "Bibliothèque")"
     }
 
-    private var deskTitleRow: some View {
-        HStack(alignment: .center, spacing: Desk.pt(10)) {
-            VStack(alignment: .leading, spacing: Desk.pt(4)) {
-                Text(deskTitle).font(Desk.font(.title2, .bold)).lineLimit(1)
-                    .shadow(color: .black.opacity(0.5), radius: Desk.pt(6), y: 1)
+    /// The name of what is shown and, where there is room, what it holds.
+    private func deskTitleBlock(subtitle: Bool) -> some View {
+        VStack(alignment: .leading, spacing: Desk.pt(4)) {
+            Text(deskTitle).font(Desk.font(.title2, .bold)).lineLimit(1).minimumScaleFactor(0.75)
+                .shadow(color: .black.opacity(0.5), radius: Desk.pt(6), y: 1)
+            if subtitle {
                 Text(deskSubtitle).font(Desk.font(.caption)).foregroundStyle(.secondary).lineLimit(1)
                     .shadow(color: .black.opacity(0.5), radius: Desk.pt(4), y: 1)
             }
+        }
+    }
+    /// The end of the top band: the actions of a list of favourites, the
+    /// pages of a catalogue of films or series, and reload. The channels
+    /// keep their pages in their own panel.
+    @ViewBuilder private var deskTopActions: some View {
+        favoriteListActions
+        if deskPagerInBand { deskPager }
+        navButton("Actualiser", icon: "arrow.clockwise", id: "reload", iconOnly: true) { library.reloadSelected() }
+            .disabled(library.selectedSourceID == nil || library.isLoading)
+            .fluxNavigationGlass(radius: Desk.pt(18))
+    }
+    private var deskPager: some View {
+        HStack(spacing: Desk.pt(4)) {
+            navButton("Page précédente", icon: "chevron.left", id: "page-prev", iconOnly: true) { changeCatalogPage(-1) }
+                .disabled(catalogPage == 0)
+            Text("\(catalogPage + 1) / \(catalogPageCount)").font(Desk.font(.callout).monospacedDigit())
+                .foregroundStyle(.secondary).lineLimit(1).fixedSize()
+                .accessibilityLabel("Page \(catalogPage + 1) sur \(catalogPageCount)")
+            navButton("Page suivante", icon: "chevron.right", id: "page-next", iconOnly: true) { changeCatalogPage(1) }
+                .disabled(catalogPage + 1 >= catalogPageCount)
+        }
+        .fluxNavigationGlass(radius: Desk.pt(18))
+    }
+    private var deskTitleRow: some View {
+        HStack(alignment: .center, spacing: Desk.pt(10)) {
+            deskTitleBlock(subtitle: true)
             Spacer(minLength: 0)
-            favoriteListActions
-            navButton("Actualiser", icon: "arrow.clockwise", id: "reload", iconOnly: true) { library.reloadSelected() }
-                .disabled(library.selectedSourceID == nil || library.isLoading)
-                .fluxNavigationGlass(radius: Desk.pt(18))
+            deskTopActions
         }.padding(.horizontal, Desk.pt(3))
     }
 
-    private var deskSearchField: some View {
+    private var deskSearchField: some View { deskSearchField(short: false) }
+    /// `short`: beside the title of a narrow column, which says what is searched.
+    private func deskSearchField(short: Bool) -> some View {
         let prompt: String
         switch library.contentKind {
+        case _ where short: prompt = "Rechercher"
         case .live: prompt = "Rechercher une chaîne"
         case .movie: prompt = "Rechercher un film"
         case .series: prompt = "Rechercher une série"
@@ -4871,13 +4980,35 @@ extension ContentView {
         #endif
     }
 
-    /// Title, reload and search: with Back and Home, the top zone.
+    /// Title, search, pages and reload: with Back and Home, the top zone. It
+    /// holds on one line wherever the column is wide enough, so that the
+    /// catalogue starts as high as it can: with what the screen holds under
+    /// its name, then without it, and on two lines only in a narrow column.
     private var deskTopBand: some View {
-        VStack(alignment: .leading, spacing: Desk.pt(12)) {
-            deskTitleRow
-            deskSearchField
+        ViewThatFits(in: .horizontal) {
+            deskTopLine(subtitle: true)
+            deskTopLine(subtitle: false)
+            VStack(alignment: .leading, spacing: Desk.pt(12)) {
+                deskTitleRow
+                deskSearchField
+            }
         }
         .overlay { zoneFrame(.top, radius: Desk.pt(20), outset: 6, labelled: false) }
+        // Up from anywhere in the catalogue reaches this line, and Down
+        // from it what stands under it, whatever their alignment.
+        .deskFocusSection()
+    }
+    private func deskTopLine(subtitle: Bool) -> some View {
+        HStack(alignment: .center, spacing: Desk.pt(14)) {
+            // The title takes its own width and no more: what remains of
+            // the line is the search.
+            deskTitleBlock(subtitle: subtitle).frame(maxWidth: Desk.pt(290), alignment: .leading)
+                .fixedSize(horizontal: true, vertical: false)
+            deskSearchField(short: !subtitle)
+                .frame(minWidth: Desk.pt(subtitle ? 250 : 200), idealWidth: Desk.pt(subtitle ? 250 : 200), maxWidth: .infinity)
+            deskTopActions
+        }
+        .padding(.horizontal, Desk.pt(3))
     }
 
     // MARK: Television
@@ -4890,7 +5021,7 @@ extension ContentView {
                 deskSidebar.deskFocusSection()
                 VStack(alignment: .leading, spacing: Desk.pt(12)) {
                     deskTopBand
-                    liveNotices
+                    Group { liveNotices }.deskFocusSection()
                     liveDeskChannels
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -5094,7 +5225,7 @@ extension ContentView {
                 deskSidebar.deskFocusSection()
                 VStack(alignment: .leading, spacing: Desk.pt(12)) {
                     deskTopBand
-                    liveNotices
+                    Group { liveNotices }.deskFocusSection()
                     mediaDeskContent
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -5119,7 +5250,6 @@ extension ContentView {
                 }
             }.frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
-            if catalogPageCount > 1 { livePagination.padding(.horizontal, Desk.pt(4)) }
             mediaCatalogGrid().overlay { zoneFrame(.content, radius: Desk.pt(22)) }
         }
     }

@@ -22,7 +22,9 @@ L’application s’ouvre sur l’accueil : TV, Films, Séries, Recherche, Favor
 - **OK** valide ; une destination s’ouvre avec la sélection dans son contenu, sur le titre laissé la fois précédente.
 - **Retour** revient en arrière.
 
-Sur Apple TV, **Menu** est ce Retour et ne fait rien d’autre. Chaque colonne de l’écran répond comme un tout à la flèche qui pointe vers elle : depuis la liste, **Gauche** mène à la colonne de navigation, **Droite** à Regarder et Favoris, **Haut** à la recherche, **Bas** au dock, où que la télécommande se trouve dans la liste.
+Au-dessus du catalogue, une seule ligne : le nom de ce qui est affiché et ce qu’il contient, la recherche, les pages d’un catalogue de films ou de séries et Actualiser. Les jaquettes et les chaînes commencent juste dessous. **Page suivante** et **Page précédente** gardent la sélection, pour tourner les pages d’affilée ; **Bas** entre dans la page par son haut. Dans une colonne étroite la ligne perd d’abord son sous-titre, puis se replie sur deux.
+
+Sur Apple TV, **Menu** est ce Retour et ne fait rien d’autre. Chaque colonne de l’écran répond comme un tout à la flèche qui pointe vers elle : depuis la liste, **Gauche** mène à la colonne de navigation, **Droite** à Regarder et Favoris, **Haut** à la recherche, **Bas** au dock, où que la télécommande se trouve dans la liste. La colonne s’ouvre sur la ligne de ce qui est affiché — toutes les chaînes, une liste, une catégorie — et non sur celle qui se trouve à la hauteur d’où l’on vient ; **Droite** en ressort sur le titre que l’on venait de quitter.
 
 Au clavier du Mac, dont les flèches suivent des rangées, Retour affiche d’abord la boussole des zones : elle encadre **Haut** (recherche, actualiser, pages), **Colonne**, **Contenu**, **Aperçu** pour la télévision et **Dock**, et écrit où mène chaque flèche. Une flèche saute dans la zone voisine, **OK** referme la boussole, Retour une seconde fois revient à l’écran précédent. **Tab** et **⇧Tab** changent de zone sans la boussole, et Réglages › Interface permet de la supprimer.
 

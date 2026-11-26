@@ -197,6 +197,9 @@ private enum CatalogUIFailure: Error, CustomStringConvertible {
         var expectedFocus: String? = nil
         /// The channel those keys must leave on screen.
         var expectedPlaying: String? = nil
+        /// The catalogue of a real subscription: tens of thousands of films,
+        /// and so the pages of the catalogue on the line of the search.
+        var manyFilms = false
         /// Titles relabelled the way playlists mark a language, with the
         /// language list open in the navigation column.
         var languages = false
@@ -268,6 +271,7 @@ private enum CatalogUIFailure: Error, CustomStringConvertible {
             Scenario(kind: .live, filename: "home.png", home: true),
             Scenario(kind: .live, filename: "catalog-tv.png"),
             Scenario(kind: .movie, filename: "catalog-dvd-vhs.png"),
+            Scenario(kind: .movie, filename: "catalog-films-pages.png", manyFilms: true),
             Scenario(kind: .movie, filename: "movie-detail.png", detail: true),
             Scenario(kind: .series, filename: "series-seasons.png"),
             Scenario(kind: .series, filename: "series-episode-detail.png", season: 12, detail: true),
@@ -327,11 +331,23 @@ private enum CatalogUIFailure: Error, CustomStringConvertible {
             scenarios.append(Scenario(kind: .movie, filename: "dock-\(position.rawValue).png",
                                       defaults: [FluxDockPosition.storageKey: position.rawValue], gallery: true))
         }
+        // Titles that carry their language and their year, categories by
+        // language, and no jacket: only the first films have one.
+        let manyFilms: [IPTVItem] = (titles.count..<58_093).map { (index: Int) in
+            let groups = ["FR - LES DERNIERS AJOUTS", "FR - HORREUR", "FR - DRAME", "FR - ACTION", "FR - COMÉDIE", "FR - THRILLER",
+                          "EN - ACTION", "EN - DRAMA", "EN - HORROR", "ES - ACCIÓN", "ES - DRAMA", "IT - AZIONE"]
+            let group = groups[index % groups.count]
+            return IPTVItem(id: "fixture-movie-\(index)", sourceID: source.id,
+                            name: "\(group.prefix(2)) - \(titles[index % titles.count]) \(index / titles.count + 1) (\(1990 + index % 37))",
+                            group: group, logoURL: nil, kind: .movie, directURL: nil, xtreamStreamID: nil, fileExtension: nil,
+                            details: IPTVDetails(synopsis: "Un film local de démonstration, sans adresse de flux.", year: "\(1990 + index % 37)"))
+        }
         var captureFailures: [String] = []
         for scenario in scenarios where CatalogCaptureOptions.only?.contains(scenario.filename) ?? (!scenario.gallery || CatalogCaptureOptions.gallery) {
             let kind = scenario.kind
             configureDefaults(scenario.defaults)
-            let library = IPTVLibrary(catalogFixture: source, items: scenario.languages ? labelled : items, kind: kind)
+            let library = IPTVLibrary(catalogFixture: source,
+                                      items: scenario.languages ? labelled : scenario.manyFilms ? items + manyFilms : items, kind: kind)
             try require(library.catalogResults.all.items.first != nil && !library.isLoading && !library.isFiltering, "Fixture catalogue was not installed synchronously.")
             if scenario.languages {
                 try require(library.mediaLanguages.map(\.code) == ["en", "fr"], "The labelled fixture did not yield its two languages: \(library.mediaLanguages.map(\.code)).")
