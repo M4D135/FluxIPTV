@@ -46,6 +46,9 @@ struct CatalogSearchFocusSnapshot {
     let filtering: Bool
     let pending: Bool
     let heldItemID: String?
+    /// True in the report that follows the last key of a scenario: a long
+    /// path on a slow machine is not over after a delay chosen in advance.
+    var keysPlayed = false
 }
 #endif
 
@@ -796,21 +799,10 @@ struct FluxScreen: View, Equatable {
                     for action in fixtureActions {
                         dispatch(action)
                         try? await Task.sleep(nanoseconds: 60_000_000)
-                        #if os(macOS)
-                        // A key window follows each key with its own focus, a
-                        // little later: later than the next key on a slow
-                        // machine, where that focus would then arrive after
-                        // the selection has moved on and be read as a move
-                        // of the pointer, back to where it was. The next
-                        // key waits for it, as a hand on a keyboard does.
-                        if ProcessInfo.processInfo.environment["FLUX_CATALOG_UI_BACKGROUND"] != "1" {
-                            for _ in 0..<12 where systemFocus != nil && focusID != nil && systemFocus != focusID {
-                                try? await Task.sleep(nanoseconds: 50_000_000)
-                            }
-                        }
-                        #endif
                     }
-                    reportSearchFocusFixture()
+                    // The bench reads the selection once it is told that
+                    // every key has been played, however long that took.
+                    reportSearchFocusFixture(keysPlayed: true)
                 }
             }
             if let query = fixtureSearchSubmission {
@@ -3511,9 +3503,9 @@ struct FluxScreen: View, Equatable {
         }
     }
     #if FLUX_CATALOG_UI_TESTING
-    private func reportSearchFocusFixture() {
+    private func reportSearchFocusFixture(keysPlayed: Bool = false) {
         fixtureSearchObservation?(CatalogSearchFocusSnapshot(focusID: focusID, nativeFocusID: systemFocus, query: library.search,
-            filtering: library.isFiltering, pending: pendingCatalogFocus != nil, heldItemID: heldItem?.id))
+            filtering: library.isFiltering, pending: pendingCatalogFocus != nil, heldItemID: heldItem?.id, keysPlayed: keysPlayed))
     }
     #endif
     private func search() {

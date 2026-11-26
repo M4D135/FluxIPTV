@@ -466,9 +466,13 @@ private enum CatalogUIFailure: Error, CustomStringConvertible {
             }
             defer { if scenario.player != nil { playback.stop() } }
             var observedFocus: String?
+            var keysPlayed = false
             let root = ContentView(fixtureSelection: selected, fixtureSeasons: kind == .series ? seasons : [],
                                    fixtureOpenSeason: scenario.season, fixtureEpisodeID: scenario.season == nil ? nil : restoredEpisodeID, fixtureOpenItem: scenario.detail,
-                                   fixtureSearchObservation: scenario.expectedFocus == nil ? nil : { observedFocus = $0.focusID },
+                                   fixtureSearchObservation: scenario.expectedFocus == nil && scenario.actions.isEmpty ? nil : {
+                                       observedFocus = $0.focusID
+                                       if $0.keysPlayed { keysPlayed = true }
+                                   },
                                    fixtureOpenCountries: scenario.languages,
                                    fixtureSettingsPage: scenario.settings, fixtureFavorites: scenario.favorites,
                                    fixtureHome: scenario.home, fixturePlayerSettings: scenario.playerSettings,
@@ -490,6 +494,20 @@ private enum CatalogUIFailure: Error, CustomStringConvertible {
             // then let the native compositor settle before caching the view.
             try await Task.sleep(nanoseconds: 1_500_000_000)
             if scenario.season != nil {try await Task.sleep(nanoseconds: 1_500_000_000)}
+            if !scenario.actions.isEmpty {
+                // The keys are played one after the other from half a second
+                // after the window shows. Fourteen of them took longer than
+                // the delay above on a hosted machine, and the selection was
+                // read on the way, four icons short of the folder: the
+                // screen says when the last key has been played, and what
+                // that key started is then given the time to settle.
+                var waited = false
+                for _ in 0..<400 where !keysPlayed {
+                    waited = true
+                    try await Task.sleep(nanoseconds: 50_000_000)
+                }
+                if waited { try await Task.sleep(nanoseconds: 400_000_000) }
+            }
             host.layoutSubtreeIfNeeded()
             window.displayIfNeeded()
             CATransaction.flush()
@@ -497,6 +515,9 @@ private enum CatalogUIFailure: Error, CustomStringConvertible {
             try require((playback.playingItem == nil || scenario.player != nil) && playback.player.currentItem == nil,
                         "A visual capture unexpectedly started main playback.")
             let filename = scenario.filename
+            if !scenario.actions.isEmpty {
+                try require(keysPlayed, "\(filename): the keys \(scenario.actions) had not all been played after twenty seconds; the selection was on \(observedFocus ?? "nothing").")
+            }
             if let expected = scenario.expectedFocus {
                 try require(observedFocus == expected,
                             "\(filename): the keys \(scenario.actions) left the selection on \(observedFocus ?? "nothing"), not on \(expected).")
