@@ -47,7 +47,7 @@ struct PlaybackSettingsView: View {
             switch self {
             case .sources: "Vos abonnements et vos playlists."
             case .appearance: "Décors, aperçu des chaînes et présentation."
-            case .dock: "Emplacement, thème et ordre des icônes."
+            case .dock: "Emplacement, thème, icônes et raccourcis."
             case .video: "Moteur de lecture et déplacements dans la vidéo."
             case .network: "Compromis entre zapping et stabilité."
             case .audio: "Pistes du média en cours et volume."
@@ -98,7 +98,14 @@ struct PlaybackSettingsView: View {
     @AppStorage(FluxDockTheme.storageKey) private var dockTheme: FluxDockTheme = .defaultValue
     @AppStorage(FluxDockItem.orderKey) private var dockOrder = ""
     @AppStorage(FluxDockItem.magnifyKey) private var dockMagnifies = true
-    @AppStorage(DeskZone.backKey) private var backShowsZones = true
+    @AppStorage(DockShelf.recentsKey) private var dockRecents = true
+    /// The section of the dock whose name is being changed, or that asks
+    /// before it leaves with its shortcuts.
+    @State private var renamingSection: String?
+    @State private var sectionName = ""
+    @State private var sectionNameInvalid = false
+    @State private var confirmingSection: String?
+    @AppStorage(DeskZone.backKey) private var backShowsZones = false
     #if os(tvOS)
     /// Page under the remote: walking the list shows each page at once.
     @FocusState private var focusedPage: Page?
@@ -455,10 +462,8 @@ struct PlaybackSettingsView: View {
     private var navigationWidth: CGFloat {
         #if os(iOS)
         254
-        #elseif os(tvOS)
-        max(FluxDockMetrics(.corner).length(count: FluxDockItem.allCases.count, vertical: false), 410)
         #else
-        FluxDockMetrics(.corner).length(count: FluxDockItem.allCases.count, vertical: false)
+        max(FluxDockMetrics(.corner).length(count: FluxDockItem.allCases.count, vertical: false), Desk.tv(410))
         #endif
     }
     /// On a television the form of a source is a screen of its own.
@@ -579,7 +584,7 @@ struct PlaybackSettingsView: View {
 
     private var dockSettings: some View {
         VStack(alignment: .leading, spacing: Desk.pt(16)) {
-            section("Emplacement", "Sous la colonne de navigation, le dock est compact et les autres colonnes descendent jusqu’au bord. En bas ou en haut, il garde une bande pour lui. À gauche et à droite, il devient une colonne. Sur l’accueil, il occupe le milieu de la fenêtre.") {
+            section("Emplacement", "Sous la colonne de navigation, le dock est compact, n’y montre que ses destinations, et les autres colonnes descendent jusqu’au bord. En bas ou en haut, il garde une bande pour lui. À gauche et à droite, il devient une colonne. Sur l’accueil, il occupe le milieu de la fenêtre.") {
                 HStack(spacing: Desk.pt(12)) {
                     ForEach(FluxDockPosition.allCases) { choice in positionTile(choice) }
                 }
@@ -611,7 +616,92 @@ struct PlaybackSettingsView: View {
                     dockPosition = .defaultValue; dockTheme = .defaultValue; dockOrder = ""; dockMagnifies = true
                 }.deskKey()
             }
+            section("Raccourcis", "Une chaîne, un film, une série, une saison ou un épisode se gardent dans le dock depuis « Favoris, listes et dock » : l’étoile d’un titre, ou un appui long sur lui. Chaque section s’y tient à part, entre deux séparateurs. Une liste de favoris y devient un dossier depuis son écran, et s’ouvre en éventail.") {
+                DeskToggle(title: "Afficher la vidéo en cours et les récents", isOn: $dockRecents)
+                ForEach(library.dockShelf.sections) { part in dockSectionRows(part) }
+                ForEach(library.dockShelf.stacks.compactMap { library.presets.list(id: $0) }) { list in
+                    HStack(spacing: Desk.pt(12)) {
+                        Image(systemName: "folder.fill").font(Desk.system(16, .medium))
+                            .foregroundStyle(FluxDockItem.favorites.tint).frame(width: Desk.pt(38), height: Desk.pt(38))
+                            .background(FluxDockItem.favorites.tint.opacity(0.16), in: RoundedRectangle(cornerRadius: Desk.pt(11), style: .continuous))
+                        VStack(alignment: .leading, spacing: Desk.pt(2)) {
+                            Text(list.name).font(Desk.font(.body, .semibold)).lineLimit(1)
+                            Text("Dossier · \(list.kind.frenchTitle) · \(list.itemIDs.count) \(list.itemIDs.count == 1 ? "titre" : "titres")")
+                                .font(Desk.font(.caption)).foregroundStyle(.secondary)
+                        }
+                        Spacer(minLength: Desk.pt(8))
+                        actionButton("Retirer le dossier \(list.name) du dock", icon: "minus.circle", iconOnly: true) {
+                            library.setDockStack(list.id, shown: false)
+                        }
+                    }
+                }
+            }
         }
+    }
+
+    /// A section of the dock: its name, which can be changed, and what it
+    /// keeps for the source in use.
+    @ViewBuilder private func dockSectionRows(_ part: DockSection) -> some View {
+        let shown = part.shortcuts.filter { $0.sourceID == library.selectedSourceID }
+        HStack(spacing: Desk.pt(12)) {
+            Image(systemName: "dock.rectangle").font(Desk.system(16, .medium))
+                .foregroundStyle(.white.opacity(0.85)).frame(width: Desk.pt(38), height: Desk.pt(38))
+                .background(.white.opacity(0.10), in: RoundedRectangle(cornerRadius: Desk.pt(11), style: .continuous))
+            if renamingSection == part.id {
+                TextField("Nom de la section", text: $sectionName)
+                    .textFieldStyle(.plain).font(Desk.font(.body))
+                    .onSubmit { renameDockSection(part) }
+                    .padding(.horizontal, Desk.pt(12)).padding(.vertical, Desk.pt(8))
+                    .background(.black.opacity(0.25), in: RoundedRectangle(cornerRadius: Desk.pt(12), style: .continuous))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: Desk.pt(12), style: .continuous)
+                            .strokeBorder(sectionNameInvalid ? Color.orange : .white.opacity(0.12), lineWidth: 1)
+                    }
+                    .accessibilityIdentifier("settings-dock-section-name")
+                actionButton("Enregistrer le nom", icon: "checkmark", iconOnly: true) { renameDockSection(part) }
+                actionButton("Annuler", icon: "xmark", iconOnly: true) { renamingSection = nil }
+            } else {
+                VStack(alignment: .leading, spacing: Desk.pt(2)) {
+                    Text(part.name).font(Desk.font(.body, .semibold)).lineLimit(1)
+                    Text(shown.isEmpty ? "Vide : elle n’apparaît pas dans le dock." : "\(shown.count) \(shown.count == 1 ? "raccourci" : "raccourcis")")
+                        .font(Desk.font(.caption)).foregroundStyle(.secondary)
+                }
+                Spacer(minLength: Desk.pt(8))
+                if confirmingSection == part.id {
+                    actionButton("Garder", icon: "xmark") { confirmingSection = nil }
+                    actionButton("Supprimer la section", icon: "trash", tint: .red) {
+                        library.deleteDockSection(part.id); confirmingSection = nil
+                    }
+                } else {
+                    actionButton("Renommer \(part.name)", icon: "pencil", iconOnly: true) {
+                        sectionName = part.name; sectionNameInvalid = false; confirmingSection = nil; renamingSection = part.id
+                    }
+                    if !part.isDefault {
+                        actionButton("Supprimer \(part.name)", icon: "trash", iconOnly: true) { renamingSection = nil; confirmingSection = part.id }
+                    }
+                }
+            }
+        }
+        .accessibilityElement(children: .contain).accessibilityIdentifier("settings-dock-section-\(part.isDefault ? "default" : part.name)")
+        ForEach(shown) { shortcut in
+            HStack(spacing: Desk.pt(12)) {
+                Image(systemName: FluxDockItem(kind: shortcut.kind).symbol).font(Desk.system(13, .medium))
+                    .foregroundStyle(FluxDockItem(kind: shortcut.kind).tint).frame(width: Desk.pt(30), height: Desk.pt(30))
+                    .background(FluxDockItem(kind: shortcut.kind).tint.opacity(0.16), in: RoundedRectangle(cornerRadius: Desk.pt(9), style: .continuous))
+                Text(shortcut.title).font(Desk.font(.callout)).lineLimit(1)
+                Spacer(minLength: Desk.pt(8))
+                actionButton("Retirer \(shortcut.title) du dock", icon: "minus.circle", iconOnly: true) {
+                    // From this section only: another one may keep it.
+                    _ = library.assignDock(shortcut, to: library.dockShelf.sections(holding: shortcut.id).subtracting([part.id]))
+                }
+            }
+            .padding(.leading, Desk.pt(50))
+        }
+    }
+
+    private func renameDockSection(_ part: DockSection) {
+        if library.renameDockSection(part.id, name: sectionName) { renamingSection = nil; sectionNameInvalid = false }
+        else { sectionNameInvalid = true }
     }
 
     private func positionTile(_ choice: FluxDockPosition) -> some View {
@@ -720,7 +810,7 @@ struct PlaybackSettingsView: View {
                 #if os(macOS)
                 if inline && !overPlayback {
                     DeskToggle(title: "Retour affiche d’abord les zones de l’écran", isOn: $backShowsZones)
-                    Text("Au clavier ou à la télécommande, Retour encadre le haut, la colonne, le contenu, l’aperçu et le dock, et indique où mène chaque flèche : une flèche entre dans la zone voisine, OK referme, Retour une seconde fois revient à l’écran précédent. Désactivé, Retour revient tout de suite à l’écran précédent ; Tab passe toujours d’une zone à l’autre.")
+                    Text("Au clavier ou à la télécommande, Retour encadre le haut, la colonne, le contenu, l’aperçu et le dock, et indique où mène chaque flèche : une flèche entre dans la zone voisine, OK referme, Retour une seconde fois revient à l’écran précédent. Désactivé, comme au départ, Retour revient tout de suite à l’écran précédent ; Tab passe toujours d’une zone à l’autre. Maintenu, Retour mène droit à l’accueil.")
                         .font(Desk.font(.caption)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 }
                 #endif

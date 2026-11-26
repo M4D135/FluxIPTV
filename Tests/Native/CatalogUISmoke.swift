@@ -203,6 +203,12 @@ private enum CatalogUIFailure: Error, CustomStringConvertible {
         /// Titles relabelled the way playlists mark a language, with the
         /// language list open in the navigation column.
         var languages = false
+        /// What the user keeps in the dock: "light" a few shortcuts, a
+        /// video in progress and a folder; "full" two sections, a season,
+        /// an episode and a recent as well; "many" more than the bar holds.
+        var dock: String? = nil
+        /// The lists of the selected title, with its place in the dock.
+        var lists = false
         var defaults: [String: Any] = [:]
         var gallery = false
     }
@@ -290,12 +296,20 @@ private enum CatalogUIFailure: Error, CustomStringConvertible {
             // the dock under a list or to the controls above it, the arrows
             // walk the bar down to Back, and a second Back shows the home screen.
             Scenario(kind: .live, filename: "keys-dock.png", actions: [.back, .down],
-                     expectedFocus: FluxDockItem.live.focusID),
+                     expectedFocus: FluxDockItem.live.focusID, defaults: [DeskZone.backKey: true]),
             Scenario(kind: .movie, filename: "keys-top.png", actions: [.back, .up, .right],
-                     expectedFocus: "reload"),
+                     expectedFocus: "reload", defaults: [DeskZone.backKey: true]),
             Scenario(kind: .movie, filename: "keys-bar.png", actions: [.back, .down, .left, .left],
-                     expectedFocus: DeskZone.backID),
+                     expectedFocus: DeskZone.backID, defaults: [DeskZone.backKey: true]),
             Scenario(kind: .movie, filename: "keys-home.png", actions: [.back, .back],
+                     expectedFocus: FluxDockItem.movie.focusID, defaults: [DeskZone.backKey: true]),
+            // As the application starts: Back returns at once, here from
+            // the films to the home screen, on the section that was left.
+            Scenario(kind: .movie, filename: "keys-back.png", actions: [.back],
+                     expectedFocus: FluxDockItem.movie.focusID),
+            // The Home key of a remote, which a held Back stands for, shows
+            // the home screen from wherever one is.
+            Scenario(kind: .movie, filename: "keys-back-held.png", actions: [.home],
                      expectedFocus: FluxDockItem.movie.focusID),
             // The bar of the player: three keys to the right is Langues, OK
             // opens its panel on the audio in use, Down moves in it, and Back
@@ -315,6 +329,35 @@ private enum CatalogUIFailure: Error, CustomStringConvertible {
                                                  "fluxiptv.fixture.dockPointer": 1], gallery: true))
         }
         scenarios.append(Scenario(kind: .movie, filename: "languages.png", languages: true, gallery: true))
+        // The dock as a user fills it. A few shortcuts keep their full
+        // size; the pointer on one of them shows its whole name.
+        let folder = DockEntry.stack(listID: FavoritePresets.defaultID(for: .movie)).id
+        scenarios.append(Scenario(kind: .movie, filename: "dock-shortcuts.png", dock: "light",
+                                  defaults: ["fluxiptv.fixture.dockPointer": 7]))
+        scenarios.append(Scenario(kind: .movie, filename: "dock-full.png", dock: "full"))
+        scenarios.append(Scenario(kind: .movie, filename: "dock-folder.png", dock: "light",
+                                  defaults: ["fluxiptv.fixture.dockFan": folder]))
+        scenarios.append(Scenario(kind: .movie, filename: "dock-overflow.png", dock: "many",
+                                  defaults: ["fluxiptv.fixture.dockFan": DockEntry.moreID], gallery: true))
+        scenarios.append(Scenario(kind: .live, filename: "home-dock.png", home: true, dock: "full"))
+        // On another edge the dock keeps the same things, and its folder
+        // opens away from that edge.
+        for position in [FluxDockPosition.top, .leading, .trailing] {
+            scenarios.append(Scenario(kind: .movie, filename: "dock-folder-\(position.rawValue).png", dock: "light",
+                                      defaults: [FluxDockPosition.storageKey: position.rawValue, "fluxiptv.fixture.dockFan": folder],
+                                      gallery: true))
+        }
+        scenarios.append(Scenario(kind: .series, filename: "lists-dock.png", dock: "full", lists: true))
+        // From the films, Down reaches the dock on Films; the arrows walk
+        // it to the folder, OK opens it on its first title — the titles of
+        // a list stand in the order of their names —, Up goes to the next
+        // one, and Back closes it on its icon.
+        scenarios.append(Scenario(kind: .movie, filename: "keys-folder.png",
+                                  actions: [.down, .down, .down] + Array(repeating: .right, count: 9) + [.select, .up],
+                                  expectedFocus: DockEntry.fanPrefix + "fixture-movie-0", dock: "light"))
+        scenarios.append(Scenario(kind: .movie, filename: "keys-folder-back.png",
+                                  actions: [.down, .down, .down] + Array(repeating: .right, count: 9) + [.select, .up, .back],
+                                  expectedFocus: folder, dock: "light", gallery: true))
         scenarios.append(Scenario(kind: .live, filename: "zones-top.png", zone: .top, gallery: true))
         // The pointer on Films and on Séries: each brings its own room forward.
         scenarios.append(Scenario(kind: .live, filename: "home-films.png", home: true,
@@ -363,6 +406,46 @@ private enum CatalogUIFailure: Error, CustomStringConvertible {
                 for _ in 0..<100 where library.isFiltering { try await Task.sleep(nanoseconds: 20_000_000) }
                 try require(library.catalogResults.all.items.count == 5, "The favourites fixture did not filter the catalogue.")
             }
+            if let dock = scenario.dock {
+                // What a user keeps in the dock, through the production model:
+                // shortcuts in two sections, a film left unfinished, a
+                // channel watched, and a list of favourites as a folder.
+                func title(_ id: String) throws -> IPTVItem {
+                    guard let item = library.catalogItem(id: id) else { throw CatalogUIFailure.assertion("Missing fixture title \(id).") }
+                    return item
+                }
+                let series = try title("fixture-series")
+                let general: Set<String> = [DockShelf.defaultSectionID]
+                try require(library.assignDock(DockShortcut(item: try title("fixture-live-0")), to: general)
+                            && library.assignDock(DockShortcut(item: try title("fixture-movie-1")), to: general),
+                            "The dock fixture could not keep its first shortcuts.")
+                if dock != "light" {
+                    try require(library.assignDock(DockShortcut(item: series), to: [], creating: "Le soir"), "The dock fixture could not create its section.")
+                    let evening: Set<String> = [library.dockShelf.sections[1].id]
+                    try require(library.assignDock(DockShortcut(series: series, season: 3), to: evening)
+                                && library.assignDock(DockShortcut(series: series, episode: seasons[11].episodes[14]), to: evening),
+                                "The dock fixture could not keep a season and an episode.")
+                } else {
+                    try require(library.assignDock(DockShortcut(item: series), to: general), "The dock fixture could not keep its series.")
+                }
+                if dock == "many" {
+                    for index in 6...11 {
+                        try require(library.assignDock(DockShortcut(item: try title("fixture-movie-\(index)")), to: general),
+                                    "The dock fixture could not keep its many shortcuts.")
+                    }
+                }
+                let list = FavoritePresets.defaultID(for: .movie)
+                for id in ["fixture-movie-0", "fixture-movie-2", "fixture-movie-3", "fixture-movie-5", "fixture-movie-8"] {
+                    library.toggleFavorite(try title(id), in: list)
+                }
+                library.setDockStack(list, shown: true)
+                if dock != "light" { library.visitDock(DockShortcut(item: try title("fixture-live-5"))) }
+                library.visitDock(DockShortcut(item: try title("fixture-movie-4")))
+                playback.recordFixtureProgress(id: "fixture-movie-4", seconds: 2_520, duration: 6_480)
+                try require(library.dockShelf.contains("fixture-live-0") && library.dockShelf.showsStack(list)
+                            && library.dockShelf.recents.first?.id == "fixture-movie-4", "The dock fixture is not what the scenario expects.")
+            }
+            defer { playback.clearFixtureProgress() }
             let selected = library.catalogResults.all.items.first
             if let mode = scenario.player, let item = selected {
                 // The published state of a media that plays, and nothing else:
@@ -390,7 +473,7 @@ private enum CatalogUIFailure: Error, CustomStringConvertible {
                                    fixtureSettingsPage: scenario.settings, fixtureFavorites: scenario.favorites,
                                    fixtureHome: scenario.home, fixturePlayerSettings: scenario.playerSettings,
                                    fixtureZone: scenario.zone, fixtureActions: scenario.actions,
-                                   fixtureZapList: scenario.zapList,
+                                   fixtureZapList: scenario.zapList, fixtureLists: scenario.lists,
                                    fixturePlayer: scenario.player != nil, fixtureHoldsControls: scenario.player != nil,
                                    fixtureTracksPanel: scenario.player == "tracks",
                                    fixtureBanner: scenario.player == "banner")

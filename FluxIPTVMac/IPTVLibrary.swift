@@ -75,6 +75,10 @@ final class IPTVLibrary: ObservableObject {
             }
         }
     }
+    /// What the user keeps in the dock: shortcuts in named sections, lists
+    /// shown as folders, and what was watched last. Identifiers and names
+    /// only, as for the favourites: never an address.
+    @Published private(set) var dockShelf = DockShelf()
     @Published private(set) var isLoading = false
     @Published var alertMessage: String?
     @Published private(set) var credentialIssue: String?
@@ -108,6 +112,10 @@ final class IPTVLibrary: ObservableObject {
             // Retain v1 data as a fallback; v2 is written immediately on first launch.
             presets = FavoritePresets(legacyIDs: Set(UserDefaults.standard.stringArray(forKey: favoritesKey) ?? []))
             persistPresets()
+        }
+        if let data = UserDefaults.standard.data(forKey: DockShelf.storageKey),
+           let saved = try? JSONDecoder().decode(DockShelf.self, from: data) {
+            dockShelf = saved
         }
         browsingPreferences.retainSources(Set(sources.map(\.id)))
         if let first = sources.first(where: { $0.id == browsingPreferences.lastSourceID }) ?? sources.first {
@@ -150,6 +158,10 @@ final class IPTVLibrary: ObservableObject {
         if let data = browsingDefaults?.data(forKey: presetsKey),
            let saved = try? JSONDecoder().decode(FavoritePresets.self, from: data) {
             presets = saved
+        }
+        if let data = browsingDefaults?.data(forKey: DockShelf.storageKey),
+           let saved = try? JSONDecoder().decode(DockShelf.self, from: data) {
+            dockShelf = saved
         }
         sources = [source]
         selectedSourceID = source.id
@@ -630,6 +642,62 @@ final class IPTVLibrary: ObservableObject {
         guard presets.delete(id: preset.id) else { return }
         if selectedPresetIDs[preset.kind] == preset.id { selectedPresetIDs.removeValue(forKey: preset.kind) }
         persistPresets()
+        // Its folder leaves the dock with it.
+        if dockShelf.retainStacks(Set(presets.lists.map(\.id))) { persistDock() }
+    }
+
+    // MARK: Dock
+
+    /// The sections of the dock that keep this shortcut, and a new one to
+    /// create for it: the whole choice, or nothing.
+    func assignDock(_ shortcut: DockShortcut, to sectionIDs: Set<String>, creating name: String? = nil) -> Bool {
+        guard dockShelf.assign(shortcut, to: sectionIDs, creating: name) else { return false }
+        persistDock()
+        return true
+    }
+
+    func removeDockShortcut(_ id: String) {
+        guard dockShelf.contains(id) else { return }
+        dockShelf.remove(shortcutID: id)
+        persistDock()
+    }
+
+    func moveDockShortcut(_ id: String, in sectionID: String, to index: Int) {
+        if dockShelf.move(shortcutID: id, in: sectionID, to: index) { persistDock() }
+    }
+
+    func renameDockSection(_ id: String, name: String) -> Bool {
+        guard dockShelf.renameSection(id: id, name: name) else { return false }
+        persistDock()
+        return true
+    }
+
+    func deleteDockSection(_ id: String) {
+        if dockShelf.deleteSection(id: id) { persistDock() }
+    }
+
+    /// Shows or hides a list of favourites as a folder of the dock.
+    func setDockStack(_ listID: String, shown: Bool) {
+        guard dockShelf.showsStack(listID) != shown, !shown || presets.list(id: listID) != nil else { return }
+        dockShelf.setStack(listID, shown: shown)
+        persistDock()
+    }
+
+    /// What has just been opened comes first among the recents.
+    func visitDock(_ shortcut: DockShortcut) {
+        guard dockShelf.recents.first != shortcut else { return }
+        dockShelf.visit(shortcut)
+        persistDock()
+    }
+
+    func forgetDockRecent(_ id: String) {
+        guard dockShelf.recents.contains(where: { $0.id == id }) else { return }
+        dockShelf.forget(recentID: id)
+        persistDock()
+    }
+
+    private func persistDock() {
+        if let bytes = try? JSONEncoder().encode(dockShelf) { browsingDefaults?.set(bytes, forKey: DockShelf.storageKey) }
     }
 
     private func persistPresets() {
@@ -648,6 +716,7 @@ final class IPTVLibrary: ObservableObject {
         sources.removeAll(where: { $0.id == source.id })
         presets.removeSource(source.id)
         persistPresets()
+        if dockShelf.removeSource(source.id) { persistDock() }
         persistSources()
         if selectedSourceID == source.id {
             seriesCache.removeAll()

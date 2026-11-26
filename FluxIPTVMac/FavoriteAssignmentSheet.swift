@@ -1,6 +1,7 @@
 import SwiftUI
 
-/// A local draft: dismissing or cancelling never changes saved memberships.
+/// The lists of a title and its place in the dock. A local draft:
+/// dismissing or cancelling never changes what was saved.
 struct FavoriteAssignmentSheet: View {
     let item: IPTVItem
     let open: () -> Void
@@ -8,6 +9,12 @@ struct FavoriteAssignmentSheet: View {
     /// Set when the panel is drawn inside the window. Dismissing a view that
     /// no sheet presents would close the window itself.
     var inlineClose: (() -> Void)? = nil
+    /// What of this title the dock can keep: the title itself and, from the
+    /// screen of a series, its season or one of its episodes. Empty where
+    /// there is no dock.
+    var dockChoices: [DockShortcut] = []
+    /// The choice shown first: the one whose icon was asked about.
+    var dockPreferred: String? = nil
     @EnvironmentObject private var library: IPTVLibrary
     @Environment(\.dismiss) private var dismiss
     @State private var selectedIDs: Set<String> = []
@@ -16,18 +23,29 @@ struct FavoriteAssignmentSheet: View {
     @State private var validationError: String?
     @State private var initialized = false
     @FocusState private var nameFocused: Bool
-    #if os(tvOS)
-    /// Control under the remote: each one draws its own highlight.
+    #if !os(iOS)
+    /// Control under the remote or the keys: each one draws its own highlight.
     @FocusState private var focus: String?
+    @FocusState private var sectionFocused: Bool
+    @State private var dockChoice = 0
+    /// Sections chosen for each thing the dock can keep, by its identifier.
+    @State private var dockSelected: [String: Set<String>] = [:]
+    @State private var creatingSection = false
+    @State private var newSection = ""
+    #endif
+    #if os(macOS)
+    @State private var hovered: String?
+    /// The ring of the keys shows once a key has been used.
+    @State private var keyboard = false
     #endif
 
     private var lists: [FavoritePreset] { library.presets.lists(for: item.kind) }
 
     var body: some View {
-        #if os(tvOS)
-        television
-        #else
+        #if os(iOS)
         standard
+        #else
+        desk
         #endif
     }
 
@@ -39,52 +57,75 @@ struct FavoriteAssignmentSheet: View {
     private func initialize() {
         guard !initialized else { return }
         selectedIDs = Set(lists.filter { $0.itemIDs.contains(item.id) }.map(\.id))
+        #if !os(iOS)
+        for choice in dockChoices { dockSelected[choice.id] = library.dockShelf.sections(holding: choice.id) }
+        dockChoice = dockChoices.firstIndex { $0.id == dockPreferred } ?? 0
+        #endif
         initialized = true
     }
 
-    #if os(tvOS)
-    // MARK: Television: the sizes of the desk, a highlight on every control
+    #if !os(iOS)
+    // MARK: Desk: the same panel on a television and on a Mac
 
-    private var television: some View {
+    private var sections: [DockSection] { library.dockShelf.sections }
+    private var choice: DockShortcut? { dockChoices.indices.contains(dockChoice) ? dockChoices[dockChoice] : nil }
+
+    /// The controls, row by row, for the arrows of a keyboard. A remote
+    /// finds them by where they stand.
+    private var grid: [[String]] {
+        var rows = lists.indices.map { ["list-\($0)"] } + [["create"]]
+        if !dockChoices.isEmpty {
+            if dockChoices.count > 1 { rows.append(dockChoices.indices.map { "dock-choice-\($0)" }) }
+            rows += sections.indices.map { ["dock-\($0)"] } + [["dock-create"]]
+        }
+        return rows + [["open", "cancel", "save"]]
+    }
+
+    private var desk: some View {
         VStack(alignment: .leading, spacing: Desk.pt(12)) {
             VStack(alignment: .leading, spacing: Desk.pt(4)) {
-                Text("Favoris et listes").font(Desk.font(.title2, .bold))
+                Text(dockChoices.isEmpty ? "Favoris et listes" : "Favoris, listes et dock").font(Desk.font(.title2, .bold))
                 Text(item.name).font(Desk.font(.headline)).foregroundStyle(.white.opacity(0.85)).lineLimit(2)
-                Text("Choisissez vos listes, puis enregistrez.")
+                Text(dockChoices.isEmpty ? "Choisissez vos listes, puis enregistrez."
+                     : "Choisissez vos listes et sa place dans le dock, puis enregistrez.")
                     .font(Desk.font(.callout)).foregroundStyle(.secondary)
             }
-            ScrollView {
-                VStack(alignment: .leading, spacing: Desk.pt(7)) {
-                    ForEach(Array(lists.enumerated()), id: \.element.id) { index, preset in
-                        let chosen = selectedIDs.contains(preset.id)
-                        row("list-\(index)", symbol: chosen ? "checkmark.circle.fill" : "circle",
-                            tint: chosen ? .cyan : .secondary, title: preset.name,
-                            mark: preset.isDefault ? "star.fill" : nil) { toggle(preset) }
-                            .accessibilityValue(chosen ? "Sélectionnée" : "Non sélectionnée")
-                    }
-                    row("create", symbol: creating ? "minus.circle" : "plus.circle", tint: .secondary,
-                        title: creating ? "Annuler la nouvelle liste" : "Créer une nouvelle liste", mark: nil) {
-                        creating.toggle(); validationError = nil
-                    }
-                    if creating {
-                        HStack(spacing: Desk.pt(10)) {
-                            Image(systemName: "pencil").font(Desk.font(.callout)).foregroundStyle(.secondary)
-                            TextField("Nom de la nouvelle liste", text: $newName,
-                                      prompt: Text("Nom de la nouvelle liste")
-                                        .foregroundStyle(nameFocused ? Color.black.opacity(0.55) : Color.white.opacity(0.55)))
-                                .textFieldStyle(.plain).font(Desk.font(.body)).focused($nameFocused)
+            ScrollViewReader { reader in
+                ScrollView {
+                    VStack(alignment: .leading, spacing: Desk.pt(7)) {
+                        if !dockChoices.isEmpty { heading("LISTES") }
+                        ForEach(Array(lists.enumerated()), id: \.element.id) { index, preset in
+                            let chosen = selectedIDs.contains(preset.id)
+                            row("list-\(index)", symbol: chosen ? "checkmark.circle.fill" : "circle",
+                                tint: chosen ? .cyan : .secondary, title: preset.name,
+                                mark: preset.isDefault ? "star.fill" : nil) { toggle(preset) }
+                                .accessibilityValue(chosen ? "Sélectionnée" : "Non sélectionnée")
                         }
-                        .padding(.leading, Desk.pt(14)).padding(.trailing, Desk.pt(4)).padding(.vertical, Desk.pt(4))
-                        .background(.black.opacity(0.22), in: RoundedRectangle(cornerRadius: Desk.pt(14), style: .continuous))
-                        .accessibilityIdentifier("favorite-name")
-                        Text("Le contenu sera également ajouté à cette nouvelle liste.")
-                            .font(Desk.font(.caption)).foregroundStyle(.secondary)
+                        row("create", symbol: creating ? "minus.circle" : "plus.circle", tint: .secondary,
+                            title: creating ? "Annuler la nouvelle liste" : "Créer une nouvelle liste", mark: nil) {
+                            creating.toggle(); validationError = nil
+                            #if os(macOS)
+                            nameFocused = creating
+                            #endif
+                        }
+                        if creating {
+                            field("Nom de la nouvelle liste", text: $newName, focused: $nameFocused, identifier: "favorite-name")
+                            Text("Le contenu sera également ajouté à cette nouvelle liste.")
+                                .font(Desk.font(.caption)).foregroundStyle(.secondary)
+                        }
+                        if !dockChoices.isEmpty { dockRows }
                     }
+                    // Room for the highlight of the first and the last row.
+                    .padding(.horizontal, Desk.pt(6)).padding(.vertical, Desk.pt(6))
                 }
-                // Room for the highlight of the first and the last row.
-                .padding(.horizontal, Desk.pt(6)).padding(.vertical, Desk.pt(6))
+                #if os(tvOS)
+                .focusSection()
+                #else
+                .onChange(of: focus) { _, id in
+                    if let id, keyboard { reader.scrollTo(id, anchor: .center) }
+                }
+                #endif
             }
-            .focusSection()
             if let validationError {
                 Text(validationError).font(Desk.font(.callout)).foregroundStyle(.orange)
                     .fixedSize(horizontal: false, vertical: true)
@@ -95,15 +136,24 @@ struct FavoriteAssignmentSheet: View {
                 Spacer(minLength: Desk.pt(8))
                 pill("cancel", title: "Annuler") { finish() }
                 pill("save", title: "Enregistrer", prominent: true, action: commit)
-                    .disabled(creating && newName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .disabled(unnamed)
             }
+            #if os(tvOS)
             .focusSection()
+            // The foot is entered on Enregistrer, which ends the panel:
+            // the lists and the sections above make a long column, and
+            // the nearest key under it is not the one that is wanted.
+            .defaultFocus($focus, "save", priority: .userInitiated)
+            #endif
         }
         .padding(Desk.pt(22))
-        .frame(width: Desk.pt(520))
-        .frame(maxHeight: Desk.pt(500))
+        .frame(width: Desk.pt(dockChoices.isEmpty ? 520 : 560))
+        .frame(maxHeight: Desk.pt(dockChoices.isEmpty ? 500 : 640))
         .fixedSize(horizontal: false, vertical: true)
         .foregroundStyle(.white)
+        #if os(macOS)
+        .onKeyPress(keys: [.upArrow, .downArrow, .leftArrow, .rightArrow, .return, .space, .escape]) { press in key(press) }
+        #endif
         .onAppear {
             initialize()
             // The remote starts on the first list, where the choice is made.
@@ -111,9 +161,104 @@ struct FavoriteAssignmentSheet: View {
         }
     }
 
+    /// A new list or a new section waits for its name.
+    private var unnamed: Bool {
+        (creating && newName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            || (creatingSection && newSection.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+    }
+
+    /// The sections of the dock that keep this title, as the lists above
+    /// keep it: chosen here, created and named here.
+    @ViewBuilder private var dockRows: some View {
+        heading("DOCK").padding(.top, Desk.pt(10))
+        if dockChoices.count > 1 {
+            // A series, one of its seasons or one of its episodes.
+            HStack(spacing: Desk.pt(8)) {
+                ForEach(Array(dockChoices.enumerated()), id: \.element.id) { index, option in
+                    chip("dock-choice-\(index)", title: chipTitle(option), chosen: index == dockChoice,
+                         kept: !(dockSelected[option.id] ?? []).isEmpty) {
+                        dockChoice = index; validationError = nil
+                    }
+                }
+            }
+        }
+        if let choice {
+            ForEach(Array(sections.enumerated()), id: \.element.id) { index, section in
+                let chosen = dockSelected[choice.id]?.contains(section.id) == true
+                row("dock-\(index)", symbol: chosen ? "checkmark.circle.fill" : "circle",
+                    tint: chosen ? .cyan : .secondary, title: section.name,
+                    mark: section.isDefault ? "dock.rectangle" : nil) {
+                    var set = dockSelected[choice.id] ?? []
+                    if !set.insert(section.id).inserted { set.remove(section.id) }
+                    dockSelected[choice.id] = set
+                    validationError = nil
+                }
+                .accessibilityValue(chosen ? "Sélectionnée" : "Non sélectionnée")
+            }
+            row("dock-create", symbol: creatingSection ? "minus.circle" : "plus.circle", tint: .secondary,
+                title: creatingSection ? "Annuler la nouvelle section" : "Créer une section du dock", mark: nil) {
+                creatingSection.toggle(); validationError = nil
+                #if os(macOS)
+                sectionFocused = creatingSection
+                #endif
+            }
+            if creatingSection {
+                field("Nom de la section", text: $newSection, focused: $sectionFocused, identifier: "favorite-section-name")
+            }
+            Text(creatingSection ? "« \(choice.title) » ira dans cette section, à part dans le dock."
+                 : "Chaque section se tient à part dans le dock, entre deux séparateurs.")
+                .font(Desk.font(.caption)).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private func chipTitle(_ option: DockShortcut) -> String {
+        switch option.target {
+        case .channel: "La chaîne"
+        case .film: "Le film"
+        case .series: "La série"
+        case .season: option.season.map { "Saison \($0)" } ?? "La saison"
+        case .episode: option.badge.map { $0.replacingOccurrences(of: "·", with: " ") } ?? "L’épisode"
+        }
+    }
+
+    private func heading(_ title: String) -> some View {
+        Text(title).font(Desk.font(.caption2, .semibold)).tracking(1.5).foregroundStyle(.secondary)
+            .padding(.horizontal, Desk.pt(4))
+    }
+
+    private func lit(_ id: String) -> Bool {
+        #if os(macOS)
+        (keyboard && focus == id) || hovered == id
+        #else
+        focus == id
+        #endif
+    }
+
+    private func field(_ prompt: String, text: Binding<String>, focused: FocusState<Bool>.Binding, identifier: String) -> some View {
+        HStack(spacing: Desk.pt(10)) {
+            Image(systemName: "pencil").font(Desk.font(.callout)).foregroundStyle(.secondary)
+            #if os(tvOS)
+            // Under the remote the system draws the field light: its prompt
+            // then needs a dark ink to stay readable.
+            TextField(prompt, text: text,
+                      prompt: Text(prompt).foregroundStyle(focused.wrappedValue ? Color.black.opacity(0.55) : Color.white.opacity(0.55)))
+                .textFieldStyle(.plain).font(Desk.font(.body)).focused(focused)
+            #else
+            TextField(prompt, text: text, prompt: Text(prompt).foregroundStyle(Color.white.opacity(0.55)))
+                .textFieldStyle(.plain).font(Desk.font(.body)).focused(focused)
+                .onSubmit { focus = "save" }
+                .padding(.vertical, Desk.pt(8))
+            #endif
+        }
+        .padding(.leading, Desk.pt(14)).padding(.trailing, Desk.pt(4)).padding(.vertical, Desk.pt(4))
+        .background(.black.opacity(0.22), in: RoundedRectangle(cornerRadius: Desk.pt(14), style: .continuous))
+        .accessibilityIdentifier(identifier)
+    }
+
     private func row(_ id: String, symbol: String, tint: Color, title: String, mark: String?,
                      action: @escaping () -> Void) -> some View {
-        let focused = focus == id
+        let focused = lit(id)
         let shape = RoundedRectangle(cornerRadius: Desk.pt(14), style: .continuous)
         return Button(action: action) {
             HStack(spacing: Desk.pt(12)) {
@@ -127,20 +272,109 @@ struct FavoriteAssignmentSheet: View {
             .contentShape(shape)
         }
         .buttonStyle(FluxBareButtonStyle())
-        .focused($focus, equals: id).focusEffectDisabled()
+        .modifier(PanelFocus(focus: $focus, id: id))
+        #if os(macOS)
+        .onHover { inside in hovered = inside ? id : (hovered == id ? nil : hovered) }
+        #endif
+        .id(id)
         .accessibilityIdentifier("favorite-\(id)")
-        #if FLUX_CATALOG_UI_TESTING
+        #if os(tvOS) && FLUX_CATALOG_UI_TESTING
+        .background(TVCatalogControlFrameProbe(identifier: "favorite-\(id)").allowsHitTesting(false))
+        #endif
+    }
+
+    /// One of the things the dock can keep of a series. A dot marks the
+    /// ones that a section already keeps.
+    private func chip(_ id: String, title: String, chosen: Bool, kept: Bool, action: @escaping () -> Void) -> some View {
+        let focused = lit(id)
+        let shape = Capsule()
+        return Button(action: action) {
+            HStack(spacing: Desk.pt(6)) {
+                if kept {
+                    Circle().fill(chosen ? Color(red: 0, green: 0.48, blue: 0.62) : Color.cyan)
+                        .frame(width: Desk.pt(8), height: Desk.pt(8))
+                }
+                Text(title).font(Desk.font(.callout, chosen ? .bold : .medium)).lineLimit(1).fixedSize()
+            }
+            .padding(.horizontal, Desk.pt(16)).padding(.vertical, Desk.pt(9))
+            .foregroundStyle(chosen ? .black : .white)
+            .background(chosen ? AnyShapeStyle(Color.white.opacity(0.92)) : AnyShapeStyle(Color.white.opacity(focused ? 0.18 : 0.07)), in: shape)
+            .overlay(shape.strokeBorder(.white.opacity(focused ? 0.9 : 0.14), lineWidth: focused ? 3 : 1).padding(focused ? -3 : 0).allowsHitTesting(false))
+            .contentShape(shape)
+        }
+        .buttonStyle(FluxBareButtonStyle())
+        .modifier(PanelFocus(focus: $focus, id: id))
+        #if os(macOS)
+        .onHover { inside in hovered = inside ? id : (hovered == id ? nil : hovered) }
+        #endif
+        .id(id)
+        .accessibilityIdentifier("favorite-\(id)")
+        .accessibilityValue(chosen ? "Sélectionné" : "")
+        #if os(tvOS) && FLUX_CATALOG_UI_TESTING
         .background(TVCatalogControlFrameProbe(identifier: "favorite-\(id)").allowsHitTesting(false))
         #endif
     }
 
     private func pill(_ id: String, title: String, prominent: Bool = false, action: @escaping () -> Void) -> some View {
-        FavoritePill(title: title, prominent: prominent, focused: focus == id, action: action)
-            .focused($focus, equals: id).focusEffectDisabled()
+        FavoritePill(title: title, prominent: prominent, focused: lit(id), action: action)
+            .modifier(PanelFocus(focus: $focus, id: id))
+            #if os(macOS)
+            .onHover { inside in hovered = inside ? id : (hovered == id ? nil : hovered) }
+            #endif
             .accessibilityIdentifier("favorite-\(id)")
     }
+
+    #if os(macOS)
+    /// The arrows walk the panel as the remote of a television does; Return
+    /// and Space press what they are on. A field being typed keeps its keys.
+    private func key(_ press: KeyPress) -> KeyPress.Result {
+        if nameFocused || sectionFocused {
+            guard press.key == .escape else { return .ignored }
+            if nameFocused { creating = false; focus = "create" } else { creatingSection = false; focus = "dock-create" }
+            return .handled
+        }
+        if press.key == .escape { finish(); return .handled }
+        let rows = grid
+        guard let current = focus, let r = rows.firstIndex(where: { $0.contains(current) }),
+              let c = rows[r].firstIndex(of: current) else {
+            keyboard = true; focus = rows.first?.first
+            return .handled
+        }
+        switch press.key {
+        case .upArrow, .downArrow:
+            let target = max(0, min(rows.count - 1, r + (press.key == .upArrow ? -1 : 1)))
+            // The foot is entered on Enregistrer, the end of the panel.
+            if target != r { focus = target == rows.count - 1 ? "save" : rows[target][min(c, rows[target].count - 1)] }
+        case .leftArrow: focus = rows[r][max(0, c - 1)]
+        case .rightArrow: focus = rows[r][min(rows[r].count - 1, c + 1)]
+        default:
+            guard keyboard else { keyboard = true; return .handled }
+            activate(current)
+        }
+        keyboard = true
+        return .handled
+    }
+
+    /// What OK does on a control of the panel.
+    private func activate(_ id: String) {
+        func index(_ prefix: String) -> Int? { id.hasPrefix(prefix) ? Int(id.dropFirst(prefix.count)) : nil }
+        if let i = index("list-"), lists.indices.contains(i) { toggle(lists[i]) }
+        else if let i = index("dock-choice-"), dockChoices.indices.contains(i) { dockChoice = i; validationError = nil }
+        else if let i = index("dock-"), sections.indices.contains(i), let choice {
+            var set = dockSelected[choice.id] ?? []
+            if !set.insert(sections[i].id).inserted { set.remove(sections[i].id) }
+            dockSelected[choice.id] = set; validationError = nil
+        }
+        else if id == "create" { creating.toggle(); validationError = nil; nameFocused = creating }
+        else if id == "dock-create" { creatingSection.toggle(); validationError = nil; sectionFocused = creatingSection }
+        else if id == "open" { finish(); open() }
+        else if id == "cancel" { finish() }
+        else if id == "save", !unnamed { commit() }
+    }
+    #endif
     #endif
 
+    #if os(iOS)
     private var standard: some View {
         VStack(alignment: .leading, spacing: 18) {
             Text("Favoris et listes").font(.title2.bold())
@@ -189,12 +423,34 @@ struct FavoriteAssignmentSheet: View {
         }.padding(26).fluxSheetSize(width: inlineClose == nil ? 620 : 540, height: inlineClose == nil ? 570 : 540)
             .onAppear { initialize() }
     }
+    #endif
 
     private func commit() {
-        guard library.assignFavorites(item, to: selectedIDs, creating: creating ? newName : nil) else {
+        let listName = creating ? newName : nil
+        // The lists and the dock take the whole choice or nothing: both are
+        // tried on a copy before either is written.
+        var draft = library.presets
+        guard draft.assign(item, to: selectedIDs, creating: listName) else {
             validationError = "Choisissez un nom unique de 1 à 60 caractères. Si une liste a changé, fermez puis rouvrez ce panneau."
             return
         }
+        #if !os(iOS)
+        var shelf = library.dockShelf
+        var changes: [(DockShortcut, Set<String>, String?)] = []
+        for (index, option) in dockChoices.enumerated() {
+            let chosen = dockSelected[option.id] ?? []
+            let sectionName = creatingSection && index == dockChoice ? newSection : nil
+            guard shelf.assign(option, to: chosen, creating: sectionName) else {
+                validationError = "Choisissez pour la section un nom unique de 1 à 40 caractères. Si le dock a changé, fermez puis rouvrez ce panneau."
+                return
+            }
+            if sectionName != nil || chosen != library.dockShelf.sections(holding: option.id) { changes.append((option, chosen, sectionName)) }
+        }
+        #endif
+        guard library.assignFavorites(item, to: selectedIDs, creating: listName) else { return }
+        #if !os(iOS)
+        for (option, chosen, sectionName) in changes { _ = library.assignDock(option, to: chosen, creating: sectionName) }
+        #endif
         saved(); finish()
     }
 
@@ -203,7 +459,22 @@ struct FavoriteAssignmentSheet: View {
     }
 }
 
-#if os(tvOS)
+#if !os(iOS)
+/// A control of the panel takes the remote of a television, and on a Mac
+/// the keys that walk the panel.
+private struct PanelFocus: ViewModifier {
+    let focus: FocusState<String?>.Binding
+    let id: String
+
+    func body(content: Content) -> some View {
+        #if os(tvOS)
+        content.focused(focus, equals: id).focusEffectDisabled()
+        #else
+        content.focusable().focused(focus, equals: id).focusEffectDisabled()
+        #endif
+    }
+}
+
 /// Action at the foot of the panel, dimmed while it cannot be used.
 private struct FavoritePill: View {
     let title: String

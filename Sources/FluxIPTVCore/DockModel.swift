@@ -141,6 +141,8 @@ public enum FluxDockItem: String, CaseIterable, Identifiable, Sendable {
 
 /// macOS-style magnification of equally sized cells along one axis. Positions
 /// are measured from the start of the first cell, before any magnification.
+/// A divider may stand before some cells, as between the parts of the Dock
+/// of a Mac: it takes a fixed room that never grows.
 public struct FluxDockMagnifier: Equatable, Sendable {
     public struct Layout: Equatable, Sendable {
         /// Scale of each cell.
@@ -158,23 +160,42 @@ public struct FluxDockMagnifier: Equatable, Sendable {
     public var spacing: Double
     public var maximumScale: Double
     public var radius: Double
+    /// Cells that a divider precedes, in increasing order, and its room.
+    public var breaks: [Int]
+    public var gap: Double
 
-    public init(count: Int, cell: Double, spacing: Double, maximumScale: Double, radius: Double) {
+    public init(count: Int, cell: Double, spacing: Double, maximumScale: Double, radius: Double,
+                breaks: [Int] = [], gap: Double = 0) {
         self.count = max(0, count)
         self.cell = max(1, cell)
         self.spacing = max(0, spacing)
         self.maximumScale = max(1, maximumScale)
         self.radius = max(1, radius)
+        // A divider stands between two cells: never before the first.
+        let limit = self.count
+        self.breaks = Array(Set(breaks.filter { $0 > 0 && $0 < limit })).sorted()
+        self.gap = max(0, gap)
     }
 
     public var pitch: Double { cell + spacing }
-    public var length: Double { count == 0 ? 0 : Double(count) * cell + Double(count - 1) * spacing }
-    public func center(_ index: Int) -> Double { Double(index) * pitch + cell / 2 }
+    public var length: Double {
+        count == 0 ? 0 : Double(count) * cell + Double(count - 1) * spacing + Double(breaks.count) * gap
+    }
+    /// Where a cell starts, the dividers before it included.
+    public func start(_ index: Int) -> Double {
+        Double(index) * pitch + Double(breaks.prefix { $0 <= index }.count) * gap
+    }
+    public func center(_ index: Int) -> Double { start(index) + cell / 2 }
+    /// Middle of the divider that stands before a cell.
+    public func divider(before index: Int) -> Double { start(index) - (spacing + gap) / 2 }
 
-    /// Index of the cell nearest to an unmagnified position.
+    /// Index of the cell at an unmagnified position; a position between
+    /// two cells belongs to the one before it.
     public func index(at position: Double) -> Int? {
         guard count > 0, position.isFinite else { return nil }
-        return Int(max(0, min(Double(count - 1), (position / pitch).rounded(.down))))
+        var index = Int(max(0, min(Double(count - 1), (position / pitch).rounded(.down))))
+        while index > 0, start(index) > position { index -= 1 }
+        return index
     }
 
     /// The point under the pointer keeps its place: cells before it move
@@ -203,8 +224,8 @@ public struct FluxDockMagnifier: Equatable, Sendable {
         if pointer <= 0 { anchor = 0 }
         else if pointer >= length { anchor = total }
         else {
-            let index = min(count - 1, Int(pointer / pitch))
-            let inside = min(1, (pointer - Double(index) * pitch) / cell)
+            let index = index(at: pointer) ?? 0
+            let inside = min(1, max(0, (pointer - start(index)) / cell))
             anchor = before[index] + growth[index] * inside
         }
         let offsets = (0..<count).map { before[$0] + growth[$0] / 2 - anchor }

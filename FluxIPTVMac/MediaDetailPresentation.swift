@@ -30,7 +30,8 @@ struct MediaDetailPresentation: View {
     let close: () -> Void
     let play: () -> Void
     let playEpisode: (IPTVItem, [IPTVSeason]) -> Void
-    let favorite: () -> Void
+    /// The lists of the title; with the episode chosen here, for a series.
+    let favorite: (IPTVItem?) -> Void
     let isFavorite: Bool
     let remoteEvent: MediaDetailRemoteEvent?
     var initialSeasons: [IPTVSeason] = []
@@ -66,7 +67,7 @@ struct MediaDetailPresentation: View {
 
     init(item: IPTVItem, details: IPTVDetails, close: @escaping () -> Void,
          play: @escaping () -> Void, playEpisode: @escaping (IPTVItem, [IPTVSeason]) -> Void,
-         favorite: @escaping () -> Void, isFavorite: Bool, remoteEvent: MediaDetailRemoteEvent?,
+         favorite: @escaping (IPTVItem?) -> Void, isFavorite: Bool, remoteEvent: MediaDetailRemoteEvent?,
          initialSeasons: [IPTVSeason] = [], initialSeasonNumber: Int? = nil,
          initialEpisodeID: String? = nil, suspended: Bool = false,
          expanded: Bool = true, hero: MediaDetailHero? = nil, seasonChanged: @escaping (Int) -> Void = { _ in }) {
@@ -99,6 +100,9 @@ struct MediaDetailPresentation: View {
         seasons.first(where: { $0.number == initialSeasonNumber }) ?? seasons.first
     }
     private var episodes: [IPTVItem] { selectedSeason?.episodes ?? [] }
+    /// The lists of the title, with the episode chosen here: the dock can
+    /// keep an episode as it keeps its series.
+    private func askFavorites() { favorite(item.isSeriesCollection ? selectedEpisode : nil) }
     private var selectedEpisode: IPTVItem? {
         episodes.first(where: { $0.id == selectedEpisodeID }) ?? episodes.first
     }
@@ -273,7 +277,7 @@ struct MediaDetailPresentation: View {
             }
             Spacer(minLength: 4)
             if !compact { descriptionControl }
-            control("favorite", title: isFavorite ? "Dans les favoris" : "Favoris", icon: isFavorite ? "star.fill" : "star", iconOnly: compact, action: favorite)
+            control("favorite", title: isFavorite ? "Dans les favoris" : "Favoris", icon: isFavorite ? "star.fill" : "star", iconOnly: compact, action: askFavorites)
         }
     }
 
@@ -401,12 +405,12 @@ struct MediaDetailPresentation: View {
 
     private var controlsHint: some View {
         Text("Directions : choisir  ·  Valider : ouvrir  ·  Lecture : regarder  ·  Retour : fermer")
-            #if os(tvOS)
-            .font(.system(size: 20, weight: .medium))
-            .foregroundStyle(.white.opacity(0.62))
-            #else
+            #if os(iOS)
             .font(.system(size: 12, weight: .medium))
             .foregroundStyle(.white.opacity(0.5))
+            #else
+            .font(.system(size: Desk.tv(20), weight: .medium))
+            .foregroundStyle(.white.opacity(0.62))
             #endif
             .frame(maxWidth: .infinity, alignment: .center)
     }
@@ -434,10 +438,10 @@ struct MediaDetailPresentation: View {
     }
 
     private var descriptionPages: [String] {
-        #if os(tvOS)
-        let pageLength = 520
-        #else
+        #if os(iOS)
         let pageLength = 850
+        #else
+        let pageLength = 520
         #endif
         var pages: [String] = [], current = ""
         for word in synopsis.split(whereSeparator: { $0.isWhitespace }) {
@@ -449,16 +453,19 @@ struct MediaDetailPresentation: View {
     }
     private var descriptionScreen: some View {
         GeometryReader { geometry in
-            #if os(tvOS)
-            let titleSize: CGFloat = 44
-            let textSize: CGFloat = 30
-            let contentWidth: CGFloat = 1500
-            #else
+            #if os(iOS)
             let titleSize: CGFloat = geometry.size.width > 1000 ? 42 : 28
             let textSize: CGFloat = geometry.size.width > 1000 ? 28 : 22
             let contentWidth: CGFloat = 1360
+            let wide = geometry.size.width > 1000
+            #else
+            // What a television shows, at the size of the window of a Mac.
+            let titleSize = Desk.tv(44)
+            let textSize = Desk.tv(30)
+            let contentWidth = Desk.tv(1500)
+            let wide = true
             #endif
-            VStack(alignment: .leading, spacing: 28) {
+            VStack(alignment: .leading, spacing: Desk.tv(28)) {
                 HStack {
                     control("description-back", title: "Retour à la fiche", icon: "chevron.left", action: closeDescription)
                     Spacer()
@@ -467,7 +474,7 @@ struct MediaDetailPresentation: View {
                 Text(item.name).font(.system(size: titleSize, weight: .bold)).lineLimit(2)
                 ScrollView {
                     Text(descriptionPages[min(descriptionPage, descriptionPages.count - 1)])
-                        .font(.system(size: textSize)).lineSpacing(10)
+                        .font(.system(size: textSize)).lineSpacing(Desk.tv(10))
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .id(descriptionPage).transition(.opacity)
                         .animation(reduceMotion ? nil : .easeOut(duration: 0.16), value: descriptionPage)
@@ -482,9 +489,9 @@ struct MediaDetailPresentation: View {
                 Text("Haut / Bas : lire la suite  ·  Retour : retrouver la fiche")
                     .font(.system(size: textSize * 0.6)).foregroundStyle(.white.opacity(0.65)).frame(maxWidth: .infinity)
             }
-            .padding(geometry.size.width > 1000 ? 60 : 24)
+            .padding(wide ? Desk.tv(60) : 24)
             #if os(macOS) || os(tvOS)
-            .frame(maxWidth: min(contentWidth, geometry.size.width - 96), maxHeight: geometry.size.height - Desk.pt(40))
+            .frame(maxWidth: min(contentWidth, geometry.size.width - Desk.tv(96)), maxHeight: geometry.size.height - Desk.pt(40))
             .fluxGlass(radius: Desk.pt(34))
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             #else
@@ -592,7 +599,7 @@ struct MediaDetailPresentation: View {
         case .select:
             switch focusedID {
             case "back": dismiss()
-            case "favorite": favorite()
+            case "favorite": askFavorites()
             case "description": descriptionPage = 0; expandedDescription = true; setFocus("description-back")
             case "retry-episodes": seasonReload = UUID()
             default: startPlayback()
@@ -800,20 +807,21 @@ private struct MediaDetailControlStyle: ButtonStyle {
     @Environment(\.isEnabled) private var isEnabled
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            #if os(tvOS)
-            .font(.system(size: 25, weight: .semibold))
-            .padding(.horizontal, compact ? 16 : 24).padding(.vertical, 12)
-            .frame(minWidth: compact ? 66 : nil, minHeight: 66)
-            #else
+            #if os(iOS)
             .font(.system(size: 16, weight: .semibold))
             .padding(.horizontal, compact ? 12 : 19).padding(.vertical, compact ? 12 : 14)
+            #else
+            // The keys of a television, at the size of the window of a Mac.
+            .font(.system(size: Desk.tv(25), weight: .semibold))
+            .padding(.horizontal, Desk.tv(compact ? 16 : 24)).padding(.vertical, Desk.tv(12))
+            .frame(minWidth: compact ? Desk.tv(66) : nil, minHeight: Desk.tv(66))
             #endif
             .foregroundStyle(.white.opacity(isEnabled ? 1 : 0.5))
-            .background(primary ? Color.cyan.opacity(highlighted ? 0.4 : 0.28) : .white.opacity(highlighted ? 0.16 : 0.05), in: RoundedRectangle(cornerRadius: 16))
-            .fluxMediaGlass(radius: 16)
-            .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(highlighted && isEnabled ? .white : .white.opacity(0.2), lineWidth: highlighted && isEnabled ? 3 : 1))
+            .background(primary ? Color.cyan.opacity(highlighted ? 0.4 : 0.28) : .white.opacity(highlighted ? 0.16 : 0.05), in: RoundedRectangle(cornerRadius: Desk.tv(16)))
+            .fluxMediaGlass(radius: Desk.tv(16))
+            .overlay(RoundedRectangle(cornerRadius: Desk.tv(16)).strokeBorder(highlighted && isEnabled ? .white : .white.opacity(0.2), lineWidth: highlighted && isEnabled ? 3 : 1))
             .opacity(configuration.isPressed ? 0.82 : 1)
-            .contentShape(RoundedRectangle(cornerRadius: 16))
+            .contentShape(RoundedRectangle(cornerRadius: Desk.tv(16)))
             .scaleEffect(configuration.isPressed ? 0.98 : highlighted && isEnabled ? 1.025 : 1)
             .animation(reduceMotion ? nil : .easeOut(duration: 0.16), value: highlighted)
             .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: configuration.isPressed)
@@ -851,14 +859,10 @@ extension MediaDetailPresentation {
     }
 
     func deskLayout(_ size: CGSize) -> some View {
-        #if os(tvOS)
-        // Read from a sofa, the sheet takes the room the dock leaves.
-        let sheet = CGSize(width: min(size.width - 40, item.isSeriesCollection ? 1700 : 1540),
-                           height: min(size.height - 8, 800))
-        #else
-        let sheet = CGSize(width: min(size.width - 96, item.isSeriesCollection ? 1340 : 1160),
-                           height: min(size.height - 30, 720))
-        #endif
+        // Read from a sofa, the sheet takes the room the dock leaves; a Mac
+        // shows the same sheet at the size of its window.
+        let sheet = CGSize(width: min(size.width - Desk.tv(40), Desk.tv(item.isSeriesCollection ? 1700 : 1540)),
+                           height: min(size.height - Desk.tv(8), Desk.tv(800)))
         return Group {
             if item.isSeriesCollection { seriesSheet(sheet) } else { filmSheet(sheet) }
         }
@@ -978,7 +982,7 @@ extension MediaDetailPresentation {
                     Text(label).font(Desk.system(13, .semibold)).foregroundStyle(.white.opacity(0.55))
                         .gridColumnAlignment(.leading)
                     Text(value).font(Desk.system(14)).foregroundStyle(.white.opacity(0.9))
-                        .lineLimit(Self.television ? 2 : 3).frame(maxWidth: .infinity, alignment: .leading)
+                        .lineLimit(2).frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
         }
@@ -1012,12 +1016,12 @@ extension MediaDetailPresentation {
             .deskFocusSection()
             Text(item.name)
                 .font(.system(size: Desk.size(34), weight: .bold, design: .rounded)).tracking(-0.4)
-                .lineLimit(Self.television ? 2 : 3).fixedSize(horizontal: false, vertical: true)
+                .lineLimit(2).fixedSize(horizontal: false, vertical: true)
                 .accessibilityAddTraits(.isHeader)
             chips
             HStack(spacing: Desk.pt(10)) {
                 playbackControl
-                control("favorite", title: isFavorite ? "Dans les favoris" : "Favoris", icon: isFavorite ? "star.fill" : "star", action: favorite)
+                control("favorite", title: isFavorite ? "Dans les favoris" : "Favoris", icon: isFavorite ? "star.fill" : "star", action: askFavorites)
                 descriptionControl
             }
             #if os(tvOS)
@@ -1165,7 +1169,7 @@ extension MediaDetailPresentation {
             kindBadge
             Text(item.name)
                 .font(.system(size: Desk.size(26), weight: .bold, design: .rounded)).tracking(-0.3)
-                .lineLimit(Self.television ? 1 : 2).fixedSize(horizontal: false, vertical: true)
+                .lineLimit(1).fixedSize(horizontal: false, vertical: true)
                 .accessibilityAddTraits(.isHeader)
             HStack(alignment: .firstTextBaseline, spacing: Desk.pt(10)) {
                 Text(seasonTitle(selectedSeason)).font(Desk.font(.title3, .semibold)).accessibilityAddTraits(.isHeader)
@@ -1322,7 +1326,7 @@ extension MediaDetailPresentation {
                 }
                 HStack(spacing: Desk.pt(8)) {
                     playbackControl
-                    control("favorite", title: isFavorite ? "Dans les favoris" : "Favoris", icon: isFavorite ? "star.fill" : "star", iconOnly: true, action: favorite)
+                    control("favorite", title: isFavorite ? "Dans les favoris" : "Favoris", icon: isFavorite ? "star.fill" : "star", iconOnly: true, action: askFavorites)
                     control("description", title: "Description complète", icon: "text.alignleft", iconOnly: true) {
                         descriptionPage = 0; expandedDescription = true; setFocus("description-back")
                     }

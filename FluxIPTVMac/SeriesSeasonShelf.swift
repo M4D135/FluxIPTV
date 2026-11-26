@@ -16,12 +16,14 @@ struct SeriesSeasonShelf: View {
     var heroExpanded = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    #if os(tvOS)
+    #if os(iOS)
+    private static let topRoom: CGFloat = 32, topFade: CGFloat = 0
+    #else
     // A remote scrolls one row at a time and leaves the foot of the row above
     // at the top of the shelf: it fades there, clear of the lifted sleeve.
-    private static let topRoom: CGFloat = 48, topFade: CGFloat = 0.035
-    #else
-    private static let topRoom: CGFloat = 32, topFade: CGFloat = 0
+    // A Mac shows the same shelf at the size of its window.
+    private static var topRoom: CGFloat { Desk.tv(48) }
+    private static let topFade: CGFloat = 0.035
     #endif
 
     static func focusID(_ season: IPTVSeason) -> String { "season-\(season.number)" }
@@ -37,11 +39,11 @@ struct SeriesSeasonShelf: View {
 
     var body: some View {
         ScrollView {
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(minimum: 0), spacing: 4), count: max(1, columns)), spacing: 18) {
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(minimum: 0), spacing: Desk.tv(4)), count: max(1, columns)), spacing: Desk.tv(18)) {
                 ForEach(seasons) { season in seasonButton(season) }
             }
             // Leave room for the selected sleeve's upward lift and zoom.
-            .padding(.horizontal, 20).padding(.top, Self.topRoom).padding(.bottom, 24)
+            .padding(.horizontal, Desk.tv(20)).padding(.top, Self.topRoom).padding(.bottom, Desk.tv(24))
         }
         #if os(tvOS)
         // A scroll view that touches the edge of the safe area spreads under

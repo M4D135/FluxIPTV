@@ -151,20 +151,21 @@ struct LiveTVChannelRow: View {
     let favorite: Bool
     let highlighted: Bool
     let accent: Color
-    /// A television is read from the sofa.
+    /// A television is read from the sofa; a Mac shows the same row at
+    /// the size of its window.
     private var k: CGFloat {
-        #if os(tvOS)
-        1.3
-        #else
+        #if os(iOS)
         1
+        #else
+        1.3 * Desk.scale
         #endif
     }
     /// Secondary text keeps a size that is read from a sofa.
     private var small: CGFloat {
-        #if os(tvOS)
-        18
-        #else
+        #if os(iOS)
         12.5
+        #else
+        Desk.tv(18)
         #endif
     }
 

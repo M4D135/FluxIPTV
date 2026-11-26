@@ -280,9 +280,7 @@ final class TVRemoteNavigationTests: XCTestCase {
         assertFocus(firstList, in: app)
         XCUIRemote.shared.press(.select)
         assertCondition(NSPredicate(format: "value == %@", "Sélectionnée"), on: firstList, in: app)
-        XCUIRemote.shared.press(.down)
-        XCUIRemote.shared.press(.down)
-        move(.right, to: save, maximumPresses: 3, in: app)
+        moveToSave(save, in: app)
         XCUIRemote.shared.press(.select)
         assertCondition("exists == false", on: firstList, in: app)
         assertFocus(favorite, in: app)
@@ -652,6 +650,146 @@ final class TVRemoteNavigationTests: XCTestCase {
     }
 
     /// Keys of the dock, in their default order.
+    /// Back returns one screen at a time, as in a web browser. Held, it goes
+    /// straight to the home screen: the Back key of the bar under OK held
+    /// down, since the Menu button of a remote held down belongs to tvOS.
+    @MainActor
+    func testBackHeldGoesStraightToTheHomeScreen() {
+        let app = launch("home")
+        defer { app.terminate() }
+        let live = element("navigation-tab-live", in: app)
+        let films = element("navigation-tab-movie", in: app)
+        let back = element("desk-back", in: app)
+        let home = element("desk-home-screen", in: app)
+        assertFocus(live, logical: "tab-live", in: app)
+
+        // The films, then the television from the dock: two screens behind.
+        XCUIRemote.shared.press(.right)
+        assertFocus(films, logical: "tab-movie", in: app)
+        XCUIRemote.shared.press(.select)
+        assertCondition("exists == false", on: home, in: app)
+        let film = element("catalog-card-fixture-movie-0", in: app)
+        assertFocus(film, logical: "fixture-movie-0", in: app)
+        XCUIRemote.shared.press(.down)
+        move(.left, to: live, maximumPresses: 8, in: app)
+        XCUIRemote.shared.press(.select)
+        let channel = element("live-channel-fixture-live-0", in: app)
+        assertFocus(channel, logical: "fixture-live-0", in: app)
+
+        // Back and Home stand at the foot of the navigation column: the
+        // column leads to Home, the last of the two, and Left to Back.
+        XCUIRemote.shared.press(.left)
+        assertCondition("hasFocus == false", on: channel, in: app)
+        move(.down, to: element("desk-home", in: app), maximumPresses: 24, in: app)
+        XCUIRemote.shared.press(.left)
+        assertFocus(back, logical: "desk-back", in: app)
+        XCTAssertEqual(back.label, "Retour : Films — maintenir : Accueil")
+        retainScreenshot("back-01-key-of-the-bar", in: app)
+        // A press would show the films. Held, it shows the home screen.
+        XCUIRemote.shared.press(.select, forDuration: 1.2)
+        XCTAssertTrue(home.waitForExistence(timeout: 10))
+        assertFocus(live, logical: "tab-live", in: app)
+        XCTAssertFalse(film.exists)
+        retainScreenshot("back-02-held-home", in: app)
+        print("PASS: TV_REMOTE Back held on the bar went straight to the home screen, past the films")
+    }
+
+    /// The dock as a user fills it: shortcuts, a video in progress, and a
+    /// list of favourites as a folder. The remote walks all of it, opens the
+    /// folder as a fan and closes it, opens a film from its shortcut, and
+    /// takes a shortcut out of the dock from the lists of its title.
+    @MainActor
+    func testTheDockKeepsShortcutsAndOpensItsFolder() {
+        let app = launch("dock")
+        defer { app.terminate() }
+        let card = element("catalog-card-fixture-movie-1", in: app)
+        let folder = element("navigation-dock-stack-default-movie", in: app)
+        let film = element("navigation-dock-item-shortcuts-fixture-movie-1", in: app)
+        let channel = element("navigation-dock-item-shortcuts-fixture-live-0", in: app)
+        let resume = element("navigation-dock-resume-fixture-movie-2", in: app)
+        let first = element("dock-fan-fixture-movie-0", in: app)
+        let second = element("dock-fan-fixture-movie-2", in: app)
+        let all = element("dock-fan-all", in: app)
+        assertFocus(card, logical: "fixture-movie-1", in: app)
+        XCTAssertTrue(channel.exists && film.exists && resume.exists && folder.exists,
+                      "The dock must show the shortcuts, the film in progress and the folder that the fixture keeps.")
+        XCTAssertEqual(resume.label, "Reprendre « Les lumières du port »")
+
+        // Down: the dock, under the films. Right walks it to its last icon.
+        XCUIRemote.shared.press(.down)
+        assertCondition("hasFocus == false", on: card, in: app)
+        move(.right, to: folder, maximumPresses: 16, in: app)
+        assertFocus(folder, logical: "dock-stack-default-movie", in: app)
+        retainScreenshot("dock-01-folder-focused", in: app)
+
+        // OK opens the folder as a fan, on its first title; Up walks them.
+        XCUIRemote.shared.press(.select)
+        assertFocus(first, logical: "dock-fan-fixture-movie-0", in: app)
+        XCTAssertEqual(folder.value as? String, "Ouvert")
+        retainScreenshot("dock-02-folder-open", in: app)
+        XCUIRemote.shared.press(.up)
+        assertFocus(second, logical: "dock-fan-fixture-movie-2", in: app)
+        XCUIRemote.shared.press(.up)
+        assertFocus(all, logical: "dock-fan-all", in: app)
+        // Nothing beside the fan takes the remote while it is open.
+        XCUIRemote.shared.press(.left)
+        assertFocus(all, logical: "dock-fan-all", in: app)
+        // Menu closes it, back on its icon.
+        XCUIRemote.shared.press(.menu)
+        assertCondition("exists == false", on: first, in: app)
+        assertFocus(folder, logical: "dock-stack-default-movie", in: app)
+        retainScreenshot("dock-03-folder-closed", in: app)
+        print("PASS: TV_REMOTE dock folder opened as a fan, walked, and closed by Menu on its icon")
+
+        // Down from its first title returns to the icon; another icon closes it.
+        XCUIRemote.shared.press(.select)
+        assertFocus(first, logical: "dock-fan-fixture-movie-0", in: app)
+        XCUIRemote.shared.press(.down)
+        assertFocus(folder, logical: "dock-stack-default-movie", in: app)
+        XCUIRemote.shared.press(.left)
+        assertCondition("exists == false", on: first, in: app)
+        assertCondition("hasFocus == false", on: folder, in: app)
+
+        // The shortcut of a film opens its fiche; Menu puts the sleeve back.
+        move(.left, to: film, maximumPresses: 14, in: app)
+        assertFocus(film, logical: "dock-item-shortcuts-fixture-movie-1", in: app)
+        XCUIRemote.shared.press(.select)
+        let play = element("media-detail-play", in: app)
+        XCTAssertTrue(play.waitForExistence(timeout: 10))
+        assertCondition("hasFocus == true", on: play, in: app)
+        retainScreenshot("dock-04-film-from-shortcut", in: app)
+        XCUIRemote.shared.press(.menu)
+        assertCondition("exists == false", on: play, in: app)
+        assertFocus(card, logical: "fixture-movie-1", in: app)
+        print("PASS: TV_REMOTE dock shortcut opened the fiche of its film, and Menu returned to its sleeve")
+
+        // Held, OK opens the lists of the title, where the dock keeps it.
+        XCUIRemote.shared.press(.down)
+        move(.right, to: film, maximumPresses: 14, in: app)
+        if !film.hasFocus { move(.left, to: film, maximumPresses: 14, in: app) }
+        assertFocus(film, logical: "dock-item-shortcuts-fixture-movie-1", in: app)
+        XCUIRemote.shared.press(.select, forDuration: 1.2)
+        let list = element("favorite-list-0", in: app)
+        let kept = element("favorite-dock-0", in: app)
+        XCTAssertTrue(list.waitForExistence(timeout: 10))
+        assertCondition("hasFocus == true", on: list, in: app)
+        XCTAssertEqual(kept.value as? String, "Sélectionnée")
+        retainScreenshot("dock-05-lists-of-a-shortcut", in: app)
+        // Unchecked and saved, it leaves the dock; the remote stays in the bar.
+        move(.down, to: kept, maximumPresses: 6, in: app)
+        XCUIRemote.shared.press(.select)
+        assertCondition("value == 'Non sélectionnée'", on: kept, in: app)
+        let save = element("favorite-save", in: app)
+        moveToSave(save, in: app)
+        XCUIRemote.shared.press(.select)
+        assertCondition("exists == false", on: list, in: app)
+        assertCondition("exists == false", on: film, in: app)
+        assertFocus(element("navigation-tab-movie", in: app), logical: "tab-movie", in: app)
+        XCTAssertTrue(channel.exists && folder.exists)
+        retainScreenshot("dock-06-shortcut-removed", in: app)
+        print("PASS: TV_REMOTE held OK opened the lists of a shortcut; unchecked and saved, it left the dock")
+    }
+
     private static let dockKeys = ["navigation-tab-live", "navigation-tab-movie", "navigation-tab-series",
                                    "navigation-search", "navigation-tab-favorites", "navigation-settings"]
 
@@ -798,6 +936,15 @@ final class TVRemoteNavigationTests: XCTestCase {
             XCUIRemote.shared.press(direction)
         }
         assertFocus(target, in: app, file: file, line: line)
+    }
+
+    /// The foot of the lists of a title stands under its last row, the one
+    /// that creates a section of the dock, and is entered on Enregistrer.
+    @MainActor
+    private func moveToSave(_ save: XCUIElement, in app: XCUIApplication) {
+        move(.down, to: element("favorite-dock-create", in: app), maximumPresses: 8, in: app)
+        XCUIRemote.shared.press(.down)
+        assertFocus(save, in: app)
     }
 
     @MainActor

@@ -2,19 +2,21 @@
 
 Application native SwiftUI pour macOS, iOS et tvOS.
 
-**La 0.9.0 donne au Mac et à l’Apple TV la même interface de bureau.** L’application s’ouvre sur un accueil où le dock occupe le milieu de l’écran ; il se range ensuite en bas, au centre, comme le Dock de macOS, sous les colonnes qui accompagnent les trois espaces. La télévision se lit en trois colonnes, les fiches flottent en verre sur le catalogue flouté, et plus aucune feuille ne recouvre la fenêtre : catégories, pays, langues, listes, sources et réglages sont dessinés dans l’interface, y compris pendant la lecture. Les films et les séries se filtrent par langue, comme les chaînes par pays.
+**La 0.9.0 donne au Mac et à l’Apple TV la même interface de bureau.** L’application s’ouvre sur un accueil où le dock occupe le milieu de l’écran ; il se range ensuite en bas, au centre, comme le Dock de macOS, sous les colonnes qui accompagnent les trois espaces. La télévision se lit en trois colonnes, les fiches flottent en verre sur le catalogue flouté, et plus aucune feuille ne recouvre la fenêtre : catégories, pays, langues, listes, sources et réglages sont dessinés dans l’interface, y compris pendant la lecture. Les films et les séries se filtrent par langue, comme les chaînes par pays. Le dock garde ce que l’on y range, comme celui d’un Mac : des raccourcis vers une chaîne, un film, une série, une saison ou un épisode, dans des sections que l’on nomme, la vidéo en cours, les derniers titres regardés, et des listes de favoris en dossiers qui s’ouvrent en éventail.
 
 iPhone et iPad conservent la disposition de la 0.8.9. Sur Apple TV, les effets complets — Liquid Glass à partir de tvOS 26, flou derrière une fiche, focus animé — sont actifs au départ sur l’Apple TV 4K de 2ᵉ génération et les suivantes ; l’Apple TV HD et la première Apple TV 4K commencent avec les surfaces sombres et le focus immédiat, et un réglage permet de changer.
 
 ## Le bureau, sur Mac et sur Apple TV
 
-Les deux plateformes partagent les mêmes écrans. Sur Apple TV les tailles sont celles d’un écran regardé depuis un canapé, la télécommande remplace le pointeur — l’icône sélectionnée du dock est celle qui grossit — et **Menu** tient lieu de Retour.
+Les deux plateformes partagent les mêmes écrans, **aux mêmes proportions**. Le bureau est dessiné pour les 1920 × 1080 points d’un téléviseur regardé depuis un canapé ; la fenêtre du Mac montre ce bureau-là à sa propre taille : mêmes marges autour de l’image, même colonne, mêmes jaquettes, mêmes touches, mêmes tailles de texte rapportées à l’écran. Ce que l’on voit sur le Mac est ce que la télévision affichera. Sur Apple TV la télécommande remplace le pointeur — l’icône sélectionnée du dock est celle qui grossit — et **Menu** tient lieu de Retour. Sur le Mac, ce dont seul un pointeur a besoin n’apparaît que sous lui : l’étoile et les options d’une jaquette, par exemple.
 
 ### Accueil
 
 L’application s’ouvre sur l’accueil : TV, Films, Séries, Recherche, Favoris et Réglages forment un grand dock au milieu de la fenêtre, sur le décor adouci de l’espace. Le nom de la destination pointée s’affiche au-dessus avec son effectif — chaînes, films, séries, listes — et le décor devient celui de cet espace. Un clic, ou **Entrée**, ouvre la destination ; une section s’ouvre là où elle a été laissée.
 
 **Retour** est le bouton Précédent d’un navigateur : il referme d’abord ce qui est ouvert dans l’écran — une fiche, une liste, un panneau —, puis revient à l’écran précédent, écran après écran, dans l’ordre exact où ils ont été ouverts, jusqu’à l’accueil. Chaque écran se retrouve sur le titre qui y était sélectionné. À gauche du dock, un bouton porte le nom de l’écran où Retour ramène, et une maison ramène directement à l’accueil.
+
+**Maintenu, Retour mène droit à l’accueil**, d’où que l’on soit : **Échap** maintenue au clavier, ou le bouton Retour du dock maintenu sous le pointeur — sous **OK** sur Apple TV. Le bouton Menu d’une télécommande maintenu appartient à tvOS, qui affiche alors son propre accueil : c’est donc le bouton du dock que l’on maintient.
 
 ### Une seule logique au clavier et à la télécommande
 
@@ -26,7 +28,7 @@ Au-dessus du catalogue, une seule ligne : le nom de ce qui est affiché et ce qu
 
 Sur Apple TV, **Menu** est ce Retour et ne fait rien d’autre. Chaque colonne de l’écran répond comme un tout à la flèche qui pointe vers elle : depuis la liste, **Gauche** mène à la colonne de navigation, **Droite** à Regarder et Favoris, **Haut** à la recherche, **Bas** au dock, où que la télécommande se trouve dans la liste. La colonne s’ouvre sur la ligne de ce qui est affiché — toutes les chaînes, une liste, une catégorie — et non sur celle qui se trouve à la hauteur d’où l’on vient ; **Droite** en ressort sur le titre que l’on venait de quitter.
 
-Au clavier du Mac, dont les flèches suivent des rangées, Retour affiche d’abord la boussole des zones : elle encadre **Haut** (recherche, actualiser, pages), **Colonne**, **Contenu**, **Aperçu** pour la télévision et **Dock**, et écrit où mène chaque flèche. Une flèche saute dans la zone voisine, **OK** referme la boussole, Retour une seconde fois revient à l’écran précédent. **Tab** et **⇧Tab** changent de zone sans la boussole, et Réglages › Interface permet de la supprimer.
+Au clavier du Mac comme à la télécommande, Retour revient directement en arrière. **Tab** et **⇧Tab** passent d’une zone de l’écran à l’autre. Réglages › Interface permet de faire d’abord afficher par Retour la boussole des zones : elle encadre **Haut** (recherche, actualiser, pages), **Colonne**, **Contenu**, **Aperçu** pour la télévision et **Dock**, et écrit où mène chaque flèche ; une flèche saute dans la zone voisine, **OK** la referme, Retour une seconde fois revient à l’écran précédent.
 
 ### Dock
 
@@ -36,6 +38,21 @@ Hors de l’accueil, le dock se tient en bas de l’écran, au centre, comme le 
 - **Thèmes** : Verre, Couleurs, Fumé, Néon et Sans fond.
 - **Ordre** : glisser une icône dans le dock, ou utiliser les flèches de Réglages › Dock.
 - Un clic secondaire sur le dock donne l’emplacement, le thème et l’agrandissement.
+
+### Ce que l’on garde dans le dock
+
+Après ses six destinations, le dock tient ce que l’on y range, chaque partie séparée de la suivante par un trait, comme les parties du Dock d’un Mac :
+
+- **Des raccourcis** vers une chaîne, un film, une série, une de ses saisons ou un de ses épisodes. L’icône est l’image du titre ; une pastille dit la saison ou l’épisode (S3, S12·E15). Une chaîne se lance, un film ouvre sa fiche, une série son rayon de saisons, une saison ou un épisode la fiche de la série ouverte dessus.
+- **Des sections nommées.** « Favoris, listes et dock » — l’étoile d’un titre, ou un appui long sur lui — liste sous les listes de favoris les sections du dock : on coche celles qui gardent le titre, on en crée une en la nommant, exactement comme une liste. Depuis une série, on choisit d’y ranger la série, la saison affichée ou l’épisode choisi.
+- **La vidéo en cours** : le film ou l’épisode laissé en route, avec sa progression ; un appui reprend la lecture. Puis **les derniers titres regardés**, trois au plus, que l’on peut garder d’un appui long. Réglages › Dock les masque.
+- **Des dossiers.** Une liste de favoris se met dans le dock depuis son écran (« Dossier dans le dock »). Son icône montre ses premiers titres et leur nombre ; elle s’ouvre **en éventail** au-dessus du dock, ses titres l’un sur l’autre avec leur nom, et une dernière ligne ouvre la liste entière.
+
+Le nom complet de l’icône pointée s’affiche au-dessus d’elle. Un appui long sur un raccourci — un clic secondaire sur Mac — rouvre ses listes pour le retirer ou le déplacer ; sur Mac on le fait aussi glisser dans sa section. Réglages › Dock renomme et supprime les sections.
+
+Les icônes ne rapetissent jamais au point de ne plus se lire depuis un canapé : un dock bien rempli les réduit d’un cinquième au plus, cède la date puis le nom de l’écran précédent, retire d’abord les titres récents, et range enfin les raccourcis en trop dans un dossier **Autres**, à la suite des raccourcis. Rien de ce que l’on a gardé n’est perdu. Sous la colonne de navigation, le dock compact ne montre que ses destinations ; l’accueil montre tout.
+
+Le dock ne retient que des identifiants du catalogue et des noms, comme les favoris : jamais une adresse de flux.
 
 ### Colonne de navigation
 
@@ -69,7 +86,7 @@ Sur Apple TV ce sont les mêmes panneaux, le dock restant dessous. La fiche gard
 
 ### Clavier
 
-Les flèches déplacent la sélection entre la colonne, la grille, l’aperçu et le dock, et parcourent le dock de l’accueil ; **Entrée** valide, **Échap** montre la boussole des zones puis revient à l’écran précédent jusqu’à l’accueil, **Tab** change de zone, **Espace** ouvre l’élément sélectionné, **⌘F** place le curseur dans la recherche et **⌘⇧F** bascule le lecteur en plein écran. Les réglages se parcourent encore au pointeur.
+Les flèches déplacent la sélection entre la colonne, la grille, l’aperçu et le dock, et parcourent le dock de l’accueil ; **Entrée** valide, **Échap** revient à l’écran précédent jusqu’à l’accueil — maintenue, droit à l’accueil —, **Tab** change de zone, **Espace** ouvre l’élément sélectionné, **⌘F** place le curseur dans la recherche et **⌘⇧F** bascule le lecteur en plein écran. Les réglages se parcourent encore au pointeur.
 
 ## Trois espaces, six thèmes chacun
 

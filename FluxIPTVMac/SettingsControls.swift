@@ -4,8 +4,9 @@ import SwiftUI
 //
 // A television draws the pickers and the switches of the system at its own
 // size, cuts their values when they are many and leaves their names out. The
-// desk draws them itself there: keys that are read from a sofa, never cut,
-// with a ring under the remote. Elsewhere the controls of the system remain.
+// desk draws them itself: keys that are read from a sofa, never cut, with a
+// ring under the remote. A Mac shows the same desk, so the same keys, which
+// a pointer lights. On a phone the controls of the system remain.
 
 /// One setting among a few values.
 struct DeskChoice<Value: Hashable>: View {
@@ -15,7 +16,7 @@ struct DeskChoice<Value: Hashable>: View {
     @Environment(\.isEnabled) private var isEnabled
 
     var body: some View {
-        #if os(tvOS)
+        #if os(tvOS) || os(macOS)
         VStack(alignment: .leading, spacing: Desk.pt(7)) {
             Text(title).font(Desk.font(.callout, .semibold)).foregroundStyle(.white.opacity(0.78))
             DeskFlow(spacing: Desk.pt(7)) {
@@ -31,7 +32,7 @@ struct DeskChoice<Value: Hashable>: View {
     }
 }
 
-#if os(tvOS)
+#if os(tvOS) || os(macOS)
 private extension DeskChoice {
     func key(_ index: Int) -> some View {
         let option = options[index]
@@ -69,7 +70,7 @@ struct DeskToggle: View {
     @Environment(\.isEnabled) private var isEnabled
 
     var body: some View {
-        #if os(tvOS)
+        #if os(tvOS) || os(macOS)
         let shape = RoundedRectangle(cornerRadius: Desk.pt(14), style: .continuous)
         Button { isOn.toggle() } label: {
             HStack(spacing: Desk.pt(12)) {
@@ -96,10 +97,10 @@ struct DeskToggle: View {
 }
 
 extension View {
-    /// An action of the settings: a key of the desk on a television, the
-    /// bordered button of the system elsewhere.
+    /// An action of the settings: a key of the desk on a television and on a
+    /// Mac, the bordered button of the system on a phone.
     @ViewBuilder func deskKey(prominent: Bool = false) -> some View {
-        #if os(tvOS)
+        #if os(tvOS) || os(macOS)
         buttonStyle(DeskKeyStyle(prominent: prominent))
         #else
         if prominent { buttonStyle(.borderedProminent) } else { buttonStyle(.bordered) }

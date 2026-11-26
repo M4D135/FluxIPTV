@@ -164,10 +164,10 @@ ready_file="$data_container/Library/Caches/FluxTVCatalogUI-ready.json"
 failed=0
 capture_paths=()
 # Retain every restoration attempt while exposing only the last successful one
-# through the twenty-seven canonical gallery paths. Never reuse an older run's pair.
+# through the thirty-one canonical gallery paths. Never reuse an older run's pair.
 rm -f "$capture_root/live-restored-ready.json" "$capture_root/live-restored.png" \
   "$capture_root/live-restored-stdout.log" "$capture_root/live-restored-stderr.log"
-for capture_case in home movie movies movies-many movies-many-lean lists series seasons live live-many live-many-light player player-film player-tracks player-settings player-banner player-banner-opening zapping settings welcome add-source search-empty search-result live-fr live-es country-picker live-restored:1 live-restored:2 live-restored:3; do
+for capture_case in home movie movies movies-many movies-many-lean lists dock dock-home dock-folder dock-lists series seasons live live-many live-many-light player player-film player-tracks player-settings player-banner player-banner-opening zapping settings welcome add-source search-empty search-result live-fr live-es country-picker live-restored:1 live-restored:2 live-restored:3; do
   scenario="${capture_case%%:*}"
   capture_label="$scenario"
   scenario_root="$capture_root"
@@ -184,6 +184,10 @@ for capture_case in home movie movies movies-many movies-many-lean lists series 
     movies-many) filename='movie-catalog-large.png' ;;
     movies-many-lean) filename='movie-catalog-lean.png' ;;
     lists) filename='favorite-lists.png' ;;
+    dock) filename='dock-shortcuts.png' ;;
+    dock-home) filename='home-dock.png' ;;
+    dock-folder) filename='dock-folder.png' ;;
+    dock-lists) filename='lists-dock.png' ;;
     series) filename='series-s12-e15-detail.png' ;;
     seasons) filename='series-seasons.png' ;;
     live) filename='live-catalog.png' ;;
@@ -396,7 +400,7 @@ cat "$capture_root/capture-validation.log"
 
 # Add the UI-test runner only after the unchanged capture checks. The delivered
 # projects stay untouched, and XCTest attachments live inside this xcresult,
-# keeping the twenty-seven canonical gallery PNG paths unchanged.
+# keeping the thirty-one canonical gallery PNG paths unchanged.
 rm -rf "$capture_root/remote-navigation.xcresult" "$capture_root/remote-navigation-attachments"
 rm -f "$capture_root/remote-navigation.log" "$capture_root/remote-attachments-export.log"
 if python3 "$repo_root/scripts/add-tvos-remote-test-target.py" \
@@ -404,8 +408,8 @@ if python3 "$repo_root/scripts/add-tvos-remote-test-target.py" \
   > "$capture_root/remote-target.log" 2>&1 \
   && run_bounded 30 plutil -lint "$smoke_repo/FluxIPTV-AppleTV.xcodeproj/project.pbxproj" \
   >> "$capture_root/remote-target.log" 2>&1; then
-  # Twelve flows: a hosted Intel runner needed more than ten minutes for six.
-  if run_bounded 1800 xcodebuild -project "$smoke_repo/FluxIPTV-AppleTV.xcodeproj" \
+  # Fourteen flows: a hosted Intel runner needed more than ten minutes for six.
+  if run_bounded 2400 xcodebuild -project "$smoke_repo/FluxIPTV-AppleTV.xcodeproj" \
     -scheme FluxIPTVTVRemoteNavigation -configuration Debug \
     -destination "platform=tvOS Simulator,id=$simulator_id" \
     -derivedDataPath "$smoke_root/DerivedData" -parallel-testing-enabled NO \
@@ -413,7 +417,7 @@ if python3 "$repo_root/scripts/add-tvos-remote-test-target.py" \
     'SWIFT_ACTIVE_COMPILATION_CONDITIONS=DEBUG FLUX_CATALOG_UI_TESTING' \
     CODE_SIGNING_ALLOWED=NO ONLY_ACTIVE_ARCH=YES test \
     > "$capture_root/remote-navigation.log" 2>&1; then
-    echo 'PASS: XCUIRemote country selection in the column, every zone by the arrows alone, Menu retracing the screens down to the home screen, film fiche with its lists and description, series fiche by columns, player panels during a stream, zapping by the list and by the commands back to the watched channel, a message taking the remote and returning it, the pages of a large catalogue of films, what a move of the remote rebuilds in catalogues of real size, restored-channel reentry and failed-source reconnect highlight.'
+    echo 'PASS: XCUIRemote country selection in the column, every zone by the arrows alone, Menu retracing the screens down to the home screen, film fiche with its lists and description, series fiche by columns, player panels during a stream, zapping by the list and by the commands back to the watched channel, a message taking the remote and returning it, the pages of a large catalogue of films, what a move of the remote rebuilds in catalogues of real size, the dock with its shortcuts and its folder opened as a fan, Back held straight to the home screen, restored-channel reentry and failed-source reconnect highlight.'
   else
     failed=1
     tail -100 "$capture_root/remote-navigation.log" >&2
@@ -447,7 +451,7 @@ if [[ "$failed" -ne 0 ]]; then
   printf 'FAIL: Native tvOS UI capture or remote-navigation checks failed. Review PNGs, xcresult and logs in %s\n' "$capture_root" >&2
   exit 1
 fi
-printf 'PASS: Twenty-seven native tvOS scenarios have native focus matching the measured intended control, bounded everywhere but on the bare picture of a channel, whose banner stands alone inside the safe area, and nonempty compositor captures; both production search submissions reject stale activation; France, Spain and the country picker preserve the mixed catalogue; browsing filters survive section changes, preferences recreation and catalogue refresh; the actual UI restores saved filters and native focus without a seeded selection on all three cold launches.\n'
+printf 'PASS: Thirty-one native tvOS scenarios have native focus matching the measured intended control, bounded everywhere but on the bare picture of a channel, whose banner stands alone inside the safe area, and nonempty compositor captures; both production search submissions reject stale activation; France, Spain and the country picker preserve the mixed catalogue; browsing filters survive section changes, preferences recreation and catalogue refresh; the actual UI restores saved filters and native focus without a seeded selection on all three cold launches.\n'
 printf 'Review the PNGs in %s for actual glass, readable menus, channel size, clipping, episode restoration and country selection.\n' "$capture_root"
 printf 'XCUIRemote also checks native simulator navigation with retained XCTest screenshots; physical Apple TV hardware rendering and provider playback still need their own verification.
 '

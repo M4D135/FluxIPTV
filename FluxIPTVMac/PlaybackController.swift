@@ -193,6 +193,12 @@ final class PlaybackController: ObservableObject {
         subtitleTracks = subtitleTracks.map { PlaybackTrack(id: $0.id, title: $0.title, selected: $0.id == id) }
     }
     var showsFixture: Bool { fixtureTracks }
+    /// A title left unfinished, for what the dock then shows of it. Kept
+    /// for the scenario only: nothing is written to the preferences.
+    func recordFixtureProgress(id: String, seconds: Double, duration: Double) {
+        history.record(id: id, seconds: seconds, duration: duration)
+    }
+    func clearFixtureProgress() { history.clear() }
     /// Titles the fixture cannot show: they take the ordinary path.
     var fixtureUnplayable: Set<String> = []
     /// Titles whose simulated stream opens and then fails, as a dead channel does.

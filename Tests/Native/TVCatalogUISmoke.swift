@@ -107,11 +107,14 @@ private struct TVProbeReadout: View {
                 // Use the actual library filter, not a prefiltered fixture.
                 // Its asynchronous result is checked before capture readiness.
                 if let countryCode = fixture.countryCode { library.countryCode = countryCode }
+                if fixture.fillsDock { try TVCatalogCapture.fillDock(of: library, source: fixture.source) }
             }
             self.fixture = fixture
             self.restoredDefaultsSuite = restoredDefaultsSuite
             _library = StateObject(wrappedValue: library)
             let playback = PlaybackController()
+            // The film that the dock offers to go on with.
+            if fixture.fillsDock { playback.recordFixtureProgress(id: "fixture-movie-2", seconds: 2_520, duration: 6_480) }
             if fixture.showsPlayer, let item = fixture.selection {
                 // A media that plays, without any connection: the commands
                 // hide and the remote behaves as during a stream.
@@ -155,11 +158,11 @@ private struct TVProbeReadout: View {
                         fixtureOpenCountries: fixture.opensCountryPicker,
                         fixtureRestoreBrowsing: fixture.usesPersistedSelection || fixture.scenario == "live-error",
                         fixtureSettingsPage: fixture.settingsPage,
-                        fixtureHome: fixture.scenario == "home",
+                        fixtureHome: fixture.scenario == "home" || fixture.scenario == "dock-home",
                         fixturePlayerSettings: fixture.scenario == "player-settings",
                         fixtureZapList: fixture.scenario == "zapping",
                         fixtureAddSource: fixture.scenario == "add-source",
-                        fixtureLists: fixture.scenario == "lists",
+                        fixtureLists: fixture.scenario == "lists" || fixture.scenario == "dock-lists",
                         fixturePlayer: fixture.showsPlayer,
                         fixtureHoldsControls: fixture.holdsPlayerControls,
                         fixtureTracksPanel: fixture.scenario == "player-tracks",
@@ -217,7 +220,11 @@ private struct TVProbeReadout: View {
         case "live-es": return "live-channel-fixture-country-es-0"
         case "live-restored": return "live-channel-fixture-country-fr-1"
         case "country-picker": return "live-country-option-FR"
-        case "movies", "movies-many", "movies-many-lean": return "catalog-card-fixture-movie-1"
+        case "movies", "movies-many", "movies-many-lean", "dock": return "catalog-card-fixture-movie-1"
+        // The bar of the home screen with what the user keeps in it; a
+        // folder of the dock open on its first title.
+        case "dock-home": return "navigation-tab-movie"
+        case "dock-folder": return DockEntry.fanPrefix + "fixture-movie-0"
         case "search-empty": return "navigation-tab-movie"
         case "search-result": return "catalog-card-fixture-movie-0"
         case "welcome": return "welcome-load-source"
@@ -225,7 +232,7 @@ private struct TVProbeReadout: View {
         // The shelf of a series opens on its first season.
         case "seasons": return "season-sleeve-1"
         // The lists of a title open on the first of them.
-        case "lists": return "favorite-list-0"
+        case "lists", "dock-lists": return "favorite-list-0"
         // The commands of the player open on play and pause; its languages
         // on the audio in use.
         case "player", "player-film", "player-flow", "player-film-flow", "player-deep": return "player-playpause"
@@ -250,14 +257,18 @@ private struct TVProbeReadout: View {
         // A channel is a row of the list, not a tile.
         case "live", "live-many", "live-many-light", "live-fr", "live-es", "live-restored", "zapping": return CGSize(width: 300, height: 60)
         case "home": return CGSize(width: 150, height: 150)
+        // A bar that holds twice as much keeps icons larger than those of the dock.
+        case "dock-home": return CGSize(width: 100, height: 100)
+        // A title of the open folder: the size of an icon of the dock.
+        case "dock-folder": return CGSize(width: 76, height: 48)
         case "settings", "player-settings": return CGSize(width: 240, height: 48)
         case "live-error": return CGSize(width: 150, height: 50)
         case "country-picker": return CGSize(width: 240, height: 54)
-        case "movies", "movies-many", "movies-many-lean", "search-result", "seasons": return CGSize(width: 240, height: 350)
+        case "movies", "movies-many", "movies-many-lean", "search-result", "seasons", "dock": return CGSize(width: 240, height: 350)
         case "search-empty": return CGSize(width: 90, height: 90)
         case "welcome": return CGSize(width: 300, height: 72)
         case "add-source": return CGSize(width: 500, height: 50)
-        case "lists": return CGSize(width: 400, height: 48)
+        case "lists", "dock-lists": return CGSize(width: 400, height: 48)
         case "player", "player-film", "player-flow", "player-film-flow": return CGSize(width: 70, height: 70)
         case "player-tracks": return CGSize(width: 300, height: 44)
         default: return CGSize(width: 180, height: 64)
@@ -284,7 +295,11 @@ private struct TVProbeReadout: View {
         scenario == "search-result" ? ["fixture-movie-0"] : []
     }
 
-    var usesPortraitControl: Bool { scenario == "movies" || scenario.hasPrefix("movies-many") || scenario == "search-result" }
+    var usesPortraitControl: Bool { scenario == "movies" || scenario.hasPrefix("movies-many") || scenario == "search-result" || scenario == "dock" }
+    /// The films with what a user keeps in the dock: shortcuts in two
+    /// sections, a film left unfinished, and a list as a folder.
+    static let dockScenarios = ["dock", "dock-home", "dock-folder", "dock-lists"]
+    var fillsDock: Bool { Self.dockScenarios.contains(scenario) }
 
     var countryCode: String? {
         switch scenario {
@@ -332,7 +347,7 @@ private struct TVProbeReadout: View {
         // A screen of the desk reuses the catalogue of the live scenario.
         let content = deskScenarios.contains(scenario) || scenario.hasPrefix("live-many") ? "live" : scenario
         try TVCatalogCapture.require((["movie", "movies", "movies-many", "movies-many-lean", "lists", "series", "seasons", "live", "live-many", "live-many-light", "welcome", "add-source", "search-empty", "search-result",
-                                       "live-fr", "live-es", "country-picker", "live-restored", "live-error"] + deskScenarios + filmPlayerScenarios).contains(scenario),
+                                       "live-fr", "live-es", "country-picker", "live-restored", "live-error"] + deskScenarios + filmPlayerScenarios + dockScenarios).contains(scenario),
                                      "FLUX_UI_SCENARIO must name a supported catalogue, detail, welcome or search scenario.")
         let source = IPTVSource(id: UUID(uuidString: "00000000-0000-0000-0000-000000000003")!,
                                 name: "Catalogue local de démonstration", kind: scenario == "live-error" ? .xtream : .m3uFile)
@@ -443,6 +458,16 @@ private struct TVProbeReadout: View {
                                     selection: channels[watched], seasons: [], openSeason: nil, episodeID: nil)
         }
         var items = try films()
+        if dockScenarios.contains(scenario) {
+            // Channels for the shortcuts of the dock, beside the films and the series.
+            for (index, name) in ["Horizon", "Panorama", "Grand écran"].enumerated() {
+                let url = artworkRoot.appendingPathComponent("dock-live-\(index).png")
+                cache(try artwork(width: 240, height: 135, index: index + 1, title: name.uppercased(), subtitle: "CHAÎNE LOCALE"), at: url)
+                items.append(IPTVItem(id: "fixture-live-\(index)", sourceID: source.id, name: "\(name) \(index + 1)",
+                                      group: "Généralistes", logoURL: url, kind: .live,
+                                      directURL: nil, xtreamStreamID: nil, fileExtension: nil))
+            }
+        }
         if scenario.hasPrefix("movies-many") {
             // The catalogue of a real subscription: tens of thousands of films,
             // titles that carry their language and their year, categories by
@@ -499,7 +524,7 @@ private struct TVProbeReadout: View {
         try TVCatalogCapture.require(seasons.first(where: { $0.number == 12 })?.episodes.contains(where: { $0.id == episodeID }) == true,
                                      "The exact requested S12/E15 fixture identifier is absent.")
         let isMovie = scenario == "movie" || scenario == "movies" || scenario.hasPrefix("movies-many") || scenario == "lists" || scenario.hasPrefix("search-")
-            || filmPlayerScenarios.contains(scenario)
+            || filmPlayerScenarios.contains(scenario) || dockScenarios.contains(scenario)
         return TVCatalogFixture(scenario: scenario, source: source, items: items,
                                 kind: isMovie ? .movie : .series,
                                 selection: isMovie ? items[1] : collection,
@@ -554,10 +579,46 @@ private struct TVProbeReadout: View {
             .appendingPathComponent("FluxTVCatalogUI-ready.json")
     }
 
+    /// What a user keeps in the dock, through the production model: two
+    /// shortcuts, a section named for a series with one of its seasons
+    /// and one of its episodes, a film watched, and the favourite films
+    /// as a folder.
+    static func fillDock(of library: IPTVLibrary, source: IPTVSource) throws {
+        func title(_ id: String) throws -> IPTVItem {
+            guard let item = library.catalogItem(id: id) else { throw TVCatalogUIFailure.assertion("Missing fixture title \(id).") }
+            return item
+        }
+        let series = try title("fixture-series")
+        let episode = IPTVItem(id: "fixture-series-s12-e15", sourceID: source.id, name: "Le chemin du retour", group: series.group,
+                               logoURL: nil, kind: .series, directURL: nil, xtreamStreamID: nil, fileExtension: nil,
+                               seasonNumber: 12, episodeNumber: 15)
+        let general: Set<String> = [DockShelf.defaultSectionID]
+        try require(library.assignDock(DockShortcut(item: try title("fixture-live-0")), to: general)
+                    && library.assignDock(DockShortcut(item: try title("fixture-movie-1")), to: general)
+                    && library.assignDock(DockShortcut(item: series), to: [], creating: "Le soir"),
+                    "The dock fixture could not keep its shortcuts.")
+        let evening: Set<String> = [library.dockShelf.sections[1].id]
+        try require(library.assignDock(DockShortcut(series: series, season: 3), to: evening)
+                    && library.assignDock(DockShortcut(series: series, episode: episode), to: evening),
+                    "The dock fixture could not keep a season and an episode.")
+        let list = FavoritePresets.defaultID(for: .movie)
+        for id in ["fixture-movie-0", "fixture-movie-2"] { library.toggleFavorite(try title(id), in: list) }
+        library.setDockStack(list, shown: true)
+        library.visitDock(DockShortcut(item: try title("fixture-live-2")))
+        library.visitDock(DockShortcut(item: try title("fixture-movie-2")))
+        try require(library.dockShelf.showsStack(list) && library.dockShelf.recents.first?.id == "fixture-movie-2",
+                    "The dock fixture is not what its scenarios expect.")
+    }
+
     static func configureDefaults() {
         // A separate bundle in a newly created simulator has no user profiles.
         // Volatile overrides leave even that disposable persistent domain alone.
-        UserDefaults.standard.setVolatileDomain([
+        var folder: [String: Any] = [:]
+        // "dock-folder": the folder of the favourite films, open above the dock.
+        if ProcessInfo.processInfo.environment["FLUX_UI_SCENARIO"] == "dock-folder" {
+            folder["fluxiptv.fixture.dockFan"] = DockEntry.stack(listID: FavoritePresets.defaultID(for: .movie)).id
+        }
+        UserDefaults.standard.setVolatileDomain(folder.merging([
             // Liquid Glass is what the application shows by default: the
             // captures and the focus checks run on it.
             // "…-light", or the bench asking for it: the dark surfaces and
@@ -573,7 +634,7 @@ private struct TVProbeReadout: View {
             ClubInterfaceProfile.storageKey: ClubInterfaceProfile.neoVideoClub.rawValue,
             LiveTVPreviewDelay.automaticKey: false,
             TrailerPreviewDelay.automaticKey: false
-        ], forName: UserDefaults.argumentDomain)
+        ]) { _, base in base }, forName: UserDefaults.argumentDomain)
     }
 
     /// Write with one real library, then recreate another from the same

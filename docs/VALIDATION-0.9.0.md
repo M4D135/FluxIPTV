@@ -1,6 +1,6 @@
 # Validation de FLUX IPTV 0.9.0 — build 38
 
-La 0.9.0 donne au Mac et à l’Apple TV la même interface de bureau : accueil, dock en bas au centre, colonne de navigation, télévision en trois colonnes, fiches et listes d’un titre en verre, commandes de lecture et langues, liste de zapping, réglages en verre appliqués dès qu’ils sont choisis, filtre par langue pour les films et les séries. Retour y est le Précédent d’un navigateur ; au clavier du Mac il montre d’abord la boussole des zones. iPhone et iPad conservent la disposition de la 0.8.9. Ce rapport distingue ce qui a été exécuté de ce qui ne l’a pas été.
+La 0.9.0 donne au Mac et à l’Apple TV la même interface de bureau : accueil, dock en bas au centre, colonne de navigation, télévision en trois colonnes, fiches et listes d’un titre en verre, commandes de lecture et langues, liste de zapping, réglages en verre appliqués dès qu’ils sont choisis, filtre par langue pour les films et les séries. Retour y est le Précédent d’un navigateur et, maintenu, mène droit à l’accueil. Le dock garde des raccourcis, la vidéo en cours, les récents et des dossiers, comme celui d’un Mac ; le Mac montre le bureau aux proportions de la télévision. iPhone et iPad conservent la disposition de la 0.8.9. Ce rapport distingue ce qui a été exécuté de ce qui ne l’a pas été.
 
 Les vérifications ci-dessous ont été faites les 25 et 26 novembre 2026 sur un Mac Apple Silicon, macOS 27.2, Xcode 27.2 (Swift 6.4.2), sur l’état final des sources. **Le résultat de GitHub Actions sur le commit livré reste la référence** : le workflow compile avec Xcode 26.3 sur un Mac Intel et teste le cœur sous Linux avec Swift 6.2.
 
@@ -8,14 +8,15 @@ Les vérifications ci-dessous ont été faites les 25 et 26 novembre 2026 sur un
 
 | Vérification | Résultat |
 |---|---|
-| `swift test` | 160 tests du cœur réussis, dont 23 nouveaux |
+| `swift test` | 170 tests du cœur réussis, dont 33 nouveaux |
 | `scripts/check-state-declarations.sh` | aucune erreur |
 | `scripts/rooms/verify_rooms.py` | 18 décors vérifiés, inchangés |
 | `scripts/generate-xcodeproj.py` | les deux projets générés sont à jour |
 | Compilations | macOS, iOS Simulator, tvOS Simulator et tvOS appareil |
-| `scripts/test-catalog-ui.sh` en mode local, avec la galerie | 37 captures de la vraie interface du Mac ; les six parcours de touches aboutissent |
-| `scripts/test-tvos-catalog-ui.sh` | vingt-sept scénarios natifs, trois démarrages à froid et douze parcours XCUIRemote réussis |
-| Les douze parcours, effets complets coupés | réussis : les surfaces et le focus immédiat avec lesquels une Apple TV HD commence |
+| `scripts/test-catalog-ui.sh` en mode local, avec la galerie | 50 captures de la vraie interface du Mac ; les dix parcours de touches aboutissent |
+| Les mêmes captures dans une fenêtre de 1728 × 1040 | le bureau entier suit la fenêtre : voir « Les proportions de la télévision » |
+| `scripts/test-tvos-catalog-ui.sh` | trente et un scénarios natifs, trois démarrages à froid et quatorze parcours XCUIRemote réussis |
+| Les quatorze parcours, effets complets coupés | réussis : les surfaces et le focus immédiat avec lesquels une Apple TV HD commence, dossier du dock en éventail compris |
 | Ce qu’un appui de télécommande reconstruit et coûte | voir « Ce qu’un appui coûte » |
 | Application réelle sur le Mac, source Xtream enregistrée | voir « Essai réel » |
 
@@ -27,6 +28,8 @@ Les vérifications ci-dessous ont été faites les 25 et 26 novembre 2026 sur un
 - **Navigation du bureau** : passages entre la colonne, la grille, les rangées du haut et les actions voisines de l’aperçu, y compris une dernière rangée incomplète, un catalogue vide, et le lien entre le haut de la colonne et les commandes placées au-dessus d’elle.
 - **Langue des films et des séries** : étiquettes de titre et de catégorie reconnues, mots ordinaires et marques écartés, seuil de trois titres pour une étiquette comme pour une langue, filtrage du catalogue, validation de la langue mémorisée.
 
+- **Ce que le dock garde** (dix tests) : un raccourci dit ce qu’il ouvre — chaîne, film, série, saison, épisode —, porte le nom de sa série sous son icône et la saison ou l’épisode en pastille, et ce qui est enregistré ne contient aucune adresse ; une section se nomme une seule fois, quelle que soit la casse, et la première ne se supprime pas ; ranger un titre applique tout le choix ou rien, nom invalide compris ; un raccourci se déplace dans sa section ; les récents viennent en tête, une seule fois, douze au plus ; la barre montre les destinations, chaque section, la vidéo en cours puis les récents qui ne sont pas déjà des raccourcis, puis les dossiers dont la liste existe encore, chaque groupe précédé d’un séparateur ; une barre trop longue perd d’abord ses récents, les plus anciens en premier, puis range ses derniers raccourcis dans un dossier qui prend une place, et la refaire ne change rien ; une source retirée ne laisse rien ; l’étagère survit à son enregistrement. Les séparateurs prennent leur place sans grossir, une position entre deux icônes appartient à celle d’avant, et l’icône pointée garde la sienne.
+
 Un test existant affirmait que le pays ne filtre jamais les films ni les séries. Il vérifie désormais la règle voulue : chaque type a un filtre, le pays pour les chaînes et la langue pour les titres, et un code de pays mémorisé pour des films est abandonné.
 
 ### `swift test` sur Mac
@@ -37,7 +40,7 @@ Avec le SDK macOS 27.2, `import Foundation` ne fournit plus à lui seul les init
 
 Le banc dessine la vraie `ContentView` dans une fenêtre native avec un catalogue local : accueil, télévision, films, fiche film, rayon des saisons, fiche série, favoris, réglages des sources et du dock, réglages et liste de zapping posés sur le lecteur, bandeau d’une chaîne sur son image nue, boussole des zones ; puis, pour la galerie, les cinq thèmes du dock avec le pointeur sur une icône, les quatre autres emplacements, l’accueil avec le pointeur sur Films et sur Séries, et le filtre par langue. Les deux fiches satisfont le contrôle existant : un seul grand boîtier entièrement visible, la commande de lecture présente, aucun lecteur ni vue web.
 
-Six scénarios envoient à l’écran les touches d’une télécommande par le même traitement que le clavier, et échouent si la sélection n’arrive pas où elle doit :
+Dix scénarios envoient à l’écran les touches d’une télécommande par le même traitement que le clavier, et échouent si la sélection n’arrive pas où elle doit. Les quatre premiers activent le réglage qui fait d’abord afficher la boussole par Retour :
 
 | Touches | Sélection attendue |
 |---|---|
@@ -45,6 +48,10 @@ Six scénarios envoient à l’écran les touches d’une télécommande par le 
 | Retour, Haut, Droite | Actualiser |
 | Retour, Bas, Gauche, Gauche | le bouton Retour, à gauche du dock |
 | Retour, Retour | l’accueil |
+| Retour, comme l’application démarre | l’accueil, directement, sur la section quittée |
+| La touche Accueil d’une télécommande, à quoi revient Retour maintenu | l’accueil |
+| Depuis les films, dock rempli : Bas trois fois, Droite neuf fois, OK, Haut | le deuxième titre du dossier ouvert en éventail |
+| Les mêmes, puis Retour | l’icône du dossier, refermé |
 | Dans le lecteur : Droite trois fois, OK, Bas, Retour | la touche Langues, son panneau ouvert sur l’audio en cours puis refermé |
 | Sur l’image nue d’une chaîne : Haut, Haut, Bas | l’image garde les touches ; la deuxième chaîne est à l’écran, sous son bandeau, sans commandes |
 
@@ -52,16 +59,35 @@ Les commandes de lecture d’un direct et d’un film, les langues, les réglage
 
 Ces captures ont été prises fenêtres hors écran, sans prendre le premier plan. **Les trois scénarios de focus de recherche, qui exigent la fenêtre active, n’ont pas été exécutés sur cette version.**
 
+Six captures montrent le dock rempli par le modèle de l’application : trois raccourcis à leur taille entière avec le pointeur sur l’un d’eux et son nom au-dessus ; quatorze icônes — deux sections, une saison et un épisode avec leur pastille, la vidéo en cours avec sa progression, un récent, un dossier — réduites d’un cinquième, sans la date ni le nom de l’écran précédent ; le dossier ouvert en éventail ; vingt entrées dont quatre rangées dans « Autres » ; l’accueil avec les quatorze icônes ; et « Favoris, listes et dock » pour une série, avec le choix entre la série et sa saison. La galerie y ajoute le dossier ouvert quand le dock est en haut, à gauche ou à droite : il s’ouvre à l’opposé du bord, et une colonne trop courte range ses raccourcis dans « Autres ».
+
+### Les proportions de la télévision
+
+Demande du 26 novembre : « les proportions sur macOS doivent être les mêmes que celles prévues pour la TV, car je veux avoir la même interface sur les deux », « pas d’icônes trop petites pour la TV ». Le bureau était dessiné deux fois : avec les tailles de la télévision sur Apple TV, et avec celles d’un Mac — texte un tiers plus petit rapporté à l’écran, colonne plus étroite, jaquettes plus larges, pas de marge. Il est maintenant dessiné une fois, pour les 1920 × 1080 points d’un téléviseur, et le Mac le montre à la part de cet écran que sa fenêtre représente.
+
+- Toutes les longueurs et toutes les tailles de texte du bureau passent par cette part, que la fenêtre annonce et que chaque vue observe : une fenêtre redimensionnée redessine ce qui en dépend, parties gardées par leurs valeurs comprises.
+- Le Mac garde autour du bureau les marges qu’un téléviseur garde autour de son image ; ce qui remplit l’écran là-bas — décor, voiles, image du lecteur — remplit la fenêtre ici.
+- Ce qui différait encore est aligné sur la télévision : largeur de la colonne, taille des jaquettes et nombre de colonnes, touches du bureau, lignes des chaînes, fiche et ses touches, description complète, étagère des saisons, marge du lecteur, champ de recherche, et les réglages, où les contrôles du système cèdent la place aux touches de la télévision.
+- Ce dont seul un pointeur a besoin n’apparaît que sous lui : au repos une jaquette du Mac montre, comme sur Apple TV, l’étoile d’un favori et rien d’autre.
+
+Vérifié en comparant, écran par écran, les captures du Mac prises dans une fenêtre de la forme d’un téléviseur (1440 × 810) à celles du simulateur Apple TV : films d’un catalogue de 58 093 titres — cinq colonnes, 969 pages des deux côtés —, télévision, fiche d’un film, saisons, réglages des sources et du dock, lecteur. Les catalogues des deux bancs ne sont pas les mêmes : la comparaison porte sur la composition, pas sur les pixels. Vérifié aussi dans une fenêtre de 1728 × 1040, où la part passe de 0,75 à 0,9 après le premier dessin : tout le bureau a suivi.
+
 ### Banc Apple TV
 
 Le banc a été exécuté sur l’état final des sources, dans un simulateur qu’il crée (tvOS 27.2, Apple TV 4K à 1080p), avec le Liquid Glass actif comme dans l’application.
 
-Vingt-sept scénarios lancent l’application sur un écran et exigent que le focus natif soit sur le contrôle attendu, mesuré dans la fenêtre : l’accueil, la télévision, la télévision d’un catalogue de 24 665 chaînes — avec les effets complets, puis sans —, les films, les films d’un catalogue de 58 093 titres, les mêmes avec le pouce posé en haut à droite de la télécommande, la fiche d’un film, les listes d’un titre, le rayon des saisons, la saison 12 et son épisode 15, les commandes de lecture d’un direct et d’un film, les langues, les réglages pendant un flux, le bandeau d’une chaîne en direct puis en ouverture, la liste de zapping, les réglages, l’accueil sans source, le formulaire d’une source, deux recherches, la France, l’Espagne, les pays dans la colonne et la restauration d’une chaîne. Le formulaire d’une source doit tenir dans la zone sûre de l’écran, hors de toute vue défilante. Le bandeau d’une chaîne doit être seul sur l’image — aucune commande, aucune carte au milieu —, dans la zone sûre, large d’au moins la moitié de l’écran, au pied de celui-ci ; c’est alors l’image elle-même qui tient la télécommande.
+Trente et un scénarios lancent l’application sur un écran et exigent que le focus natif soit sur le contrôle attendu, mesuré dans la fenêtre — dont quatre pour le dock rempli : les films avec quatorze icônes dans le dock, l’accueil avec les mêmes, un dossier ouvert en éventail avec la télécommande sur son premier titre, et « Favoris, listes et dock » pour un film — : l’accueil, la télévision, la télévision d’un catalogue de 24 665 chaînes — avec les effets complets, puis sans —, les films, les films d’un catalogue de 58 093 titres, les mêmes avec le pouce posé en haut à droite de la télécommande, la fiche d’un film, les listes d’un titre, le rayon des saisons, la saison 12 et son épisode 15, les commandes de lecture d’un direct et d’un film, les langues, les réglages pendant un flux, le bandeau d’une chaîne en direct puis en ouverture, la liste de zapping, les réglages, l’accueil sans source, le formulaire d’une source, deux recherches, la France, l’Espagne, les pays dans la colonne et la restauration d’une chaîne. Le formulaire d’une source doit tenir dans la zone sûre de l’écran, hors de toute vue défilante. Le bandeau d’une chaîne doit être seul sur l’image — aucune commande, aucune carte au milieu —, dans la zone sûre, large d’au moins la moitié de l’écran, au pied de celui-ci ; c’est alors l’image elle-même qui tient la télécommande.
 
 Ce qui s’écrit sur l’image est lu avec des noms taillés comme ceux d’une vraie liste de lecture : un préfixe, un titre long, une marque de qualité (« PRISME: GRAND ÉCRAN FESTIVAL ᴿᴬᵂ »), des catégories qui portent leur pays (« DIRECT - FR| CINÉMA »). Les deux écrans du bandeau utilisent un catalogue de 24 665 chaînes, pour un numéro à cinq chiffres. Les catalogues précédents, aux noms courts et aux dix-huit chaînes, ne montraient ni les noms coupés ni les numéros repliés sur deux lignes.
 
-Douze parcours passent par XCUIRemote, donc par le vrai moteur de focus :
+Quatorze parcours passent par XCUIRemote, donc par le vrai moteur de focus :
 
+- **Le dock rempli** : Bas depuis les films mène au dock, Droite jusqu’à sa dernière icône, le dossier ; OK l’ouvre en éventail sur son premier titre, Haut parcourt les titres jusqu’à « Ouvrir la liste », Gauche ne mène nulle part tant qu’il est ouvert, Menu le referme sur son icône ; rouvert, Bas depuis le premier titre revient sur l’icône et une autre icône le referme. Le raccourci d’un film ouvre sa fiche, que Menu range en rendant la télécommande à la jaquette. OK maintenu sur ce raccourci ouvre les listes du titre, où sa section du dock est cochée ; décochée et enregistrée, l’icône quitte le dock et la télécommande reste dans la barre.
+- **Retour maintenu** : depuis l’accueil, les films puis la télévision ; le bouton Retour du dock annonce « Retour : Films — maintenir : Accueil » ; OK maintenu dessus affiche l’accueil, sans passer par les films.
+
+Ces deux parcours ont trouvé deux défauts, corrigés. **Depuis l’accueil, ouvrir une autre section que la dernière laissait la télécommande sur son icône**, au lieu de la poser sur le premier titre : l’icône de l’accueil et celle du dock de la section portent le même nom, le focus ne changeait donc pas, et le catalogue attendait qu’il change pour savoir que la télécommande était là. Le défaut datait du portage sur Apple TV ; aucun parcours n’ouvrait une autre section depuis l’accueil. **Au pied de « Favoris, listes et dock »**, Bas depuis la dernière ligne menait à la touche la plus proche, qui n’est pas Enregistrer depuis que le panneau est plus long : le pied s’ouvre maintenant sur Enregistrer, et le parcours de la fiche, qui comptait deux appuis, suit le panneau tel qu’il est.
+
+Dans l’éventail d’un dossier, **Bas depuis le premier titre ne revenait pas toujours sur le dossier** : le moteur de focus choisit l’icône placée sous le milieu du contrôle que l’on quitte, et une ligne faite du nom et de l’image a son milieu à gauche du dossier. Chaque titre est maintenant un contrôle de la largeur d’une icône, à l’aplomb du dossier, son nom dessiné à côté.
 - **Ce qu’un appui reconstruit** : le long d’un rang de 58 093 films, trois appuis reconstruisent l’écran trois fois, aucune jaquette, ni la ligne du haut ni la barre du bas ; en descendant une liste de 24 665 chaînes, trois appuis reconstruisent l’écran trois fois, au plus les lignes qui entrent à l’écran, ni la ligne du haut ni la barre. Le parcours échoue au-delà de deux reconstructions de l’écran par appui ou à la première jaquette redessinée.
 - **Les flèches seules** : depuis la liste des chaînes, Haut mène au champ de recherche, Gauche à la colonne — sur « Toutes les chaînes », la ligne de ce qui est affiché, y compris depuis la quatrième chaîne, qui fait face à une autre ligne —, Droite ramène à la chaîne quittée puis à Regarder, Bas de là au dock, que les flèches parcourent jusqu’au bouton Retour, et Haut ramène dans l’écran.
 - **Menu comme le Précédent d’un navigateur** : de l’accueil, la télévision s’ouvre avec la télécommande sur sa première chaîne ; puis les films, par le dock, sur leur premier titre ; puis la télévision de nouveau. Menu, depuis l’intérieur de la liste, revient aux films sur le titre laissé, sans panneau intermédiaire ; Menu encore, à la télévision ouverte en premier ; Menu enfin, à l’accueil.
@@ -158,7 +184,11 @@ L’application signée localement a été lancée sur le Mac avec la source Xtr
 - **Liste de zapping** : parcourue à la télécommande sur une lecture simulée — ouverture, catégories, pages, changement de chaîne — jamais sur un direct, où changer de chaîne ouvre un flux. Sur Mac, elle n’est que capturée : ni le clavier ni le pointeur ne l’ont parcourue ; son retrait deux secondes après que le pointeur l’a quittée et sa fermeture d’un clic à côté n’ont pas été vus.
 - **Bandeau d’une chaîne sur un vrai flux** : il est exercé sur une lecture simulée, qui s’ouvre en quatre dixièmes de seconde, et sur une chaîne morte simulée. Sa tenue pendant une ouverture longue, les relances d’un vrai moteur avant l’échec et sa lisibilité sur une image claire n’ont pas été vues.
 - **Lecteur sur un vrai flux** : les commandes, les langues et les réglages sont exercés sur une lecture simulée, pas sur une vidéo. Le choix d’une piste audio ou d’un sous-titre **par VLC** est écrit d’après l’interface de VLCKit et compile ; il n’a été essayé sur aucun flux. « Relancer le flux » non plus. L’image jusqu’aux bords du téléviseur n’a pas été vue sur un téléviseur.
-- **Clavier réel du Mac** : Tab entre les zones, et Échap dans la fenêtre. Les scénarios du banc passent par le traitement des touches, pas par le clavier.
+- **Clavier réel du Mac** : Tab entre les zones, Échap dans la fenêtre et Échap maintenue. Les scénarios du banc passent par le traitement des touches, pas par le clavier. Dans « Favoris, listes et dock », les flèches, Entrée et Échap du Mac sont écrites et compilent ; aucune touche réelle ne les a parcourues.
+- **Dock rempli au pointeur** : le nom affiché au survol est capturé avec un pointeur simulé ; le glissement d’un raccourci dans sa section et son menu au clic secondaire n’ont pas été essayés. Le renommage et la suppression d’une section dans Réglages › Dock compilent et n’ont pas été exercés.
+- **Raccourcis vers une chaîne, une série, une saison ou un épisode** : leur ouverture est écrite sur les chemins existants — lecture d’une chaîne, rayon des saisons, fiche ouverte sur une saison ou un épisode —, mais seule l’ouverture de la fiche d’un film depuis son raccourci est parcourue par le banc, dont le catalogue n’a ni adresse de flux ni saisons à télécharger. « Reprendre » depuis le dock et l’entrée d’un titre dans les récents à la lecture n’ont été exercés sur aucun flux.
+- **Fenêtre du Mac redimensionnée à la main**, ou en plein écran sur un grand moniteur : deux tailles de fenêtre sont capturées, pas le redimensionnement lui-même.
+- **Icônes du dock avec de vraies affiches** : les captures montrent le milieu des jaquettes du banc, qui sont des aplats de couleur.
 - **Animations** : l’accueil qui se replie vers le dock, le changement de décor sous le pointeur, le boîtier entre le rayon et la fiche. Seuls leurs états de départ et d’arrivée sont capturés.
 - **Pointeur réel** : l’agrandissement du dock pendant le mouvement, le glissement d’une icône et la sélection d’une chaîne au simple survol.
 - **iPhone et iPad** : compilation seulement.
@@ -170,13 +200,17 @@ L’application signée localement a été lancée sur le Mac avec la source Xtr
 
 - Sur Mac, les pages des Réglages se parcourent au pointeur : les flèches ne les traversent pas. Sur Apple TV, la télécommande les atteint.
 - Sur Apple TV, rien ne défile sous la télécommande dans une fiche : le synopsis montre les lignes qui tiennent, le reste se lit dans Description complète.
-- Le panneau des listes d’un titre garde sur Mac ses boutons du système ; sur Apple TV il a les tailles et les surbrillances du bureau.
+- Le formulaire d’ajout d’une source garde sur Mac les champs du système ; sur Apple TV il occupe l’écran.
+- Le dock compact, sous la colonne de navigation, ne montre que ses destinations : les raccourcis, la vidéo en cours et les dossiers restent sur l’accueil.
+- Un dossier ouvert en éventail montre huit titres au plus ; sa dernière ligne ouvre la liste entière. Les sections du dock ne se réordonnent pas entre elles.
+- Une chaîne rejoint les récents du dock après quinze secondes de lecture, pas à chaque changement de chaîne.
 - Le champ de recherche qui a le focus de la télécommande est dessiné clair par le système, dans son cadre de verre.
-- Sur Mac, depuis une liste, Retour demande deux pressions pour changer d’écran, la première montrant la boussole ; Réglages › Interface supprime cette étape. Sur Apple TV il n’y a pas de boussole.
+- Le bouton Menu d’une télécommande maintenu appartient à tvOS, qui affiche son propre accueil : pour aller droit à l’accueil de l’application, c’est le bouton Retour du dock que l’on maintient, ou la maison à côté de lui.
+- Au clavier du Mac, Échap maintenue revient d’abord d’un écran, comme un appui, puis va à l’accueil.
 - Retour retrace les écrans, pas les catégories parcourues dans un écran : une pression quitte la section, qui se rouvrira sur la catégorie et le titre laissés.
 - Pendant la lecture, Favori ajoute ou retire le titre des favoris d’une pression ; le choix parmi plusieurs listes reste dans la fiche et dans le catalogue.
 - Les réglages que le moteur lit à l’ouverture d’un flux ne changent pas le flux en cours sans « Relancer le flux ».
 - La recherche porte sur la section en cours, pas sur les trois catalogues.
-- Le dock ne se réordonne pas à la télécommande.
+- Le dock ne se réordonne pas à la télécommande : ni ses destinations, ni ses raccourcis.
 - Les informations de la chaîne sélectionnée se limitent à ce que fournit la liste ; aucun programme n’est affiché tant que l’EPG n’existe pas.
 - La langue d’un pays plurilingue est celle que le système tient pour la plus probable : une étiquette `BE` donne le néerlandais, `CH` l’allemand.

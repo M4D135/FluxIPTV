@@ -53,6 +53,9 @@ interface que sur Mac. Dans chaque section le dock se tient en bas au centre,
 Accueil à sa gauche, l'heure à sa droite ; il n'y a plus de barre en haut.
 Menu revient à l'écran précédent, comme le Précédent d'un navigateur, jusqu'à
 l'accueil. Chaque section s'ouvre avec la télécommande dans son contenu.
+Pour aller droit à l'accueil : la maison à gauche du dock, ou OK maintenu
+sur le bouton Retour du dock. (Le bouton Menu maintenu appartient à tvOS,
+qui affiche alors son propre accueil.)
 À gauche, une colonne : pays ou langue, filtre, tout le catalogue, favoris,
 listes, puis les catégories avec leurs effectifs.
 Au-dessus du catalogue, une seule ligne : son nom, la recherche, les pages et
@@ -66,6 +69,25 @@ sur le titre que l'on venait de quitter.
 Ce qui a le focus grossit un peu et suit le pouce posé sur la télécommande :
 la jaquette, la chaîne ou l'icône du dock s'incline du côté où il glisse et
 revient quand il se lève, comme les tuiles du système.
+
+LE DOCK GARDE VOS RACCOURCIS
+
+Comme le Dock d'un Mac, le dock garde ce que vous y rangez, après ses six
+destinations, chaque partie séparée par un trait :
+- des raccourcis vers une chaîne, un film, une série, une saison ou un
+  épisode, dans des sections que vous nommez ;
+- la vidéo en cours (OK reprend la lecture) et les derniers titres regardés ;
+- des listes de favoris en dossiers, qui s'ouvrent en éventail au-dessus du
+  dock : Haut et Bas parcourent leurs titres, OK ouvre, Menu referme.
+Pour ranger un titre : appui long sur lui (ou son étoile), puis « Favoris,
+listes et dock » : cochez une section du dock, ou créez-en une en la nommant.
+Depuis une série : la série, la saison affichée ou l'épisode choisi.
+Pour mettre une liste en dossier : Favoris, la liste, « Dossier dans le dock ».
+Pour retirer un raccourci : appui long sur son icône dans le dock, décochez.
+Le nom complet de l'icône sélectionnée s'affiche au-dessus d'elle.
+Réglages › Dock renomme et supprime les sections, et masque les récents.
+Les icônes ne deviennent jamais trop petites : un dock plein range les
+raccourcis en trop dans un dossier « Autres ».
 
 TV : catégories, chaînes en une seule liste, puis l'aperçu et ce que la liste
 sait de la chaîne. « Tous les pays » ouvre dans la colonne le filtre détecté

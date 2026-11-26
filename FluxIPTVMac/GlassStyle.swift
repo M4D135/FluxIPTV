@@ -23,6 +23,9 @@ struct DeskFocusStyle: ButtonStyle {
         let radius: CGFloat
         @Environment(\.isFocused) private var isFocused
         @Environment(\.accessibilityReduceMotion) private var reduceMotion
+        #if os(macOS)
+        @State private var hovered = false
+        #endif
 
         var body: some View {
             configuration.label
@@ -32,6 +35,11 @@ struct DeskFocusStyle: ButtonStyle {
                     .strokeBorder(.white.opacity(isFocused ? 0.92 : 0), lineWidth: 3).allowsHitTesting(false))
                 .scaleEffect(isFocused && !reduceMotion ? 1.02 : 1)
                 .animation(reduceMotion ? nil : .easeOut(duration: 0.14), value: isFocused)
+                #elseif os(macOS)
+                // A pointer shows what it is on, as the remote does.
+                .overlay(RoundedRectangle(cornerRadius: radius, style: .continuous)
+                    .strokeBorder(.white.opacity(hovered ? 0.6 : 0), lineWidth: 2).allowsHitTesting(false))
+                .onHover { hovered = $0 }
                 #endif
         }
     }
@@ -52,7 +60,11 @@ struct FluxStable<Key: Equatable, Content: View>: View, Equatable {
         self.content = content
     }
 
-    static func == (left: Self, right: Self) -> Bool { left.key == right.key }
+    /// The size that the desk is drawn at: a window that changes size
+    /// draws every part again, whatever its values.
+    private let scale = Desk.scale
+
+    static func == (left: Self, right: Self) -> Bool { left.key == right.key && left.scale == right.scale }
     var body: some View { content() }
 }
 
@@ -423,19 +435,56 @@ extension View {
 /// Mac and a television: a title is 1.3 times the body on one and twice on
 /// the other. The Mac and the phone keep the system styles; the television
 /// uses sizes that are read from a sofa and keep the layout of the Mac.
+#if os(macOS)
+/// How much of the screen of a television the window of a Mac is. The
+/// desk is drawn for the 1920 × 1080 points of a television; a window
+/// shows the same desk, with the same proportions, at its own size.
+/// Observed: what was drawn from it is drawn again when the window changes.
+@Observable final class DeskScale {
+    static let shared = DeskScale()
+    /// A window of 1440 × 900 points, until the window says its size.
+    var value: CGFloat = 0.75
+
+    static func fitting(_ size: CGSize) -> CGFloat {
+        guard size.width > 0, size.height > 0 else { return 0.75 }
+        // To the hundredth: a window being resized does not draw the
+        // whole desk again for every point of its way.
+        return max(0.5, min(1.8, (min(size.width / 1920, size.height / 1080) * 100).rounded() / 100))
+    }
+}
+#endif
+
 enum Desk {
-    /// Factor of the lengths: paddings, frames, radii.
-    static var unit: CGFloat {
-        #if os(tvOS)
-        1.35
+    /// Share of the screen of a television that the desk is drawn at: one
+    /// on a television, the size of the window on a Mac.
+    static var scale: CGFloat {
+        #if os(macOS)
+        DeskScale.shared.value
         #else
         1
         #endif
     }
+    /// Factor of the lengths: paddings, frames, radii.
+    static var unit: CGFloat {
+        #if os(iOS)
+        1
+        #else
+        1.35 * scale
+        #endif
+    }
     static func pt(_ value: CGFloat) -> CGFloat { value * unit }
+    /// A length stated in the points of a television, where it is not
+    /// one of the lengths of the desk.
+    static func tv(_ value: CGFloat) -> CGFloat { value * scale }
+    /// The margins that a television keeps around its picture. The system
+    /// gives them on a television; a Mac keeps the same, so that both
+    /// show the same desk.
+    static var screenMargins: EdgeInsets {
+        EdgeInsets(top: tv(60), leading: tv(80), bottom: tv(60), trailing: tv(80))
+    }
 
     static func font(_ style: Font.TextStyle, _ weight: Font.Weight? = nil) -> Font {
-        #if os(tvOS)
+        #if !os(iOS)
         let size: CGFloat
         switch style {
         case .largeTitle: size = 42
@@ -449,23 +498,23 @@ enum Desk {
         case .caption2: size = 18
         @unknown default: size = 23
         }
-        return .system(size: size, weight: weight ?? (style == .headline ? .semibold : .regular))
+        return .system(size: size * scale, weight: weight ?? (style == .headline ? .semibold : .regular))
         #else
         let font = Font.system(style)
         return weight.map { font.weight($0) } ?? font
         #endif
     }
 
-    /// A text size stated for the Mac layout, as a television needs it.
+    /// A text size stated for a phone, as a television needs it.
     static func size(_ value: CGFloat) -> CGFloat {
-        #if os(tvOS)
-        max(17, value * 1.6)
-        #else
+        #if os(iOS)
         value
+        #else
+        max(17, value * 1.6) * scale
         #endif
     }
 
-    /// A size stated for the Mac layout.
+    /// A size stated for a phone.
     static func system(_ size: CGFloat, _ weight: Font.Weight = .regular) -> Font {
         .system(size: Desk.size(size), weight: weight)
     }

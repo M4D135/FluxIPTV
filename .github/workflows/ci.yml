@@ -117,12 +117,12 @@ jobs:
         run: bash scripts/test-live-preview.sh 2>&1 | tee build/logs/live-preview-native.log
       - name: Capture the native television and shelf catalogue
         if: ${{ !cancelled() && matrix.platform == 'macOS' && steps.apple_build.outcome == 'success' }}
-        timeout-minutes: 8
+        timeout-minutes: 10
         run: bash scripts/test-catalog-ui.sh 2>&1 | tee build/logs/catalog-ui-native.log
       - name: Capture and navigate the native Apple TV interface
         if: ${{ !cancelled() && matrix.platform == 'tvOS' && steps.apple_build.outcome == 'success' }}
-        # Twenty-nine launches, then twelve remote flows bounded to thirty minutes.
-        timeout-minutes: 45
+        # Thirty-three launches, then fourteen remote flows bounded to forty minutes.
+        timeout-minutes: 60
         run: bash scripts/test-tvos-catalog-ui.sh 2>&1 | tee build/logs/tvos-catalog-ui-native.log
       - name: Package the unsigned application
         run: |
