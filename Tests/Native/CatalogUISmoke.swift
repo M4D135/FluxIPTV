@@ -358,6 +358,20 @@ private enum CatalogUIFailure: Error, CustomStringConvertible {
         scenarios.append(Scenario(kind: .movie, filename: "keys-folder-back.png",
                                   actions: [.down, .down, .down] + Array(repeating: .right, count: 9) + [.select, .up, .back],
                                   expectedFocus: folder, dock: "light", gallery: true))
+        // A folder made in the dock, with the icon chosen for it and a
+        // folder inside it: open as a fan, then walked with the keys — OK
+        // on the folder inside shows its titles, and Back returns to its row.
+        scenarios.append(Scenario(kind: .movie, filename: "dock-dossier.png", dock: "folders",
+                                  defaults: ["fluxiptv.fixture.dockFan": "dock-folder-first"]))
+        scenarios.append(Scenario(kind: .movie, filename: "keys-dossier.png",
+                                  actions: [.down, .down, .down] + Array(repeating: .right, count: 9) + [.select, .select],
+                                  expectedFocus: DockEntry.fanPrefix + "fixture-movie-7", dock: "folders"))
+        scenarios.append(Scenario(kind: .movie, filename: "keys-dossier-back.png",
+                                  actions: [.down, .down, .down] + Array(repeating: .right, count: 9) + [.select, .select, .back],
+                                  expectedFocus: DockEntry.fanFolderPrefix + "*", dock: "folders", gallery: true))
+        // The favourites hold what the bar keeps too: under each kind,
+        // after its lists, the sections and the folders of the dock.
+        scenarios.append(Scenario(kind: .movie, filename: "favorites-dock.png", favorites: true, dock: "folders"))
         scenarios.append(Scenario(kind: .live, filename: "zones-top.png", zone: .top, gallery: true))
         // The pointer on Films and on Séries: each brings its own room forward.
         scenarios.append(Scenario(kind: .live, filename: "home-films.png", home: true,
@@ -419,7 +433,8 @@ private enum CatalogUIFailure: Error, CustomStringConvertible {
                 try require(library.assignDock(DockShortcut(item: try title("fixture-live-0")), to: general)
                             && library.assignDock(DockShortcut(item: try title("fixture-movie-1")), to: general),
                             "The dock fixture could not keep its first shortcuts.")
-                if dock != "light" {
+                let light = dock == "light" || dock == "folders"
+                if !light {
                     try require(library.assignDock(DockShortcut(item: series), to: [], creating: "Le soir"), "The dock fixture could not create its section.")
                     let evening: Set<String> = [library.dockShelf.sections[1].id]
                     try require(library.assignDock(DockShortcut(series: series, season: 3), to: evening)
@@ -439,7 +454,24 @@ private enum CatalogUIFailure: Error, CustomStringConvertible {
                     library.toggleFavorite(try title(id), in: list)
                 }
                 library.setDockStack(list, shown: true)
-                if dock != "light" { library.visitDock(DockShortcut(item: try title("fixture-live-5"))) }
+                if dock == "folders" {
+                    // A folder of the dock with its own icon and a film, and
+                    // inside it a folder that holds two films and a series.
+                    func keep(_ shortcut: DockShortcut, in folder: String) -> Bool {
+                        library.assignDock(shortcut, to: library.dockShelf.sections(holding: shortcut.id).union([folder]))
+                    }
+                    guard let evening = library.createDockSection(name: "Soirée", folded: true),
+                          let classics = library.createDockSection(name: "Classiques", folded: true, in: evening) else {
+                        throw CatalogUIFailure.assertion("The dock fixture could not make its folders.")
+                    }
+                    library.setDockSymbol(evening, "popcorn.fill")
+                    try require(keep(DockShortcut(item: try title("fixture-movie-6")), in: evening)
+                                && keep(DockShortcut(item: try title("fixture-movie-7")), in: classics)
+                                && keep(DockShortcut(item: try title("fixture-movie-9")), in: classics)
+                                && keep(DockShortcut(item: series), in: classics),
+                                "The dock fixture could not fill its folders.")
+                }
+                if !light { library.visitDock(DockShortcut(item: try title("fixture-live-5"))) }
                 library.visitDock(DockShortcut(item: try title("fixture-movie-4")))
                 playback.recordFixtureProgress(id: "fixture-movie-4", seconds: 2_520, duration: 6_480)
                 try require(library.dockShelf.contains("fixture-live-0") && library.dockShelf.showsStack(list)
@@ -519,7 +551,9 @@ private enum CatalogUIFailure: Error, CustomStringConvertible {
                 try require(keysPlayed, "\(filename): the keys \(scenario.actions) had not all been played after twenty seconds; the selection was on \(observedFocus ?? "nothing").")
             }
             if let expected = scenario.expectedFocus {
-                try require(observedFocus == expected,
+                // "…*": an identifier that is made when the scenario is, known by how it begins.
+                let reached = expected.hasSuffix("*") ? observedFocus?.hasPrefix(String(expected.dropLast())) == true : observedFocus == expected
+                try require(reached,
                             "\(filename): the keys \(scenario.actions) left the selection on \(observedFocus ?? "nothing"), not on \(expected).")
                 print("Keys \(scenario.actions.map { "\($0)" }.joined(separator: " ")) → \(expected).")
             }

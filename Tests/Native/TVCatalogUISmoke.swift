@@ -232,7 +232,7 @@ private struct TVProbeReadout: View {
         case "live-es": return "live-channel-fixture-country-es-0"
         case "live-restored": return "live-channel-fixture-country-fr-1"
         case "country-picker": return "live-country-option-FR"
-        case "movies", "movies-many", "movies-many-lean", "dock": return "catalog-card-fixture-movie-1"
+        case "movies", "movies-many", "movies-many-lean", "dock", "dock-folders": return "catalog-card-fixture-movie-1"
         // The bar of the home screen with what the user keeps in it; a
         // folder of the dock open on its first title.
         case "dock-home": return "navigation-tab-movie"
@@ -310,7 +310,8 @@ private struct TVProbeReadout: View {
     var usesPortraitControl: Bool { scenario == "movies" || scenario.hasPrefix("movies-many") || scenario == "search-result" || scenario == "dock" }
     /// The films with what a user keeps in the dock: shortcuts in two
     /// sections, a film left unfinished, and a list as a folder.
-    static let dockScenarios = ["dock", "dock-home", "dock-folder", "dock-lists"]
+    /// "dock-folders": the same dock with a folder of shortcuts that holds another.
+    static let dockScenarios = ["dock", "dock-home", "dock-folder", "dock-lists", "dock-folders"]
     var fillsDock: Bool { Self.dockScenarios.contains(scenario) }
 
     var countryCode: String? {
@@ -621,6 +622,24 @@ private struct TVProbeReadout: View {
         library.visitDock(DockShortcut(item: try title("fixture-movie-2")))
         try require(library.dockShelf.showsStack(list) && library.dockShelf.recents.first?.id == "fixture-movie-2",
                     "The dock fixture is not what its scenarios expect.")
+        guard ProcessInfo.processInfo.environment["FLUX_UI_SCENARIO"] == "dock-folders" else { return }
+        // A folder made in the dock, with an icon of its own, a film, and a
+        // folder inside it that holds a film and a series.
+        func keep(_ shortcut: DockShortcut, in folder: String) -> Bool {
+            library.assignDock(shortcut, to: library.dockShelf.sections(holding: shortcut.id).union([folder]))
+        }
+        guard let evening = library.createDockSection(name: "Soirée", folded: true),
+              let classics = library.createDockSection(name: "Classiques", folded: true, in: evening) else {
+            throw TVCatalogUIFailure.assertion("The dock fixture could not make its folders.")
+        }
+        library.setDockSymbol(evening, "popcorn.fill")
+        try require(keep(DockShortcut(item: try title("fixture-movie-0")), in: evening)
+                    && keep(DockShortcut(item: try title("fixture-movie-2")), in: classics)
+                    && keep(DockShortcut(item: series), in: classics),
+                    "The dock fixture could not fill its folders.")
+        try require(library.dockShelf.topFolders.map(\.name) == ["Soirée"]
+                    && library.dockShelf.titles(under: evening, sourceID: source.id).count == 3,
+                    "The folders of the dock fixture are not what the flow expects.")
     }
 
     /// The glass and the movements, unless the scenario or the bench asks

@@ -714,6 +714,67 @@ final class TVRemoteNavigationTests: XCTestCase {
         print("PASS: TV_REMOTE the bar of the home screen stood on two rows, and Down and Up went from one to the other")
     }
 
+    /// A folder made in the dock is one icon of it, with the icon chosen
+    /// for it. OK opens it as a fan; a folder kept inside it shows what it
+    /// holds in its place, Menu returns to the folder above and then
+    /// closes the fan on its icon, and a title opens from two folders deep.
+    @MainActor
+    func testAFolderOfTheDockOpensTheFoldersItHolds() {
+        let app = launch("dock-folders")
+        defer { app.terminate() }
+        let card = element("catalog-card-fixture-movie-1", in: app)
+        let folder = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@ AND label BEGINSWITH %@",
+                                                      "navigation-dock-folder-", "Soirée")).firstMatch
+        let inner = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "dock-fan-folder:")).firstMatch
+        let film = element("dock-fan-fixture-movie-0", in: app)
+        let deep = element("dock-fan-fixture-movie-2", in: app)
+        let up = element("dock-fan-up", in: app)
+        assertFocus(card, logical: "fixture-movie-1", in: app)
+        XCUIRemote.shared.press(.down)
+        walkDock(to: folder, in: app)
+        XCTAssertEqual(folder.label, "Soirée · 3 titres · 1 dossier")
+        XCUIRemote.shared.press(.select)
+        // The folder it holds comes first, the nearest to the bar; its own film stands above.
+        assertFocus(inner, in: app)
+        XCTAssertEqual(inner.label, "Classiques · 2")
+        XCTAssertTrue(film.exists)
+        XCTAssertFalse(deep.exists, "What a folder inside holds shows once that folder is opened.")
+        retainScreenshot("folders-01-a-folder-and-the-one-it-holds", in: app)
+        // OK on the folder inside: its titles take the place of these, after the way back.
+        XCUIRemote.shared.press(.select)
+        assertFocus(deep, in: app)
+        XCTAssertTrue(up.exists)
+        XCTAssertEqual(up.label, "Soirée")
+        assertCondition("exists == false", on: film, in: app)
+        retainScreenshot("folders-02-inside-the-folder-inside", in: app)
+        // Menu returns to the folder above, on the row of the one that was left.
+        XCUIRemote.shared.press(.menu)
+        assertFocus(inner, in: app)
+        XCTAssertTrue(film.exists)
+        // Back in it by its row, and out by the row that leads back.
+        XCUIRemote.shared.press(.select)
+        assertFocus(deep, in: app)
+        XCUIRemote.shared.press(.down)
+        assertFocus(up, in: app)
+        XCUIRemote.shared.press(.select)
+        assertFocus(inner, in: app)
+        // Menu again closes the fan on the icon of the folder.
+        XCUIRemote.shared.press(.menu)
+        assertCondition("exists == false", on: inner, in: app)
+        assertFocus(folder, in: app)
+        // A title opens from two folders deep.
+        XCUIRemote.shared.press(.select)
+        assertFocus(inner, in: app)
+        XCUIRemote.shared.press(.select)
+        assertFocus(deep, in: app)
+        XCUIRemote.shared.press(.select)
+        let play = element("media-detail-play", in: app)
+        XCTAssertTrue(play.waitForExistence(timeout: 10))
+        assertCondition("hasFocus == true", on: play, in: app)
+        assertCondition("exists == false", on: deep, in: app)
+        print("PASS: TV_REMOTE a folder of the dock opened the folder it holds, Menu and its first row led back, and a film opened from two folders deep")
+    }
+
     /// Keys of the dock, in their default order.
     /// Back returns one screen at a time, as in a web browser. Held, it goes
     /// straight to the home screen: the Back key of the bar under OK held
@@ -1176,10 +1237,10 @@ final class TVRemoteNavigationTests: XCTestCase {
     }
 
     /// The foot of the lists of a title stands under its last row, the one
-    /// that creates a section of the dock, and is entered on Enregistrer.
+    /// that creates a folder of the dock, and is entered on Enregistrer.
     @MainActor
     private func moveToSave(_ save: XCUIElement, in app: XCUIApplication) {
-        move(.down, to: element("favorite-dock-create", in: app), maximumPresses: 8, in: app)
+        move(.down, to: element("favorite-dock-create-folder", in: app), maximumPresses: 9, in: app)
         XCUIRemote.shared.press(.down)
         assertFocus(save, in: app)
     }

@@ -123,7 +123,7 @@ jobs:
         run: bash scripts/test-catalog-ui.sh 2>&1 | tee build/logs/catalog-ui-native.log
       - name: Capture and navigate the native Apple TV interface
         if: ${{ !cancelled() && matrix.platform == 'tvOS' && steps.apple_build.outcome == 'success' }}
-        # Thirty-three launches, then sixteen remote flows bounded to seventy minutes.
+        # Thirty-three launches, then eighteen remote flows bounded to seventy minutes.
         timeout-minutes: 95
         env:
           # These machines answer the remote flows three times more slowly

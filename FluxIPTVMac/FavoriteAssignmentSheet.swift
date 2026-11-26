@@ -32,6 +32,10 @@ struct FavoriteAssignmentSheet: View {
     @State private var dockSelected: [String: Set<String>] = [:]
     @State private var creatingSection = false
     @State private var newSection = ""
+    /// What is being created is a folder of the dock, not a section; and
+    /// the folder it is made in, nil for the bar itself.
+    @State private var creatingFolder = false
+    @State private var folderParent: String?
     #endif
     #if os(macOS)
     @State private var hovered: String?
@@ -67,8 +71,38 @@ struct FavoriteAssignmentSheet: View {
     #if !os(iOS)
     // MARK: Desk: the same panel on a television and on a Mac
 
-    private var sections: [DockSection] { library.dockShelf.sections }
+    /// The sections of the bar, then its folders, each followed by those
+    /// it holds.
+    private var sections: [DockSection] { library.dockShelf.tree.map(\.section) }
     private var choice: DockShortcut? { dockChoices.indices.contains(dockChoice) ? dockChoices[dockChoice] : nil }
+    /// A folder is named with those above it: « Films › Action ».
+    private func sectionTitle(_ section: DockSection) -> String {
+        section.isFolder ? library.dockShelf.path(to: section.id).map(\.name).joined(separator: " › ") : section.name
+    }
+    private func sectionMark(_ section: DockSection) -> String? {
+        section.isDefault ? "dock.rectangle" : section.isFolder ? (section.symbol ?? "folder.fill") : nil
+    }
+    /// Where a new folder may be made: the bar, or a folder that is not too deep.
+    private var folderParents: [String?] {
+        [nil] + library.dockShelf.tree.filter { $0.section.isFolder && $0.depth + 1 < DockShelf.folderDepth }.map { Optional($0.section.id) }
+    }
+    private var folderParentTitle: String {
+        folderParent.flatMap { library.dockShelf.section(id: $0) }.map(sectionTitle) ?? "Le dock"
+    }
+    private func cycleFolderParent() {
+        let options = folderParents
+        let index = options.firstIndex(of: folderParent) ?? 0
+        folderParent = options[(index + 1) % options.count]
+        validationError = nil
+    }
+    private func toggleCreation(folder: Bool) {
+        if creatingSection && creatingFolder == folder { creatingSection = false }
+        else { creatingSection = true; creatingFolder = folder }
+        validationError = nil
+        #if os(macOS)
+        sectionFocused = creatingSection
+        #endif
+    }
 
     /// The controls, row by row, for the arrows of a keyboard. A remote
     /// finds them by where they stand.
@@ -76,7 +110,8 @@ struct FavoriteAssignmentSheet: View {
         var rows = lists.indices.map { ["list-\($0)"] } + [["create"]]
         if !dockChoices.isEmpty {
             if dockChoices.count > 1 { rows.append(dockChoices.indices.map { "dock-choice-\($0)" }) }
-            rows += sections.indices.map { ["dock-\($0)"] } + [["dock-create"]]
+            rows += sections.indices.map { ["dock-\($0)"] } + [["dock-create"], ["dock-create-folder"]]
+            if creatingSection && creatingFolder && folderParents.count > 1 { rows.append(["dock-parent"]) }
         }
         return rows + [["open", "cancel", "save"]]
     }
@@ -186,8 +221,8 @@ struct FavoriteAssignmentSheet: View {
             ForEach(Array(sections.enumerated()), id: \.element.id) { index, section in
                 let chosen = dockSelected[choice.id]?.contains(section.id) == true
                 row("dock-\(index)", symbol: chosen ? "checkmark.circle.fill" : "circle",
-                    tint: chosen ? .cyan : .secondary, title: section.name,
-                    mark: section.isDefault ? "dock.rectangle" : nil) {
+                    tint: chosen ? .cyan : .secondary, title: sectionTitle(section),
+                    mark: sectionMark(section)) {
                     var set = dockSelected[choice.id] ?? []
                     if !set.insert(section.id).inserted { set.remove(section.id) }
                     dockSelected[choice.id] = set
@@ -195,18 +230,29 @@ struct FavoriteAssignmentSheet: View {
                 }
                 .accessibilityValue(chosen ? "Sélectionnée" : "Non sélectionnée")
             }
-            row("dock-create", symbol: creatingSection ? "minus.circle" : "plus.circle", tint: .secondary,
-                title: creatingSection ? "Annuler la nouvelle section" : "Créer une section du dock", mark: nil) {
-                creatingSection.toggle(); validationError = nil
-                #if os(macOS)
-                sectionFocused = creatingSection
-                #endif
+            let section = creatingSection && !creatingFolder, folder = creatingSection && creatingFolder
+            row("dock-create", symbol: section ? "minus.circle" : "plus.circle", tint: .secondary,
+                title: section ? "Annuler la nouvelle section" : "Créer une section du dock", mark: nil) {
+                toggleCreation(folder: false)
+            }
+            row("dock-create-folder", symbol: folder ? "minus.circle" : "folder.badge.plus", tint: .secondary,
+                title: folder ? "Annuler le nouveau dossier" : "Créer un dossier du dock", mark: nil) {
+                toggleCreation(folder: true)
             }
             if creatingSection {
-                field("Nom de la section", text: $newSection, focused: $sectionFocused, identifier: "favorite-section-name")
+                field(creatingFolder ? "Nom du dossier" : "Nom de la section", text: $newSection, focused: $sectionFocused,
+                      identifier: "favorite-section-name")
             }
-            Text(creatingSection ? "« \(choice.title) » ira dans cette section, à part dans le dock."
-                 : "Chaque section se tient à part dans le dock, entre deux séparateurs.")
+            if folder && folderParents.count > 1 {
+                // In the bar, or in a folder: OK goes from one to the next.
+                row("dock-parent", symbol: "arrow.turn.down.right", tint: .secondary,
+                    title: "Dans : \(folderParentTitle)", mark: folderParent == nil ? "dock.rectangle" : "folder.fill") {
+                    cycleFolderParent()
+                }
+            }
+            Text(folder ? "« \(choice.title) » ira dans ce dossier : une icône du dock, qui s’ouvre en éventail."
+                 : section ? "« \(choice.title) » ira dans cette section, à part dans le dock."
+                 : "Une section se tient à part dans le dock, entre deux séparateurs ; un dossier y est une seule icône, qui s’ouvre en éventail.")
                 .font(Desk.font(.caption)).foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -330,7 +376,8 @@ struct FavoriteAssignmentSheet: View {
     private func key(_ press: KeyPress) -> KeyPress.Result {
         if nameFocused || sectionFocused {
             guard press.key == .escape else { return .ignored }
-            if nameFocused { creating = false; focus = "create" } else { creatingSection = false; focus = "dock-create" }
+            if nameFocused { creating = false; focus = "create" }
+            else { creatingSection = false; focus = creatingFolder ? "dock-create-folder" : "dock-create" }
             return .handled
         }
         if press.key == .escape { finish(); return .handled }
@@ -366,7 +413,9 @@ struct FavoriteAssignmentSheet: View {
             dockSelected[choice.id] = set; validationError = nil
         }
         else if id == "create" { creating.toggle(); validationError = nil; nameFocused = creating }
-        else if id == "dock-create" { creatingSection.toggle(); validationError = nil; sectionFocused = creatingSection }
+        else if id == "dock-create" { toggleCreation(folder: false) }
+        else if id == "dock-create-folder" { toggleCreation(folder: true) }
+        else if id == "dock-parent" { cycleFolderParent() }
         else if id == "open" { finish(); open() }
         else if id == "cancel" { finish() }
         else if id == "save", !unnamed { commit() }
@@ -437,11 +486,13 @@ struct FavoriteAssignmentSheet: View {
         #if !os(iOS)
         var shelf = library.dockShelf
         var changes: [(DockShortcut, Set<String>, String?)] = []
+        // A new folder is made in the bar, or in the folder chosen for it.
+        let parent = creatingFolder ? folderParent : nil
         for (index, option) in dockChoices.enumerated() {
             let chosen = dockSelected[option.id] ?? []
             let sectionName = creatingSection && index == dockChoice ? newSection : nil
-            guard shelf.assign(option, to: chosen, creating: sectionName) else {
-                validationError = "Choisissez pour la section un nom unique de 1 à 40 caractères. Si le dock a changé, fermez puis rouvrez ce panneau."
+            guard shelf.assign(option, to: chosen, creating: sectionName, folded: creatingFolder, in: parent) else {
+                validationError = "Choisissez un nom de 1 à 40 caractères, sans « / », que rien ne porte déjà au même endroit. Si le dock a changé, fermez puis rouvrez ce panneau."
                 return
             }
             if sectionName != nil || chosen != library.dockShelf.sections(holding: option.id) { changes.append((option, chosen, sectionName)) }
@@ -449,7 +500,9 @@ struct FavoriteAssignmentSheet: View {
         #endif
         guard library.assignFavorites(item, to: selectedIDs, creating: listName) else { return }
         #if !os(iOS)
-        for (option, chosen, sectionName) in changes { _ = library.assignDock(option, to: chosen, creating: sectionName) }
+        for (option, chosen, sectionName) in changes {
+            _ = library.assignDock(option, to: chosen, creating: sectionName, folded: creatingFolder, in: parent)
+        }
         #endif
         saved(); finish()
     }

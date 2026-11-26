@@ -176,12 +176,43 @@ struct DockTile: Identifiable, Equatable {
     }
 }
 
-/// A title of an open folder.
+/// A row of an open folder: a title, a folder kept inside it, or the way
+/// back to the folder it was opened from.
 struct DockFanRow: Identifiable, Equatable {
-    let shortcut: DockShortcut
-    let item: IPTVItem?
-    let badge: String?
-    var id: String { DockEntry.fanPrefix + shortcut.id }
+    enum Kind: Equatable {
+        case title(DockShortcut, item: IPTVItem?)
+        /// `covers`: its first titles, when no icon was chosen for it.
+        case folder(id: String, name: String, count: Int, symbol: String?, covers: [IPTVItem])
+        /// Back to the folder above, or to the titles before these.
+        case up(name: String)
+    }
+    let kind: Kind
+
+    init(shortcut: DockShortcut, item: IPTVItem?) { kind = .title(shortcut, item: item) }
+    init(folder id: String, name: String, count: Int, symbol: String?, covers: [IPTVItem]) {
+        kind = .folder(id: id, name: name, count: count, symbol: symbol, covers: covers)
+    }
+    init(up name: String) { kind = .up(name: name) }
+
+    var id: String {
+        switch kind {
+        case .title(let shortcut, _): DockEntry.fanPrefix + shortcut.id
+        case .folder(let id, _, _, _, _): DockEntry.fanFolderPrefix + id
+        case .up: DockEntry.fanUpID
+        }
+    }
+    var shortcut: DockShortcut? {
+        if case .title(let shortcut, _) = kind { return shortcut }
+        return nil
+    }
+    /// What stands beside its picture.
+    var name: String {
+        switch kind {
+        case .title(let shortcut, _): shortcut.title
+        case .folder(_, let name, let count, _, _): "\(name) · \(count)"
+        case .up(let name): name
+        }
+    }
 }
 
 /// A folder of the bar, open above it as the fan of a stack of the Dock.
@@ -196,6 +227,8 @@ struct DockFan: Equatable {
     /// Name of the last row, which opens them all on a screen of their
     /// own; nil for a list of favourites, named from what it holds.
     let listTitle: String?
+    /// Picture of the last row: a screen of its own, or the titles that follow.
+    var lastSymbol = "arrow.up.forward.square.fill"
     var ids: [String] { rows.map(\.id) + [DockEntry.fanAllID] }
 }
 
@@ -233,6 +266,8 @@ struct FluxDock: View {
     /// A shortcut dragged to another place of its section.
     var reorder: ((DockShortcut, String, Int) -> Void)?
     var openFanRow: ((DockFanRow) -> Void)?
+    /// The icon chosen for a folder of shortcuts; nil for the pictures of its titles.
+    var folderSymbol: ((String, String?) -> Void)?
     var openFanList: (() -> Void)?
     let openSettings: () -> Void
 
@@ -535,7 +570,7 @@ struct FluxDock: View {
                         storedOrder = FluxDockItem.stored(FluxDockItem.moving(item, to: target, in: tiles.compactMap(\.destination)))
                     case .shortcut(let shortcut, let section):
                         reorder?(shortcut, section, target - range.lowerBound)
-                    case .resume, .recent, .stack, .more: break
+                    case .resume, .recent, .stack, .folder, .more: break
                     }
                 }
                 // The icon stays under the pointer while its slot changes.
@@ -575,6 +610,17 @@ struct FluxDock: View {
         case .stack:
             Button("Ouvrir") { activate(tile.entry) }
             Button("Retirer du dock") { remove?(tile.entry) }
+            Divider()
+        case .folder(let sectionID):
+            Button("Ouvrir") { activate(tile.entry) }
+            Menu("Icône du dossier") {
+                Button("Images de ses titres") { folderSymbol?(sectionID, nil) }
+                Divider()
+                ForEach(DockSection.symbols, id: \.self) { symbol in
+                    Button { folderSymbol?(sectionID, symbol) } label: { Label(DockSection.symbolTitle(symbol), systemImage: symbol) }
+                }
+            }
+            Button("Gérer le dossier…") { openSettings() }
             Divider()
         }
     }
@@ -736,9 +782,36 @@ private struct FluxDockFanView: View {
     }
 
     private func row(_ row: DockFanRow) -> some View {
-        line(id: row.id, name: row.shortcut.title, action: { open(row) }) {
-            FluxDockArt(item: row.item, kind: row.shortcut.kind, badge: row.badge, progress: nil,
-                        side: side, radius: metrics.tileRadius * 0.9, focused: false)
+        line(id: row.id, name: row.name, action: { open(row) }) {
+            switch row.kind {
+            case .title(let shortcut, let item):
+                FluxDockArt(item: item, kind: shortcut.kind, badge: shortcut.badge, progress: nil,
+                            side: side, radius: metrics.tileRadius * 0.9, focused: false)
+            case .folder(_, _, _, let symbol, let covers):
+                // A folder in the folder: its icon, or the first of its titles.
+                ZStack {
+                    RoundedRectangle(cornerRadius: metrics.tileRadius * 0.9, style: .continuous)
+                        .fill(LinearGradient(colors: [FluxDockItem.favorites.tint.opacity(0.95), FluxDockItem.favorites.tint.opacity(0.62)],
+                                             startPoint: .top, endPoint: .bottom))
+                    if let cover = covers.first, symbol == nil {
+                        FluxDockArt(item: cover, kind: cover.kind, badge: nil, progress: nil,
+                                    side: side * 0.62, radius: metrics.tileRadius * 0.5, focused: false)
+                    } else {
+                        Image(systemName: symbol ?? "folder.fill").font(.system(size: side * 0.46, weight: .medium))
+                            .symbolRenderingMode(.hierarchical).foregroundStyle(.white.opacity(0.96))
+                    }
+                }
+                .frame(width: side, height: side)
+                .overlay(alignment: .bottomTrailing) {
+                    Image(systemName: "chevron.right.circle.fill").font(.system(size: side * 0.3, weight: .bold))
+                        .symbolRenderingMode(.palette).foregroundStyle(.black, .white)
+                        .offset(x: side * 0.1, y: side * 0.08)
+                }
+            case .up:
+                Image(systemName: "chevron.backward").font(.system(size: side * 0.42, weight: .bold))
+                    .foregroundStyle(.white).frame(width: side, height: side)
+                    .background(.white.opacity(0.14), in: RoundedRectangle(cornerRadius: metrics.tileRadius * 0.9, style: .continuous))
+            }
         }
     }
 
@@ -746,7 +819,7 @@ private struct FluxDockFanView: View {
         line(id: DockEntry.fanAllID,
              name: fan.listTitle ?? (fan.more > 0 ? "Tout afficher · \(fan.more) de plus" : fan.rows.isEmpty ? "Liste vide · l’ouvrir" : "Ouvrir la liste"),
              action: openList) {
-            Image(systemName: "arrow.up.forward.square.fill").font(.system(size: side * 0.5, weight: .medium))
+            Image(systemName: fan.lastSymbol).font(.system(size: side * 0.5, weight: .medium))
                 .symbolRenderingMode(.hierarchical).foregroundStyle(.white)
                 .frame(width: side, height: side)
                 .background(.white.opacity(0.14), in: RoundedRectangle(cornerRadius: metrics.tileRadius * 0.9, style: .continuous))

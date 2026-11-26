@@ -284,4 +284,111 @@ final class DockShelfTests: XCTestCase {
         XCTAssertEqual(DockArrangement.move(from: "k", action: .down, rows: rows), "k")
         XCTAssertEqual(DockArrangement.move(from: "nowhere", action: .down, rows: rows), "a")
     }
+
+    /// A folder made in the bar is one icon of it, at its end, and what it
+    /// holds leaves the bar itself.
+    func testAFolderOfTheBarHoldsShortcutsAndOtherFolders() throws {
+        var shelf = DockShelf()
+        let places: [FluxDockItem] = [.live, .movie]
+        let film = DockShortcut(item: item("f1", .movie)), other = DockShortcut(item: item("f2", .movie))
+        XCTAssertTrue(shelf.assign(film, to: [], creating: "Action", folded: true))
+        let action = try XCTUnwrap(shelf.topFolders.first)
+        XCTAssertTrue(action.isFolder)
+        XCTAssertEqual(action.name, "Action")
+        var bar = shelf.arrangement(destinations: places, sourceID: source, lists: [], resume: nil)
+        XCTAssertEqual(bar.entries.map(\.id), ["tab-live", "tab-movie", "dock-folder-\(action.id)"])
+        XCTAssertTrue(bar.entries.last?.isFolder == true)
+        XCTAssertTrue(DockEntry.isShelfID("dock-folder-\(action.id)"))
+        // A folder inside it, made for another title.
+        XCTAssertTrue(shelf.assign(other, to: [], creating: "Années 80", in: action.id))
+        let eighties = try XCTUnwrap(shelf.folders(in: action.id).first)
+        XCTAssertEqual(eighties.parentID, action.id)
+        XCTAssertEqual(shelf.depth(of: eighties.id), 1)
+        XCTAssertEqual(shelf.path(to: eighties.id).map(\.name), ["Action", "Années 80"])
+        // The bar still shows one folder; opened, it shows its folder, then its title.
+        bar = shelf.arrangement(destinations: places, sourceID: source, lists: [], resume: nil)
+        XCTAssertEqual(bar.entries.count, 3)
+        let content = shelf.content(of: action.id, sourceID: source)
+        XCTAssertEqual(content.folders.map(\.name), ["Années 80"])
+        XCTAssertEqual(content.shortcuts.map(\.id), ["f1"])
+        XCTAssertEqual(shelf.titles(under: action.id, sourceID: source).map(\.id), ["f1", "f2"])
+        XCTAssertEqual(shelf.titles(under: action.id, sourceID: self.other).count, 0)
+        XCTAssertEqual(shelf.tree.map { "\($0.depth) \($0.section.name)" }, ["0 Raccourcis", "0 Action", "1 Années 80"])
+        // The same name may stand in two folders, not twice in one.
+        XCTAssertNotNil(shelf.createSection(name: "Années 80", folded: true))
+        XCTAssertNil(shelf.createSection(name: "années 80", in: action.id))
+        XCTAssertNil(shelf.createSection(name: "Dans/Dehors", folded: true))
+        // Nothing is made inside what is not a folder.
+        XCTAssertNil(shelf.createSection(name: "Ailleurs", in: DockShelf.defaultSectionID))
+        // A title in a folder may also come back among the recents.
+        shelf.visit(film)
+        bar = shelf.arrangement(destinations: places, sourceID: source, lists: [], resume: nil)
+        XCTAssertTrue(bar.entries.contains { if case .recent(let recent) = $0 { recent.id == "f1" } else { false } })
+    }
+
+    func testFoldersMoveUnfoldAndLeaveWithWhatTheyHold() throws {
+        var shelf = DockShelf()
+        let a = try XCTUnwrap(shelf.createSection(name: "A", folded: true))
+        let b = try XCTUnwrap(shelf.createSection(name: "B", in: a))
+        let c = try XCTUnwrap(shelf.createSection(name: "C", in: b))
+        let d = try XCTUnwrap(shelf.createSection(name: "D", in: c))
+        // Four folders deep, and no deeper.
+        XCTAssertNil(shelf.createSection(name: "E", in: d))
+        // Never into itself, nor into one of its own.
+        XCTAssertFalse(shelf.moveSection(a, into: a))
+        XCTAssertFalse(shelf.moveSection(a, into: c))
+        XCTAssertFalse(shelf.moveSection(DockShelf.defaultSectionID, into: a))
+        // A section becomes a folder when it enters one; too deep, it stays.
+        let section = try XCTUnwrap(shelf.createSection(name: "Le soir"))
+        XCTAssertFalse(shelf.section(id: section)?.isFolder ?? true)
+        XCTAssertFalse(shelf.moveSection(section, into: d))
+        XCTAssertTrue(shelf.moveSection(section, into: a))
+        XCTAssertEqual(shelf.section(id: section)?.parentID, a)
+        XCTAssertTrue(shelf.section(id: section)?.isFolder ?? false)
+        // Back into the bar, as a folder.
+        XCTAssertTrue(shelf.moveSection(section, into: nil))
+        XCTAssertEqual(shelf.topFolders.map(\.name), ["A", "Le soir"])
+        // Its shortcuts in the bar again.
+        XCTAssertTrue(shelf.setFolded(section, false))
+        XCTAssertEqual(shelf.openSections.map(\.name), ["Raccourcis", "Le soir"])
+        XCTAssertFalse(shelf.setFolded(b, false), "A folder inside another is moved, not unfolded.")
+        XCTAssertFalse(shelf.setFolded(DockShelf.defaultSectionID, true))
+        // An icon of the list, or none.
+        XCTAssertTrue(shelf.setSymbol(a, "film.fill"))
+        XCTAssertEqual(shelf.section(id: a)?.symbol, "film.fill")
+        XCTAssertFalse(shelf.setSymbol(a, "not.a.symbol"))
+        XCTAssertTrue(shelf.setSymbol(a, nil))
+        // Unfolded, a folder leaves those it held in the bar.
+        XCTAssertTrue(shelf.setFolded(a, false))
+        XCTAssertEqual(shelf.topFolders.map(\.name), ["B"])
+        // Deleted, a folder takes its own with it.
+        XCTAssertTrue(shelf.deleteSection(id: b))
+        XCTAssertNil(shelf.section(id: c))
+        XCTAssertNil(shelf.section(id: d))
+        XCTAssertEqual(shelf.sections.map(\.name), ["Raccourcis", "A", "Le soir"])
+    }
+
+    /// What was kept before folders existed is read as it was, and what
+    /// cannot be is made whole.
+    func testAnOlderShelfIsReadAndABrokenOneRepaired() throws {
+        let old = #"{"sections":[{"id":"shortcuts","name":"Raccourcis","shortcuts":[],"isDefault":true},{"id":"s2","name":"Le soir","shortcuts":[],"isDefault":false}],"stacks":["l1"],"recents":[]}"#
+        let shelf = try JSONDecoder().decode(DockShelf.self, from: Data(old.utf8))
+        XCTAssertEqual(shelf.openSections.map(\.name), ["Raccourcis", "Le soir"])
+        XCTAssertTrue(shelf.topFolders.isEmpty)
+        XCTAssertTrue(shelf.showsStack("l1"))
+        // Written and read again, with its folders.
+        var kept = shelf
+        let folder = try XCTUnwrap(kept.createSection(name: "Films", folded: true, symbol: "film.fill"))
+        XCTAssertNotNil(kept.createSection(name: "Action", in: folder))
+        let again = try JSONDecoder().decode(DockShelf.self, from: JSONEncoder().encode(kept))
+        XCTAssertEqual(again, kept)
+        XCTAssertEqual(again.section(id: folder)?.symbol, "film.fill")
+        // A folder in a folder that is gone, two that hold each other, and a first section put away.
+        let broken = #"{"sections":[{"id":"shortcuts","name":"Raccourcis","shortcuts":[],"isDefault":true,"folded":true,"parentID":"x"},{"id":"x","name":"X","shortcuts":[],"isDefault":false,"folded":true,"parentID":"y"},{"id":"y","name":"Y","shortcuts":[],"isDefault":false,"folded":true,"parentID":"x"},{"id":"z","name":"Z","shortcuts":[],"isDefault":false,"parentID":"gone"}],"stacks":[],"recents":[]}"#
+        let repaired = try JSONDecoder().decode(DockShelf.self, from: Data(broken.utf8))
+        XCTAssertEqual(repaired.openSections.map(\.id), ["shortcuts"])
+        XCTAssertTrue(repaired.section(id: "z")?.parentID == nil && repaired.section(id: "z")?.folded == true)
+        XCTAssertNil(repaired.section(id: "x")?.parentID)
+        XCTAssertEqual(repaired.tree.count, 4)
+    }
 }

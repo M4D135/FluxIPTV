@@ -93,13 +93,87 @@ public struct DockShortcut: Identifiable, Codable, Hashable, Sendable {
     }
 }
 
-/// A named group of shortcuts. Each one stands apart in the bar, between two
-/// dividers, as the parts of the Dock of a Mac do.
+/// A named group of shortcuts. A section stands apart in the bar, between
+/// two dividers, as the parts of the Dock of a Mac do. A folder is one icon
+/// of the bar instead, which opens as a fan; it may hold other folders, as
+/// far as one cares to sort.
 public struct DockSection: Identifiable, Codable, Hashable, Sendable {
     public let id: String
     public var name: String
     public var shortcuts: [DockShortcut]
     public let isDefault: Bool
+    /// One icon of the bar, opened as a fan, instead of its shortcuts side
+    /// by side in the bar.
+    public var folded: Bool
+    /// The folder that holds this one; nil in the bar itself.
+    public var parentID: String?
+    /// The icon chosen for the folder; nil shows the pictures of what it holds.
+    public var symbol: String?
+
+    public init(id: String, name: String, shortcuts: [DockShortcut] = [], isDefault: Bool = false,
+                folded: Bool = false, parentID: String? = nil, symbol: String? = nil) {
+        self.id = id
+        self.name = name
+        self.shortcuts = shortcuts
+        self.isDefault = isDefault
+        self.folded = folded
+        self.parentID = parentID
+        self.symbol = symbol
+    }
+
+    /// What was kept before folders existed has none of their keys.
+    public init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        id = try values.decode(String.self, forKey: .id)
+        name = try values.decode(String.self, forKey: .name)
+        shortcuts = try values.decode([DockShortcut].self, forKey: .shortcuts)
+        isDefault = try values.decode(Bool.self, forKey: .isDefault)
+        folded = try values.decodeIfPresent(Bool.self, forKey: .folded) ?? false
+        parentID = try values.decodeIfPresent(String.self, forKey: .parentID)
+        symbol = try values.decodeIfPresent(String.self, forKey: .symbol)
+    }
+
+    /// A folder: of the bar, or of another folder.
+    public var isFolder: Bool { folded || parentID != nil }
+
+    /// Icons a folder may be given, by the name the system knows them by.
+    public static let symbols = ["folder.fill", "star.fill", "heart.fill", "film.fill", "tv.fill", "popcorn.fill",
+                                 "theatermasks.fill", "sparkles", "flame.fill", "bolt.fill", "moon.stars.fill", "sun.max.fill",
+                                 "face.smiling.fill", "figure.and.child.holdinghands", "gamecontroller.fill", "music.note",
+                                 "sportscourt.fill", "trophy.fill", "globe.europe.africa.fill", "newspaper.fill",
+                                 "leaf.fill", "pawprint.fill", "car.fill", "airplane", "book.fill", "crown.fill"]
+    /// What each of them is called where one chooses.
+    public static func symbolTitle(_ symbol: String) -> String {
+        switch symbol {
+        case "folder.fill": "Dossier"
+        case "star.fill": "Étoile"
+        case "heart.fill": "Cœur"
+        case "film.fill": "Film"
+        case "tv.fill": "Télévision"
+        case "popcorn.fill": "Pop-corn"
+        case "theatermasks.fill": "Théâtre"
+        case "sparkles": "Étincelles"
+        case "flame.fill": "Flamme"
+        case "bolt.fill": "Éclair"
+        case "moon.stars.fill": "Nuit"
+        case "sun.max.fill": "Soleil"
+        case "face.smiling.fill": "Sourire"
+        case "figure.and.child.holdinghands": "Enfants"
+        case "gamecontroller.fill": "Jeux"
+        case "music.note": "Musique"
+        case "sportscourt.fill": "Sport"
+        case "trophy.fill": "Trophée"
+        case "globe.europe.africa.fill": "Monde"
+        case "newspaper.fill": "Actualités"
+        case "leaf.fill": "Nature"
+        case "pawprint.fill": "Animaux"
+        case "car.fill": "Voitures"
+        case "airplane": "Voyages"
+        case "book.fill": "Livres"
+        case "crown.fill": "Couronne"
+        default: symbol
+        }
+    }
 }
 
 /// One thing shown in the bar, and the identifier that the focus knows it by.
@@ -111,6 +185,8 @@ public enum DockEntry: Identifiable, Hashable, Sendable {
     case recent(DockShortcut)
     /// A list of favourites kept in the bar as a folder.
     case stack(listID: String)
+    /// A folder of shortcuts, made in the bar itself.
+    case folder(sectionID: String)
     /// The shortcuts that the bar has no room for, as one more folder.
     case more
 
@@ -118,15 +194,21 @@ public enum DockEntry: Identifiable, Hashable, Sendable {
     public static let resumePrefix = "dock-resume-"
     public static let recentPrefix = "dock-recent-"
     public static let stackPrefix = "dock-stack-"
+    public static let folderPrefix = "dock-folder-"
     public static let moreID = "dock-more"
     /// A title of an open folder, above the bar.
     public static let fanPrefix = "dock-fan-"
-    /// Last row of an open folder: the whole list, on its own screen.
+    /// A folder kept inside the open one: OK shows what it holds.
+    public static let fanFolderPrefix = "dock-fan-folder:"
+    /// First row of a folder opened from another, or of a later page: back.
+    public static let fanUpID = "dock-fan-up"
+    /// Last row of an open folder: the whole list on its own screen, the
+    /// titles that follow, or where the folder is managed.
     public static let fanAllID = "dock-fan-all"
 
     /// Whether a control belongs to the bar or to its open folder.
     public static func isShelfID(_ id: String) -> Bool {
-        id == moreID || [shortcutPrefix, resumePrefix, recentPrefix, stackPrefix, fanPrefix].contains(where: id.hasPrefix)
+        id == moreID || [shortcutPrefix, resumePrefix, recentPrefix, stackPrefix, folderPrefix, fanPrefix].contains(where: id.hasPrefix)
     }
 
     public var id: String {
@@ -136,19 +218,20 @@ public enum DockEntry: Identifiable, Hashable, Sendable {
         case .resume(let shortcut): Self.resumePrefix + shortcut.id
         case .recent(let shortcut): Self.recentPrefix + shortcut.id
         case .stack(let listID): Self.stackPrefix + listID
+        case .folder(let sectionID): Self.folderPrefix + sectionID
         case .more: Self.moreID
         }
     }
     public var shortcut: DockShortcut? {
         switch self {
         case .shortcut(let shortcut, _), .resume(let shortcut), .recent(let shortcut): shortcut
-        case .destination, .stack, .more: nil
+        case .destination, .stack, .folder, .more: nil
         }
     }
     /// A folder opens above the bar instead of leaving the screen.
     public var isFolder: Bool {
         switch self {
-        case .stack, .more: true
+        case .stack, .folder, .more: true
         case .destination, .shortcut, .resume, .recent: false
         }
     }
@@ -280,10 +363,41 @@ public struct DockShelf: Codable, Equatable, Sendable {
     /// What was opened last, the most recent first.
     public private(set) var recents: [DockShortcut]
 
+    /// Folders inside folders, as far as this; the bar is not a disk.
+    public static let folderDepth = 4
+
     public init() {
         sections = [DockSection(id: Self.defaultSectionID, name: "Raccourcis", shortcuts: [], isDefault: true)]
         stacks = []
         recents = []
+    }
+
+    public init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        sections = try values.decode([DockSection].self, forKey: .sections)
+        stacks = try values.decodeIfPresent([String].self, forKey: .stacks) ?? []
+        recents = try values.decodeIfPresent([DockShortcut].self, forKey: .recents) ?? []
+        repair()
+    }
+
+    /// What was read is made whole again: the first section is in the
+    /// bar, and a folder whose own folder is gone, or that would hold
+    /// itself, returns to the bar.
+    private mutating func repair() {
+        if !sections.contains(where: \.isDefault) {
+            sections.insert(DockSection(id: Self.defaultSectionID, name: "Raccourcis", isDefault: true), at: 0)
+        }
+        for index in sections.indices {
+            if sections[index].isDefault { sections[index].folded = false; sections[index].parentID = nil; continue }
+            guard let parent = sections[index].parentID else { continue }
+            // Up from its folder to the bar without meeting itself, and within the depth allowed.
+            var seen: Set<String> = [sections[index].id], cursor: String? = parent, sound = true, steps = 0
+            while let id = cursor {
+                guard seen.insert(id).inserted, let above = section(id: id), !above.isDefault, steps < Self.folderDepth else { sound = false; break }
+                cursor = above.parentID; steps += 1
+            }
+            if !sound { sections[index].parentID = nil; sections[index].folded = true }
+        }
     }
 
     public func section(id: String) -> DockSection? { sections.first { $0.id == id } }
@@ -295,24 +409,126 @@ public struct DockShelf: Codable, Equatable, Sendable {
 
     // MARK: Sections
 
-    @discardableResult public mutating func createSection(name: String) -> String? {
-        guard let clean = availableName(name, except: nil) else { return nil }
+    /// A section of the bar, or with `folded` a folder: in the bar, or in
+    /// the folder `parentID`.
+    @discardableResult public mutating func createSection(name: String, folded: Bool = false, in parentID: String? = nil,
+                                                          symbol: String? = nil) -> String? {
+        if let parentID {
+            guard let parent = section(id: parentID), parent.isFolder, depth(of: parentID) + 1 < Self.folderDepth else { return nil }
+        }
+        guard let clean = availableName(name, except: nil, in: parentID) else { return nil }
         let id = UUID().uuidString
-        sections.append(DockSection(id: id, name: clean, shortcuts: [], isDefault: false))
+        sections.append(DockSection(id: id, name: clean, folded: folded || parentID != nil, parentID: parentID, symbol: symbol))
         return id
     }
 
     @discardableResult public mutating func renameSection(id: String, name: String) -> Bool {
         guard let index = sections.firstIndex(where: { $0.id == id }),
-              let clean = availableName(name, except: id) else { return false }
+              let clean = availableName(name, except: id, in: sections[index].parentID) else { return false }
         sections[index].name = clean
         return true
     }
 
-    /// The first section always stays; another one leaves with its shortcuts.
+    /// The first section always stays; another one leaves with its
+    /// shortcuts, and a folder with the folders it holds.
     @discardableResult public mutating func deleteSection(id: String) -> Bool {
+        guard sections.contains(where: { $0.id == id && !$0.isDefault }) else { return false }
+        let gone = Set([id] + descendants(of: id).map(\.id))
+        sections.removeAll { gone.contains($0.id) }
+        return true
+    }
+
+    // MARK: Folders of shortcuts
+
+    /// The folders that stand in the bar, in the order they were made.
+    public var topFolders: [DockSection] { sections.filter { $0.folded && $0.parentID == nil } }
+    /// The sections whose shortcuts stand in the bar, side by side.
+    public var openSections: [DockSection] { sections.filter { !$0.isFolder } }
+    /// The folders that a folder holds.
+    public func folders(in parentID: String) -> [DockSection] { sections.filter { $0.parentID == parentID } }
+    /// Every folder under this one, at any depth.
+    public func descendants(of id: String) -> [DockSection] {
+        var result: [DockSection] = [], pending = [id], seen: Set<String> = [id]
+        while let next = pending.popLast() {
+            for child in folders(in: next) where seen.insert(child.id).inserted { result.append(child); pending.append(child.id) }
+        }
+        return result
+    }
+    /// How many folders stand above this one: none for a folder of the bar.
+    public func depth(of id: String) -> Int {
+        var depth = 0, cursor = section(id: id)?.parentID, seen: Set<String> = [id]
+        while let above = cursor, seen.insert(above).inserted { depth += 1; cursor = section(id: above)?.parentID }
+        return depth
+    }
+    /// The folders from the bar down to this one, itself last.
+    public func path(to id: String) -> [DockSection] {
+        var result: [DockSection] = [], cursor = section(id: id), seen = Set<String>()
+        while let current = cursor, seen.insert(current.id).inserted {
+            result.insert(current, at: 0)
+            cursor = current.parentID.flatMap { section(id: $0) }
+        }
+        return result
+    }
+    /// Everything of the bar as a list one can read down: its sections,
+    /// then each folder followed by the folders it holds, with its depth.
+    public var tree: [(section: DockSection, depth: Int)] {
+        var result = openSections.map { (section: $0, depth: 0) }
+        func add(_ folder: DockSection, _ depth: Int) {
+            result.append((folder, depth))
+            for child in folders(in: folder.id) { add(child, depth + 1) }
+        }
+        for folder in topFolders { add(folder, 0) }
+        return result
+    }
+    /// What an open folder shows for one source: the folders it holds,
+    /// then its own shortcuts.
+    public func content(of id: String, sourceID: UUID?) -> (folders: [DockSection], shortcuts: [DockShortcut]) {
+        (folders(in: id), section(id: id)?.shortcuts.filter { $0.sourceID == sourceID } ?? [])
+    }
+    /// The shortcuts of a folder and of all those under it, for one
+    /// source, each once: what its icon counts and shows.
+    public func titles(under id: String, sourceID: UUID?) -> [DockShortcut] {
+        var seen = Set<String>(), result: [DockShortcut] = []
+        for part in [section(id: id)].compactMap({ $0 }) + descendants(of: id) {
+            for shortcut in part.shortcuts where shortcut.sourceID == sourceID && seen.insert(shortcut.id).inserted { result.append(shortcut) }
+        }
+        return result
+    }
+
+    /// Shows a section as one folder of the bar, or its shortcuts in the
+    /// bar again. The folders it held then stand in the bar themselves.
+    @discardableResult public mutating func setFolded(_ id: String, _ folded: Bool) -> Bool {
+        guard let index = sections.firstIndex(where: { $0.id == id && !$0.isDefault }), sections[index].parentID == nil else { return false }
+        guard availableName(sections[index].name, except: id, in: nil) != nil else { return false }
+        sections[index].folded = folded
+        if !folded {
+            for child in sections.indices where sections[child].parentID == id { sections[child].parentID = nil }
+        }
+        return true
+    }
+
+    /// Puts a folder into another, or back into the bar. Never into itself
+    /// nor into one of its own, never deeper than `folderDepth`, and never
+    /// beside a folder of the same name. A section moved into a folder
+    /// becomes one.
+    @discardableResult public mutating func moveSection(_ id: String, into parentID: String?) -> Bool {
         guard let index = sections.firstIndex(where: { $0.id == id && !$0.isDefault }) else { return false }
-        sections.remove(at: index)
+        if let parentID {
+            guard parentID != id, let parent = section(id: parentID), parent.isFolder,
+                  !descendants(of: id).contains(where: { $0.id == parentID }) else { return false }
+            let below = descendants(of: id).map { depth(of: $0.id) - depth(of: id) }.max() ?? 0
+            guard depth(of: parentID) + 1 + below < Self.folderDepth else { return false }
+        }
+        guard availableName(sections[index].name, except: id, in: parentID) != nil else { return false }
+        sections[index].parentID = parentID
+        sections[index].folded = true
+        return true
+    }
+
+    /// The icon of a folder; nil shows the pictures of what it holds.
+    @discardableResult public mutating func setSymbol(_ id: String, _ symbol: String?) -> Bool {
+        guard let index = sections.firstIndex(where: { $0.id == id }), symbol == nil || DockSection.symbols.contains(symbol!) else { return false }
+        sections[index].symbol = symbol
         return true
     }
 
@@ -322,12 +538,13 @@ public struct DockShelf: Codable, Equatable, Sendable {
     /// sections that keep it, and a new one to create for it. An invalid name
     /// or a section that no longer exists changes nothing.
     @discardableResult public mutating func assign(_ shortcut: DockShortcut, to sectionIDs: Set<String>,
-                                                   creating name: String? = nil) -> Bool {
+                                                   creating name: String? = nil, folded: Bool = false,
+                                                   in parentID: String? = nil) -> Bool {
         guard sectionIDs.isSubset(of: Set(sections.map(\.id))) else { return false }
         var draft = self
         var chosen = sectionIDs
         if let name {
-            guard let id = draft.createSection(name: name) else { return false }
+            guard let id = draft.createSection(name: name, folded: folded, in: parentID) else { return false }
             chosen.insert(id)
         }
         for index in draft.sections.indices {
@@ -414,8 +631,10 @@ public struct DockShelf: Codable, Equatable, Sendable {
                             recentCount: Int = 3, resume: DockShortcut?) -> DockArrangement {
         func mine(_ shortcut: DockShortcut) -> Bool { shortcut.sourceID == sourceID }
         var groups: [[DockEntry]] = [destinations.map(DockEntry.destination)]
+        // What stands in the bar itself is not repeated among the recents;
+        // what a folder holds may be.
         var pinned = Set<String>()
-        for section in sections {
+        for section in openSections {
             let shown = section.shortcuts.filter(mine)
             shown.forEach { pinned.insert($0.id) }
             groups.append(shown.map { DockEntry.shortcut($0, section: section.id) })
@@ -426,14 +645,20 @@ public struct DockShelf: Codable, Equatable, Sendable {
         let others = history.filter { $0.id != resume?.id && !pinned.contains($0.id) }
         activity += others.prefix(max(0, recentCount)).map(DockEntry.recent)
         groups.append(activity)
-        groups.append(stacks.filter(lists.contains).map { DockEntry.stack(listID: $0) })
+        // The folders stand together at the end of the bar, as in the Dock
+        // of a Mac: those of shortcuts, then the lists of favourites.
+        groups.append(topFolders.map { DockEntry.folder(sectionID: $0.id) }
+                      + stacks.filter(lists.contains).map { DockEntry.stack(listID: $0) })
         return DockArrangement(groups: groups)
     }
 
-    private func availableName(_ name: String, except: String?) -> String? {
+    /// A name is unique among what stands beside it: in the bar, or in
+    /// the same folder.
+    private func availableName(_ name: String, except: String?, in parentID: String?) -> String? {
         let clean = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !clean.isEmpty, clean.count <= 40, !sections.contains(where: {
-            $0.id != except && $0.name.compare(clean, options: [.caseInsensitive, .diacriticInsensitive]) == .orderedSame
+        guard !clean.isEmpty, clean.count <= 40, !clean.contains("/"), !sections.contains(where: {
+            $0.id != except && $0.parentID == parentID
+                && $0.name.compare(clean, options: [.caseInsensitive, .diacriticInsensitive]) == .orderedSame
         }) else { return nil }
         return clean
     }

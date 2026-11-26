@@ -13,7 +13,7 @@ Les vérifications ci-dessous ont été faites les 25 et 26 novembre 2026 sur un
 | `scripts/rooms/verify_rooms.py` | 18 décors vérifiés, inchangés |
 | `scripts/generate-xcodeproj.py` | les deux projets générés sont à jour |
 | Compilations | macOS, iOS Simulator, tvOS Simulator et tvOS appareil |
-| `scripts/test-catalog-ui.sh` en mode local, avec la galerie | 50 captures de la vraie interface du Mac ; les dix parcours de touches aboutissent |
+| `scripts/test-catalog-ui.sh` en mode local, avec la galerie | 54 captures de la vraie interface du Mac ; les douze parcours de touches aboutissent |
 | Les mêmes captures dans une fenêtre de 1728 × 1040 | le bureau entier suit la fenêtre : voir « Les proportions de la télévision » |
 | `scripts/test-tvos-catalog-ui.sh` | trente et un scénarios natifs, trois démarrages à froid et quinze parcours XCUIRemote réussis à `4f1dcb2` ; le seizième, celui des zones, et les changements qui le suivent n’ont été joués que parcours par parcours (voir « Ce que la télécommande atteint ») |
 | Les quinze parcours, effets complets coupés | réussis à `f29ee50` : les surfaces sombres et le focus immédiat, dossier du dock en éventail compris. Non rejoués depuis que le verre est actif sur tous les modèles |
@@ -80,7 +80,10 @@ Trente et un scénarios lancent l’application sur un écran et exigent que le 
 
 Ce qui s’écrit sur l’image est lu avec des noms taillés comme ceux d’une vraie liste de lecture : un préfixe, un titre long, une marque de qualité (« PRISME: GRAND ÉCRAN FESTIVAL ᴿᴬᵂ »), des catégories qui portent leur pays (« DIRECT - FR| CINÉMA »). Les deux écrans du bandeau utilisent un catalogue de 24 665 chaînes, pour un numéro à cinq chiffres. Les catalogues précédents, aux noms courts et aux dix-huit chaînes, ne montraient ni les noms coupés ni les numéros repliés sur deux lignes.
 
-Seize parcours passent par XCUIRemote, donc par le vrai moteur de focus :
+Dix-huit parcours passent par XCUIRemote, donc par le vrai moteur de focus :
+
+- **Un dossier du dock** : Bas depuis les films, puis le dock jusqu’à « Soirée », qui porte l’icône choisie pour lui et annonce « 3 titres · 1 dossier » ; OK l’ouvre en éventail sur « Classiques · 2 », le dossier qu’il contient, au-dessus duquel se tient son film ; OK sur ce dossier montre ses titres à la place, après une ligne qui ramène à « Soirée » ; Menu revient sur la ligne du dossier quitté, cette ligne aussi, puis Menu referme l’éventail sur l’icône ; un film s’ouvre depuis deux dossiers de profondeur.
+- **Les rangées de l’accueil** : avec quatorze icônes, les destinations sont au-dessus de ce que l’on garde, à leur taille ; Bas mène à la seconde rangée, Droite jusqu’à son dossier, Haut revient aux destinations.
 
 - **Les zones** : au milieu d’une page de soixante films d’un catalogue de 58 093, quatre rangées sous la première ; Lecture/Pause mène à la barre, sur Films, un deuxième appui au champ de la recherche, un troisième à « Tous les films » dans la colonne, un quatrième au film quitté ; de la barre, Gauche continue vers la télévision. La barre affiche « Zones » au-dessus de l’heure.
 
@@ -170,6 +173,16 @@ Le même essai sur l’appareil a montré trois autres choses, corrigées sans p
 Sous une icône du dock, le nom d’un titre perd l’étiquette de sa langue (« FR - Primetime » devient « Primetime ») : dix raccourcis coupés après « FR - » ne se distinguaient plus. Le nom entier reste au-dessus de l’icône pointée et dans l’éventail.
 
 Vérifié pour cette livraison : les seize parcours avant les trois derniers changements (éventail, noms du dock, Lecture/Pause placée avant les autres cas), puis les trois parcours qu’ils touchent — zones, dock, raccourcis d’une série — ; le banc Mac (50 captures, dix parcours de touches) avant ces trois changements, puis ses scénarios du dossier ; les quatre compilations ; les tests du cœur.
+
+### Les dossiers du dock, l’accueil et le menu Favoris
+
+Demandés pendant l’essai de la 0.9.0 sur le Mac et sur une Apple TV.
+
+- **Dossiers** : on crée un dossier depuis « Favoris, listes et dock » — dans la barre, ou dans un autre dossier, jusqu’à quatre de profondeur — ou vide depuis Réglages › Dock. Un dossier est une seule icône de la barre, rangée avec les listes de favoris à la fin, et s’ouvre en éventail ; un dossier qu’il contient y est une ligne, qui montre ses titres à sa place. Retour remonte d’un dossier, puis referme l’éventail. Un dossier long montre ses titres un éventail à la fois. Son icône se choisit parmi vingt-six, dans Réglages › Dock et, sur le Mac, par le menu de l’icône ; sans choix il montre les images de ses premiers titres. Une section devient un dossier et inversement, et un dossier se range dans un autre, depuis Réglages › Dock. Ce qui était gardé avant les dossiers est relu tel quel.
+- **Accueil** : la barre prend une deuxième rangée, puis une troisième, au lieu de rapetisser ses icônes ; l’icône sélectionnée y grandit avec ses voisines, comme dans la barre, au clavier comme à la télécommande.
+- **Menu Favoris** : sous chaque genre, après ses listes, les sections et les dossiers du dock qui gardent des titres de ce genre ; en choisir un montre ces titres.
+
+Vérifié dans le simulateur et au banc Mac seulement : le parcours du dossier et celui des rangées à la télécommande, deux parcours de touches du Mac (entrer dans le dossier contenu, en revenir par Retour), les captures du dossier ouvert et du menu Favoris. **Non exercé** : la création d’un dossier et le choix de son emplacement dans le panneau, que ni un clavier ni une télécommande n’ont parcourus ; le choix d’une icône, le passage d’une section en dossier et le rangement d’un dossier dans un autre, dans Réglages › Dock ; le choix d’une ligne du dock dans le menu Favoris ; un dossier de plus de titres que l’éventail n’en montre ; trois rangées sur l’accueil. Rien sur une Apple TV.
 
 ### GitHub Actions
 

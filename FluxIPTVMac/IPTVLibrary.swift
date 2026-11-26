@@ -79,6 +79,11 @@ final class IPTVLibrary: ObservableObject {
     /// shown as folders, and what was watched last. Identifiers and names
     /// only, as for the favourites: never an address.
     @Published private(set) var dockShelf = DockShelf()
+    /// The section or the folder of the dock that the favourites show in
+    /// the place of a list: what the bar keeps is found among them too.
+    @Published var favoriteDockSectionID: String? {
+        didSet { if oldValue != favoriteDockSectionID && !restoringBrowsing { updateResults() } }
+    }
     @Published private(set) var isLoading = false
     @Published var alertMessage: String?
     @Published private(set) var credentialIssue: String?
@@ -354,7 +359,8 @@ final class IPTVLibrary: ObservableObject {
     private func updateResults(debounce: Bool = false, clear: Bool = false) {
         filterTask?.cancel(); filterToken = UUID()
         let token = filterToken
-        let kind = contentKind, term = search, membership = selectedPreset?.itemIDs
+        // What the favourites show: a list, or what a section of the dock keeps.
+        let kind = contentKind, term = search, membership = dockMembership ?? selectedPreset?.itemIDs
         let country = countryCode
         if term.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && membership == nil && country == nil {
             catalogResults = catalogIndex.unfiltered(kind); isFiltering = false
@@ -658,10 +664,38 @@ final class IPTVLibrary: ObservableObject {
 
     /// The sections of the dock that keep this shortcut, and a new one to
     /// create for it: the whole choice, or nothing.
-    func assignDock(_ shortcut: DockShortcut, to sectionIDs: Set<String>, creating name: String? = nil) -> Bool {
-        guard dockShelf.assign(shortcut, to: sectionIDs, creating: name) else { return false }
+    func assignDock(_ shortcut: DockShortcut, to sectionIDs: Set<String>, creating name: String? = nil,
+                    folded: Bool = false, in parentID: String? = nil) -> Bool {
+        guard dockShelf.assign(shortcut, to: sectionIDs, creating: name, folded: folded, in: parentID) else { return false }
         persistDock()
         return true
+    }
+
+    /// An empty section of the bar, or with `folded` a folder: in the bar,
+    /// or in another folder.
+    @discardableResult func createDockSection(name: String, folded: Bool, in parentID: String? = nil) -> String? {
+        guard let id = dockShelf.createSection(name: name, folded: folded, in: parentID) else { return nil }
+        persistDock()
+        return id
+    }
+
+    /// One folder of the bar, or its shortcuts in the bar again.
+    @discardableResult func setDockFolded(_ id: String, _ folded: Bool) -> Bool {
+        guard dockShelf.setFolded(id, folded) else { return false }
+        persistDock()
+        return true
+    }
+
+    /// A folder into another, or back into the bar.
+    @discardableResult func moveDockSection(_ id: String, into parentID: String?) -> Bool {
+        guard dockShelf.moveSection(id, into: parentID) else { return false }
+        persistDock()
+        return true
+    }
+
+    /// The icon of a folder; nil shows the pictures of what it holds.
+    func setDockSymbol(_ id: String, _ symbol: String?) {
+        if dockShelf.setSymbol(id, symbol) { persistDock() }
     }
 
     func removeDockShortcut(_ id: String) {
@@ -706,6 +740,18 @@ final class IPTVLibrary: ObservableObject {
 
     private func persistDock() {
         if let bytes = try? JSONEncoder().encode(dockShelf) { browsingDefaults?.set(bytes, forKey: DockShelf.storageKey) }
+        // The favourites may be showing what a section keeps.
+        if let shown = favoriteDockSectionID {
+            if dockShelf.section(id: shown) == nil { favoriteDockSectionID = nil } else { updateResults() }
+        }
+    }
+
+    /// Titles of the catalogue that the section of the dock shown among
+    /// the favourites keeps, for the kind on screen: a season and an
+    /// episode stand for their series.
+    private var dockMembership: Set<String>? {
+        guard let id = favoriteDockSectionID, let section = dockShelf.section(id: id) else { return nil }
+        return Set(section.shortcuts.filter { $0.sourceID == selectedSourceID && $0.kind == contentKind }.map(\.itemID))
     }
 
     private func persistPresets() {

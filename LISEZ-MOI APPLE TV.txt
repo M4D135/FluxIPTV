@@ -89,6 +89,14 @@ Pour ranger un titre : appui long sur lui (ou son étoile), puis « Favoris,
 listes et dock » : cochez une section du dock, ou créez-en une en la nommant.
 Depuis une série : la série, la saison affichée ou l'épisode choisi.
 Pour mettre une liste en dossier : Favoris, la liste, « Dossier dans le dock ».
+DOSSIERS DU DOCK : dans « Favoris, listes et dock », « Créer un dossier du
+dock » range le titre dans un nouveau dossier, dans la barre ou dans un autre
+dossier (« Dans : … »). Un dossier est une seule icône, qui s'ouvre en
+éventail ; un dossier qu'il contient s'ouvre à sa place, et Menu remonte.
+Réglages › Dock choisit son icône, le renomme, le range ailleurs, le supprime.
+Le menu Favoris montre aussi, sous chaque genre, ce que garde le dock.
+ACCUEIL : quand la barre se remplit elle prend une deuxième puis une troisième
+rangée au lieu de rapetisser ses icônes ; Haut et Bas changent de rangée.
 Pour retirer un raccourci : appui long sur son icône dans le dock, décochez.
 Le nom complet de l'icône sélectionnée s'affiche au-dessus d'elle.
 Réglages › Dock renomme et supprime les sections, et masque les récents.

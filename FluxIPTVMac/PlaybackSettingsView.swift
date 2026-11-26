@@ -106,6 +106,11 @@ struct PlaybackSettingsView: View {
     @State private var sectionName = ""
     @State private var sectionNameInvalid = false
     @State private var confirmingSection: String?
+    /// The folder whose icon is being chosen.
+    @State private var pickingSymbol: String?
+    @State private var creatingDockFolder = false
+    @State private var newFolderName = ""
+    @State private var newFolderInvalid = false
     @AppStorage(DeskZone.backKey) private var backShowsZones = false
     #if os(tvOS)
     /// Page under the remote: walking the list shows each page at once.
@@ -617,9 +622,10 @@ struct PlaybackSettingsView: View {
                     dockPosition = .defaultValue; dockTheme = .defaultValue; dockOrder = ""; dockMagnifies = true
                 }.deskKey()
             }
-            section("Raccourcis", "Une chaîne, un film, une série, une saison ou un épisode se gardent dans le dock depuis « Favoris, listes et dock » : l’étoile d’un titre, ou un appui long sur lui. Chaque section s’y tient à part, entre deux séparateurs. Une liste de favoris y devient un dossier depuis son écran, et s’ouvre en éventail.") {
+            section("Raccourcis et dossiers", "Une chaîne, un film, une série, une saison ou un épisode se gardent dans le dock depuis « Favoris, listes et dock » : l’étoile d’un titre, ou un appui long sur lui. Une section s’y tient à part, entre deux séparateurs. Un dossier y est une seule icône, qui s’ouvre en éventail ; il peut en contenir d’autres, et porter l’icône de votre choix. Une liste de favoris y devient aussi un dossier, depuis son écran.") {
                 DeskToggle(title: "Afficher la vidéo en cours et les récents", isOn: $dockRecents)
-                ForEach(library.dockShelf.sections) { part in dockSectionRows(part) }
+                ForEach(library.dockShelf.tree, id: \.section.id) { node in dockSectionRows(node.section, depth: node.depth) }
+                newDockFolderRow
                 ForEach(library.dockShelf.stacks.compactMap { library.presets.list(id: $0) }) { list in
                     HStack(spacing: Desk.pt(12)) {
                         Image(systemName: "folder.fill").font(Desk.system(16, .medium))
@@ -640,16 +646,64 @@ struct PlaybackSettingsView: View {
         }
     }
 
-    /// A section of the dock: its name, which can be changed, and what it
-    /// keeps for the source in use.
-    @ViewBuilder private func dockSectionRows(_ part: DockSection) -> some View {
+    /// An empty folder, made here: titles are put in it from their lists.
+    @ViewBuilder private var newDockFolderRow: some View {
+        if creatingDockFolder {
+            HStack(spacing: Desk.pt(12)) {
+                Image(systemName: "folder.badge.plus").font(Desk.system(16, .medium))
+                    .foregroundStyle(FluxDockItem.favorites.tint).frame(width: Desk.pt(38), height: Desk.pt(38))
+                    .background(FluxDockItem.favorites.tint.opacity(0.16), in: RoundedRectangle(cornerRadius: Desk.pt(11), style: .continuous))
+                TextField("Nom du dossier", text: $newFolderName)
+                    .textFieldStyle(.plain).font(Desk.font(.body))
+                    .onSubmit { createDockFolder() }
+                    .padding(.horizontal, Desk.pt(12)).padding(.vertical, Desk.pt(8))
+                    .background(.black.opacity(0.25), in: RoundedRectangle(cornerRadius: Desk.pt(12), style: .continuous))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: Desk.pt(12), style: .continuous)
+                            .strokeBorder(newFolderInvalid ? Color.orange : .white.opacity(0.12), lineWidth: 1)
+                    }
+                    .accessibilityIdentifier("settings-dock-folder-name")
+                actionButton("Créer le dossier", icon: "checkmark", iconOnly: true) { createDockFolder() }
+                actionButton("Annuler", icon: "xmark", iconOnly: true) { creatingDockFolder = false }
+            }
+        } else {
+            actionButton("Créer un dossier du dock", icon: "folder.badge.plus") {
+                newFolderName = ""; newFolderInvalid = false; creatingDockFolder = true
+            }
+            .accessibilityIdentifier("settings-dock-new-folder")
+        }
+    }
+
+    private func createDockFolder() {
+        if library.createDockSection(name: newFolderName, folded: true) != nil { creatingDockFolder = false; newFolderInvalid = false }
+        else { newFolderInvalid = true }
+    }
+
+    /// Where a folder may go from where it is: the bar, then each folder
+    /// that can take it. OK on its key moves it to the next one.
+    private func moveDockFolder(_ part: DockSection) {
+        let shelf = library.dockShelf
+        let places: [String?] = [nil] + shelf.tree.filter { $0.section.isFolder }.map { Optional($0.section.id) }
+        let start = places.firstIndex(of: part.parentID) ?? 0
+        for step in 1..<max(2, places.count) {
+            let place = places[(start + step) % places.count]
+            if place != part.parentID, library.moveDockSection(part.id, into: place) { return }
+        }
+    }
+
+    /// A section or a folder of the dock: its name, which can be changed,
+    /// what it keeps for the source in use, and for a folder its place
+    /// and its icon.
+    @ViewBuilder private func dockSectionRows(_ part: DockSection, depth: Int = 0) -> some View {
         let shown = part.shortcuts.filter { $0.sourceID == library.selectedSourceID }
+        let inside = library.dockShelf.folders(in: part.id).count
+        let tint = part.isFolder ? FluxDockItem.favorites.tint : Color.white.opacity(0.85)
         HStack(spacing: Desk.pt(12)) {
-            Image(systemName: "dock.rectangle").font(Desk.system(16, .medium))
-                .foregroundStyle(.white.opacity(0.85)).frame(width: Desk.pt(38), height: Desk.pt(38))
-                .background(.white.opacity(0.10), in: RoundedRectangle(cornerRadius: Desk.pt(11), style: .continuous))
+            Image(systemName: part.isFolder ? (part.symbol ?? "folder.fill") : "dock.rectangle").font(Desk.system(16, .medium))
+                .foregroundStyle(tint).frame(width: Desk.pt(38), height: Desk.pt(38))
+                .background(tint.opacity(part.isFolder ? 0.16 : 0.12), in: RoundedRectangle(cornerRadius: Desk.pt(11), style: .continuous))
             if renamingSection == part.id {
-                TextField("Nom de la section", text: $sectionName)
+                TextField(part.isFolder ? "Nom du dossier" : "Nom de la section", text: $sectionName)
                     .textFieldStyle(.plain).font(Desk.font(.body))
                     .onSubmit { renameDockSection(part) }
                     .padding(.horizontal, Desk.pt(12)).padding(.vertical, Desk.pt(8))
@@ -664,16 +718,32 @@ struct PlaybackSettingsView: View {
             } else {
                 VStack(alignment: .leading, spacing: Desk.pt(2)) {
                     Text(part.name).font(Desk.font(.body, .semibold)).lineLimit(1)
-                    Text(shown.isEmpty ? "Vide : elle n’apparaît pas dans le dock." : "\(shown.count) \(shown.count == 1 ? "raccourci" : "raccourcis")")
+                    Text(part.isFolder
+                         ? "Dossier · \(shown.count) \(shown.count == 1 ? "raccourci" : "raccourcis")" + (inside > 0 ? " · \(inside) \(inside == 1 ? "dossier" : "dossiers")" : "")
+                         : shown.isEmpty ? "Vide : elle n’apparaît pas dans le dock." : "\(shown.count) \(shown.count == 1 ? "raccourci" : "raccourcis")")
                         .font(Desk.font(.caption)).foregroundStyle(.secondary)
                 }
                 Spacer(minLength: Desk.pt(8))
                 if confirmingSection == part.id {
                     actionButton("Garder", icon: "xmark") { confirmingSection = nil }
-                    actionButton("Supprimer la section", icon: "trash", tint: .red) {
+                    actionButton(part.isFolder ? (inside > 0 ? "Supprimer le dossier et ceux qu’il contient" : "Supprimer le dossier") : "Supprimer la section",
+                                 icon: "trash", tint: .red) {
                         library.deleteDockSection(part.id); confirmingSection = nil
                     }
                 } else {
+                    if part.isFolder {
+                        actionButton("Icône de \(part.name)", icon: "photo.on.rectangle.angled", iconOnly: true) {
+                            pickingSymbol = pickingSymbol == part.id ? nil : part.id
+                        }
+                        actionButton("Ranger \(part.name) ailleurs", icon: "arrow.turn.down.right", iconOnly: true) { moveDockFolder(part) }
+                    }
+                    if !part.isDefault, part.parentID == nil {
+                        // One icon that opens as a fan, or its shortcuts side by side in the bar.
+                        actionButton(part.folded ? "Afficher les raccourcis de \(part.name) dans le dock" : "Faire de \(part.name) un dossier",
+                                     icon: part.folded ? "rectangle.split.3x1" : "folder", iconOnly: true) {
+                            library.setDockFolded(part.id, !part.folded)
+                        }
+                    }
                     actionButton("Renommer \(part.name)", icon: "pencil", iconOnly: true) {
                         sectionName = part.name; sectionNameInvalid = false; confirmingSection = nil; renamingSection = part.id
                     }
@@ -683,7 +753,22 @@ struct PlaybackSettingsView: View {
                 }
             }
         }
+        .padding(.leading, Desk.pt(26) * CGFloat(depth))
         .accessibilityElement(children: .contain).accessibilityIdentifier("settings-dock-section-\(part.isDefault ? "default" : part.name)")
+        if pickingSymbol == part.id, part.isFolder {
+            // The icons a folder may be given, and the pictures of its titles.
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: Desk.pt(54)), spacing: Desk.pt(8))], alignment: .leading, spacing: Desk.pt(8)) {
+                actionButton("Images de ses titres", icon: "rectangle.stack.fill", tint: part.symbol == nil ? .cyan : nil, iconOnly: true) {
+                    library.setDockSymbol(part.id, nil); pickingSymbol = nil
+                }
+                ForEach(DockSection.symbols, id: \.self) { symbol in
+                    actionButton(DockSection.symbolTitle(symbol), icon: symbol, tint: part.symbol == symbol ? .cyan : nil, iconOnly: true) {
+                        library.setDockSymbol(part.id, symbol); pickingSymbol = nil
+                    }
+                }
+            }
+            .padding(.leading, Desk.pt(50) + Desk.pt(26) * CGFloat(depth))
+        }
         ForEach(shown) { shortcut in
             HStack(spacing: Desk.pt(12)) {
                 Image(systemName: FluxDockItem(kind: shortcut.kind).symbol).font(Desk.system(13, .medium))
@@ -696,7 +781,7 @@ struct PlaybackSettingsView: View {
                     _ = library.assignDock(shortcut, to: library.dockShelf.sections(holding: shortcut.id).subtracting([part.id]))
                 }
             }
-            .padding(.leading, Desk.pt(50))
+            .padding(.leading, Desk.pt(50) + Desk.pt(26) * CGFloat(depth))
         }
     }
 

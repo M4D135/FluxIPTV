@@ -221,6 +221,11 @@ struct FluxScreen: View, Equatable {
     @State private var homeHover: String?
     /// The folder of the dock that is open above it, by its identifier.
     @State private var dockFan: String?
+    /// The folder that the open fan shows when it is not the one of the
+    /// bar: a folder opened inside it.
+    @State private var dockFanFolder: String?
+    /// Which titles of a long folder the fan shows.
+    @State private var dockFanPage = 0
     /// What the lists of a title were asked for: an episode chosen in its
     /// fiche, or the shortcut of the dock whose icon was held.
     @State private var itemDockExtra: DockShortcut?
@@ -785,8 +790,13 @@ struct FluxScreen: View, Equatable {
                 Task { @MainActor in
                     // Once the window has given its first focus, which would close it.
                     try? await Task.sleep(nanoseconds: 400_000_000)
-                    guard let entry = dockPlan(hero: showsHome).arrangement.entry(id: folder) else { return }
-                    focusID = folder
+                    let bar = dockPlan(hero: showsHome).arrangement
+                    // "dock-folder-first": the first folder of shortcuts,
+                    // whose identifier is made when the folder is.
+                    let wanted = folder == "dock-folder-first"
+                        ? bar.entries.first { if case .folder = $0 { true } else { false } }?.id : folder
+                    guard let wanted, let entry = bar.entry(id: wanted) else { return }
+                    focusID = wanted
                     dockActivate(entry)
                 }
             }
@@ -1677,7 +1687,13 @@ struct FluxScreen: View, Equatable {
         if id == "group-all" { return showingAllCatalog }
         if id.hasPrefix("live-category-") { return group == String(id.dropFirst("live-category-".count)) }
         if id.hasPrefix("live-preset-") { return library.selectedPresetID == String(id.dropFirst("live-preset-".count)) }
-        if id.hasPrefix("favorite-list-") { return library.selectedPresetID == String(id.dropFirst("favorite-list-".count)) }
+        if id.hasPrefix("favorite-list-") {
+            return library.favoriteDockSectionID == nil && library.selectedPresetID == String(id.dropFirst("favorite-list-".count))
+        }
+        #if os(macOS) || os(tvOS)
+        // A section of the dock shown among the favourites.
+        if id.hasPrefix(Self.favoriteShelfPrefix) { return id == favoriteShelfID(library.contentKind, library.favoriteDockSectionID) }
+        #endif
         if id == "continue-only" { return continueOnly }
         return false
     }
@@ -3735,7 +3751,8 @@ struct FluxScreen: View, Equatable {
         if entranceItem != nil { cancelEntrance(); return }
         #if os(macOS) || os(tvOS)
         // An open folder of the dock closes first.
-        if dockFan != nil { closeDockFan(); return }
+        // In a folder opened inside another, Back first returns to that one.
+        if dockFan != nil { if !stepFanBack() { closeDockFan() }; return }
         #endif
         if page == .player, playerTracks { closePlayerTracks(); return }
         if page == .player, playerSettings != nil { closePlayerSettings(); return }
@@ -4311,7 +4328,7 @@ extension FluxScreen {
                  activate: { entry in pointerSelect(entry.id); dockActivate(entry) },
                  manage: { manageDock($0) }, remove: { removeDock($0) },
                  reorder: { shortcut, section, index in moveDock(shortcut, in: section, to: index) },
-                 openFanRow: { openShortcut($0.shortcut, resuming: false) }, openFanList: { openDockFanList() },
+                 openFanRow: { openFanRow($0) }, folderSymbol: { library.setDockSymbol($0, $1) }, openFanList: { openDockFanList() },
                  openSettings: { openSettings(.dock) })
     }
 
@@ -4652,8 +4669,16 @@ extension FluxScreen {
             if arrangement.entries.count > capacity { arrangement = arrangement.fitted(to: max(capacity, destinations.count + 1)) }
         }
         let stacks = arrangement.entries.compactMap { entry -> String? in
-            guard case .stack(let id) = entry, let list = library.presets.list(id: id) else { return nil }
-            return "\(id)|\(list.name)|\(list.itemIDs.count)|\(list.itemIDs.hashValue)"
+            switch entry {
+            case .stack(let id):
+                guard let list = library.presets.list(id: id) else { return nil }
+                return "\(id)|\(list.name)|\(list.itemIDs.count)|\(list.itemIDs.hashValue)"
+            case .folder(let id):
+                guard let folder = shelf.section(id: id) else { return nil }
+                let titles = shelf.titles(under: id, sourceID: library.selectedSourceID)
+                return "\(id)|\(folder.name)|\(folder.symbol ?? "")|\(titles.map(\.id).hashValue)|\(shelf.descendants(of: id).map(\.name).hashValue)"
+            default: return nil
+            }
         }
         let progress = resume?.playedID.flatMap { playback.history.entries[$0] }.map { Int(($0.fraction * 50).rounded()) }
         return DockPlan(arrangement: arrangement,
@@ -4702,6 +4727,18 @@ extension FluxScreen {
                 return DockTile(entry: entry, name: name,
                                 full: "\(name) · \(list?.kind.frenchTitle ?? "Favoris") · \(count) \(count == 1 ? "titre" : "titres")",
                                 face: .folder(covers: dockListItems(listID, limit: 3), count: count, symbol: "star.fill"))
+            case .folder(let sectionID):
+                let shelf = library.dockShelf
+                let folder = shelf.section(id: sectionID)
+                let titles = shelf.titles(under: sectionID, sourceID: library.selectedSourceID)
+                let inside = shelf.descendants(of: sectionID).count
+                let name = folder?.name ?? "Dossier"
+                // The icon chosen for it, or the pictures of its first titles.
+                return DockTile(entry: entry, name: name,
+                                full: "\(name) · \(titles.count) \(titles.count == 1 ? "titre" : "titres")"
+                                    + (inside > 0 ? " · \(inside) \(inside == 1 ? "dossier" : "dossiers")" : ""),
+                                face: .folder(covers: folder?.symbol == nil ? Array(titles.lazy.compactMap { dockItem($0) }.prefix(3)) : [],
+                                              count: titles.count, symbol: folder?.symbol ?? "folder.fill"))
             case .more:
                 let hidden = plan.arrangement.hidden.compactMap(\.shortcut)
                 return DockTile(entry: entry, name: "Autres", full: "Autres raccourcis",
@@ -4724,15 +4761,83 @@ extension FluxScreen {
         switch entry {
         case .stack(let listID):
             guard let list = library.presets.list(id: listID) else { return nil }
-            let rows = dockListItems(listID, limit: dockFanRoom).map { DockFanRow(shortcut: DockShortcut(item: $0), item: $0, badge: nil) }
+            let rows = dockListItems(listID, limit: dockFanRoom).map { DockFanRow(shortcut: DockShortcut(item: $0), item: $0) }
             return DockFan(anchorID: id, title: list.name, rows: rows, more: max(0, list.itemIDs.count - rows.count), listTitle: nil)
+        case .folder(let top):
+            let shelf = library.dockShelf, source = library.selectedSourceID
+            // The folder of the bar, or one that was opened inside it.
+            let inner = dockFanFolder.flatMap { id in shelf.path(to: id).contains { $0.id == top } ? shelf.section(id: id) : nil }
+            guard let shown = inner ?? shelf.section(id: top) else { return nil }
+            let content = shelf.content(of: shown.id, sourceID: source)
+            var all = content.folders.map { folder -> DockFanRow in
+                let titles = shelf.titles(under: folder.id, sourceID: source)
+                return DockFanRow(folder: folder.id, name: folder.name, count: titles.count, symbol: folder.symbol,
+                                  covers: folder.symbol == nil ? titles.prefix(1).compactMap { dockItem($0) } : [])
+            }
+            all += content.shortcuts.map { DockFanRow(shortcut: $0, item: dockItem($0)) }
+            // Inside another folder, or past its first titles, the first
+            // row leads back; a long folder shows its titles a fan at a time.
+            let paged = shown.id != top || all.count > dockFanRoom
+            let room = max(2, dockFanRoom - (paged ? 1 : 0))
+            let page = min(dockFanPage, max(0, (all.count - 1) / room))
+            let slice = Array(all.dropFirst(page * room).prefix(room))
+            let rest = max(0, all.count - page * room - slice.count)
+            var rows: [DockFanRow] = []
+            if page > 0 { rows.append(DockFanRow(up: "Précédents")) }
+            else if shown.id != top { rows.append(DockFanRow(up: shown.parentID.flatMap { shelf.section(id: $0)?.name } ?? "Retour")) }
+            rows += slice
+            return DockFan(anchorID: id, title: shelf.path(to: shown.id).map(\.name).joined(separator: " › "), rows: rows, more: rest,
+                           listTitle: rest > 0 ? "Suite · \(rest) de plus" : all.isEmpty ? "Dossier vide · le gérer" : "Gérer le dossier",
+                           lastSymbol: rest > 0 ? "chevron.up.circle.fill" : "slider.horizontal.3")
         case .more:
             let hidden = plan.arrangement.hidden.compactMap(\.shortcut)
-            let rows = hidden.prefix(dockFanRoom).map { DockFanRow(shortcut: $0, item: dockItem($0), badge: $0.badge) }
+            let rows = hidden.prefix(dockFanRoom).map { DockFanRow(shortcut: $0, item: dockItem($0)) }
             return DockFan(anchorID: id, title: "Autres raccourcis", rows: Array(rows), more: max(0, hidden.count - rows.count),
                            listTitle: "Tous les raccourcis")
         case .destination, .shortcut, .resume, .recent: return nil
         }
+    }
+
+    /// OK on a row of the open folder: a title opens, a folder shows what
+    /// it holds in the place of this one, and the first row leads back.
+    func openFanRow(_ row: DockFanRow) {
+        switch row.kind {
+        case .title(let shortcut, _): openShortcut(shortcut, resuming: false)
+        case .folder(let id, _, _, _, _):
+            dockFanFolder = id; dockFanPage = 0
+            focusFan(nil)
+        case .up: _ = stepFanBack()
+        }
+    }
+
+    /// One step back in the open folder: to the titles before these, or to
+    /// the folder that holds this one. False in the folder of the bar.
+    @discardableResult func stepFanBack() -> Bool {
+        guard let anchor = dockFan, anchor.hasPrefix(DockEntry.folderPrefix) else { return false }
+        if dockFanPage > 0 { dockFanPage -= 1; focusFan(nil); return true }
+        guard let inner = dockFanFolder, let parent = library.dockShelf.section(id: inner)?.parentID else { return false }
+        dockFanFolder = DockEntry.folderPrefix + parent == anchor ? nil : parent
+        // Back on the row of the folder that was left.
+        focusFan(DockEntry.fanFolderPrefix + inner)
+        return true
+    }
+
+    /// Gives the remote or the keyboard to a row of the fan as it now is:
+    /// the one named, or the first title after the way back.
+    private func focusFan(_ wanted: String?) {
+        guard let anchor = dockFan, let fan = dockFanModel(dockPlan(hero: showsHome)) else { return }
+        let first = fan.rows.first { $0.id != DockEntry.fanUpID }?.id ?? fan.ids.first
+        guard let id = wanted.flatMap({ fan.ids.contains($0) ? $0 : nil }) ?? first else { return }
+        focusID = id
+        #if os(tvOS)
+        // Its rows come with this update: the one wanted takes the remote after it.
+        holdRemote(on: id) { dockFan == anchor && focusID == id }
+        #else
+        Task { @MainActor in
+            await Task.yield()
+            if dockFan == anchor, focusID == id { systemFocus = id }
+        }
+        #endif
     }
 
     /// A press on an icon of the dock.
@@ -4743,7 +4848,7 @@ extension FluxScreen {
         case .destination(let item): dockAction(item)
         case .shortcut(let shortcut, _), .recent(let shortcut): openShortcut(shortcut, resuming: false)
         case .resume(let shortcut): openShortcut(shortcut, resuming: true)
-        case .stack, .more: toggleDockFan(entry.id)
+        case .stack, .folder, .more: toggleDockFan(entry.id)
         }
     }
 
@@ -4753,7 +4858,7 @@ extension FluxScreen {
         favoritesMode = false; sidebarCountries = false
         searchFocus = false; liveGroupSearchFocus = false
         if library.contentKind == kind { home() } else { changeKind(kind) }
-        if leavingFavorites { library.selectedPresetID = nil }
+        if leavingFavorites { library.selectedPresetID = nil; library.favoriteDockSectionID = nil }
     }
 
     /// Opens what a shortcut stands for: a channel plays, a film shows its
@@ -4790,6 +4895,7 @@ extension FluxScreen {
     private func toggleDockFan(_ id: String) {
         if dockFan == id { closeDockFan(); return }
         dockFan = id
+        dockFanFolder = nil; dockFanPage = 0
         guard let first = dockFanModel(dockPlan(hero: showsHome))?.ids.first else { return }
         focusID = first
         #if os(tvOS)
@@ -4820,6 +4926,13 @@ extension FluxScreen {
     /// shortcut of the dock in the settings.
     private func openDockFanList() {
         guard let id = dockFan else { return }
+        if id.hasPrefix(DockEntry.folderPrefix) {
+            // The titles that follow, or the folder among the settings of the dock.
+            if let fan = dockFanModel(dockPlan(hero: showsHome)), fan.more > 0 { dockFanPage += 1; focusFan(nil); return }
+            dockFan = nil
+            openSettings(.dock)
+            return
+        }
         dockFan = nil
         if id == DockEntry.moreID { openSettings(.dock); return }
         guard id.hasPrefix(DockEntry.stackPrefix),
@@ -4850,7 +4963,7 @@ extension FluxScreen {
             _ = library.assignDock(shortcut, to: library.dockShelf.sections(holding: shortcut.id).subtracting([section]))
         case .recent(let shortcut): library.forgetDockRecent(shortcut.id)
         case .stack(let listID): library.setDockStack(listID, shown: false)
-        case .destination, .resume, .more: break
+        case .destination, .resume, .folder, .more: break
         }
         if focusID == entry.id { focusID = currentDockID }
     }
@@ -5106,7 +5219,7 @@ extension FluxScreen {
         searchFocus = false; liveGroupSearchFocus = false; showingSearch = false; sidebarCountries = false
         newListKind = nil; renamingList = false; confirmingListDeletion = false
         // A list opened from the favourites belongs to that destination.
-        if favoritesMode { favoritesMode = false; library.selectedPresetID = nil }
+        if favoritesMode { favoritesMode = false; library.selectedPresetID = nil; library.favoriteDockSectionID = nil }
         livePreview.stop()
         library.flushBrowsingPreferences()
         deskHistory.reset()
@@ -5140,7 +5253,7 @@ extension FluxScreen {
         } else { changeKind(kind) }
         // A list opened from the favourites belongs to that destination; the
         // section itself opens on its whole catalogue.
-        if leavingFavorites { library.selectedPresetID = nil }
+        if leavingFavorites { library.selectedPresetID = nil; library.favoriteDockSectionID = nil }
         #if !os(tvOS)
         focusID = currentDockID
         #endif
@@ -5169,7 +5282,7 @@ extension FluxScreen {
         if page != .catalogue || heldItem != nil { home() }
         sidebarCountries = false
         favoritesMode = true
-        if library.selectedPresetID == nil {
+        if library.selectedPresetID == nil, library.favoriteDockSectionID == nil {
             let kinds = [library.contentKind] + IPTVMediaKind.allCases.filter { $0 != library.contentKind }
             let filled = kinds.lazy.compactMap { kind in library.presets.lists(for: kind).first(where: { !$0.itemIDs.isEmpty }) }.first
             if let target = filled ?? library.presets.lists(for: library.contentKind).first { selectFavoriteList(target) }
@@ -5189,7 +5302,33 @@ extension FluxScreen {
         if library.contentKind != preset.kind { changeKind(preset.kind) }
         favoritesMode = true
         continueOnly = false; group = nil
+        library.favoriteDockSectionID = nil
         library.selectedPresetID = preset.id
+        clearPreview(); resetCatalogWindow()
+    }
+
+    /// What the bar keeps is found among the favourites too: under each
+    /// kind, after its lists, the sections and the folders of the dock
+    /// that keep titles of that kind.
+    static let favoriteShelfPrefix = "favorite-shelf-"
+    func favoriteShelfID(_ kind: IPTVMediaKind, _ sectionID: String?) -> String? {
+        sectionID.map { "\(Self.favoriteShelfPrefix)\(kind.rawValue)-\($0)" }
+    }
+    /// The sections and folders of the dock with titles of a kind, for the
+    /// source in use, and how many.
+    func favoriteShelves(_ kind: IPTVMediaKind) -> [(section: DockSection, count: Int)] {
+        library.dockShelf.tree.compactMap { node in
+            let count = node.section.shortcuts.filter { $0.sourceID == library.selectedSourceID && $0.kind == kind }.count
+            return count > 0 ? (node.section, count) : nil
+        }
+    }
+    private func selectFavoriteShelf(_ section: DockSection, kind: IPTVMediaKind) {
+        newListKind = nil; renamingList = false; confirmingListDeletion = false
+        if library.contentKind != kind { changeKind(kind) }
+        favoritesMode = true
+        continueOnly = false; group = nil
+        library.selectedPresetID = nil
+        library.favoriteDockSectionID = section.id
         clearPreview(); resetCatalogWindow()
     }
 
@@ -5199,13 +5338,21 @@ extension FluxScreen {
             let plan = dockPlan(hero: showsHome)
             if id == DockEntry.fanAllID { openDockFanList() }
             else if id.hasPrefix(DockEntry.fanPrefix) {
-                if let row = dockFanModel(plan)?.rows.first(where: { $0.id == id }) { openShortcut(row.shortcut, resuming: false) }
+                if let row = dockFanModel(plan)?.rows.first(where: { $0.id == id }) { openFanRow(row) }
             }
             else if let entry = plan.arrangement.entry(id: id) { dockActivate(entry) }
             return true
         }
         if id.hasPrefix("favorite-list-") {
             if let preset = library.presets.list(id: String(id.dropFirst("favorite-list-".count))) { selectFavoriteList(preset) }
+            return true
+        }
+        if id.hasPrefix(Self.favoriteShelfPrefix) {
+            for kind in IPTVMediaKind.allCases {
+                if let match = favoriteShelves(kind).first(where: { favoriteShelfID(kind, $0.section.id) == id }) {
+                    selectFavoriteShelf(match.section, kind: kind)
+                }
+            }
             return true
         }
         if id == DeskZone.backID { deskLeaveScreen(); return true }
@@ -5227,6 +5374,7 @@ extension FluxScreen {
         if favoritesMode {
             return IPTVMediaKind.allCases.flatMap { kind in
                 library.presets.lists(for: kind).map { "favorite-list-\($0.id)" } + ["favorite-new-\(kind.rawValue)"]
+                    + favoriteShelves(kind).compactMap { favoriteShelfID(kind, $0.section.id) }
             }
         }
         if sidebarCountries && facetAvailable {
@@ -5239,7 +5387,10 @@ extension FluxScreen {
     }
     /// Row of the navigation column that stands for the current selection.
     private var deskScopeID: String {
-        if favoritesMode { return library.selectedPresetID.map { "favorite-list-\($0)" } ?? deskSidebarIDs.first ?? "group-all" }
+        if favoritesMode {
+            return favoriteShelfID(library.contentKind, library.favoriteDockSectionID)
+                ?? library.selectedPresetID.map { "favorite-list-\($0)" } ?? deskSidebarIDs.first ?? "group-all"
+        }
         if sidebarCountries { return library.countryCode.map { "country-\($0)" } ?? "country-all" }
         if continueOnly { return "continue-only" }
         return liveScopeID
@@ -5368,6 +5519,10 @@ extension FluxScreen {
                 let list = library.presets.list(id: listID)
                 let count = list?.itemIDs.count ?? 0
                 return (list?.name ?? "Liste", "\(list?.kind.frenchTitle ?? "Favoris") · \(count) \(count == 1 ? "titre" : "titres")", id)
+            case .folder(let sectionID):
+                let count = library.dockShelf.titles(under: sectionID, sourceID: library.selectedSourceID).count
+                return (library.dockShelf.section(id: sectionID)?.name ?? "Dossier",
+                        "Dossier du dock · \(count) \(count == 1 ? "titre" : "titres")", id)
             case .more:
                 let count = plan.arrangement.hidden.count
                 return ("Autres raccourcis", "\(count) \(count == 1 ? "raccourci" : "raccourcis") de plus", id)
@@ -5780,6 +5935,16 @@ extension FluxScreen {
                                             id: "favorite-list-\(preset.id)", count: preset.itemIDs.count) { selectFavoriteList(preset) }
                         }
                         newListRow(kind)
+                        // What the dock keeps of this kind, section by section.
+                        // A section may keep titles of several kinds: its
+                        // row is named by the kind as well, here and for the focus.
+                        ForEach(favoriteShelves(kind).map { (id: favoriteShelfID(kind, $0.section.id) ?? "", shelf: $0) }, id: \.id) { row in
+                            liveScopeButton("Dock · " + library.dockShelf.path(to: row.shelf.section.id).map(\.name).joined(separator: " › "),
+                                            symbol: row.shelf.section.isFolder ? (row.shelf.section.symbol ?? "folder.fill") : "dock.rectangle",
+                                            id: row.id, count: row.shelf.count) {
+                                selectFavoriteShelf(row.shelf.section, kind: kind)
+                            }
+                        }
                     }
                 }.padding(.vertical, Desk.pt(3))
             }
@@ -5881,6 +6046,9 @@ extension FluxScreen {
 
     private var deskTitle: String {
         if continueOnly { return "À reprendre" }
+        if favoritesMode, let shown = library.favoriteDockSectionID, library.dockShelf.section(id: shown) != nil {
+            return "Dock · " + library.dockShelf.path(to: shown).map(\.name).joined(separator: " › ")
+        }
         if let preset = library.selectedPreset { return favoritesMode ? "\(preset.name) · \(preset.kind.frenchTitle)" : preset.name }
         if let group { return group }
         return library.contentKind == .live ? "Télévision" : environment.title
