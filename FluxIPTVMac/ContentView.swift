@@ -120,6 +120,7 @@ struct FluxScreen: View, Equatable {
     @State private var showRemote = false
     @AppStorage("fluxiptv.remoteAppearance") private var remoteAppearance: RemoteAppearance = .black
     @AppStorage(FluxAppearance.glassKey) private var richGlass = FluxAppearance.richDefault
+    @AppStorage(FluxAppearance.motionKey) private var focusMotion = FluxAppearance.motionDefault
     @AppStorage(FluxAppearance.densityKey) private var density = "cinema"
     @AppStorage(ClubInterfaceProfile.storageKey) private var clubProfile: ClubInterfaceProfile = .neoVideoClub
     @State private var remoteNavigationActive = false
@@ -922,6 +923,14 @@ struct FluxScreen: View, Equatable {
             // Held, Back goes straight to the home screen.
             if press.key == .escape, press.phase == .repeat { holdBack(); return .handled }
             #endif
+            #if os(macOS)
+            // With Command an arrow goes straight to the zone on that side.
+            if press.modifiers.contains(.command), press.phase == .down {
+                let way: RemoteAction? = press.key == .upArrow ? .up : press.key == .downArrow ? .down
+                    : press.key == .leftArrow ? .left : press.key == .rightArrow ? .right : nil
+                if let way { return jumpZone(way) ? .handled : .ignored }
+            }
+            #endif
             if press.key == "f" && press.modifiers.contains([.command, .shift]) { dispatch(.fullscreen) }
             else if press.key == "f" && press.modifiers.contains(.command) { search() }
             else if press.key == .upArrow { dispatch(.up) }
@@ -1108,7 +1117,7 @@ struct FluxScreen: View, Equatable {
     /// what is behind instead, which costs it nothing.
     private var livesBlur: Bool {
         #if os(tvOS)
-        richGlass
+        richGlass && FluxAppearance.systemGlass
         #else
         true
         #endif
@@ -2185,7 +2194,7 @@ struct FluxScreen: View, Equatable {
         #else
         let held = false
         #endif
-        let key = CardKey(item: item, height: height, rich: richGlass, selected: selectedByKeyboard(item.id),
+        let key = CardKey(item: item, height: height, rich: focusMotion, selected: selectedByKeyboard(item.id),
                           favorite: library.isFavorite(item), progress: entry.flatMap { $0.resumable ? $0.fraction : nil },
                           watched: entry != nil, held: held, expanded: held && caseExpanded, theme: theme,
                           desk: usesDesk, television: televisionLayout, reduceMotion: reduceMotion)
@@ -3941,6 +3950,10 @@ struct FluxScreen: View, Equatable {
             #endif
         case .search: search()
         case .playPause:
+            #if os(tvOS)
+            // Outside the player, Lecture/Pause walks the zones of the screen.
+            if page != .player, cycleZone(forward: true) { break }
+            #endif
             if page == .player {
                 // A pause is told by the commands, on their key.
                 #if os(tvOS)
@@ -4337,6 +4350,8 @@ extension FluxScreen {
         let fan: DockFan?
         let theme: VideoClubTheme
         let rich: Bool
+        /// The screen has zones that one key walks: the bar says which key.
+        let zones: Bool
     }
 
     /// The two flanks have the same width: the dock stays in the middle.
@@ -4350,8 +4365,9 @@ extension FluxScreen {
         let key = BarKey(backTarget: deskBackTarget, home: deskBackPlace != nil, selection: dockSelection,
                          keyboard: focusShown ? shownFocusID : nil,
                          zone: zoneMode && deskZoneEntry(.dock) != nil ? zoneFocus == .dock : nil,
-                         flank: flank, dock: plan, fan: fan, theme: theme, rich: richGlass)
-        return FluxStable(key) { deskBarBody(plan, fan: fan, flank: flank) }.equatable()
+                         flank: flank, dock: plan, fan: fan, theme: theme, rich: richGlass,
+                         zones: page == .catalogue && !library.sources.isEmpty)
+        return FluxStable(key) { deskBarBody(plan, fan: fan, flank: flank, zones: key.zones) }.equatable()
     }
     /// Width that each flank of the bar needs for Back with the name of
     /// the screen behind, Home, and the room where the icons grow; and
@@ -4361,7 +4377,7 @@ extension FluxScreen {
 
     /// Rebuilt only when what it shows changes: a move of the remote in
     /// the catalogue leaves the bar alone.
-    private func deskBarBody(_ plan: DockPlan, fan: DockFan?, flank: Int) -> some View {
+    private func deskBarBody(_ plan: DockPlan, fan: DockFan?, flank: Int, zones: Bool) -> some View {
         FluxProbe.hit("bar")
         let metrics = FluxDockMetrics(.bottom)
         let plate = metrics.cell.height + metrics.platePadding * 2
@@ -4384,23 +4400,52 @@ extension FluxScreen {
                 #if os(tvOS)
                 .focusSection()
                 #endif
-            TimelineView(.everyMinute) { context in
-                HStack(spacing: Desk.pt(10)) {
-                    if flank == 0 {
-                        Text(context.date.formatted(.dateTime.weekday(.wide).day().month(.wide)))
-                            .font(Desk.font(.callout, .medium)).foregroundStyle(.white.opacity(0.72))
+            VStack(alignment: .trailing, spacing: Desk.pt(7)) {
+                if zones { zoneHint }
+                TimelineView(.everyMinute) { context in
+                    HStack(spacing: Desk.pt(10)) {
+                        if flank == 0 {
+                            Text(context.date.formatted(.dateTime.weekday(.wide).day().month(.wide)))
+                                .font(Desk.font(.callout, .medium)).foregroundStyle(.white.opacity(0.72))
+                        }
+                        Text(context.date.formatted(.dateTime.hour().minute()))
+                            .font(Desk.font(.callout, .bold).monospacedDigit())
                     }
-                    Text(context.date.formatted(.dateTime.hour().minute()))
-                        .font(Desk.font(.callout, .bold).monospacedDigit())
+                    .padding(.horizontal, Desk.pt(15)).frame(height: Desk.pt(40))
+                    .fluxGlass(radius: Desk.pt(20))
                 }
-                .padding(.horizontal, Desk.pt(15)).frame(height: Desk.pt(40))
-                .fluxGlass(radius: Desk.pt(20))
+                .accessibilityHidden(true)
             }
-            .accessibilityHidden(true)
             .frame(maxWidth: .infinity, alignment: .trailing).frame(height: plate)
             .padding(.trailing, Desk.pt(24))
         }
         .padding(.bottom, FluxDockMetrics.edgeMargin)
+    }
+
+    /// The key that walks the zones of the screen, said above the clock:
+    /// nothing else on the screen tells that the content, the bar, the
+    /// line of the search and the column are one press from each other.
+    private var zoneHint: some View {
+        HStack(spacing: Desk.pt(6)) {
+            #if os(tvOS)
+            Image(systemName: "playpause.fill")
+            Text("Zones")
+            #else
+            Text("⇥").fontWeight(.heavy)
+            Text("Zones")
+            #endif
+        }
+        .font(Desk.font(.caption, .semibold)).foregroundStyle(.white.opacity(0.74))
+        .shadow(color: .black.opacity(0.6), radius: 3, y: 1)
+        .padding(.trailing, Desk.pt(8))
+        .accessibilityElement(children: .ignore)
+        #if os(tvOS)
+        .accessibilityLabel("Lecture/Pause : zone suivante")
+        #else
+        .accessibilityLabel("Tabulation : zone suivante")
+        .help("Tab passe à la zone suivante : contenu, barre, recherche, colonne. ⌘ + flèche va droit à la zone de ce côté.")
+        #endif
+        .accessibilityIdentifier("desk-zone-hint")
     }
 
     /// `fills`: on a television the remote goes to the nearest control, and
@@ -4624,11 +4669,14 @@ extension FluxScreen {
             switch entry {
             case .destination(let item):
                 return DockTile(entry: entry, name: item.title, full: item.title, face: .destination(item))
+            // Under an icon a name is cut short: the label of its language,
+            // the same on every title of a catalogue, would be all that is
+            // left of it. The whole name stands above the icon pointed at.
             case .shortcut(let shortcut, _), .recent(let shortcut):
-                return DockTile(entry: entry, name: shortcut.name, full: shortcut.title,
+                return DockTile(entry: entry, name: MediaLanguage.bareTitle(of: shortcut.name), full: shortcut.title,
                                 face: .title(dockItem(shortcut), kind: shortcut.kind, badge: shortcut.badge, progress: nil))
             case .resume(let shortcut):
-                return DockTile(entry: entry, name: shortcut.name, full: "Reprendre « \(shortcut.title) »",
+                return DockTile(entry: entry, name: MediaLanguage.bareTitle(of: shortcut.name), full: "Reprendre « \(shortcut.title) »",
                                 face: .title(dockItem(shortcut), kind: shortcut.kind, badge: shortcut.badge,
                                              progress: Double(plan.progress ?? 0) / 50))
             case .stack(let listID):
@@ -4913,8 +4961,33 @@ extension FluxScreen {
         zoneMode = false
         guard let id = deskZoneEntry(zone) else { return }
         if zone == .content, let item = visibleSlice.item(id: id) { revealCatalogItem(id); setPreview(item) }
+        #if os(tvOS)
+        // The field of the search has a focus of its own on a television.
+        if zone == .top { liveGroupSearchFocus = false; focusID = id; searchFocus = true; return }
+        searchFocus = false; liveGroupSearchFocus = false
+        // The row of the column that stands for what is shown, wherever it is.
+        if zone == .column { enterColumn(); return }
+        focusID = id
+        // The control may be far down a list or just back on screen: it is
+        // brought into view and asked until it says it has the remote.
+        sendRemote(to: id, reader: zone == .content ? scrolls.pane : nil) {
+            page == .catalogue && !deskCovered && focusID == id
+        }
+        #else
         focusID = id
         systemFocus = id
+        #endif
+    }
+
+    /// The zone that holds the remote, or the selection of the keyboard.
+    private var deskCurrentZone: DeskZone? {
+        if searchFocus { return .top }
+        if liveGroupSearchFocus { return .column }
+        #if os(tvOS)
+        return deskZone(of: systemFocus) ?? deskZone(of: focusID)
+        #else
+        return deskZone(of: focusID)
+        #endif
     }
 
     /// One arrow jumps into the neighbouring zone; OK stays; Back leaves the screen.
@@ -4931,13 +5004,35 @@ extension FluxScreen {
         }
     }
 
-    /// Tab enters the next zone of the screen without the overview.
+    /// One key enters the next zone of the screen: Tab on a keyboard,
+    /// Lecture/Pause on the remote of a television. A long list keeps the
+    /// line of the search and the bar many presses away; this key is one
+    /// press from the content to the bar, one more to the search, one more
+    /// to the column, and one more back to the title that was left.
     func cycleZone(forward: Bool) -> Bool {
-        guard page == .catalogue, heldItem == nil, !modalOpen else { return false }
-        let current = zoneMode ? zoneFocus : deskZone(of: focusID)
-        guard let next = DeskZoneMap.cycle(from: current, forward: forward, available: deskZones) else { return false }
+        guard page == .catalogue, heldItem == nil, !modalOpen, !deskCovered, dockFan == nil else { return false }
+        let current = zoneMode ? zoneFocus : deskCurrentZone
+        guard let next = DeskZoneMap.hop(from: current, forward: forward, available: deskZones) else { return false }
         remoteNavigationActive = true
         enterZone(next)
+        return true
+    }
+
+    /// An arrow held with Command goes straight to the zone on that side.
+    func jumpZone(_ action: RemoteAction) -> Bool {
+        guard page == .catalogue, heldItem == nil, !modalOpen, !deskCovered, dockFan == nil else { return false }
+        let zones = deskZones
+        let wanted: [DeskZone]
+        switch action {
+        case .up: wanted = [.top]
+        case .down: wanted = [.dock]
+        case .left: wanted = [.column]
+        case .right: wanted = deskCurrentZone == .content ? [.actions, .content] : [.content]
+        default: return false
+        }
+        guard let zone = wanted.first(where: zones.contains) else { return false }
+        remoteNavigationActive = true
+        enterZone(zone)
         return true
     }
 
@@ -6016,7 +6111,7 @@ extension FluxScreen {
     }
 
     private func liveDeskChannel(_ item: IPTVItem) -> some View {
-        let key = ChannelKey(item: item, number: (visibleSlice.index(of: item.id) ?? 0) + 1, rich: richGlass, favorite: library.isFavorite(item),
+        let key = ChannelKey(item: item, number: (visibleSlice.index(of: item.id) ?? 0) + 1, rich: focusMotion, favorite: library.isFavorite(item),
                              selected: selectedByKeyboard(item.id), theme: theme, reduceMotion: reduceMotion)
         #if os(tvOS)
         // The row under the remote grows over its neighbours.

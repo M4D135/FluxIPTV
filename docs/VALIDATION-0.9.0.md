@@ -15,8 +15,8 @@ Les vérifications ci-dessous ont été faites les 25 et 26 novembre 2026 sur un
 | Compilations | macOS, iOS Simulator, tvOS Simulator et tvOS appareil |
 | `scripts/test-catalog-ui.sh` en mode local, avec la galerie | 50 captures de la vraie interface du Mac ; les dix parcours de touches aboutissent |
 | Les mêmes captures dans une fenêtre de 1728 × 1040 | le bureau entier suit la fenêtre : voir « Les proportions de la télévision » |
-| `scripts/test-tvos-catalog-ui.sh` | trente et un scénarios natifs, trois démarrages à froid et quinze parcours XCUIRemote réussis |
-| Les quinze parcours, effets complets coupés | réussis : les surfaces et le focus immédiat avec lesquels une Apple TV HD commence, dossier du dock en éventail compris |
+| `scripts/test-tvos-catalog-ui.sh` | trente et un scénarios natifs, trois démarrages à froid et quinze parcours XCUIRemote réussis à `4f1dcb2` ; le seizième, celui des zones, et les changements qui le suivent n’ont été joués que parcours par parcours (voir « Ce que la télécommande atteint ») |
+| Les quinze parcours, effets complets coupés | réussis à `f29ee50` : les surfaces sombres et le focus immédiat, dossier du dock en éventail compris. Non rejoués depuis que le verre est actif sur tous les modèles |
 | Ce qu’un appui de télécommande reconstruit et coûte | voir « Ce qu’un appui coûte » |
 | Application réelle sur le Mac, source Xtream enregistrée | voir « Essai réel » |
 
@@ -80,7 +80,9 @@ Trente et un scénarios lancent l’application sur un écran et exigent que le 
 
 Ce qui s’écrit sur l’image est lu avec des noms taillés comme ceux d’une vraie liste de lecture : un préfixe, un titre long, une marque de qualité (« PRISME: GRAND ÉCRAN FESTIVAL ᴿᴬᵂ »), des catégories qui portent leur pays (« DIRECT - FR| CINÉMA »). Les deux écrans du bandeau utilisent un catalogue de 24 665 chaînes, pour un numéro à cinq chiffres. Les catalogues précédents, aux noms courts et aux dix-huit chaînes, ne montraient ni les noms coupés ni les numéros repliés sur deux lignes.
 
-Quinze parcours passent par XCUIRemote, donc par le vrai moteur de focus :
+Seize parcours passent par XCUIRemote, donc par le vrai moteur de focus :
+
+- **Les zones** : au milieu d’une page de soixante films d’un catalogue de 58 093, quatre rangées sous la première ; Lecture/Pause mène à la barre, sur Films, un deuxième appui au champ de la recherche, un troisième à « Tous les films » dans la colonne, un quatrième au film quitté ; de la barre, Gauche continue vers la télévision. La barre affiche « Zones » au-dessus de l’heure.
 
 - **Les raccourcis d’une série** : depuis les films, le raccourci d’une saison ouvre la fiche de la série sur cette saison — Lire a la télécommande, Gauche mène à ses épisodes puis à la saison 3 dans la liste —, Menu rend le rayon des saisons sur celle-ci, puis la série ; le raccourci d’un épisode ouvre la fiche sur S12 E15 ; celui de la série ouvre son rayon sur la première saison.
 - **Le dock rempli** : Bas depuis les films mène au dock, Droite jusqu’à sa dernière icône, le dossier ; OK l’ouvre en éventail sur son premier titre, Haut parcourt les titres jusqu’à « Ouvrir la liste », Gauche ne mène nulle part tant qu’il est ouvert, Menu le referme sur son icône ; rouvert, Bas depuis le premier titre revient sur l’icône et une autre icône le referme. Le raccourci d’un film ouvre sa fiche, que Menu range en rendant la télécommande à la jaquette ; ouvert depuis la télévision, il montre d’abord les films, puis la fiche, et Menu rend la jaquette à son rayon. Le raccourci d’une chaîne, ouvert depuis les films, montre la télévision et lance la chaîne — sur une lecture simulée — : l’image prend la télécommande sous son bandeau, et Menu revient sur la ligne de la chaîne. OK maintenu sur le raccourci du film ouvre les listes du titre, où sa section du dock est cochée ; décochée et enregistrée, l’icône quitte le dock et la télécommande reste dans la barre.
@@ -152,6 +154,22 @@ La même comparaison a été refaite après la refonte du lecteur : hors des éc
 Elle l’a été une troisième fois après la reprise de la liste des chaînes et des messages : les trente-quatre captures du Mac sont identiques à celles du commit précédent, à l’heure affichée près, liste de zapping comprise — sur Mac elle prenait déjà seule la place des commandes dans la capture, qui masquait pour cela les commandes ; c’est maintenant le comportement réel.
 
 Et une quatrième après le bandeau d’une chaîne : trente-trois des trente-quatre captures sont identiques à celles du commit précédent, à l’heure affichée près. La trente-quatrième est la liste de zapping, élargie pour les noms longs. Deux captures sont nouvelles : le bandeau d’une chaîne, et le parcours de touches qui change de chaîne sous lui.
+
+### Ce que la télécommande atteint
+
+Essayée sur une vraie Apple TV, avec un vrai catalogue, la 0.9.0 laissait la ligne de la recherche et la barre du bas hors de portée : depuis un titre au milieu d’une page de soixante films ou d’une liste de chaînes, il faut autant de flèches que de rangées pour sortir par le haut ou par le bas, et le clavier du Mac a le même défaut. Retour, qui montrait d’abord les zones de l’écran, revient maintenant directement en arrière : plus rien ne passait vite d’une zone à l’autre. Les bancs ne l’avaient pas vu, leurs parcours partant du premier titre d’un catalogue de quelques films.
+
+Une touche passe maintenant d’une zone à l’autre : **Lecture/Pause** sur la télécommande d’une Apple TV, **Tab** au clavier du Mac (⇧Tab en sens inverse). Depuis le contenu : la barre, puis la recherche, puis la colonne, puis le titre quitté. Sur le Mac, ⌘ + une flèche va droit à la zone de ce côté. La barre le dit au-dessus de l’heure. Sur Apple TV le contrôle visé est amené à l’écran et demandé jusqu’à ce qu’il dise avoir la télécommande. **Rien de cela n’a été essayé sur une Apple TV ni avec un vrai clavier** : le parcours des zones passe dans le simulateur (tvOS 27.2), et les touches Tab et ⌘ + flèche du Mac sont écrites sans avoir été pressées.
+
+Le même essai sur l’appareil a montré trois autres choses, corrigées sans pouvoir être revues sur l’appareil :
+
+- **Pas de verre** sur une Apple TV HD ni sur la première Apple TV 4K, où les effets étaient coupés au départ. Le verre est actif sur tous les modèles. tvOS ne donne son propre verre qu’à partir de l’Apple TV 4K de 2ᵉ génération : sur les plus anciennes, les panneaux sont dessinés avec le flou du système, qu’elles affichent depuis toujours, sous une teinte légère et un liseré clair. Une capture du simulateur forcé dans ce mode (`FLUX_UI_EFFECTS=material`) montre des panneaux proches de ceux du verre ; ce que ces puces en font n’est pas mesuré.
+- **La sélection d’une jaquette saccadait** : ce qui est sélectionné suivait le pouce posé sur la télécommande, une image par mouvement du pouce. Ce suivi n’existe plus que sur l’Apple TV 4K de 2ᵉ génération et les suivantes, où il n’a pas été vu non plus. « Mouvements de la sélection » est un réglage à part du verre.
+- **L’éventail d’un dossier arrivait par le côté** : il grandissait depuis le milieu de sa largeur, alors que son icône est sous son bord. Ses titres partent maintenant de l’icône du dossier, l’un après l’autre, le plus proche d’abord, et y reviennent à la fermeture.
+
+Sous une icône du dock, le nom d’un titre perd l’étiquette de sa langue (« FR - Primetime » devient « Primetime ») : dix raccourcis coupés après « FR - » ne se distinguaient plus. Le nom entier reste au-dessus de l’icône pointée et dans l’éventail.
+
+Vérifié pour cette livraison : les seize parcours avant les trois derniers changements (éventail, noms du dock, Lecture/Pause placée avant les autres cas), puis les trois parcours qu’ils touchent — zones, dock, raccourcis d’une série — ; le banc Mac (50 captures, dix parcours de touches) avant ces trois changements, puis ses scénarios du dossier ; les quatre compilations ; les tests du cœur.
 
 ### GitHub Actions
 

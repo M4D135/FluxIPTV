@@ -20,7 +20,7 @@ struct MediaDetailPresentation: View {
     @AppStorage(FluxAppearance.glassKey) private var richEffects = FluxAppearance.richDefault
     private var softens: Bool {
         #if os(tvOS)
-        richEffects
+        richEffects && FluxAppearance.systemGlass
         #else
         true
         #endif

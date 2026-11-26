@@ -50,6 +50,26 @@ public struct MediaLanguage: Identifiable, Equatable, Sendable {
         return nil
     }
 
+    /// The title without the label of its language: "Dune" for "4K-FR -
+    /// Dune". For the places where a name has little room, under an icon:
+    /// ten shortcuts that all begin with "FR - " tell nothing apart once
+    /// they are cut short. A first part that names no language is part of
+    /// the title ("Rocky - Balboa"), and the catalogue itself keeps every
+    /// title as its provider wrote it.
+    public static func bareTitle(of name: String) -> String {
+        guard let label = titleLabel(of: name), detectCode(in: label) != nil else { return name }
+        var previous: Character?, index = name.startIndex
+        while index < name.endIndex {
+            let character = name[index], next = name.index(after: index)
+            if previous == " ", "-|:–—".contains(character), next < name.endIndex, name[next] == " " {
+                let rest = name[name.index(after: next)...].trimmingCharacters(in: .whitespaces)
+                return rest.isEmpty ? name : rest
+            }
+            previous = character; index = next
+        }
+        return name
+    }
+
     /// Reads the first meaningful word of a label, after quality and brand
     /// tags. A two-letter code must be set apart ("FR -", "[FR]", "FR|") unless
     /// it is one of the tags playlists commonly write before a plain space.

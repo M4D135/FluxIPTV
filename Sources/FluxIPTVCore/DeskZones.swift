@@ -49,6 +49,22 @@ public enum DeskZoneMap {
         return order[((index + (forward ? 1 : -1)) % order.count + order.count) % order.count]
     }
 
+    /// The zones in the order one key walks them: from the content to the
+    /// bar, which is asked for most, then the line of the search, the
+    /// column, the actions, and the content again. A long list keeps what
+    /// stands above and below it many presses away: this key is one press.
+    public static let hopOrder: [DeskZone] = [.content, .dock, .top, .column, .actions]
+
+    /// Next zone along `hopOrder`, or the one before, among those the screen
+    /// offers. From nowhere it starts in the content.
+    public static func hop(from zone: DeskZone?, forward: Bool, available: [DeskZone]) -> DeskZone? {
+        let order = hopOrder.filter(available.contains)
+        guard !order.isEmpty else { return nil }
+        guard let zone, let index = order.firstIndex(of: zone) else { return order.first }
+        guard order.count > 1 else { return nil }
+        return order[((index + (forward ? 1 : -1)) % order.count + order.count) % order.count]
+    }
+
     /// The top band spans the window; the column, the content and the actions
     /// stand side by side under it; the bar is on the edge the user chose.
     private static func candidates(_ zone: DeskZone, _ action: RemoteAction, _ dock: FluxDockPosition) -> [DeskZone] {

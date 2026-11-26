@@ -134,9 +134,12 @@ struct FluxFocusLean: ViewModifier {
     var angle: Double = 7
     var shift: CGFloat = 8
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @AppStorage(FluxAppearance.glassKey) private var rich = FluxAppearance.richDefault
+    @AppStorage(FluxAppearance.motionKey) private var rich = FluxAppearance.motionDefault
     #if os(tvOS)
     @State private var lean: CGSize = .zero
+    /// Following the thumb is a new picture for each of its moves: an
+    /// Apple TV HD and the first Apple TV 4K showed it in jerks.
+    private var leans: Bool { rich && !reduceMotion && FluxAppearance.systemGlass }
     #endif
 
     func body(content: Content) -> some View {
@@ -149,7 +152,7 @@ struct FluxFocusLean: ViewModifier {
             // Each picture of an animation walks the whole screen: a
             // slow Apple TV shows the focus at once instead.
             .animation(reduceMotion || !rich ? nil : .easeOut(duration: 0.14), value: focused)
-            .onReceive(focused && !reduceMotion ? RemoteTouch.shared.leans : RemoteTouch.shared.still) { value in
+            .onReceive(focused && leans ? RemoteTouch.shared.leans : RemoteTouch.shared.still) { value in
                 // The layer follows the thumb at once, and comes back
                 // gently when the thumb lifts.
                 if value == .zero { withAnimation(rich ? .easeOut(duration: 0.22) : nil) { lean = .zero } }
@@ -222,14 +225,29 @@ enum FluxProbe {
 
 /// System glass is reserved for navigation and transient playback controls.
 enum FluxAppearance {
-    static let glassKey = "fluxiptv.appearance.glass.v2"
-    /// Whether the full effects are on until the user says otherwise: the
-    /// glass of the system, what is put out of focus behind a panel, the
-    /// animations of the focus. An Apple TV HD and the first Apple TV 4K
-    /// draw them too slowly for a remote that is held down: they start
-    /// with the dark surfaces and the immediate focus, which cost them
-    /// next to nothing. The setting stays theirs to turn on.
-    static let richDefault: Bool = {
+    /// The glass of the panels. A new key: an Apple TV HD and the first
+    /// Apple TV 4K started without it, and now start with it.
+    static let glassKey = "fluxiptv.appearance.glass.v3"
+    /// An Apple TV shows what a Mac shows: the glass is on until the user
+    /// says otherwise, on every model.
+    static let richDefault = true
+    /// What moves when the focus does: the title that grows, the icons of
+    /// the bar that slide. Apart from the glass, so that a television that
+    /// draws them badly can keep the one without the other.
+    static let motionKey = "fluxiptv.appearance.motion.v1"
+    static let motionDefault = true
+    /// Whether this machine draws the glass of the system itself. tvOS
+    /// keeps it for the second Apple TV 4K and the later ones; on an Apple
+    /// TV HD and on the first Apple TV 4K the panels are drawn from the
+    /// blur of the system, which those have had since their first days.
+    /// What only the newer chips draw well goes with it: a whole screen
+    /// put out of focus behind a panel, and what follows the thumb on the
+    /// remote, picture after picture.
+    static let systemGlass: Bool = {
+        #if FLUX_CATALOG_UI_TESTING
+        // A bench shows the panels of an older Apple TV on any simulator.
+        if ProcessInfo.processInfo.environment["FLUX_UI_EFFECTS"] == "material" { return false }
+        #endif
         #if os(tvOS)
         var system = utsname()
         uname(&system)
@@ -268,7 +286,7 @@ private struct FluxGlassChrome: ViewModifier {
     @ViewBuilder func body(content: Content) -> some View {
         if richGlass && !reduceTransparency {
             #if compiler(>=6.2)
-            if #available(macOS 26.0, iOS 26.0, tvOS 26.0, *) {
+            if #available(macOS 26.0, iOS 26.0, tvOS 26.0, *), FluxAppearance.systemGlass {
                 content.glassEffect(.regular, in: .rect(cornerRadius: radius))
             } else { content.fluxMaterial(radius: radius) }
             #else
@@ -290,7 +308,7 @@ private struct FluxMediaGlass: ViewModifier {
         let shape = RoundedRectangle(cornerRadius: radius, style: .continuous)
         if richGlass && !reduceTransparency {
             #if compiler(>=6.2)
-            if #available(macOS 26.0, iOS 26.0, tvOS 26.0, *) {
+            if #available(macOS 26.0, iOS 26.0, tvOS 26.0, *), FluxAppearance.systemGlass {
                 content
                     .glassEffect(.clear, in: shape)
                     .background(.black.opacity(0.30), in: shape)
@@ -315,7 +333,7 @@ private struct FluxNavigationGlass: ViewModifier {
         let shape = RoundedRectangle(cornerRadius: radius, style: .continuous)
         if richGlass && !reduceTransparency {
             #if compiler(>=6.2)
-            if #available(macOS 26.0, iOS 26.0, tvOS 26.0, *) {
+            if #available(macOS 26.0, iOS 26.0, tvOS 26.0, *), FluxAppearance.systemGlass {
                 #if os(tvOS)
                 // The focus engine, not a touch, animates a control on Apple TV.
                 if selected {
@@ -332,9 +350,9 @@ private struct FluxNavigationGlass: ViewModifier {
                         .background(.black.opacity(0.16), in: shape)
                 }
                 #endif
-            } else { content.fluxMaterial(radius: radius) }
+            } else { content.fluxMaterial(radius: radius, tint: selected ? tint : .clear) }
             #else
-            content.fluxMaterial(radius: radius)
+            content.fluxMaterial(radius: radius, tint: selected ? tint : .clear)
             #endif
         } else {
             #if os(tvOS)
@@ -412,13 +430,26 @@ extension View {
             .overlay(shape.strokeBorder(.white.opacity(0.22),lineWidth:1).allowsHitTesting(false))
     }
 
-    /// Older OS: real system translucency with a restrained rim, not faux blur.
-    func fluxMaterial(radius: CGFloat = 20) -> some View {
-        #if os(tvOS)
-        return fluxTelevisionGlass(radius: radius)
-        #else
+    /// Where the system gives no glass of its own — an older OS, or the
+    /// chip of an Apple TV HD and of the first Apple TV 4K —: its real
+    /// blur of what is behind, under a light tint and a bright rim. The
+    /// panels of a television then look like those of a Mac, with the blur
+    /// those televisions have always drawn.
+    func fluxMaterial(radius: CGFloat = 20, tint: Color = .clear) -> some View {
         let shape = RoundedRectangle(cornerRadius: radius, style: .continuous)
-        return background(.regularMaterial, in: shape)
+        #if os(tvOS)
+        // The blur of the system is darker than its glass: it is let
+        // through in part, so that the room behind keeps its colours as
+        // it does behind the glass of a Mac.
+        return background(tint.opacity(0.24), in: shape)
+            .background(Color.white.opacity(0.035), in: shape)
+            .background { shape.fill(.ultraThinMaterial).opacity(0.74) }
+            .overlay(shape.strokeBorder(LinearGradient(colors: [.white.opacity(0.46), .white.opacity(0.10)],
+                                                        startPoint: .topLeading, endPoint: .bottomTrailing), lineWidth: 1)
+                .allowsHitTesting(false))
+        #else
+        return background(tint.opacity(0.18), in: shape)
+            .background(.regularMaterial, in: shape)
             .overlay(shape.strokeBorder(.white.opacity(0.17), lineWidth: 1).allowsHitTesting(false))
         #endif
     }

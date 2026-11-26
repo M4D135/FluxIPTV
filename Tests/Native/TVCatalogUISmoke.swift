@@ -623,6 +623,13 @@ private struct TVProbeReadout: View {
                     "The dock fixture is not what its scenarios expect.")
     }
 
+    /// The glass and the movements, unless the scenario or the bench asks
+    /// for the lightest screen.
+    private static var fullEffects: Bool {
+        ProcessInfo.processInfo.environment["FLUX_UI_EFFECTS"] != "light"
+            && !(ProcessInfo.processInfo.environment["FLUX_UI_SCENARIO"] ?? "").hasSuffix("-light")
+    }
+
     static func configureDefaults() {
         // A separate bundle in a newly created simulator has no user profiles.
         // Volatile overrides leave even that disposable persistent domain alone.
@@ -635,9 +642,11 @@ private struct TVProbeReadout: View {
             // Liquid Glass is what the application shows by default: the
             // captures and the focus checks run on it.
             // "…-light", or the bench asking for it: the dark surfaces and
-            // the immediate focus that an Apple TV HD starts with.
-            FluxAppearance.glassKey: ProcessInfo.processInfo.environment["FLUX_UI_EFFECTS"] != "light"
-                && !(ProcessInfo.processInfo.environment["FLUX_UI_SCENARIO"] ?? "").hasSuffix("-light"),
+            // the immediate focus, the lightest that a television can show.
+            // "material" keeps the glass and draws it as an Apple TV HD
+            // does, from the blur of the system.
+            FluxAppearance.glassKey: Self.fullEffects,
+            FluxAppearance.motionKey: Self.fullEffects,
             FluxAppearance.artworkKey: true,
             FluxAppearance.wallpaperKey: false,
             FluxAppearance.densityKey: "cinema",

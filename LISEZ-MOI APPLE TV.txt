@@ -32,12 +32,18 @@ Xcode 26 ou plus récent, avec la prise en charge de tvOS installée.
 Cible minimale : tvOS 17. Apple TV HD et Apple TV 4K, dont la 4K 3e génération.
 L’ancienne Apple TV 3e génération (sans tvOS/App Store) ne peut pas installer
 ce projet. Voir https://support.apple.com/fr-fr/102348.
-Les effets complets (Liquid Glass à partir de tvOS 26, flou derrière une
-fiche, focus animé) sont actifs au départ sur l'Apple TV 4K de 2e génération
-et les suivantes. Ils sont coupés au départ sur l'Apple TV HD et sur la
-première Apple TV 4K, dont la puce les affiche trop lentement : surfaces
-sombres et focus immédiat y gardent la télécommande fluide. Le choix se
-change dans Réglages > Interface > Effets complets.
+Les panneaux sont en verre sur tous les modèles, comme sur le Mac : le
+verre de tvOS 26 à partir de l'Apple TV 4K de 2e génération ; sur l'Apple TV
+HD et la première Apple TV 4K, un verre dessiné avec le flou du système.
+Réglages > Interface > Liquid Glass le coupe (surfaces sombres), et
+Réglages > Interface > Mouvements de la sélection coupe ce qui bouge quand
+la sélection change, si cela saccade sur votre Apple TV.
+
+CHANGER DE ZONE : la touche Lecture/Pause de la télécommande passe d'une
+zone de l'écran à l'autre. Depuis un titre, même au milieu d'une longue
+liste : un appui mène à la barre du bas, un deuxième à la recherche, un
+troisième à la colonne, un quatrième au titre que l'on avait quitté. La
+barre le rappelle au-dessus de l'heure.
 La dépendance VLCKit est fixée à une révision précise ; Xcode la résout au
 premier lancement. Le sous-ensemble YouTubeKit est fourni dans Vendor/.
 Conservez tout ce dossier avec le projet, sans déplacer le .xcodeproj seul.

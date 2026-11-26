@@ -84,6 +84,7 @@ struct PlaybackSettingsView: View {
     @State private var removingSource: IPTVSource?
     @State private var confirmingClear = false
     @AppStorage(FluxAppearance.glassKey) private var glass = FluxAppearance.richDefault
+    @AppStorage(FluxAppearance.motionKey) private var motion = FluxAppearance.motionDefault
     @AppStorage(FluxAppearance.artworkKey) private var artwork = true
     @AppStorage(FluxAppearance.densityKey) private var density = "cinema"
     @AppStorage(LiveTVPreviewDelay.storageKey) private var livePreviewDelay: LiveTVPreviewDelay = LiveTVPreviewDelay.platformDefault
@@ -795,11 +796,16 @@ struct PlaybackSettingsView: View {
                     #endif
                 }
                 #if os(tvOS)
-                DeskToggle(title: FluxAppearance.nativeAvailable ? "Effets complets (Liquid Glass)" : "Effets complets", isOn: $glass)
-                Text(FluxAppearance.richDefault
-                     ? "Verre Apple sur les panneaux, flou derrière une fiche et focus animé. Coupez-les si la télécommande manque de fluidité : surfaces sombres et focus immédiat, bien plus légers à afficher."
-                     : "Verre Apple sur les panneaux, flou derrière une fiche et focus animé. Coupés au départ sur cette Apple TV, dont la puce les affiche trop lentement : surfaces sombres et focus immédiat gardent la télécommande fluide.")
-                    .font(Desk.font(.caption)).foregroundStyle(.secondary)
+                DeskToggle(title: "Liquid Glass", isOn: $glass)
+                Text(FluxAppearance.systemGlass
+                     ? "Le verre d’Apple sur les panneaux, comme sur un Mac, et le flou derrière une fiche. Coupé : des surfaces sombres, plus légères à afficher."
+                     : "Des panneaux de verre comme sur un Mac. tvOS réserve son propre verre aux Apple TV 4K de 2ᵉ génération et suivantes : sur celle-ci, il est dessiné avec le flou du système. Coupé : des surfaces sombres, plus légères à afficher.")
+                    .font(Desk.font(.caption)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                DeskToggle(title: "Mouvements de la sélection", isOn: $motion)
+                Text(FluxAppearance.systemGlass
+                     ? "Ce qui est sélectionné grandit et suit le pouce posé sur la télécommande ; les icônes du dock glissent. Coupés : la sélection s’affiche d’un coup."
+                     : "Ce qui est sélectionné grandit, et les icônes du dock glissent. Coupés si ces mouvements saccadent sur cette Apple TV : la sélection s’affiche alors d’un coup.")
+                    .font(Desk.font(.caption)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 #else
                 DeskToggle(title: "Liquid Glass", isOn: $glass)
                 Text(FluxAppearance.nativeAvailable ? "Effet Apple natif disponible." : "Matériau translucide système sur cette version d’OS.").font(Desk.font(.caption)).foregroundStyle(.secondary)
@@ -818,7 +824,7 @@ struct PlaybackSettingsView: View {
                 Picker("Télécommande virtuelle", selection: $remoteAppearance) { Text("Noire tactile").tag(RemoteAppearance.black); Text("Aluminium").tag(RemoteAppearance.silver) }
                 #endif
                 Button("Apparence par défaut") {
-                    glass = true; artwork = true; density = "cinema"
+                    glass = true; motion = true; artwork = true; density = "cinema"
                     clubProfile = .neoVideoClub; stage = .orbit
                     cinemaTheme = .neo90; seriesTheme = .neo90; tvTheme = .neo90
                     livePreviewDelay = LiveTVPreviewDelay.platformDefault; automaticLivePreview = true

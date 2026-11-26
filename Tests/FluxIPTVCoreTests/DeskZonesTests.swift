@@ -122,4 +122,26 @@ final class DeskZonesTests: XCTestCase {
         // Without a column the same controls lead down into the screen.
         XCTAssertEqual(move("desk-back", .down, sidebar: []), "page-prev")
     }
+
+    /// One key walks the zones from the content: the bar first, then the
+    /// line of the search, the column, and the content again.
+    func testOneKeyHopsFromTheContentToTheBarThenTheTopThenTheColumn() {
+        let available: [DeskZone] = [.top, .column, .content, .dock]
+        XCTAssertEqual(DeskZoneMap.hop(from: .content, forward: true, available: available), .dock)
+        XCTAssertEqual(DeskZoneMap.hop(from: .dock, forward: true, available: available), .top)
+        XCTAssertEqual(DeskZoneMap.hop(from: .top, forward: true, available: available), .column)
+        XCTAssertEqual(DeskZoneMap.hop(from: .column, forward: true, available: available), .content)
+        // Backwards, the same walk the other way.
+        XCTAssertEqual(DeskZoneMap.hop(from: .content, forward: false, available: available), .column)
+        XCTAssertEqual(DeskZoneMap.hop(from: .dock, forward: false, available: available), .content)
+        // The actions beside a channel come after the column when they are there.
+        XCTAssertEqual(DeskZoneMap.hop(from: .column, forward: true, available: available + [.actions]), .actions)
+        XCTAssertEqual(DeskZoneMap.hop(from: .actions, forward: true, available: available + [.actions]), .content)
+        // From nowhere the walk starts in the content; a screen of one zone has nowhere to go.
+        XCTAssertEqual(DeskZoneMap.hop(from: nil, forward: true, available: available), .content)
+        XCTAssertNil(DeskZoneMap.hop(from: .dock, forward: true, available: [.dock]))
+        XCTAssertNil(DeskZoneMap.hop(from: .content, forward: true, available: []))
+        // A zone the screen does not offer starts the walk again.
+        XCTAssertEqual(DeskZoneMap.hop(from: .actions, forward: true, available: available), .content)
+    }
 }

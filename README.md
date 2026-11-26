@@ -4,7 +4,7 @@ Application native SwiftUI pour macOS, iOS et tvOS.
 
 **La 0.9.0 donne au Mac et à l’Apple TV la même interface de bureau.** L’application s’ouvre sur un accueil où le dock occupe le milieu de l’écran ; il se range ensuite en bas, au centre, comme le Dock de macOS, sous les colonnes qui accompagnent les trois espaces. La télévision se lit en trois colonnes, les fiches flottent en verre sur le catalogue flouté, et plus aucune feuille ne recouvre la fenêtre : catégories, pays, langues, listes, sources et réglages sont dessinés dans l’interface, y compris pendant la lecture. Les films et les séries se filtrent par langue, comme les chaînes par pays. Le dock garde ce que l’on y range, comme celui d’un Mac : des raccourcis vers une chaîne, un film, une série, une saison ou un épisode, dans des sections que l’on nomme, la vidéo en cours, les derniers titres regardés, et des listes de favoris en dossiers qui s’ouvrent en éventail.
 
-iPhone et iPad conservent la disposition de la 0.8.9. Sur Apple TV, les effets complets — Liquid Glass à partir de tvOS 26, flou derrière une fiche, focus animé — sont actifs au départ sur l’Apple TV 4K de 2ᵉ génération et les suivantes ; l’Apple TV HD et la première Apple TV 4K commencent avec les surfaces sombres et le focus immédiat, et un réglage permet de changer.
+iPhone et iPad conservent la disposition de la 0.8.9. Sur Apple TV, les panneaux sont en verre sur tous les modèles, comme sur le Mac : le verre de tvOS 26 à partir de l’Apple TV 4K de 2ᵉ génération, et sur l’Apple TV HD et la première Apple TV 4K, auxquelles tvOS ne le donne pas, un verre dessiné avec le flou du système. Les mouvements de la sélection ont leur propre réglage.
 
 ## Le bureau, sur Mac et sur Apple TV
 
@@ -28,7 +28,7 @@ Au-dessus du catalogue, une seule ligne : le nom de ce qui est affiché et ce qu
 
 Sur Apple TV, **Menu** est ce Retour et ne fait rien d’autre. Chaque colonne de l’écran répond comme un tout à la flèche qui pointe vers elle : depuis la liste, **Gauche** mène à la colonne de navigation, **Droite** à Regarder et Favoris, **Haut** à la recherche, **Bas** au dock, où que la télécommande se trouve dans la liste. La colonne s’ouvre sur la ligne de ce qui est affiché — toutes les chaînes, une liste, une catégorie — et non sur celle qui se trouve à la hauteur d’où l’on vient ; **Droite** en ressort sur le titre que l’on venait de quitter.
 
-Au clavier du Mac comme à la télécommande, Retour revient directement en arrière. **Tab** et **⇧Tab** passent d’une zone de l’écran à l’autre. Réglages › Interface permet de faire d’abord afficher par Retour la boussole des zones : elle encadre **Haut** (recherche, actualiser, pages), **Colonne**, **Contenu**, **Aperçu** pour la télévision et **Dock**, et écrit où mène chaque flèche ; une flèche saute dans la zone voisine, **OK** la referme, Retour une seconde fois revient à l’écran précédent.
+Au clavier du Mac comme à la télécommande, Retour revient directement en arrière. Une longue liste met la ligne de la recherche et la barre du bas à beaucoup de flèches d’un titre : **une touche passe d’une zone à l’autre** — **Tab** au clavier (**⇧Tab** en sens inverse), **Lecture/Pause** sur la télécommande d’une Apple TV. Depuis le contenu, un appui mène à la barre, un deuxième à la recherche, un troisième à la colonne, un quatrième au titre que l’on avait quitté ; la barre le rappelle au-dessus de l’heure. Sur le Mac, **⌘ + une flèche** va droit à la zone de ce côté : ⌘↑ la recherche, ⌘↓ la barre, ⌘← la colonne, ⌘→ le contenu. Réglages › Interface permet de faire d’abord afficher par Retour la boussole des zones : elle encadre **Haut** (recherche, actualiser, pages), **Colonne**, **Contenu**, **Aperçu** pour la télévision et **Dock**, et écrit où mène chaque flèche ; une flèche saute dans la zone voisine, **OK** la referme, Retour une seconde fois revient à l’écran précédent.
 
 ### Dock
 
@@ -86,7 +86,7 @@ Sur Apple TV ce sont les mêmes panneaux, le dock restant dessous. La fiche gard
 
 ### Clavier
 
-Les flèches déplacent la sélection entre la colonne, la grille, l’aperçu et le dock, et parcourent le dock de l’accueil ; **Entrée** valide, **Échap** revient à l’écran précédent jusqu’à l’accueil — maintenue, droit à l’accueil —, **Tab** change de zone, **Espace** ouvre l’élément sélectionné, **⌘F** place le curseur dans la recherche et **⌘⇧F** bascule le lecteur en plein écran. Les réglages se parcourent encore au pointeur.
+Les flèches déplacent la sélection entre la colonne, la grille, l’aperçu et le dock, et parcourent le dock de l’accueil ; **Entrée** valide, **Échap** revient à l’écran précédent jusqu’à l’accueil — maintenue, droit à l’accueil —, **Tab** change de zone et **⌘ + flèche** va droit à la zone de ce côté, **Espace** ouvre l’élément sélectionné, **⌘F** place le curseur dans la recherche et **⌘⇧F** bascule le lecteur en plein écran. Les réglages se parcourent encore au pointeur.
 
 ## Trois espaces, six thèmes chacun
 
@@ -139,7 +139,7 @@ La disposition de la 0.8.9 est conservée : bandeau TV, Films, Séries et Recher
 | Chaînes TV | Valider | Regarder la chaîne en plein écran |
 | Catalogue | Appui long | Ouvrir les favoris et listes |
 
-Sur Apple TV, **Réglages → Interface → Effets complets** réunit ce qui coûte à afficher : le verre natif des panneaux et des commandes à partir de tvOS 26, le flou de ce qui passe derrière une fiche, un message ou les réglages, et l’animation du focus. Le réglage est actif au départ sur l’Apple TV 4K de 2ᵉ génération et les suivantes, dont la puce est celle que le système demande pour son propre verre. Il est coupé au départ sur l’Apple TV HD et sur la première Apple TV 4K : les panneaux y sont des surfaces sombres, ce qui est derrière une fiche est assombri au lieu d’être flouté, et le focus se pose d’un coup. Le modèle est lu sur l’appareil ; le choix reste modifiable. La fluidité sur un appareil physique reste à mesurer.
+Sur Apple TV, **Réglages → Interface** a deux réglages, actifs au départ sur tous les modèles. **Liquid Glass** : les panneaux en verre, comme sur le Mac. tvOS réserve son propre verre à l’Apple TV 4K de 2ᵉ génération et aux suivantes ; sur l’Apple TV HD et sur la première Apple TV 4K, les panneaux sont dessinés avec le flou du système, sous une teinte légère et un liseré clair, et ce qui est derrière une fiche est assombri au lieu d’être flouté. Coupé, les panneaux sont des surfaces sombres. **Mouvements de la sélection** : ce qui est sélectionné grandit, et les icônes du dock glissent ; coupés, la sélection s’affiche d’un coup. L’inclinaison qui suit le pouce posé sur la télécommande n’existe que sur l’Apple TV 4K de 2ᵉ génération et les suivantes : sur une Apple TV plus ancienne elle s’affichait par à-coups. Le modèle est lu sur l’appareil. La fluidité sur un appareil physique reste à mesurer.
 
 Le délai de l’aperçu des chaînes se règle sur 1, 3, 5 ou 10 secondes : une seconde par défaut au pointeur, trois sur Apple TV où la télécommande traverse beaucoup de vignettes.
 

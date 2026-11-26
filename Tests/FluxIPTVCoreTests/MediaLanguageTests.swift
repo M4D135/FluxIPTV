@@ -101,4 +101,19 @@ final class MediaLanguageTests: XCTestCase {
         let gone = CatalogBrowsingState(countryCode: "de").validated(kind: .movie, index: index, presets: presets)
         XCTAssertNil(gone.countryCode)
     }
+
+    /// Under an icon a name has little room: the label of its language
+    /// goes, and nothing else of the title does.
+    func testBareTitleDropsTheLabelOfALanguageOnly() {
+        XCTAssertEqual(MediaLanguage.bareTitle(of: "FR - Primetime (2026)"), "Primetime (2026)")
+        XCTAssertEqual(MediaLanguage.bareTitle(of: "4K-FR - Dune"), "Dune")
+        XCTAssertEqual(MediaLanguage.bareTitle(of: "EN | The Long Road"), "The Long Road")
+        // A first part that names no language belongs to the title.
+        XCTAssertEqual(MediaLanguage.bareTitle(of: "Rocky - Balboa"), "Rocky - Balboa")
+        XCTAssertEqual(MediaLanguage.bareTitle(of: "PRIME: 13EME RUE"), "PRIME: 13EME RUE")
+        // Nothing to drop, and nothing left once dropped.
+        XCTAssertEqual(MediaLanguage.bareTitle(of: "Les lumières du port"), "Les lumières du port")
+        XCTAssertEqual(MediaLanguage.bareTitle(of: "FR - "), "FR - ")
+        XCTAssertEqual(MediaLanguage.bareTitle(of: ""), "")
+    }
 }

@@ -649,6 +649,45 @@ final class TVRemoteNavigationTests: XCTestCase {
         print("PASS: TV_REMOTE the pages of a catalogue of 58 093 films stood on the line of the search, Page suivante and Page précédente kept the remote while they turned, and Down entered the page from its top")
     }
 
+    /// A page of sixty films keeps the line of the search and the bar many
+    /// presses away from a title in its middle. Lecture/Pause walks the
+    /// zones of the screen: one press from the content to the bar, one more
+    /// to the search, one more to the column, and one more back to the
+    /// title that was left.
+    @MainActor
+    func testPlayPauseWalksTheZonesOfALongPage() {
+        let app = launch("movies-many")
+        defer { app.terminate() }
+        let films = element("navigation-tab-movie", in: app)
+        let search = app.textFields.matching(identifier: "desk-search").firstMatch
+        // The row of the column that stands for what is shown: all the films.
+        let scope = app.buttons["Tous les films"].firstMatch
+        assertFocus(element("catalog-card-fixture-movie-1", in: app), logical: "fixture-movie-1", in: app)
+        XCTAssertTrue(element("desk-zone-hint", in: app).exists, "The bar says which key walks the zones.")
+        // Four rows down: the bar is eight rows further, the search four rows back.
+        for _ in 0..<4 { XCUIRemote.shared.press(.down) }
+        let middle = element("catalog-card-fixture-movie-21", in: app)
+        assertFocus(middle, logical: "fixture-movie-21", in: app)
+        retainScreenshot("zones-01-middle-of-a-long-page", in: app)
+
+        XCUIRemote.shared.press(.playPause)
+        assertFocus(films, logical: "tab-movie", in: app)
+        retainScreenshot("zones-02-the-bar", in: app)
+        XCUIRemote.shared.press(.playPause)
+        assertCondition("hasFocus == true", on: search, in: app)
+        retainScreenshot("zones-03-the-search", in: app)
+        XCUIRemote.shared.press(.playPause)
+        assertFocus(scope, logical: "group-all", in: app)
+        XCUIRemote.shared.press(.playPause)
+        assertFocus(middle, logical: "fixture-movie-21", in: app)
+        // From the bar the arrows go on as before: Left reaches Home and Back.
+        XCUIRemote.shared.press(.playPause)
+        assertFocus(films, logical: "tab-movie", in: app)
+        XCUIRemote.shared.press(.left)
+        assertFocus(element("navigation-tab-live", in: app), logical: "tab-live", in: app)
+        print("PASS: TV_REMOTE Lecture/Pause walked the zones of a page of sixty films: the bar, the search, the column, and back to the title that was left")
+    }
+
     /// Keys of the dock, in their default order.
     /// Back returns one screen at a time, as in a web browser. Held, it goes
     /// straight to the home screen: the Back key of the bar under OK held

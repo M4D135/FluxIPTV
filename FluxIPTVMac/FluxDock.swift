@@ -217,13 +217,14 @@ struct FluxDock: View {
     @AppStorage(FluxDockTheme.storageKey) private var theme: FluxDockTheme = .defaultValue
     @AppStorage(FluxDockItem.orderKey) private var storedOrder = ""
     @AppStorage(FluxDockItem.magnifyKey) private var magnifies = true
-    @AppStorage(FluxAppearance.glassKey) private var richEffects = FluxAppearance.richDefault
+    @AppStorage(FluxAppearance.motionKey) private var motion = FluxAppearance.motionDefault
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// The icons slide and grow over several pictures, each of which lays
-    /// the bar out again: a slow Apple TV shows the selected one at once.
+    /// the bar out again: a television that is asked for no movement shows
+    /// the selected one at once.
     private var still: Bool {
         #if os(tvOS)
-        reduceMotion || !richEffects
+        reduceMotion || !motion
         #else
         reduceMotion
         #endif
@@ -460,7 +461,9 @@ struct FluxDock: View {
                             open: { openFanRow?($0) }, openList: { openFanList?() })
                 .fixedSize()
                 .modifier(FluxDockAnchored(placement: placement, along: centers[index], rise: metrics.label * 0.9, metrics: metrics, centred: false))
-                .transition(still ? .opacity : .opacity.combined(with: .scale(scale: 0.5, anchor: anchor)))
+                // It unfolds from its icon and folds back onto it, as the
+                // fan of a stack of the Dock does.
+                .transition(still ? .opacity : .fluxFan)
                 .id("fan-\(fan.anchorID)")
         }
     }
@@ -609,6 +612,25 @@ private struct FluxDockBubble: View {
     }
 }
 
+/// Whether an open folder is still closed on its icon: its titles start
+/// there and return there. The transition of the fan sets it, and each
+/// title reads it to unfold in its turn.
+private struct FluxFanFoldedKey: EnvironmentKey { static let defaultValue = false }
+private extension EnvironmentValues {
+    var fluxFanFolded: Bool {
+        get { self[FluxFanFoldedKey.self] }
+        set { self[FluxFanFoldedKey.self] = newValue }
+    }
+}
+private struct FluxFanFold: ViewModifier {
+    let folded: Bool
+    func body(content: Content) -> some View { content.environment(\.fluxFanFolded, folded) }
+}
+private extension AnyTransition {
+    /// The fan of a stack: folded on its icon when it comes and when it goes.
+    static var fluxFan: AnyTransition { .modifier(active: FluxFanFold(folded: true), identity: FluxFanFold(folded: false)) }
+}
+
 /// The titles of an open folder: one above the other from the bar, each
 /// with its name beside it, on a slight curve, as the fan of a stack.
 private struct FluxDockFanView: View {
@@ -620,6 +642,7 @@ private struct FluxDockFanView: View {
     let systemFocus: FocusState<String?>.Binding
     let open: (DockFanRow) -> Void
     let openList: () -> Void
+    @Environment(\.fluxFanFolded) private var folded
 
     private var side: CGFloat { metrics.tile * 0.9 }
     /// The names stand on the side where the window is: before the icons,
@@ -638,8 +661,18 @@ private struct FluxDockFanView: View {
                 Group {
                     if index < fan.rows.count { row(fan.rows[index]) } else { listRow }
                 }
-                .offset(x: curve(index))
-                .rotationEffect(.degrees(curved ? Double(index) * (rises ? 1 : -1) * 1.1 : 0), anchor: namesFirst ? .trailing : .leading)
+                // Folded, every title lies on the icon of the folder,
+                // small and straight; it leaves it in its turn, the
+                // nearest first, and returns the farthest first.
+                .offset(x: folded ? 0 : curve(index))
+                .rotationEffect(.degrees(curved && !folded ? Double(index) * (rises ? 1 : -1) * 1.1 : 0), anchor: namesFirst ? .trailing : .leading)
+                .scaleEffect(folded ? 0.34 : 1, anchor: namesFirst ? .trailing : .leading)
+                .offset(folded ? home(index) : .zero)
+                // Never quite invisible: what cannot be seen at all cannot
+                // take the remote of a television either.
+                .opacity(folded ? 0.02 : 1)
+                .animation(.spring(response: 0.36, dampingFraction: 0.74)
+                    .delay(Double(folded ? count - 1 - index : index) * (folded ? 0.014 : 0.03)), value: folded)
             }
         }
         #if os(tvOS)
@@ -653,6 +686,19 @@ private struct FluxDockFanView: View {
     /// Each row leans a little further than the one under it.
     private func curve(_ index: Int) -> CGFloat {
         curved ? CGFloat(index * index) * metrics.label * 0.085 : 0
+    }
+
+    /// From its place back to the icon of the folder: down a bar at the
+    /// bottom, up to one at the top, and towards a bar on a side.
+    private func home(_ index: Int) -> CGSize {
+        let pitch = side + metrics.label * 0.42
+        let back = CGFloat(index) * pitch + side * 0.75
+        switch placement {
+        case .top: return CGSize(width: 0, height: -back)
+        case .leading: return CGSize(width: -side, height: CGFloat(index) * pitch)
+        case .trailing: return CGSize(width: side, height: CGFloat(index) * pitch)
+        case .bottom, .corner: return CGSize(width: 0, height: back)
+        }
     }
 
     private func row(_ row: DockFanRow) -> some View {
