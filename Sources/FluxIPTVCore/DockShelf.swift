@@ -178,14 +178,16 @@ public struct DockArrangement: Equatable, Sendable {
     /// the oldest first. Then the shortcuts added last go into one more
     /// folder, at the end of the shortcuts: nothing that was kept is lost.
     /// The destinations, what is in progress and the folders always stay.
-    public func fitted(to limit: Int) -> DockArrangement {
+    /// `sparingRecents`: on the home screen the recents have a row of
+    /// their own to stand on, and only the shortcuts are too many.
+    public func fitted(to limit: Int, sparingRecents: Bool = false) -> DockArrangement {
         var groups = groups
         var hidden = hidden
         func total() -> Int { groups.reduce(0) { $0 + $1.count } }
         func isRecent(_ entry: DockEntry) -> Bool { if case .recent = entry { return true } else { return false } }
         func isShortcut(_ entry: DockEntry) -> Bool { if case .shortcut = entry { return true } else { return false } }
         func lastGroup(_ test: (DockEntry) -> Bool) -> Int? { groups.lastIndex { $0.contains(where: test) } }
-        while total() > limit, let g = lastGroup(isRecent), let i = groups[g].lastIndex(where: isRecent) {
+        while !sparingRecents, total() > limit, let g = lastGroup(isRecent), let i = groups[g].lastIndex(where: isRecent) {
             groups[g].remove(at: i)
         }
         let folded = groups.contains { $0.contains(.more) }
@@ -202,6 +204,64 @@ public struct DockArrangement: Equatable, Sendable {
             if let g = lastGroup(isShortcut) { groups[g].append(.more) } else { groups[anchor].append(.more) }
         }
         return DockArrangement(groups: groups, hidden: hidden)
+    }
+}
+
+extension DockArrangement {
+    /// What a group of the bar holds: its destinations, shortcuts, or what
+    /// is in progress and the folders.
+    private enum Part { case places, shortcuts, rest }
+    private static func part(_ group: [DockEntry]) -> Part {
+        switch group.first {
+        case .destination: .places
+        case .shortcut, .more: .shortcuts
+        default: .rest
+        }
+    }
+    /// How many shortcuts the bar shows, the folder of the others included.
+    public var shortcutCount: Int { groups.filter { Self.part($0) == .shortcuts }.reduce(0) { $0 + $1.count } }
+    /// What is in progress, the recents and the folders.
+    public var restCount: Int { groups.filter { Self.part($0) == .rest }.reduce(0) { $0 + $1.count } }
+
+    /// The bar of the home screen in one to three rows, so that its icons
+    /// keep their size as it fills: one row while everything holds on it;
+    /// then the destinations above all that the user keeps; then three
+    /// rows, the destinations, the shortcuts, and what is in progress with
+    /// the folders. `limit` is what one row holds.
+    public func rows(limit: Int) -> [DockArrangement] {
+        guard limit > 0, entries.count > limit else { return [self] }
+        let places = groups.filter { Self.part($0) == .places }
+        let kept = groups.filter { Self.part($0) != .places }
+        guard !places.isEmpty, !kept.isEmpty else { return [self] }
+        if kept.reduce(0, { $0 + $1.count }) <= limit {
+            return [DockArrangement(groups: places), DockArrangement(groups: kept, hidden: hidden)]
+        }
+        let shortcuts = kept.filter { Self.part($0) == .shortcuts }
+        let rest = kept.filter { Self.part($0) == .rest }
+        return [DockArrangement(groups: places), DockArrangement(groups: shortcuts, hidden: hidden), DockArrangement(groups: rest)]
+            .filter { !$0.entries.isEmpty }
+    }
+
+    /// A move of the keyboard among rows that are centred one above the
+    /// other: along a row to its ends, and up or down to the icon that
+    /// stands nearest above or below.
+    public static func move(from current: String, action: RemoteAction, rows: [[String]]) -> String {
+        guard let r = rows.firstIndex(where: { $0.contains(current) }), let i = rows[r].firstIndex(of: current) else {
+            return rows.first?.first ?? current
+        }
+        switch action {
+        case .left: return rows[r][max(0, i - 1)]
+        case .right: return rows[r][min(rows[r].count - 1, i + 1)]
+        case .up, .down:
+            let target = r + (action == .up ? -1 : 1)
+            guard rows.indices.contains(target), !rows[target].isEmpty else { return current }
+            // Each icon by its distance from the middle of its row.
+            let place = Double(i) - Double(rows[r].count - 1) / 2
+            let middle = Double(rows[target].count - 1) / 2
+            let nearest = rows[target].indices.min { abs(Double($0) - middle - place) < abs(Double($1) - middle - place) } ?? 0
+            return rows[target][nearest]
+        default: return current
+        }
     }
 }
 

@@ -4301,10 +4301,10 @@ extension FluxScreen {
         return dockItself(plan, fan: dockFanModel(plan))
     }
 
-    private func dockItself(_ plan: DockPlan, fan: DockFan?, hero: CGFloat? = nil) -> some View {
+    private func dockItself(_ plan: DockPlan, fan: DockFan?, hero: CGFloat? = nil, crowded: Bool = false) -> some View {
         FluxDock(tiles: dockTiles(plan), breaks: plan.arrangement.breaks, shrink: plan.shrink,
                  selection: hero == nil ? dockSelection : [], focusedID: shownFocusID, showsFocus: focusShown,
-                 accent: themeAccent, second: themeSecond, hero: hero,
+                 accent: themeAccent, second: themeSecond, hero: hero, crowded: crowded,
                  hover: hero == nil ? nil : { homeHover = $0?.id },
                  zoneRing: hero == nil && zoneMode && deskZoneEntry(.dock) != nil ? zoneFocus == .dock : nil,
                  fan: fan, systemFocus: nativeFocus,
@@ -4639,17 +4639,33 @@ extension FluxScreen {
         var arrangement = shelf.arrangement(destinations: destinations, sourceID: library.selectedSourceID,
                                             lists: library.presets.lists.map(\.id), recentCount: dockRecents ? 3 : 0, resume: resume)
         let room = dockLength(position)
-        let capacity = FluxDockMetrics.capacity(position, room: room, breaks: arrangement.breaks.count)
-        if arrangement.entries.count > capacity { arrangement = arrangement.fitted(to: max(capacity, destinations.count + 1)) }
+        if hero {
+            // The home screen gives the bar up to three rows instead of
+            // making its icons smaller: only the shortcuts that their own
+            // row cannot hold go into the folder of the others.
+            let surplus = arrangement.shortcutCount - heroRowLimit
+            if arrangement.entries.count > heroRowLimit, surplus > 0 {
+                arrangement = arrangement.fitted(to: arrangement.entries.count - surplus, sparingRecents: true)
+            }
+        } else {
+            let capacity = FluxDockMetrics.capacity(position, room: room, breaks: arrangement.breaks.count)
+            if arrangement.entries.count > capacity { arrangement = arrangement.fitted(to: max(capacity, destinations.count + 1)) }
+        }
         let stacks = arrangement.entries.compactMap { entry -> String? in
             guard case .stack(let id) = entry, let list = library.presets.list(id: id) else { return nil }
             return "\(id)|\(list.name)|\(list.itemIDs.count)|\(list.itemIDs.hashValue)"
         }
         let progress = resume?.playedID.flatMap { playback.history.entries[$0] }.map { Int(($0.fraction * 50).rounded()) }
         return DockPlan(arrangement: arrangement,
-                        shrink: FluxDockMetrics.shrink(position, count: arrangement.entries.count, breaks: arrangement.breaks.count, room: room),
+                        shrink: hero ? 1 : FluxDockMetrics.shrink(position, count: arrangement.entries.count, breaks: arrangement.breaks.count, room: room),
                         stacks: stacks, progress: progress, catalogue: library.browsingRevision, ready: library.browsingCatalogReady)
     }
+
+    /// What one row of the bar of the home screen holds.
+    private var heroRowLimit: Int { FluxDockMetrics.heroRowCapacity(width: deskWidth > 0 ? deskWidth : 1920 * Desk.scale) }
+    /// The bar of the home screen: one row while it holds on one, then two,
+    /// then three.
+    func heroRows(_ plan: DockPlan) -> [DockArrangement] { plan.arrangement.rows(limit: heroRowLimit) }
 
     /// The titles of a list, in the order of their names: a list keeps
     /// them in none.
@@ -5266,9 +5282,13 @@ extension FluxScreen {
             } else { dockFan = nil }
         }
         if showsHome {
-            // The home screen is its bar: Left and Right walk it.
-            let ids = dockPlan(hero: true).ids
+            // The home screen is its bar: Left and Right walk it, and Up
+            // and Down its rows when it has several.
+            let plan = dockPlan(hero: true)
+            let ids = plan.ids
             guard let focusID, ids.contains(focusID) else { return currentDockID }
+            let rows = heroRows(plan).map { $0.entries.map(\.id) }
+            if rows.count > 1 { return DockArrangement.move(from: focusID, action: action, rows: rows) }
             return FluxDockNavigation.move(from: focusID, action: action, position: .bottom, dockIDs: ids,
                                            preferredDockID: currentDockID, entryID: nil) { current, _ in current }
         }
@@ -5424,18 +5444,34 @@ extension FluxScreen {
     var deskHome: some View {
         GeometryReader { geometry in
             let plan = dockPlan(hero: true)
-            // The more the bar holds, the less each icon takes of the window.
-            let scale = FluxDockMetrics.heroScale(count: plan.arrangement.entries.count, breaks: plan.arrangement.breaks.count,
-                                                  width: geometry.size.width, height: geometry.size.height)
+            // As it fills, the bar takes a second row, then a third: its
+            // icons keep their size instead of sharing one row.
+            let rows = heroRows(plan)
+            let longest = rows.max { $0.entries.count < $1.entries.count } ?? plan.arrangement
+            let scale = FluxDockMetrics.heroScale(count: longest.entries.count, breaks: longest.breaks.count,
+                                                  width: geometry.size.width, height: geometry.size.height, rows: rows.count)
             let headline = homeHeadline(plan)
             // Transparent room that the bar keeps above its plate for the
             // icons that grow under the pointer.
             let growth = FluxDockMetrics(hero: scale).growth
+            let fan = dockFanModel(plan)
             ZStack {
                 if dockFan != nil { dockFanVeil }
                 // The plate of the bar is in the middle of the window; the
-                // name of what is pointed at stands above it.
-                dockItself(plan, fan: dockFanModel(plan), hero: scale)
+                // name of what is pointed at stands above it. Each row
+                // keeps above it the room where its icons grow: the rows
+                // are brought closer, and a lower one is drawn over the
+                // one above it.
+                VStack(spacing: rows.count > 1 ? -growth * 0.62 : 0) {
+                    ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
+                        dockItself(DockPlan(arrangement: row, shrink: 1, stacks: plan.stacks, progress: plan.progress,
+                                            catalogue: plan.catalogue, ready: plan.ready),
+                                   fan: fan, hero: scale, crowded: rows.count > 1)
+                            #if os(tvOS)
+                            .focusSection()
+                            #endif
+                    }
+                }
                     .overlay(alignment: .top) {
                         ZStack {
                             VStack(spacing: 8 * scale) {
@@ -5454,7 +5490,7 @@ extension FluxScreen {
                         // An open folder rises where the name stands.
                         .opacity(dockFan == nil ? 1 : 0)
                         .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: headline.id)
-                        .alignmentGuide(.top) { $0[.bottom] - growth + 34 * scale }
+                        .alignmentGuide(.top) { $0[.bottom] - growth + 18 * scale }
                         .allowsHitTesting(false)
                     }
                     .offset(y: -growth / 2)

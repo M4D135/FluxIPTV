@@ -33,12 +33,19 @@ struct FluxDockMetrics: Equatable {
     /// The icons of a long bar shrink a little to hold in the window, never
     /// below `floor`: a television is read from the sofa.
     let shrink: CGFloat
+    /// The bar of the home screen stands on several rows: its icons grow
+    /// less, so that those of one row do not reach into the row above.
+    let crowded: Bool
     static let floor: CGFloat = 0.82
     init(_ position: FluxDockPosition, shrink: CGFloat = 1) {
         form = position.isCompact ? .compact : .regular
         self.shrink = max(Self.floor, min(1, shrink))
+        crowded = false
     }
-    init(hero scale: CGFloat) { form = .hero(max(Self.heroFloor, min(Self.heroLimit, scale))); shrink = 1 }
+    init(hero scale: CGFloat, crowded: Bool = false) {
+        form = .hero(max(Self.heroFloor, min(Self.heroLimit, scale))); shrink = 1
+        self.crowded = crowded
+    }
 
     /// The bar of a television, read from the sofa; a Mac draws the same
     /// at the size of its window.
@@ -71,7 +78,9 @@ struct FluxDockMetrics: Equatable {
     var label: CGFloat { max(unit.map { 15.5 * $0 } ?? 11 * k, Desk.tv(18)) }
     var labelSpacing: CGFloat { unit.map { 11 * $0 } ?? 5 * k }
     var radius: CGFloat { unit.map { 46 * $0 } ?? (compact ? 20 : 28) * k }
-    var maximumScale: Double { hero ? 1.2 : compact ? 1.34 : 1.42 }
+    /// The icons of the home screen grow as much as those of the bar: the
+    /// same wave under the same selection.
+    var maximumScale: Double { hero ? (crowded ? 1.22 : 1.36) : compact ? 1.34 : 1.42 }
     /// Room of the divider between two parts of the bar, and its line.
     var gap: CGFloat { unit.map { 22 * $0 } ?? (compact ? 6 : 12) * k }
     var rule: CGFloat { max(1.5, (unit ?? k) * 1.5) }
@@ -83,7 +92,7 @@ struct FluxDockMetrics: Equatable {
     }
     /// Transparent room around the plate for magnified icons. It tracks the
     /// pointer but never receives a click.
-    var growth: CGFloat { unit.map { 44 * $0 } ?? (compact ? 18 : 40) * k }
+    var growth: CGFloat { unit.map { 62 * $0 } ?? (compact ? 18 : 40) * k }
     static var edgeMargin: CGFloat { Desk.tv(10) }
 
     /// Width or height that the screen must leave free on the bar's edge.
@@ -114,13 +123,25 @@ struct FluxDockMetrics: Equatable {
     }
     /// Scale of the bar of the home screen for these icons in this room,
     /// worked out in the points of a television.
-    static func heroScale(count: Int, breaks: Int, width: CGFloat, height: CGFloat) -> CGFloat {
+    /// `count` and `breaks` are those of its longest row.
+    static func heroScale(count: Int, breaks: Int, width: CGFloat, height: CGFloat, rows: Int = 1) -> CGFloat {
         // The length of the bar at the scale of one, in those points.
         let natural = CGFloat(count) * 138 + CGFloat(max(0, count - 1)) * 10 + CGFloat(breaks) * 22 + 40
         let share = max(0.01, Desk.scale)
-        // 92: the room where the icons grow, on both sides of the plate.
-        let fitted = min((width / share - 96) / (natural + 92), (height / share - 120) / 620)
+        // What the name above the bar and one row take, then each row more.
+        let tall = 620 + CGFloat(max(0, rows - 1)) * 222
+        // 128: the room where the icons grow, on both sides of the plate.
+        let fitted = min((width / share - 96) / (natural + 128), (height / share - 120) / tall)
         return share * min(1.2, max(0.6, fitted))
+    }
+    /// Icons that one row of the home screen holds before they would be
+    /// drawn smaller than nine tenths of their size: past it the bar takes
+    /// one more row instead.
+    static func heroRowCapacity(width: CGFloat) -> Int {
+        let share = max(0.01, Desk.scale)
+        // Two dividers of 22, the plate and the room where the icons grow.
+        let free = (width / share - 96) / 0.9 - 128 - 40 - 44 + 10
+        return max(6, Int(free / 148))
     }
 }
 
@@ -195,6 +216,8 @@ struct FluxDock: View {
     let second: Color
     /// Scale of the home screen's bar; nil for the bar on its edge.
     var hero: CGFloat?
+    /// One of several rows of the home screen.
+    var crowded = false
     /// Icon under the pointer, for a screen that describes it.
     var hover: ((DockTile?) -> Void)?
     /// Frame of the bar while the zones of the screen are shown: nil outside
@@ -246,7 +269,7 @@ struct FluxDock: View {
     /// the user chose for the other screens.
     private var placement: FluxDockPosition { hero == nil ? position : .bottom }
     private var vertical: Bool { placement.isVertical }
-    private var metrics: FluxDockMetrics { hero.map { FluxDockMetrics(hero: $0) } ?? FluxDockMetrics(position, shrink: shrink) }
+    private var metrics: FluxDockMetrics { hero.map { FluxDockMetrics(hero: $0, crowded: crowded) } ?? FluxDockMetrics(position, shrink: shrink) }
     private var magnifier: FluxDockMagnifier {
         let extent = Double(vertical ? metrics.cell.height : metrics.cell.width)
         return FluxDockMagnifier(count: tiles.count, cell: extent, spacing: Double(metrics.spacing),
@@ -293,9 +316,16 @@ struct FluxDock: View {
         #if os(tvOS)
         return focusIndex != nil && magnifies && !reduceMotion ? 1 : 0
         #else
-        return hovering && magnifies && dragged == nil && !reduceMotion ? 1 : 0
+        guard magnifies, dragged == nil, !reduceMotion else { return 0 }
+        return hovering || keyboardIndex != nil ? 1 : 0
         #endif
     }
+    #if !os(tvOS)
+    /// The icon that the keyboard selects grows as the one under the
+    /// pointer does, its neighbours with it: the wave of the Dock follows
+    /// the arrows when no pointer is on the bar.
+    private var keyboardIndex: Int? { showsFocus ? focusIndex : nil }
+    #endif
     private var magnifiedPoint: Double {
         #if os(tvOS)
         return focusIndex.map { magnifier.center($0) } ?? pointer
@@ -303,6 +333,7 @@ struct FluxDock: View {
         #if FLUX_CATALOG_UI_TESTING
         if let fixturePointer, tiles.indices.contains(fixturePointer) { return magnifier.center(fixturePointer) }
         #endif
+        if !hovering, let index = keyboardIndex { return magnifier.center(index) }
         return pointer
         #endif
     }
@@ -344,6 +375,9 @@ struct FluxDock: View {
             .animation(still ? nil : .spring(response: 0.28, dampingFraction: 0.82), value: focusIndex)
             .padding(growthInsets)
             #else
+            // Under the keyboard the wave slides from one icon to the next;
+            // under the pointer it follows the hand, picture by picture.
+            .animation(still || hovering ? nil : .spring(response: 0.28, dampingFraction: 0.82), value: keyboardIndex)
             .coordinateSpace(name: "flux-dock")
             // The menu belongs to the plate; the transparent room around it
             // must leave a secondary click to the screen underneath.

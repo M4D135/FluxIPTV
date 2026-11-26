@@ -688,6 +688,32 @@ final class TVRemoteNavigationTests: XCTestCase {
         print("PASS: TV_REMOTE Lecture/Pause walked the zones of a page of sixty films: the bar, the search, the column, and back to the title that was left")
     }
 
+    /// As it fills, the bar of the home screen takes a second row instead
+    /// of making its icons smaller: the destinations above what the user
+    /// keeps. Down and Up go from one row to the other.
+    @MainActor
+    func testTheHomeScreenTakesASecondRowAsItFills() {
+        let app = launch("dock-home")
+        defer { app.terminate() }
+        let films = element("navigation-tab-movie", in: app)
+        let folder = element("navigation-dock-stack-default-movie", in: app)
+        assertFocus(films, logical: "tab-movie", in: app)
+        // Two rows: the folder stands under the destinations, not beside them.
+        XCTAssertGreaterThan(folder.frame.minY, films.frame.maxY, "What is kept has a row of its own.")
+        XCTAssertGreaterThan(films.frame.width, 150, "The icons keep their size.")
+        retainScreenshot("home-rows-01-two-rows", in: app)
+        XCUIRemote.shared.press(.down)
+        let kept = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@ OR identifier BEGINSWITH %@",
+                                                    "navigation-dock-item-", "navigation-dock-re"))
+        assertOneHasFocus((0..<kept.count).map { kept.element(boundBy: $0) }, in: app)
+        retainScreenshot("home-rows-02-second-row", in: app)
+        // To the right along the second row, down to its folder.
+        move(.right, to: folder, maximumPresses: 9, in: app)
+        XCUIRemote.shared.press(.up)
+        assertOneHasFocus(Self.dockKeys.map { element($0, in: app) }, in: app)
+        print("PASS: TV_REMOTE the bar of the home screen stood on two rows, and Down and Up went from one to the other")
+    }
+
     /// Keys of the dock, in their default order.
     /// Back returns one screen at a time, as in a web browser. Held, it goes
     /// straight to the home screen: the Back key of the bar under OK held

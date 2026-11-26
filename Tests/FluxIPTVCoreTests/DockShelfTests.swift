@@ -228,4 +228,60 @@ final class DockShelfTests: XCTestCase {
         XCTAssertEqual(plain.layout(pointer: 250), FluxDockMagnifier(count: 6, cell: 100, spacing: 10, maximumScale: 1.4, radius: 240,
                                                                      breaks: [], gap: 20).layout(pointer: 250))
     }
+
+    /// On the home screen the bar takes a second row, then a third, as it
+    /// fills, instead of making its icons smaller.
+    func testTheBarOfTheHomeScreenTakesRowsAsItFills() {
+        var shelf = DockShelf()
+        let places: [FluxDockItem] = [.live, .movie, .series, .search, .favorites, .settings]
+        for index in 0..<4 { XCTAssertTrue(shelf.assign(DockShortcut(item: item("f\(index)", .movie)), to: [DockShelf.defaultSectionID])) }
+        shelf.setStack("list", shown: true)
+        var bar = shelf.arrangement(destinations: places, sourceID: source, lists: ["list"], resume: nil)
+        // Eleven icons hold on one row of twelve.
+        XCTAssertEqual(bar.rows(limit: 12).map(\.entries.count), [11])
+        // More than a row: the destinations above everything that is kept.
+        for index in 4..<9 { XCTAssertTrue(shelf.assign(DockShortcut(item: item("f\(index)", .movie)), to: [DockShelf.defaultSectionID])) }
+        bar = shelf.arrangement(destinations: places, sourceID: source, lists: ["list"], resume: nil)
+        let two = bar.rows(limit: 12)
+        XCTAssertEqual(two.map(\.entries.count), [6, 10])
+        XCTAssertEqual(two[0].entries.map(\.id), places.map(\.focusID))
+        XCTAssertEqual(two[1].breaks, [9])
+        XCTAssertEqual(bar.shortcutCount, 9)
+        XCTAssertEqual(bar.restCount, 1)
+        // More than two rows: the shortcuts have a row, the folders another.
+        for index in 9..<12 { XCTAssertTrue(shelf.assign(DockShortcut(item: item("f\(index)", .movie)), to: [DockShelf.defaultSectionID])) }
+        shelf.visit(DockShortcut(item: item("recent", .live)))
+        bar = shelf.arrangement(destinations: places, sourceID: source, lists: ["list"], resume: nil)
+        let three = bar.rows(limit: 12)
+        XCTAssertEqual(three.map(\.entries.count), [6, 12, 2])
+        XCTAssertEqual(three.flatMap { $0.entries.map(\.id) }, bar.entries.map(\.id))
+        // The shortcuts that a row cannot hold go into the folder of the
+        // others, and the recents keep their place on the last row.
+        for index in 12..<16 { XCTAssertTrue(shelf.assign(DockShortcut(item: item("f\(index)", .movie)), to: [DockShelf.defaultSectionID])) }
+        bar = shelf.arrangement(destinations: places, sourceID: source, lists: ["list"], resume: nil)
+        let fitted = bar.fitted(to: bar.entries.count - (bar.shortcutCount - 12), sparingRecents: true)
+        XCTAssertEqual(fitted.shortcutCount, 12)
+        XCTAssertEqual(fitted.hidden.count, 5)
+        XCTAssertEqual(fitted.restCount, 2)
+        XCTAssertEqual(fitted.rows(limit: 12).map(\.entries.count), [6, 12, 2])
+        XCTAssertEqual(fitted.rows(limit: 12)[1].hidden.count, 5)
+    }
+
+    func testTheArrowsWalkTheRowsOfTheHomeScreen() {
+        let rows = [["a", "b", "c", "d", "e", "f"], ["g", "h"], ["i", "j", "k", "l"]]
+        XCTAssertEqual(DockArrangement.move(from: "b", action: .right, rows: rows), "c")
+        XCTAssertEqual(DockArrangement.move(from: "a", action: .left, rows: rows), "a")
+        XCTAssertEqual(DockArrangement.move(from: "f", action: .right, rows: rows), "f")
+        // Down and up reach the icon that stands nearest under or over.
+        XCTAssertEqual(DockArrangement.move(from: "a", action: .down, rows: rows), "g")
+        XCTAssertEqual(DockArrangement.move(from: "f", action: .down, rows: rows), "h")
+        XCTAssertEqual(DockArrangement.move(from: "g", action: .down, rows: rows), "j")
+        XCTAssertEqual(DockArrangement.move(from: "h", action: .down, rows: rows), "k")
+        XCTAssertEqual(DockArrangement.move(from: "l", action: .up, rows: rows), "h")
+        XCTAssertEqual(DockArrangement.move(from: "g", action: .up, rows: rows), "c")
+        // Past the first and the last row nothing moves.
+        XCTAssertEqual(DockArrangement.move(from: "c", action: .up, rows: rows), "c")
+        XCTAssertEqual(DockArrangement.move(from: "k", action: .down, rows: rows), "k")
+        XCTAssertEqual(DockArrangement.move(from: "nowhere", action: .down, rows: rows), "a")
+    }
 }
