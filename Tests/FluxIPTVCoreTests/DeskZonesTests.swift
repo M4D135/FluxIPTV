@@ -123,20 +123,21 @@ final class DeskZonesTests: XCTestCase {
         XCTAssertEqual(move("desk-back", .down, sidebar: []), "page-prev")
     }
 
-    /// One key walks the zones from the content: the bar first, then the
-    /// line of the search, the column, and the content again.
-    func testOneKeyHopsFromTheContentToTheBarThenTheTopThenTheColumn() {
+    /// One key goes round the zones as the hands of a clock: from the
+    /// content to the bar below, the column on the left, the line of the
+    /// search above, and the content again.
+    func testOneKeyGoesRoundTheZonesAsTheHandsOfAClock() {
         let available: [DeskZone] = [.top, .column, .content, .dock]
         XCTAssertEqual(DeskZoneMap.hop(from: .content, forward: true, available: available), .dock)
-        XCTAssertEqual(DeskZoneMap.hop(from: .dock, forward: true, available: available), .top)
-        XCTAssertEqual(DeskZoneMap.hop(from: .top, forward: true, available: available), .column)
-        XCTAssertEqual(DeskZoneMap.hop(from: .column, forward: true, available: available), .content)
+        XCTAssertEqual(DeskZoneMap.hop(from: .dock, forward: true, available: available), .column)
+        XCTAssertEqual(DeskZoneMap.hop(from: .column, forward: true, available: available), .top)
+        XCTAssertEqual(DeskZoneMap.hop(from: .top, forward: true, available: available), .content)
         // Backwards, the same walk the other way.
-        XCTAssertEqual(DeskZoneMap.hop(from: .content, forward: false, available: available), .column)
+        XCTAssertEqual(DeskZoneMap.hop(from: .content, forward: false, available: available), .top)
         XCTAssertEqual(DeskZoneMap.hop(from: .dock, forward: false, available: available), .content)
-        // The actions beside a channel come after the column when they are there.
-        XCTAssertEqual(DeskZoneMap.hop(from: .column, forward: true, available: available + [.actions]), .actions)
-        XCTAssertEqual(DeskZoneMap.hop(from: .actions, forward: true, available: available + [.actions]), .content)
+        // The actions on the right of a channel come first when they are there.
+        XCTAssertEqual(DeskZoneMap.hop(from: .content, forward: true, available: available + [.actions]), .actions)
+        XCTAssertEqual(DeskZoneMap.hop(from: .actions, forward: true, available: available + [.actions]), .dock)
         // From nowhere the walk starts in the content; a screen of one zone has nowhere to go.
         XCTAssertEqual(DeskZoneMap.hop(from: nil, forward: true, available: available), .content)
         XCTAssertNil(DeskZoneMap.hop(from: .dock, forward: true, available: [.dock]))

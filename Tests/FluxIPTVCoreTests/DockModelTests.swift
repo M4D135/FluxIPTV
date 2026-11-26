@@ -113,6 +113,64 @@ final class DockModelTests: XCTestCase {
                                                preferredDockID: nil, entryID: nil, content: stuck), "item-3")
     }
 
+    /// "ne pas laisser de fonctionnalité vide": a fresh press at an edge of
+    /// the screen goes to Back or to the dock, and the bar is a ring.
+    func testAFreshPressLeavesNoDeadKey() {
+        let dock = ["desk-back", "tab-live", "tab-movie", "search"]
+        func stuck(_ id: String?, _ action: RemoteAction) -> String? { id }
+        func move(_ from: String, _ action: RemoteAction, fresh: Bool = true, position: FluxDockPosition = .bottom,
+                  ids: [String] = dock, top: String? = "find") -> String? {
+            FluxDockNavigation.move(from: from, action: action, position: position, dockIDs: ids, preferredDockID: "tab-movie",
+                                    entryID: "item-3", backID: "desk-back", topID: top, fresh: fresh, content: stuck)
+        }
+        // From an edge of the screen: Left to Back, every other way to the icon of the screen.
+        XCTAssertEqual(move("item-3", .left), "desk-back")
+        XCTAssertEqual(move("item-3", .right), "tab-movie")
+        XCTAssertEqual(move("item-3", .up), "tab-movie")
+        XCTAssertEqual(move("item-3", .down), "tab-movie")
+        // A key held down stops at the edge, as it did.
+        XCTAssertEqual(move("item-3", .left, fresh: false), "item-3")
+        XCTAssertEqual(move("item-3", .right, fresh: false), "item-3")
+        XCTAssertEqual(move("item-3", .down, fresh: false), "tab-movie")
+        // Past one end of the bar comes the other; away from the screen, its top.
+        XCTAssertEqual(move("desk-back", .left), "search")
+        XCTAssertEqual(move("search", .right), "desk-back")
+        XCTAssertEqual(move("tab-live", .down), "find")
+        XCTAssertEqual(move("desk-back", .left, fresh: false), "desk-back")
+        XCTAssertEqual(move("search", .right, fresh: false), "search")
+        XCTAssertEqual(move("tab-live", .down, fresh: false), "tab-live")
+        XCTAssertEqual(move("tab-live", .down, top: nil), "tab-live")
+        // From Back: Up to where the list was left, Right along the bar.
+        XCTAssertEqual(move("desk-back", .up), "item-3")
+        XCTAssertEqual(move("desk-back", .right), "tab-live")
+        XCTAssertEqual(move("tab-live", .left), "desk-back")
+        // A move the screen can make is made.
+        XCTAssertEqual(FluxDockNavigation.move(from: "item-3", action: .left, position: .bottom, dockIDs: dock,
+                                               preferredDockID: "tab-movie", entryID: nil, backID: "desk-back", topID: "find",
+                                               fresh: true) { _, _ in "item-2" }, "item-2")
+        // Without Back in the bar, Left goes to the icon of the screen; a bar on the left edge takes Left itself.
+        XCTAssertEqual(move("item-3", .left, ids: ["tab-live", "tab-movie"]), "tab-movie")
+        XCTAssertEqual(move("item-3", .left, position: .leading), "tab-movie")
+        // A bar on a side is a ring along Up and Down.
+        XCTAssertEqual(move("desk-back", .up, position: .leading), "search")
+        XCTAssertEqual(move("search", .down, position: .trailing), "desk-back")
+        XCTAssertNil(FluxDockNavigation.beyond("item-3", action: .select, position: .bottom, dockIDs: dock,
+                                               preferredDockID: "tab-movie", backID: "desk-back", topID: "find"))
+        XCTAssertNil(FluxDockNavigation.beyond("tab-live", action: .right, position: .bottom, dockIDs: dock,
+                                               preferredDockID: "tab-movie", backID: "desk-back", topID: "find"))
+    }
+
+    func testOnlyAPressAfterAPauseIsFresh() {
+        let cadence = FluxPressCadence()
+        XCTAssertTrue(cadence.press(at: 10))
+        XCTAssertFalse(cadence.press(at: 10.1), "A run of presses stops at the edge.")
+        XCTAssertFalse(cadence.press(at: 10.3))
+        XCTAssertTrue(cadence.press(at: 10.8), "After a pause the next press goes beyond it.")
+        XCTAssertFalse(cadence.press(at: 12, held: true), "A key held down is never fresh.")
+        XCTAssertFalse(cadence.press(at: 12.2))
+        XCTAssertTrue(cadence.press(at: 12.2 + FluxPressCadence.pause + 0.05))
+    }
+
     func testDeskNavigationCrossesColumnGridAndActions() {
         let items = slice(5), sidebar = ["all", "favorites", "sports"], actions = ["watch", "favorite"]
         func move(_ from: String?, _ action: RemoteAction, columns: Int = 2, toolbar: [[String]] = [["reload"], ["page-prev", "page-next"]]) -> String? {

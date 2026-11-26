@@ -24,8 +24,6 @@ public enum MediaEnvironment: String, CaseIterable, Codable, Identifiable, Senda
     public var symbol: String {
         switch self { case .cinema: "film"; case .videoClub: "film.stack"; case .livingRoom: "tv" }
     }
-    /// Filename without extension; matches the reproducible room render recipes.
-    public func assetName(theme: VideoClubTheme) -> String { "\(rawValue)-\(theme.rawValue)" }
 }
 
 /// Stable keys keep the three theme choices independent and migrate old installs

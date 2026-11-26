@@ -1,6 +1,8 @@
-# FLUX IPTV 0.9.2 — build 40 — Bureau Mac : dock, colonnes et panneaux de verre
+# FLUX IPTV 0.9.3 — build 41 — Bureau Mac : dock, colonnes et panneaux de verre
 
 Application native SwiftUI pour macOS, iOS et tvOS.
+
+**La 0.9.3 ouvre le studio d’apparence.** Chaque écran — accueil, TV, Films, Séries, Recherche, Réglages — garde son fond et son thème de dock, ou suit ceux de tous les écrans. Il y a seize fonds dessinés et un diaporama réglé écran par écran ; les anciens décors, avec leurs enseignes « FLUX », sont retirés. De nouveaux fonds sont à dessiner ([docs/FONDS-A-DESSINER.md](docs/FONDS-A-DESSINER.md)). Le dock a quinze thèmes en quatre familles, du verre d’aujourd’hui aux pixels de 1977. Ce que le curseur pointe s’essaie aussitôt en plein écran, et OK le garde. Trois préréglages règlent l’affichage d’un coup, de **Fluide**, pour une Apple TV ancienne, à **Qualité**. Au bord de l’écran, aucune flèche ne reste sans effet. **Lecture/Pause** fait le tour des zones dans le sens des aiguilles d’une montre. L’application a maintenant son icône.
 
 **La 0.9.2 répare le dock sur Apple TV** : en tvOS 26, la sélection avançait dans la barre — on l’entendait — mais le dock restait dessiné sur l’icône de l’écran, sans grossir. Il suit de nouveau la télécommande, et l’icône sélectionnée grossit avec ses voisines comme sous le pointeur d’un Mac.
 
@@ -16,7 +18,7 @@ Les deux plateformes partagent les mêmes écrans, **aux mêmes proportions**. L
 
 ### Accueil
 
-L’application s’ouvre sur l’accueil : TV, Films, Séries, Recherche, Favoris et Réglages forment un grand dock au milieu de la fenêtre, sur le décor adouci de l’espace. Le nom de la destination pointée s’affiche au-dessus avec son effectif — chaînes, films, séries, listes — et le décor devient celui de cet espace. Un clic, ou **Entrée**, ouvre la destination ; une section s’ouvre là où elle a été laissée.
+L’application s’ouvre sur l’accueil : TV, Films, Séries, Recherche, Favoris et Réglages forment un grand dock au milieu de la fenêtre, sur le fond adouci de l’écran. Le nom de la destination pointée s’affiche au-dessus avec son effectif — chaînes, films, séries, listes — et le fond devient celui de cet écran. Un clic, ou **Entrée**, ouvre la destination ; une section s’ouvre là où elle a été laissée.
 
 **Retour** est le bouton Précédent d’un navigateur : il referme d’abord ce qui est ouvert dans l’écran — une fiche, une liste, un panneau —, puis revient à l’écran précédent, écran après écran, dans l’ordre exact où ils ont été ouverts, jusqu’à l’accueil. Chaque écran se retrouve sur le titre qui y était sélectionné. À gauche du dock, un bouton porte le nom de l’écran où Retour ramène, et une maison ramène directement à l’accueil.
 
@@ -32,14 +34,20 @@ Au-dessus du catalogue, une seule ligne : le nom de ce qui est affiché et ce qu
 
 Sur Apple TV, **Menu** est ce Retour et ne fait rien d’autre. Chaque colonne de l’écran répond comme un tout à la flèche qui pointe vers elle : depuis la liste, **Gauche** mène à la colonne de navigation, **Droite** à Regarder et Favoris, **Haut** à la recherche, **Bas** au dock, où que la télécommande se trouve dans la liste. La colonne s’ouvre sur la ligne de ce qui est affiché — toutes les chaînes, une liste, une catégorie — et non sur celle qui se trouve à la hauteur d’où l’on vient ; **Droite** en ressort sur le titre que l’on venait de quitter.
 
-Au clavier du Mac comme à la télécommande, Retour revient directement en arrière. Une longue liste met la ligne de la recherche et la barre du bas à beaucoup de flèches d’un titre : **une touche passe d’une zone à l’autre** — **Tab** au clavier (**⇧Tab** en sens inverse), **Lecture/Pause** sur la télécommande d’une Apple TV. Depuis le contenu, un appui mène à la barre, un deuxième à la recherche, un troisième à la colonne, un quatrième au titre que l’on avait quitté ; la barre le rappelle au-dessus de l’heure. Sur le Mac, **⌘ + une flèche** va droit à la zone de ce côté : ⌘↑ la recherche, ⌘↓ la barre, ⌘← la colonne, ⌘→ le contenu. Réglages › Interface permet de faire d’abord afficher par Retour la boussole des zones : elle encadre **Haut** (recherche, actualiser, pages), **Colonne**, **Contenu**, **Aperçu** pour la télévision et **Dock**, et écrit où mène chaque flèche ; une flèche saute dans la zone voisine, **OK** la referme, Retour une seconde fois revient à l’écran précédent.
+Au clavier du Mac comme à la télécommande, Retour revient directement en arrière. Une longue liste met la ligne de la recherche et la barre du bas à beaucoup de flèches d’un titre : **une touche passe d’une zone à l’autre** — **Tab** au clavier (**⇧Tab** en sens inverse), **Lecture/Pause** sur la télécommande d’une Apple TV. Elle fait le tour de l’écran dans le sens des aiguilles d’une montre : depuis le contenu, un appui mène à la barre (après les boutons à droite de l’aperçu d’une chaîne), un deuxième à la colonne, un troisième à la recherche, un quatrième au titre que l’on avait quitté ; la barre le rappelle au-dessus de l’heure (« Zone suivante »). **Aucune touche n’est morte au bord de l’écran** : Gauche depuis la colonne mène au bouton Retour, Haut depuis Retour revient où l’on était ; Droite au bout d’une rangée et Haut depuis la recherche mènent à l’icône de l’écran ; la barre fait le tour, et Bas depuis elle remonte à la recherche. Une rafale d’appuis s’arrête au bord, l’appui suivant après une courte pause le franchit. Sur le Mac, **⌘ + une flèche** va droit à la zone de ce côté : ⌘↑ la recherche, ⌘↓ la barre, ⌘← la colonne, ⌘→ le contenu. Réglages › Interface permet de faire d’abord afficher par Retour la boussole des zones : elle encadre **Haut** (recherche, actualiser, pages), **Colonne**, **Contenu**, **Aperçu** pour la télévision et **Dock**, et écrit où mène chaque flèche ; une flèche saute dans la zone voisine, **OK** la referme, Retour une seconde fois revient à l’écran précédent.
 
 ### Dock
 
 Hors de l’accueil, le dock se tient en bas de l’écran, au centre, comme le Dock de macOS, avec les mêmes icônes et le même thème que sur l’accueil. Rien de sa bande n’est perdu : Retour et Accueil sont à sa gauche, la date et l’heure à sa droite, et les colonnes s’arrêtent nettement au-dessus de lui. Les icônes grossissent sous le pointeur comme dans le Dock du système : celle qui est survolée vient en avant, ses voisines suivent, et le point sous le pointeur ne bouge pas. Un trait marque la destination affichée.
 
 - **Emplacement** : en bas au centre (par défaut), sous la colonne de navigation, en haut, ou en colonne à gauche ou à droite. Sous la colonne, le dock est compact et les autres colonnes descendent jusqu’au bord ; Retour et Accueil passent alors en tête de colonne.
-- **Thèmes** : Verre, Couleurs, Fumé, Néon et Sans fond.
+- **Thèmes** : quinze, en quatre familles.
+  - Flux : Verre, Couleurs, Fumé, Néon, Sans fond.
+  - Téléphones et bureaux d’aujourd’hui : Tactile, Galets, Givre.
+  - Années 2000 : Gélule, Collines.
+  - Rétro : Biseaux, Huit couleurs, Quatre couleurs, Bureau vert, Phosphore.
+
+  Ils rappellent des systèmes connus sans reprendre ni leur nom ni leurs images. Chaque écran peut garder le sien, depuis le studio d’apparence.
 - **Ordre** : glisser une icône dans le dock, ou utiliser les flèches de Réglages › Dock.
 - Un clic secondaire sur le dock donne l’emplacement, le thème et l’agrandissement.
 
@@ -96,21 +104,31 @@ Les flèches déplacent la sélection entre la colonne, la grille, l’aperçu e
 
 Dans **Réglages**, les flèches vont d’un contrôle à l’autre : parcourir la colonne affiche chaque page, **Droite** entre dans la page, **Gauche** revient sur la page en cours, **Entrée** fait ce que fait un clic, et au-delà de la dernière ligne la sélection revient au dock. **Tab** passe de la colonne à la page, puis au dock.
 
-## Trois espaces, six thèmes chacun
+## Studio d’apparence
 
-| Contenu | Espace | Présentation |
-|---|---|---|
-| Films | Cinéma | Hall, salle, fauteuils, éclairage de séance |
-| Séries | Vidéoclub | Rayons de séries, puis saisons et épisodes |
-| Direct | Salon TV | Canapé, meuble TV, lumières domestiques |
+Réglages › Interface › **Studio d’apparence** ouvre en plein écran deux rayons : **Fonds** et **Dock**. Le studio s’ouvre sur sa vitrine : derrière ses onglets passent les trois images dessinées pour la boutique.
 
-Les six thèmes restent disponibles : Néo 80–90, Cinéma de minuit, Salon 70, Palace Art déco, Scandinave et Futur néon. Dans **Réglages → Interface**, chacun des trois espaces possède son propre choix.
+- **Pour quel écran** : tous les écrans, ou un seul (Accueil, TV, Films, Séries, Recherche, Réglages). Un écran choisi garde ce qu’on lui donne. « Comme tous les écrans » le rend au choix commun ; « Le même partout » rend tous les écrans au choix commun.
+- **Fonds**, trois choix :
+  - **Automatique** : chaque écran montre, l’une après l’autre, les images dessinées pour lui ; l’accueil montre celles de l’écran qu’ouvre son icône sélectionnée.
+  - **Aucun** : la couleur de l’écran, le plus léger à afficher.
+  - **Images choisies** : parmi les seize fonds dessinés (deux ou trois par écran, trois pour la boutique, voir [docs/FONDS.md](docs/FONDS.md)).
+- **Diaporama** : plusieurs images choisies passent l’une après l’autre. On règle leur ordre et leur durée (15 s, 30 s, 1, 5 ou 15 min). Elles passent dans l’ordre ou au hasard, en fondu ou d’un coup.
+- **Dock** : les quinze thèmes, rangés par famille, essayés sur un dock posé sur le fond de l’écran.
+- **Essayer avant de garder** : ce sur quoi le curseur s’arrête s’essaie aussitôt derrière le studio, et **Plein écran** le montre seul. **OK** le garde pour l’écran choisi. **Lecture/Pause** sur la télécommande, **Espace** au clavier, passe en plein écran ; une touche en revient. **Retour** referme le studio ; ce qui est gardé reste en place.
+- **Collections** : chaque fond et chaque thème appartient à une collection, comme « Fonds dessinés · TV » ou « Docks · Rétro », et porte « Inclus ». Tout est fourni avec l’application ; l’essai restera gratuit quand une collection aura un prix.
 
-Les 18 fonds 4K sont fabriqués par un script Blender à partir de géométrie et de matériaux procéduraux originaux, puis précalculés en JPEG 3840 × 2160. Le script reproductible, le manifeste et la planche des décors sont dans `scripts/rooms/`. Aucun calcul de pièce 3D continu n’est exécuté dans l’application. Une refonte des trois univers est inscrite à la [feuille de route](docs/ROADMAP.md).
+Au clavier comme à la télécommande, les flèches parcourent le studio rangée par rangée, et chaque rangée garde sa place, comme sur une console. Le studio dessine son propre curseur. Sur le Mac, le pointeur essaie ce qu’il survole et un clic choisit.
+
+## Couleurs de TV, Films et Séries
+
+Les six thèmes de couleurs restent disponibles : Néo 80–90, Cinéma de minuit, Années 70, Palace Art déco, Scandinave et Futur néon. Dans **Réglages → Interface**, TV, Films et Séries ont chacun le leur : il colore les repères de l’écran et son fond uni.
+
+Derrière les écrans, les fonds sont les images dessinées pour eux ([docs/FONDS.md](docs/FONDS.md)), décodées à la taille où elles s’affichent. Les dix-huit décors précalculés des versions précédentes, leur script Blender et leurs enseignes « FLUX » sont retirés depuis la 0.9.3. Aucun calcul de pièce 3D n’est exécuté dans l’application. Une refonte des trois univers est inscrite à la [feuille de route](docs/ROADMAP.md).
 
 ## Apple TV
 
-L’Apple TV reprend le bureau du Mac : accueil, dock en bas au centre, colonne de navigation, télévision en trois colonnes avec l’aperçu, catalogue des films et des séries, rayon des saisons, fiches en verre, favoris, réglages et sources dans l’écran, commandes de lecture, langues et liste des chaînes sur l’image. Les pays et les langues se choisissent dans la colonne. **Menu** revient en arrière comme le Précédent d’un navigateur, et chaque destination s’ouvre avec la télécommande dans son contenu. Ce qui diffère du Mac : pas de boussole des zones, dont la télécommande n’a pas besoin, et le dock ne se réordonne pas à la télécommande ; son emplacement et son thème se règlent dans Réglages › Dock.
+L’Apple TV reprend le bureau du Mac : accueil, dock en bas au centre, colonne de navigation, télévision en trois colonnes avec l’aperçu, catalogue des films et des séries, rayon des saisons, fiches en verre, favoris, réglages et sources dans l’écran, commandes de lecture, langues et liste des chaînes sur l’image. Les pays et les langues se choisissent dans la colonne. **Menu** revient en arrière comme le Précédent d’un navigateur, et chaque destination s’ouvre avec la télécommande dans son contenu. Ce qui diffère du Mac : pas de boussole des zones, dont la télécommande n’a pas besoin, et le dock ne se réordonne pas à la télécommande ; son emplacement et son thème se règlent dans Réglages › Dock, et le thème de chaque écran dans le studio d’apparence.
 
 **Charger une liste** et **Modifier la source** occupent tout l’écran : le type de source à gauche, les champs et les deux boutons à droite, visibles d’un coup, sans défilement.
 
@@ -147,7 +165,14 @@ La disposition de la 0.8.9 est conservée : bandeau TV, Films, Séries et Recher
 | Chaînes TV | Valider | Regarder la chaîne en plein écran |
 | Catalogue | Appui long | Ouvrir les favoris et listes |
 
-Sur Apple TV, **Réglages → Interface** a deux réglages, actifs au départ sur tous les modèles. **Liquid Glass** : les panneaux en verre, comme sur le Mac. tvOS réserve son propre verre à l’Apple TV 4K de 2ᵉ génération et aux suivantes ; sur l’Apple TV HD et sur la première Apple TV 4K, les panneaux sont dessinés avec le flou du système, sous une teinte légère et un liseré clair, et ce qui est derrière une fiche est assombri au lieu d’être flouté. Coupé, les panneaux sont des surfaces sombres. **Mouvements de la sélection** : ce qui est sélectionné grandit, et les icônes du dock glissent ; coupés, la sélection s’affiche d’un coup. L’inclinaison qui suit le pouce posé sur la télécommande n’existe que sur l’Apple TV 4K de 2ᵉ génération et les suivantes : sur une Apple TV plus ancienne elle s’affichait par à-coups. Le modèle est lu sur l’appareil. La fluidité sur un appareil physique reste à mesurer.
+Sur Apple TV comme sur le Mac, **Réglages → Interface** s’ouvre sur la **qualité de l’affichage**. Trois préréglages règlent d’un coup le verre, les mouvements de la sélection, les fonds et l’aperçu automatique des chaînes :
+- **Fluide** coupe les quatre, pour une Apple TV ancienne ;
+- **Équilibré** garde le verre, les fonds et les aperçus, sans les mouvements ;
+- **Qualité** garde tout ; c’est le réglage d’une nouvelle installation.
+
+Chaque réglage reste modifiable plus bas. Quand ils ne suivent plus aucun préréglage, la page l’écrit (« Personnalisé »).
+
+Sur Apple TV, le verre et les mouvements sont actifs au départ sur tous les modèles. **Liquid Glass** : les panneaux en verre, comme sur le Mac. tvOS réserve son propre verre à l’Apple TV 4K de 2ᵉ génération et aux suivantes ; sur l’Apple TV HD et sur la première Apple TV 4K, les panneaux sont dessinés avec le flou du système, sous une teinte légère et un liseré clair, et ce qui est derrière une fiche est assombri au lieu d’être flouté. Coupé, les panneaux sont des surfaces sombres. **Mouvements de la sélection** : ce qui est sélectionné grandit, et les icônes du dock glissent ; coupés, la sélection s’affiche d’un coup. L’inclinaison qui suit le pouce posé sur la télécommande n’existe que sur l’Apple TV 4K de 2ᵉ génération et les suivantes : sur une Apple TV plus ancienne elle s’affichait par à-coups. Le modèle est lu sur l’appareil. La fluidité sur un appareil physique reste à mesurer.
 
 Le délai de l’aperçu des chaînes se règle sur 1, 3, 5 ou 10 secondes : une seconde par défaut au pointeur, trois sur Apple TV où la télécommande traverse beaucoup de vignettes.
 
@@ -193,7 +218,7 @@ L’archive contient les sources et l’installateur Mac, pas un binaire Apple p
 
 1. Sur Mac, quitter l’ancienne app et arrêter le lancement depuis Xcode.
 2. Décompresser, puis ouvrir **Installer Flux IPTV.command**. L’installateur compile sur ce Mac et vérifie le démarrage ; cette vérification ne remplace pas un essai de lecture.
-3. Vérifier **FLUX 0.9.2 · build 40** en bas de la colonne de Réglages.
+3. Vérifier **FLUX 0.9.3 · build 41** en bas de la colonne de Réglages.
 
 Prérequis de déploiement : macOS 14, iOS 17 ou tvOS 17. Installer Xcode complet pour compiler ; le verre natif demande la version 26 des systèmes, les versions antérieures reçoivent un matériau translucide. Sur iPhone/iPad ou Apple TV, ouvrir `FluxIPTV.xcodeproj`, choisir **FluxIPTViOS** ou **FluxIPTVTV**, puis renseigner l’équipe de signature pour un appareil physique.
 
@@ -207,20 +232,19 @@ Ouvrir **`FluxIPTV-AppleTV.xcodeproj`**, ou lancer **`Ouvrir Flux IPTV Apple TV.
 
 ## Validation
 
-Le périmètre vérifié pour cette version est dans [docs/VALIDATION-0.9.2.md](docs/VALIDATION-0.9.2.md), qui s’ajoute à ceux de la 0.9.1 dans [docs/VALIDATION-0.9.1.md](docs/VALIDATION-0.9.1.md) et de la 0.9.0 dans [docs/VALIDATION-0.9.0.md](docs/VALIDATION-0.9.0.md), avec ce qui ne l’a pas été. Les tests unitaires du cœur ne démontrent ni la compilation des frameworks Apple, ni la fluidité réelle, ni la lecture des flux du fournisseur. Les résultats des versions précédentes ne valident pas la nouvelle interface du Mac.
+Le périmètre vérifié pour cette version est dans [docs/VALIDATION-0.9.3.md](docs/VALIDATION-0.9.3.md), qui s’ajoute à ceux de la 0.9.2 dans [docs/VALIDATION-0.9.2.md](docs/VALIDATION-0.9.2.md), de la 0.9.1 dans [docs/VALIDATION-0.9.1.md](docs/VALIDATION-0.9.1.md) et de la 0.9.0 dans [docs/VALIDATION-0.9.0.md](docs/VALIDATION-0.9.0.md), avec ce qui ne l’a pas été. Les tests unitaires du cœur ne démontrent ni la compilation des frameworks Apple, ni la fluidité réelle, ni la lecture des flux du fournisseur. Les résultats des versions précédentes ne valident pas la nouvelle interface du Mac.
 
 ## GitHub Actions et pack complet
 
 Le dépôt complet est [M4D135/FluxIPTV](https://github.com/M4D135/FluxIPTV). Le workflow [Swift / Apple platforms](https://github.com/M4D135/FluxIPTV/actions/workflows/ci.yml) se lance à chaque push sur `main`, sur les branches `work/three-rooms-*`, lors des pull requests ou à la demande.
 
-Actions exécute les tests du cœur, vérifie les 18 décors et les deux projets générés, puis compile séparément macOS, iOS Simulator, tvOS Simulator et tvOS ARM64 pour appareil. Un job indépendant prépare le pack complet des sources du commit exécuté, avec son empreinte SHA-256. Voir [docs/CI.md](docs/CI.md).
+Actions exécute les tests du cœur, vérifie les deux projets générés, puis compile séparément macOS, iOS Simulator, tvOS Simulator et tvOS ARM64 pour appareil. Un job indépendant prépare le pack complet des sources du commit exécuté, avec son empreinte SHA-256. Voir [docs/CI.md](docs/CI.md).
 
 ### Vérifications locales
 
 ```bash
 swift test
 bash scripts/check-state-declarations.sh
-python3 scripts/rooms/verify_rooms.py
 bash scripts/test-live-preview.sh
 bash scripts/test-tvos-catalog-ui.sh
 bash scripts/test-native-youtube.sh --live
@@ -235,6 +259,6 @@ bash scripts/build-platforms.sh tvOS
 bash scripts/build-platforms.sh tvOS-device
 ```
 
-`scripts/test-catalog-ui.sh` ouvre de vraies fenêtres et prend le premier plan. Pour regarder l’interface sans quitter son travail, `FLUX_CATALOG_UI_BACKGROUND=1` garde les fenêtres hors écran et n’exécute que les captures ; `FLUX_CATALOG_UI_GALLERY=1` ajoute les thèmes et les emplacements du dock, l’accueil avec le pointeur sur Films puis sur Séries et le filtre par langue ; `FLUX_CATALOG_UI_SIZE=1728x1050` choisit la taille de la fenêtre. Quatre scénarios envoient à l’écran les touches d’une télécommande et vérifient où la sélection arrive.
+`scripts/test-catalog-ui.sh` ouvre de vraies fenêtres et prend le premier plan. Pour regarder l’interface sans quitter son travail, `FLUX_CATALOG_UI_BACKGROUND=1` garde les fenêtres hors écran et n’exécute que les captures ; `FLUX_CATALOG_UI_GALLERY=1` ajoute les thèmes et les emplacements du dock, l’accueil avec le pointeur sur Films puis sur Séries et le filtre par langue ; `FLUX_CATALOG_UI_SIZE=1728x1050` choisit la taille de la fenêtre. Vingt-cinq scénarios envoient à l’écran les touches d’une télécommande et vérifient où la sélection arrive ; celui du préréglage Fluide vérifie aussi ce que la touche a enregistré.
 
 Les versions précédentes sont conservées dans [docs/HISTORIQUE.md](docs/HISTORIQUE.md). Leurs anciennes commandes et résultats de tests ne décrivent pas la version actuelle.

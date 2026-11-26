@@ -213,9 +213,22 @@ struct FluxScreen: View, Equatable {
     // Desk layout: dock, navigation column and panels drawn inside the window.
     @AppStorage(FluxDockPosition.storageKey) private var dockPosition: FluxDockPosition = .defaultValue
     @AppStorage(FluxDockItem.orderKey) private var dockOrder = ""
+    /// The pictures behind each screen, `FluxBackdropChoices`.
+    @AppStorage(FluxBackdropChoices.storageKey) private var backdropChoices = ""
     @State private var favoritesMode = false
     @State private var sidebarCountries = false
     @State private var dockReturnFocus: String?
+    /// Whether an arrow is a fresh press, which may cross an edge. A
+    /// reference: a press does not rebuild the screen by itself.
+    @State private var cadence = FluxPressCadence()
+    #if os(tvOS)
+    /// The strips along the edges of the screen, which leave no press of the
+    /// remote without effect (`DeskEdges`). A reference: the screen is not
+    /// rebuilt when they stand back or take the remote.
+    @State private var deskEdges = DeskEdges()
+    /// Asks the settings to take the remote on the row of their page.
+    @State private var settingsPagesRequest = 0
+    #endif
     @State private var settingsRequest = DeskSettingsRequest()
     @State private var deskPreviewWidth: CGFloat = 520
     @State private var deskWidth: CGFloat = 0
@@ -237,6 +250,14 @@ struct FluxScreen: View, Equatable {
     @State private var homeKind: IPTVMediaKind?
     /// Settings asked for during playback: glass panels above the picture.
     @State private var playerSettings: DeskSettingsRequest?
+    #if os(macOS)
+    /// The studio of the appearance, over the whole window, and the control
+    /// that had the keyboard before it.
+    @State private var studioShelf: StudioShelf?
+    @State private var studioReturnFocus: String?
+    /// The item that the studio of a capture starts on.
+    private var fixtureStudioStart: String?
+    #endif
     /// Zones of the screen, shown by Back for a keyboard or a remote.
     @State private var zoneMode = false
     @State private var zoneFocus: DeskZone = .content
@@ -285,8 +306,8 @@ struct FluxScreen: View, Equatable {
     private var fixtureSearchSubmission: String?
     private var fixtureSearchObservation: ((CatalogSearchFocusSnapshot) -> Void)?
     private var fixtureRestoreBrowsing = false
-    /// A capture has no stream: a room stands for the picture under the
-    /// panels drawn above the player.
+    /// A capture has no stream: a drawn picture stands for the one under
+    /// the panels drawn above the player.
     private var fixturePictureStandIn = false
     /// Keys of a remote, sent once the screen is up.
     private var fixtureActions: [RemoteAction] = []
@@ -299,7 +320,7 @@ struct FluxScreen: View, Equatable {
     /// same production views used by the application.
     init(nativeFocus: FocusState<String?>.Binding, focusRelay: FluxFocusRelay, fixtureSelection: IPTVItem? = nil, fixtureSeasons: [IPTVSeason] = [], fixtureOpenSeason: Int? = nil, fixtureEpisodeID: String? = nil, fixtureOpenItem: Bool = false, fixtureSearchSubmission: String? = nil, fixtureSearchObservation: ((CatalogSearchFocusSnapshot) -> Void)? = nil, fixtureOpenCountries: Bool = false, fixtureRestoreBrowsing: Bool = false, fixtureSettingsPage: PlaybackSettingsView.Page? = nil, fixtureFavorites: Bool = false, fixtureHome: Bool = false, fixturePlayerSettings: Bool = false, fixtureZone: DeskZone? = nil, fixtureActions: [RemoteAction] = [], fixtureZapList: Bool = false, fixtureAddSource: Bool = false, fixtureLists: Bool = false,
          fixturePlayer: Bool = false, fixtureHoldsControls: Bool = false, fixtureTracksPanel: Bool = false,
-         fixtureBanner: Bool = false) {
+         fixtureBanner: Bool = false, fixtureStudio: StudioShelf? = nil, fixtureStudioStart: String? = nil) {
         self.nativeFocus = nativeFocus
         self.focusRelay = focusRelay
         self.fixtureActions = fixtureActions
@@ -333,6 +354,13 @@ struct FluxScreen: View, Equatable {
             _page = State(initialValue: .settings)
             _settingsRequest = State(initialValue: DeskSettingsRequest(page: fixtureSettingsPage))
         }
+        #if os(macOS)
+        if let fixtureStudio {
+            _page = State(initialValue: .settings)
+            _studioShelf = State(initialValue: fixtureStudio)
+            self.fixtureStudioStart = fixtureStudioStart
+        }
+        #endif
         _favoritesMode = State(initialValue: fixtureFavorites)
         self.fixtureSearchSubmission = fixtureSearchSubmission
         self.fixtureSearchObservation = fixtureSearchObservation
@@ -436,7 +464,14 @@ struct FluxScreen: View, Equatable {
         if let first = displayedItems.first { setPreview(first) }
     }
     private var modalOpen: Bool {
-        addingSource || editingSource != nil || presetEditor != nil || deletingPreset != nil || itemOptions != nil || showingSources || showingLists || showingEngines || showingGroups || showingCountries || showingNavigationMenu || library.alertMessage != nil || playerSettings != nil
+        addingSource || editingSource != nil || presetEditor != nil || deletingPreset != nil || itemOptions != nil || showingSources || showingLists || showingEngines || showingGroups || showingCountries || showingNavigationMenu || library.alertMessage != nil || playerSettings != nil || studioOpen
+    }
+    private var studioOpen: Bool {
+        #if os(macOS)
+        studioShelf != nil
+        #else
+        false
+        #endif
     }
     private var handlesCatalogueBack: Bool {
         guard page == .catalogue, let id = focusID else { return false }
@@ -617,6 +652,11 @@ struct FluxScreen: View, Equatable {
     /// The focus of the system has moved: the window says so. The screen
     /// is not rebuilt for the move itself, only for what it changes here.
     private func nativeFocusMoved(to id: String?) {
+        #if os(tvOS)
+        // The remote found a strip at an edge: nothing else lay that way.
+        if let id, let side = DeskEdges.Side(id: id) { crossEdge(side); return }
+        deskEdges.moved(to: id)
+        #endif
         if page == .player, playerControlsVisible, id != nil, id != "cinema-controls" { revealPlayerControls() }
         #if os(tvOS)
         // A control of the player is being handed the remote: where the
@@ -725,6 +765,62 @@ struct FluxScreen: View, Equatable {
             columnEntryRequest = nil
         }
     }
+
+    /// Whether the strips at the edges stand around the screen: wherever the
+    /// remote walks the screen and its bar, not over a fiche, a panel, the
+    /// compass of the zones, an open folder or the picture. Not with
+    /// VoiceOver, which reads what has the focus.
+    private var edgesActive: Bool {
+        !voiceOverEnabled && !deskCovered && !modalOpen && !zoneMode && dockFan == nil
+            && page != .player && (showsHome || dockVisible)
+    }
+
+    /// The remote reached a strip at an edge of the screen. It goes where a
+    /// fresh press of a Mac goes from the control it left (`deskMove`). A
+    /// control with a focus of its own, as the field of the search or a row
+    /// of the settings, is not known here: from it Left goes to Back, and
+    /// any other way to the icon of the screen.
+    private func crossEdge(_ side: DeskEdges.Side) {
+        let previous = deskEdges.last
+        // The next crossing waits for another pause.
+        deskEdges.moved(to: previous)
+        let action = side.action
+        let bar = dockVisible ? barLeadIDs + dockPlan().ids : []
+        // From the bar away from the screen, the settings take the remote on
+        // the row of their page, as the keys of a Mac enter them.
+        if page == .settings, let previous, bar.contains(previous), action == dockPosition.outward {
+            settingsPagesRequest &+= 1
+            return
+        }
+        let target: String?
+        if let previous {
+            if focusID != previous { focusID = previous }
+            target = deskMove(action, fresh: true)
+        } else {
+            target = FluxDockNavigation.beyond(nil, action: action, position: dockPosition, dockIDs: bar,
+                                               preferredDockID: currentDockID, backID: barLeadIDs.first, topID: nil)
+        }
+        guard let target, target != previous else {
+            // Nowhere to go: the remote returns where it was.
+            systemFocus = previous ?? currentDockID
+            return
+        }
+        handEdge(to: target)
+    }
+
+    /// Hands the remote to where a crossing leads.
+    private func handEdge(to target: String) {
+        if target == DeskZone.searchID {
+            liveGroupSearchFocus = false; focusID = target; searchFocus = true
+            return
+        }
+        if page == .catalogue, deskSidebarIDs.contains(target) { enterColumn(); return }
+        focusID = target
+        let shown = page
+        sendRemote(to: target, reader: visibleSlice.item(id: target) != nil ? scrolls.pane : nil) {
+            page == shown && !deskCovered && focusID == target
+        }
+    }
     #endif
 
     private func browserChrome(width: CGFloat) -> some View {
@@ -825,9 +921,13 @@ struct FluxScreen: View, Equatable {
                         for _ in 0..<14 where systemFocus == nil { try? await Task.sleep(nanoseconds: 50_000_000) }
                     }
                     #endif
+                    // Keys follow each other closely, as a run of presses
+                    // does; a scenario may leave a pause between them, which
+                    // makes each one a fresh press that crosses an edge.
+                    let gap = UserDefaults.standard.double(forKey: "fluxiptv.fixture.keyGap")
                     for action in fixtureActions {
                         dispatch(action)
-                        try? await Task.sleep(nanoseconds: 60_000_000)
+                        try? await Task.sleep(nanoseconds: UInt64((gap > 0 ? gap : 0.06) * 1_000_000_000))
                     }
                     // The bench reads the selection once it is told that
                     // every key has been played, however long that took.
@@ -947,10 +1047,11 @@ struct FluxScreen: View, Equatable {
             #endif
             if press.key == "f" && press.modifiers.contains([.command, .shift]) { dispatch(.fullscreen) }
             else if press.key == "f" && press.modifiers.contains(.command) { search() }
-            else if press.key == .upArrow { dispatch(.up) }
-            else if press.key == .downArrow { dispatch(.down) }
-            else if press.key == .leftArrow { dispatch(.left) }
-            else if press.key == .rightArrow { dispatch(.right) }
+            // A key held down repeats its move but never crosses an edge.
+            else if press.key == .upArrow { dispatch(.up, held: press.phase == .repeat) }
+            else if press.key == .downArrow { dispatch(.down, held: press.phase == .repeat) }
+            else if press.key == .leftArrow { dispatch(.left, held: press.phase == .repeat) }
+            else if press.key == .rightArrow { dispatch(.right, held: press.phase == .repeat) }
             else if press.key == .return { dispatch(.select) }
             else if press.key == .escape { dispatch(.back) }
             else if press.key == .space { dispatch(.playPause) }
@@ -1090,7 +1191,7 @@ struct FluxScreen: View, Equatable {
 
     #if !os(tvOS)
     private var remotePanel: some View {
-        RemotePad(appearance: $remoteAppearance, send: dispatch, caseSwipe: nil, close: {
+        RemotePad(appearance: $remoteAppearance, send: { dispatch($0) }, caseSwipe: nil, close: {
             showRemote = false; remoteNavigationActive = false
         }, volume: playback.localVolume, muted: playback.muted)
     }
@@ -1107,14 +1208,10 @@ struct FluxScreen: View, Equatable {
             } else {
                 Group {
                     #if os(macOS) || os(tvOS)
-                    if showsHome { homeRooms }
-                    else {
-                        FluxBackdrop(theme: theme)
-                        ProceduralStage(kind: library.contentKind)
-                    }
+                    spaceStages
                     #else
                     FluxBackdrop(theme: theme)
-                    ProceduralStage(kind: library.contentKind)
+                    FluxSpaceStage(space: FluxSpace(kind: library.contentKind), kind: library.contentKind)
                     #endif
                 }
                 // A fiche or the settings float over the same room, out of focus.
@@ -1142,8 +1239,8 @@ struct FluxScreen: View, Equatable {
     private var backdropBlur: CGFloat {
         #if os(macOS) || os(tvOS)
         if (heldItem != nil && caseExpanded) || page == .settings { return 26 }
-        // Behind the home screen the room is a wallpaper: its signs and
-        // posters must not compete with the name of the destination.
+        // Behind the home screen the picture is a wallpaper: it must not
+        // compete with the name of the destination.
         return showsHome ? 9 : 0
         #else
         return 0
@@ -2423,7 +2520,7 @@ struct FluxScreen: View, Equatable {
                     #endif
                     .contentShape(Rectangle())
                     #if FLUX_CATALOG_UI_TESTING
-                    .overlay { if fixturePictureStandIn { ProceduralStage(kind: .movie) } }
+                    .overlay { if fixturePictureStandIn { FluxSpaceStage(space: .movie, kind: .movie) } }
                     #endif
                     #if !os(tvOS)
                     .focusable().focused(nativeFocus, equals: "cinema-controls")
@@ -3902,7 +3999,7 @@ struct FluxScreen: View, Equatable {
         }
         return rows
     }
-    private func dispatch(_ action: RemoteAction) {
+    private func dispatch(_ action: RemoteAction, held: Bool = false) {
         if entranceItem != nil {
             if action == .back || action == .home { cancelEntrance() }
             return
@@ -3910,6 +4007,12 @@ struct FluxScreen: View, Equatable {
         guard !modalOpen else { return }
         #if !os(tvOS)
         remoteNavigationActive = true
+        #endif
+        #if os(macOS)
+        // Every arrow counts, wherever it goes: a run of presses stops at
+        // an edge, and the press that follows a pause goes beyond it.
+        let fresh = [.up, .down, .left, .right].contains(action)
+            && cadence.press(at: ProcessInfo.processInfo.systemUptime, held: held)
         #endif
         if heldItem != nil {
             caseRemoteEvent=MediaDetailRemoteEvent(action:action)
@@ -3953,7 +4056,7 @@ struct FluxScreen: View, Equatable {
             }
         }
         #if os(macOS)
-        if page == .settings, settingsKeyboard(action) { return }
+        if page == .settings, settingsKeyboard(action, fresh: fresh) { return }
         #endif
         switch action {
         case .up, .down, .left, .right:
@@ -3961,7 +4064,7 @@ struct FluxScreen: View, Equatable {
             // Rows scroll under a still pointer during keyboard navigation;
             // remember where it rests so that only a real move selects a row.
             keyboardPointer = NSEvent.mouseLocation
-            focusID = deskMove(action)
+            focusID = deskMove(action, fresh: fresh)
             #else
             if page == .catalogue, library.contentKind == .live {
                 focusID = LiveTVNavigation.move(from: focusID, action: action, channels: visibleSlice,
@@ -4093,7 +4196,8 @@ struct ContentView: View {
          fixtureOpenCountries: Bool = false, fixtureRestoreBrowsing: Bool = false, fixtureSettingsPage: PlaybackSettingsView.Page? = nil,
          fixtureFavorites: Bool = false, fixtureHome: Bool = false, fixturePlayerSettings: Bool = false, fixtureZone: DeskZone? = nil,
          fixtureActions: [RemoteAction] = [], fixtureZapList: Bool = false, fixtureAddSource: Bool = false, fixtureLists: Bool = false,
-         fixturePlayer: Bool = false, fixtureHoldsControls: Bool = false, fixtureTracksPanel: Bool = false, fixtureBanner: Bool = false) {
+         fixturePlayer: Bool = false, fixtureHoldsControls: Bool = false, fixtureTracksPanel: Bool = false, fixtureBanner: Bool = false,
+         fixtureStudio: StudioShelf? = nil, fixtureStudioStart: String? = nil) {
         screen = { focus, relay in
             FluxScreen(nativeFocus: focus, focusRelay: relay, fixtureSelection: fixtureSelection, fixtureSeasons: fixtureSeasons, fixtureOpenSeason: fixtureOpenSeason,
                        fixtureEpisodeID: fixtureEpisodeID, fixtureOpenItem: fixtureOpenItem, fixtureSearchSubmission: fixtureSearchSubmission,
@@ -4101,7 +4205,8 @@ struct ContentView: View {
                        fixtureRestoreBrowsing: fixtureRestoreBrowsing, fixtureSettingsPage: fixtureSettingsPage, fixtureFavorites: fixtureFavorites,
                        fixtureHome: fixtureHome, fixturePlayerSettings: fixturePlayerSettings, fixtureZone: fixtureZone, fixtureActions: fixtureActions,
                        fixtureZapList: fixtureZapList, fixtureAddSource: fixtureAddSource, fixtureLists: fixtureLists, fixturePlayer: fixturePlayer,
-                       fixtureHoldsControls: fixtureHoldsControls, fixtureTracksPanel: fixtureTracksPanel, fixtureBanner: fixtureBanner)
+                       fixtureHoldsControls: fixtureHoldsControls, fixtureTracksPanel: fixtureTracksPanel, fixtureBanner: fixtureBanner,
+                       fixtureStudio: fixtureStudio, fixtureStudioStart: fixtureStudioStart)
         }
     }
     #else
@@ -4172,6 +4277,12 @@ extension FluxScreen {
     }
     /// The home screen is the bar itself, in the middle of the window.
     var showsHome: Bool { page == .home && !library.sources.isEmpty }
+    /// The screen in front, whose look is shown: its pictures and the theme
+    /// of its dock.
+    var currentSpace: FluxSpace {
+        FluxSpace.current(home: showsHome, settings: page == .settings, searching: !library.search.isEmpty,
+                          kind: library.contentKind)
+    }
     private var dockVisible: Bool {
         page != .player && !cinema && entranceItem == nil && !showsHome
     }
@@ -4266,6 +4377,14 @@ extension FluxScreen {
                     #endif
                     .transition(.opacity)
             }
+            #if os(tvOS)
+            if edgesActive {
+                // The bar of the home screen goes round; above and below it
+                // there is nothing to reach.
+                DeskEdgeStrips(edges: deskEdges, sides: showsHome ? [.left, .right] : DeskEdges.Side.allCases,
+                               focus: nativeFocus)
+            }
+            #endif
             if page == .player, let request = playerSettings {
                 deskPlayerSettings(request)
                     #if os(tvOS)
@@ -4291,8 +4410,17 @@ extension FluxScreen {
                     #endif
             }
             if let message = library.alertMessage { deskNotice(message) }
+            #if os(macOS)
+            if let shelf = studioShelf {
+                AppearanceStudio(shelf: shelf, kind: library.contentKind, start: fixtureStudioStart) { closeStudio() }
+                    .transition(.opacity)
+            }
+            #endif
         }
         .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: playerSettings)
+        #if os(macOS)
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.22), value: studioShelf)
+        #endif
         .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: dockFan)
         .animation(reduceMotion ? nil : .easeOut(duration: 0.16), value: zoneMode)
         .animation(reduceMotion ? nil : .easeOut(duration: 0.14), value: zoneFocus)
@@ -4343,7 +4471,7 @@ extension FluxScreen {
                  manage: { manageDock($0) }, remove: { removeDock($0) },
                  reorder: { shortcut, section, index in moveDock(shortcut, in: section, to: index) },
                  openFanRow: { openFanRow($0) }, folderSymbol: { library.setDockSymbol($0, $1) }, openFanList: { openDockFanList() },
-                 openSettings: { openSettings(.dock) })
+                 openSettings: { openSettings(.dock) }, space: hero == nil ? currentSpace : .home)
     }
 
     /// Under an open folder the screen is dimmed and out of reach; a
@@ -4383,6 +4511,8 @@ extension FluxScreen {
         let rich: Bool
         /// The screen has zones that one key walks: the bar says which key.
         let zones: Bool
+        /// The screen in front, whose dock theme the bar takes.
+        let space: FluxSpace
     }
 
     /// The two flanks have the same width: the dock stays in the middle.
@@ -4397,7 +4527,7 @@ extension FluxScreen {
                          keyboard: focusShown ? shownFocusID : nil,
                          zone: zoneMode && deskZoneEntry(.dock) != nil ? zoneFocus == .dock : nil,
                          flank: flank, dock: plan, fan: fan, theme: theme, rich: richGlass,
-                         zones: page == .catalogue && !library.sources.isEmpty)
+                         zones: page == .catalogue && !library.sources.isEmpty, space: currentSpace)
         return FluxStable(key) { deskBarBody(plan, fan: fan, flank: flank, zones: key.zones) }.equatable()
     }
     /// Width that each flank of the bar needs for Back with the name of
@@ -4456,15 +4586,21 @@ extension FluxScreen {
     /// The key that walks the zones of the screen, said above the clock:
     /// nothing else on the screen tells that the content, the bar, the
     /// line of the search and the column are one press from each other.
+    /// The key is drawn as a key, then what it does: « Zones » alone said
+    /// nothing.
     private var zoneHint: some View {
         HStack(spacing: Desk.pt(6)) {
-            #if os(tvOS)
-            Image(systemName: "playpause.fill")
-            Text("Zones")
-            #else
-            Text("⇥").fontWeight(.heavy)
-            Text("Zones")
-            #endif
+            Group {
+                #if os(tvOS)
+                Image(systemName: "playpause.fill")
+                #else
+                Text("Tab").fontWeight(.heavy)
+                #endif
+            }
+            .padding(.horizontal, Desk.pt(6)).frame(minHeight: Desk.pt(20))
+            .overlay(RoundedRectangle(cornerRadius: Desk.pt(5), style: .continuous)
+                .strokeBorder(.white.opacity(0.55), lineWidth: 1))
+            Text("Zone suivante")
         }
         .font(Desk.font(.caption, .semibold)).foregroundStyle(.white.opacity(0.74))
         .shadow(color: .black.opacity(0.6), radius: 3, y: 1)
@@ -4474,7 +4610,7 @@ extension FluxScreen {
         .accessibilityLabel("Lecture/Pause : zone suivante")
         #else
         .accessibilityLabel("Tabulation : zone suivante")
-        .help("Tab passe à la zone suivante : contenu, barre, recherche, colonne. ⌘ + flèche va droit à la zone de ce côté.")
+        .help("Tab fait le tour des zones dans le sens des aiguilles d’une montre : contenu, aperçu, barre, colonne, recherche. ⌘ + flèche va droit à la zone de ce côté.")
         #endif
         .accessibilityIdentifier("desk-zone-hint")
     }
@@ -4528,12 +4664,37 @@ extension FluxScreen {
         showHome()
     }
 
+    /// The studio covers the window; the keyboard comes back where it was.
+    private func openStudio(_ shelf: StudioShelf) {
+        #if os(macOS)
+        studioReturnFocus = systemFocus
+        studioShelf = shelf
+        #endif
+    }
+    #if os(macOS)
+    private func closeStudio() {
+        let previous = studioReturnFocus
+        studioShelf = nil
+        Task { @MainActor in await Task.yield(); systemFocus = previous }
+    }
+    #endif
+
+    /// What asks the settings to take the remote on their page; a television only.
+    private var settingsPagesValue: Int {
+        #if os(tvOS)
+        settingsPagesRequest
+        #else
+        0
+        #endif
+    }
+
     private var deskSettings: some View {
         PlaybackSettingsView(playback: playback, inline: true, initialPage: settingsRequest.page,
                              initialSourceEditor: settingsRequest.sourceEditor, remoteVisible: $showRemote,
                              navigationFootRoom: navigationFootRoom, backTitle: deskBackTitle,
                              goBack: barFlanks ? nil : { back() }, goHome: barFlanks ? nil : { showHome() },
-                             close: { leaveSettings() }, sourceSaved: { home() })
+                             close: { leaveSettings() }, sourceSaved: { home() }, openStudio: { openStudio($0) },
+                             pagesRequest: settingsPagesValue)
             .environmentObject(library)
             #if os(macOS)
             .environment(settingsKeys)
@@ -4809,8 +4970,12 @@ extension FluxScreen {
         case .more:
             let hidden = plan.arrangement.hidden.compactMap(\.shortcut)
             let rows = hidden.prefix(dockFanRoom).map { DockFanRow(shortcut: $0, item: dockItem($0)) }
-            return DockFan(anchorID: id, title: "Autres raccourcis", rows: Array(rows), more: max(0, hidden.count - rows.count),
-                           listTitle: "Tous les raccourcis")
+            let rest = max(0, hidden.count - rows.count)
+            // Its last row opens the titles in Favoris, as the last row of
+            // a list kept in the dock opens that list.
+            return DockFan(anchorID: id, title: "Autres raccourcis", rows: Array(rows), more: rest,
+                           listTitle: rest > 0 ? "Tout voir dans Favoris · \(rest) de plus" : "Voir dans Favoris",
+                           lastSymbol: "star.square.fill")
         case .destination, .shortcut, .resume, .recent: return nil
         }
     }
@@ -4950,8 +5115,26 @@ extension FluxScreen {
             openSettings(.dock)
             return
         }
+        if id == DockEntry.moreID {
+            // The shortcuts the bar has no room for: Favoris, on the section
+            // of the dock that keeps the first of them, as a folder opens on
+            // its titles. The settings of the dock when none has a section.
+            let kept = dockPlan(hero: showsHome).arrangement.hidden.lazy.compactMap { entry -> (shortcut: DockShortcut, section: String)? in
+                if case .shortcut(let shortcut, let section) = entry { return (shortcut, section) }
+                return nil
+            }.first
+            dockFan = nil
+            guard let kept, let section = library.dockShelf.tree.first(where: { $0.section.id == kept.section })?.section else {
+                openSettings(.dock); return
+            }
+            enterFavorites()
+            selectFavoriteShelf(section, kind: kept.shortcut.kind)
+            #if os(tvOS)
+            restoreBrowsingContext()
+            #endif
+            return
+        }
         dockFan = nil
-        if id == DockEntry.moreID { openSettings(.dock); return }
         guard id.hasPrefix(DockEntry.stackPrefix),
               let list = library.presets.list(id: String(id.dropFirst(DockEntry.stackPrefix.count))) else { return }
         enterFavorites()
@@ -5152,9 +5335,10 @@ extension FluxScreen {
 
     /// One key enters the next zone of the screen: Tab on a keyboard,
     /// Lecture/Pause on the remote of a television. A long list keeps the
-    /// line of the search and the bar many presses away; this key is one
-    /// press from the content to the bar, one more to the search, one more
-    /// to the column, and one more back to the title that was left.
+    /// line of the search and the bar many presses away; this key goes round
+    /// the screen as the hands of a clock: from the content to the actions
+    /// on its right, the bar, the column, the search, and back to the title
+    /// that was left.
     func cycleZone(forward: Bool) -> Bool {
         #if os(macOS)
         if page == .settings, heldItem == nil, !modalOpen, dockFan == nil { return settingsHop(forward: forward) }
@@ -5201,10 +5385,13 @@ extension FluxScreen {
     /// on the page shown; there the arrows go from control to control and
     /// show each page of the column, OK does what a click does, and past the
     /// last control toward the dock the keyboard returns to the dock.
-    func settingsKeyboard(_ action: RemoteAction) -> Bool {
+    func settingsKeyboard(_ action: RemoteAction, fresh: Bool = false) -> Bool {
         let keys = settingsKeys
         guard keys.focus != nil else {
-            guard action == dockPosition.inward, dockVisible, dockFan == nil,
+            // From the bar, the way into the screen enters the column, and
+            // so does a fresh press away from it: the top of these pages.
+            let entering = action == dockPosition.inward || (fresh && action == dockPosition.outward)
+            guard entering, dockVisible, dockFan == nil,
                   let id = focusID, (barLeadIDs + dockPlan().ids).contains(id) else { return false }
             keys.enterPages()
             guard keys.focus != nil else { return false }
@@ -5215,6 +5402,15 @@ extension FluxScreen {
         case .up, .down, .left, .right:
             if let next = keys.neighbour(action) { keys.place(next) }
             else if action == dockPosition.outward, dockVisible { keys.leave(); focusID = FluxDockItem.settings.focusID }
+            // No key without effect: a fresh press at an edge goes to Back
+            // when it leads left, and to the dock any other way.
+            else if fresh, dockVisible,
+                    let target = FluxDockNavigation.beyond(nil, action: action, position: dockPosition,
+                                                           dockIDs: barLeadIDs + dockPlan().ids,
+                                                           preferredDockID: FluxDockItem.settings.focusID,
+                                                           backID: DeskZone.backID, topID: nil) {
+                keys.leave(); focusID = target
+            }
             return true
         case .select:
             keys.activate()
@@ -5504,7 +5700,20 @@ extension FluxScreen {
         }
     }
 
-    func deskMove(_ action: RemoteAction) -> String? {
+    /// The control at the top of the screen, where a fresh press from the
+    /// bar away from the screen leads: the search of a catalogue, the first
+    /// key of a series.
+    private var deskTopID: String? {
+        switch page {
+        case .catalogue:
+            return focusRows.contains(where: { $0.contains(DeskZone.searchID) }) ? DeskZone.searchID : focusRows.first?.first
+        case .series: return focusRows.first?.first
+        case .settings, .home, .player: return nil
+        }
+    }
+
+    /// `fresh`: a press after a pause, which may cross an edge (`FluxPressCadence`).
+    func deskMove(_ action: RemoteAction, fresh: Bool = false) -> String? {
         if let anchor = dockFan {
             // An open folder: the arrows walk its titles, from the
             // nearest to the bar; across them it closes and the bar goes on.
@@ -5528,9 +5737,18 @@ extension FluxScreen {
             let ids = plan.ids
             guard let focusID, ids.contains(focusID) else { return currentDockID }
             let rows = heroRows(plan).map { $0.entries.map(\.id) }
-            if rows.count > 1 { return DockArrangement.move(from: focusID, action: action, rows: rows) }
+            if rows.count > 1 {
+                let target = DockArrangement.move(from: focusID, action: action, rows: rows)
+                // Along a row of several, past one end comes the other too.
+                if fresh, target == focusID, action == .left || action == .right,
+                   let row = rows.first(where: { $0.contains(focusID) }), row.count > 1 {
+                    return action == .left ? row.last : row.first
+                }
+                return target
+            }
+            // One row: past one end comes the other.
             return FluxDockNavigation.move(from: focusID, action: action, position: .bottom, dockIDs: ids,
-                                           preferredDockID: currentDockID, entryID: nil) { current, _ in current }
+                                           preferredDockID: currentDockID, entryID: nil, fresh: fresh) { current, _ in current }
         }
         let dockIDs = dockVisible ? barLeadIDs + dockPlan().ids : []
         let wasInDock = focusID.map(dockIDs.contains) ?? false
@@ -5538,8 +5756,12 @@ extension FluxScreen {
             if visibleSlice.item(id: id) != nil || deskSidebarIDs.contains(id) || deskTrailingIDs.contains(id) { return id }
             return focusRows.contains(where: { $0.contains(id) }) ? id : nil
         }
+        // "ne pas laisser de fonctionnalité vide": at an edge of the screen a
+        // fresh press goes to Back on the left and to the dock otherwise;
+        // the bar goes round, and away from the screen leads to its top.
         let target = FluxDockNavigation.move(from: focusID, action: action, position: dockPosition, dockIDs: dockIDs,
-                                             preferredDockID: currentDockID, entryID: remembered) { current, direction in
+                                             preferredDockID: currentDockID, entryID: remembered,
+                                             backID: barLeadIDs.first, topID: deskTopID, fresh: fresh) { current, direction in
             deskContentMove(from: current, direction)
         }
         if !wasInDock, let target, dockIDs.contains(target) { dockReturnFocus = focusID }
@@ -5636,19 +5858,61 @@ extension FluxScreen {
         reduceMotion ? .opacity : .scale(scale: 0.3, anchor: dockUnitPoint).combined(with: .opacity)
     }
 
-    /// The three rooms stay mounted behind the home screen: pointing at a
-    /// destination brings its room forward without waiting for a decode.
-    var homeRooms: some View {
-        ZStack {
-            ForEach(IPTVMediaKind.allCases, id: \.self) { kind in
+    /// The screen that the selected icon of the home screen opens.
+    private var homeSpace: FluxSpace {
+        switch homeItem {
+        case .live: .live
+        case .movie: .movie
+        case .series: .series
+        case .search: .search
+        case .settings: .settings
+        case .favorites: FluxSpace(kind: homeRoomKind)
+        }
+    }
+    /// The home screen shows pictures of its own, or none, instead of
+    /// those of the screen its selected icon opens.
+    private var homeKeepsItsOwn: Bool {
+        FluxBackdropChoices(stored: backdropChoices).plan(for: .home).mode != .automatic
+    }
+    /// The screens whose pictures stay mounted behind the window, decoded:
+    /// those of the three kinds, and on the home screen those that its icons
+    /// open. Pointing at an icon brings its pictures forward at once, and
+    /// opening the screen keeps the very same view.
+    private var mountedSpaces: [FluxSpace] {
+        let kinds: [FluxSpace] = [.live, .movie, .series]
+        if showsHome { return (homeKeepsItsOwn ? [.home] : []) + kinds + [.search, .settings] }
+        return kinds.contains(currentSpace) ? kinds : kinds + [currentSpace]
+    }
+    private var shownSpace: FluxSpace {
+        guard showsHome else { return currentSpace }
+        return homeKeepsItsOwn ? .home : homeSpace
+    }
+    /// What a screen holds: its colours, and the pictures of the home
+    /// screen, which has none of its own.
+    private func stageKind(_ space: FluxSpace) -> IPTVMediaKind {
+        switch space {
+        case .live: .live
+        case .movie: .movie
+        case .series: .series
+        case .home, .search, .settings: showsHome ? homeRoomKind : library.contentKind
+        }
+    }
+    /// The pictures behind the screens, as the studio of the appearance
+    /// sets them for each screen.
+    var spaceStages: some View {
+        let shown = shownSpace
+        return ZStack {
+            ForEach(mountedSpaces) { space in
                 ZStack {
-                    FluxBackdrop(theme: theme(for: kind))
-                    ProceduralStage(kind: kind, pixelLimit: 2560)
+                    FluxBackdrop(theme: theme(for: stageKind(space)))
+                    // Several screens mounted together share the memory of
+                    // one picture in full size.
+                    FluxSpaceStage(space: space, kind: stageKind(space), pixelLimit: 2560, active: space == shown)
                 }
-                .opacity(kind == homeRoomKind ? 1 : 0)
+                .opacity(space == shown ? 1 : 0)
             }
         }
-        .animation(reduceMotion ? nil : .easeInOut(duration: 0.45), value: homeRoomKind)
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.45), value: shown)
     }
 
     private func homeTitle(_ item: FluxDockItem) -> String {

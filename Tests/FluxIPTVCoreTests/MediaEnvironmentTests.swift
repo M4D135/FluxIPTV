@@ -10,22 +10,14 @@ final class MediaEnvironmentTests: XCTestCase {
         try body(defaults)
     }
 
-    func testEveryCategoryKeepsItsOwnPlaceAndResourceNamespace() throws {
+    func testEveryCategoryKeepsItsOwnPlaceAndThemeKey() throws {
         XCTAssertEqual(MediaEnvironment(kind: .movie), .cinema)
         XCTAssertEqual(MediaEnvironment(kind: .series), .videoClub)
         XCTAssertEqual(MediaEnvironment(kind: .live), .livingRoom)
-        var names = Set<String>()
         for environment in MediaEnvironment.allCases {
             XCTAssertEqual(MediaEnvironment(kind: environment.kind), environment)
             XCTAssertEqual(try JSONDecoder().decode(MediaEnvironment.self, from: JSONEncoder().encode(environment)), environment)
-            for theme in VideoClubTheme.allCases {
-                let name = environment.assetName(theme: theme)
-                XCTAssertEqual(name, "\(environment.rawValue)-\(theme.rawValue)")
-                XCTAssertTrue(names.insert(name).inserted)
-                XCTAssertFalse(name.contains("/"))
-            }
         }
-        XCTAssertEqual(names.count, 18)
         XCTAssertEqual(Set(IPTVMediaKind.allCases.map(MediaThemePreferences.key(for:))).count, 3)
     }
 

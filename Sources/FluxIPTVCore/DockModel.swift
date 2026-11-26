@@ -41,11 +41,42 @@ public enum FluxDockPosition: String, CaseIterable, Identifiable, Sendable {
     }
 }
 
+/// The look of the plate and of its icons. Those of other systems and other
+/// years are drawn for the app, after the manner of their time: no icon, no
+/// name and no mark of a system is borrowed.
 public enum FluxDockTheme: String, CaseIterable, Identifiable, Sendable {
     case glass, vivid, smoked, neon, floating
+    case tactile, pebbles, frost
+    case gel, hills
+    case bevel, eightColor, fourColor, greenDesk, phosphor
     public static let storageKey = "fluxiptv.dock.theme.v1"
     public static let defaultValue: Self = .glass
     public var id: String { rawValue }
+
+    public enum Family: String, CaseIterable, Identifiable, Sendable {
+        case flux, today, millennium, retro
+        public var id: String { rawValue }
+        public var title: String {
+            switch self {
+            case .flux: "Flux"
+            case .today: "Téléphones et bureaux d’aujourd’hui"
+            case .millennium: "Années 2000"
+            case .retro: "Rétro"
+            }
+        }
+        public var themes: [FluxDockTheme] { FluxDockTheme.allCases.filter { $0.family == self } }
+    }
+    public var family: Family {
+        switch self {
+        case .glass, .vivid, .smoked, .neon, .floating: .flux
+        case .tactile, .pebbles, .frost: .today
+        case .gel, .hills: .millennium
+        case .bevel, .eightColor, .fourColor, .greenDesk, .phosphor: .retro
+        }
+    }
+    /// Drawn in square pixels, as the screens of their years were.
+    public var pixelated: Bool { family == .retro }
+
     public var title: String {
         switch self {
         case .glass: "Verre"
@@ -53,6 +84,16 @@ public enum FluxDockTheme: String, CaseIterable, Identifiable, Sendable {
         case .smoked: "Fumé"
         case .neon: "Néon"
         case .floating: "Sans fond"
+        case .tactile: "Tactile"
+        case .pebbles: "Galets"
+        case .frost: "Givre"
+        case .gel: "Gélule"
+        case .hills: "Collines"
+        case .bevel: "Biseaux"
+        case .eightColor: "Huit couleurs"
+        case .fourColor: "Quatre couleurs"
+        case .greenDesk: "Bureau vert"
+        case .phosphor: "Phosphore"
         }
     }
     public var subtitle: String {
@@ -60,8 +101,18 @@ public enum FluxDockTheme: String, CaseIterable, Identifiable, Sendable {
         case .glass: "Plaque translucide, icônes teintées."
         case .vivid: "Pastilles pleines, couleurs franches."
         case .smoked: "Plaque sombre et sobre."
-        case .neon: "Contour lumineux aux couleurs du décor."
+        case .neon: "Contour lumineux aux couleurs de l’écran."
         case .floating: "Icônes séparées, sans plaque."
+        case .tactile: "Carrés arrondis en dégradé sur verre clair, comme un téléphone."
+        case .pebbles: "Ronds aux tons doux, plaque en pilule, sélection en gélule."
+        case .frost: "Verre dépoli, coins doux, trait sous l’écran ouvert."
+        case .gel: "Gel brillant sur fines rayures, triangle sous l’écran ouvert. 2001."
+        case .hills: "Bleu franc, boutons ronds et brillants. 2001."
+        case .bevel: "Gris en relief, bouton enfoncé, pixels de 1995."
+        case .eightColor: "Gris biseauté et bleu, pixels fins de 1992."
+        case .fourColor: "Bleu, blanc, noir et orange, pixels de 1987."
+        case .greenDesk: "Noir et blanc sur fond vert, sélection inversée. 1985."
+        case .phosphor: "Vert sur noir, gros pixels, vidéo inverse. 1977."
         }
     }
 }
@@ -237,11 +288,18 @@ public enum FluxDockNavigation {
     /// Routes one direction between the bar and the screen it serves.
     /// `content` performs the screen's own move and returns the identifier it
     /// received when the selection already sits on that edge.
+    ///
+    /// A fresh press — not a key held down — leaves no key without effect
+    /// (`beyond`): `backID` is the Back key of the bar, `topID` the control
+    /// at the top of the screen.
     public static func move(from current: String?, action: RemoteAction, position: FluxDockPosition,
                             dockIDs: [String], preferredDockID: String?, entryID: String?,
+                            backID: String? = nil, topID: String? = nil, fresh: Bool = false,
                             content: (String?, RemoteAction) -> String?) -> String? {
         guard !dockIDs.isEmpty else { return content(current, action) }
         if let current, let index = dockIDs.firstIndex(of: current) {
+            if fresh, let around = beyond(current, action: action, position: position, dockIDs: dockIDs,
+                                          preferredDockID: preferredDockID, backID: backID, topID: topID) { return around }
             let previous: RemoteAction = position.isVertical ? .up : .left
             let next: RemoteAction = position.isVertical ? .down : .right
             if action == previous { return dockIDs[max(0, index - 1)] }
@@ -250,7 +308,53 @@ public enum FluxDockNavigation {
             return current
         }
         let target = content(current, action)
-        guard action == position.outward, target == nil || target == current else { return target }
-        return preferredDockID.flatMap { dockIDs.contains($0) ? $0 : nil } ?? dockIDs.first
+        guard target == nil || target == current else { return target }
+        if action == position.outward { return preferred(preferredDockID, in: dockIDs) }
+        guard fresh else { return target }
+        return beyond(current, action: action, position: position, dockIDs: dockIDs,
+                      preferredDockID: preferredDockID, backID: backID, topID: topID) ?? target
+    }
+
+    /// Where a press leads from a control that has nothing beyond it in
+    /// that direction, so that a remote finds no dead key. From the screen:
+    /// Left goes to the Back key of the bar, and every other way to the
+    /// icon of the screen. Along the bar, past one end comes the other end;
+    /// away from the screen comes the top of the screen. Nil when the press
+    /// has somewhere to go already.
+    public static func beyond(_ current: String?, action: RemoteAction, position: FluxDockPosition,
+                              dockIDs: [String], preferredDockID: String?, backID: String?, topID: String?) -> String? {
+        guard !dockIDs.isEmpty, [.up, .down, .left, .right].contains(action) else { return nil }
+        if let current, let index = dockIDs.firstIndex(of: current) {
+            let previous: RemoteAction = position.isVertical ? .up : .left
+            let next: RemoteAction = position.isVertical ? .down : .right
+            if action == previous { return index == 0 && dockIDs.count > 1 ? dockIDs.last : nil }
+            if action == next { return index == dockIDs.count - 1 && dockIDs.count > 1 ? dockIDs.first : nil }
+            if action == position.outward { return topID }
+            return nil
+        }
+        if action == .left, action != position.outward, let backID, dockIDs.contains(backID) { return backID }
+        return preferred(preferredDockID, in: dockIDs)
+    }
+
+    private static func preferred(_ id: String?, in dockIDs: [String]) -> String? {
+        id.flatMap { dockIDs.contains($0) ? $0 : nil } ?? dockIDs.first
+    }
+}
+
+/// Tells a fresh press of an arrow from a key held down and from a press
+/// that closely follows another: only a fresh press crosses an edge of the
+/// screen or goes round the bar, so that a run of presses stops at the
+/// edge, and the next one, after a pause, goes beyond it.
+public final class FluxPressCadence {
+    /// Seconds without an arrow after which a press is a fresh one.
+    public static let pause: Double = 0.4
+    private var last = -Double.infinity
+
+    public init() {}
+
+    /// Records a press of an arrow at `time`, in seconds, and tells whether it is fresh.
+    public func press(at time: Double, held: Bool = false) -> Bool {
+        defer { last = time }
+        return !held && time - last >= Self.pause
     }
 }

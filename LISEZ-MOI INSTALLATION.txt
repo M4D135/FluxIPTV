@@ -1,4 +1,4 @@
-FLUX IPTV 0.9.2 — BUILD 40 — BUREAU MAC : DOCK, COLONNES ET VERRE - Installation sur votre Mac
+FLUX IPTV 0.9.3 — BUILD 41 — BUREAU MAC : DOCK, COLONNES ET VERRE - Installation sur votre Mac
 
 1. Quittez FLUX IPTV et arrêtez le projet s'il tourne dans Xcode.
 2. Décompressez l'archive et double-cliquez sur « Installer Flux IPTV.command ».
@@ -9,8 +9,8 @@ FLUX IPTV 0.9.2 — BUILD 40 — BUREAU MAC : DOCK, COLONNES ET VERRE - Installa
    L'installateur contrôle que le processus reste actif et restaure l'ancien
    bundle en cas d'échec du démarrage. Ce contrôle ne valide pas la lecture.
 4. Ensuite ouvrez uniquement FluxIPTV.app depuis le Finder ou le Dock.
-   Ne relancez pas l'installateur à chaque utilisation. Vérifiez « FLUX 0.9.2 ·
-   build 40 » en bas de la colonne de Réglages, et les thèmes dans Interface.
+   Ne relancez pas l'installateur à chaque utilisation. Vérifiez « FLUX 0.9.3 ·
+   build 41 » en bas de la colonne de Réglages, et le studio dans Interface.
 
 Sur Mac, VLC intégré est désactivé. En cas de format incompatible, installez le
 lecteur VLC officiel et utilisez le bouton « Ouvrir dans VLC externe ».
@@ -35,6 +35,23 @@ La compilation est effectuée sur votre Mac. Cette archive ne contient pas un
 binaire macOS précompilé ; l'installateur n'a pas été exécuté sous macOS ici.
 
 Réglages > Sources > Modifier permet de choisir « Sur ce Mac, sans Trousseau ». Les identifiants sont alors dans un fichier privé non chiffré (permissions 600) ; le Trousseau demeure plus sûr. Les favoris sont conservés.
+
+NOUVEAUTÉS DE LA 0.9.3
+Réglages > Interface > Studio d'apparence : chaque écran (accueil, TV, Films,
+Séries, Recherche, Réglages) garde son fond et son thème de dock, ou suit ceux
+de tous les écrans. Seize fonds dessinés, un diaporama par écran (ordre,
+durée, au hasard, fondu), quinze thèmes de dock en quatre familles. Les anciens
+décors, avec leurs enseignes « FLUX », sont retirés. Ce que le curseur pointe
+s'essaie aussitôt ; Entrée le garde, Espace le montre en plein écran, Échap
+referme le studio.
+Qualité de l'affichage : trois préréglages, Fluide, Équilibré et Qualité,
+règlent d'un coup le verre, les mouvements, les fonds et l'aperçu des chaînes.
+Tab fait le tour des zones dans le sens des aiguilles d'une montre : barre,
+colonne, recherche, contenu. Au bord de l'écran, une flèche mène toujours
+quelque part : Gauche depuis la colonne au bouton Retour, la barre fait le
+tour, Droite au bout d'une rangée mène à l'icône de l'écran. Une rafale
+s'arrête au bord ; la touche suivante, après une courte pause, le franchit.
+L'application a son icône.
 
 NOUVEAUTÉS DE LA 0.9.2
 Rien ne change sur Mac. Sur Apple TV, le dock suit de nouveau la télécommande
@@ -106,7 +123,7 @@ Une série ouvre son rayon de saisons ; une saison affiche ses épisodes.
 Retour remonte au niveau précédent. Les directions déplacent le focus,
 Entrée valide et Espace lit le film ou l’épisode choisi.
 
-Les décors FLUX et les animations de focus/transition sont conservés.
+Les animations de focus et de transition sont conservées.
 Sur Apple TV, catégories horizontales et grandes vignettes 16:9 ; la seule
 vignette sélectionnée contient l’aperçu. Le Liquid Glass s'active ou se
 désactive dans Réglages > Interface.
@@ -115,7 +132,7 @@ Réglages > Interface conserve les thèmes propres à chaque espace.
 
 La lecture principale garde ses commandes flottantes.
 
-Voir README.md, docs/VALIDATION-0.9.2.md, docs/VALIDATION-0.9.1.md et docs/VALIDATION-0.9.0.md pour les comportements et les limites.
+Voir README.md, docs/VALIDATION-0.9.3.md, docs/VALIDATION-0.9.2.md, docs/VALIDATION-0.9.1.md et docs/VALIDATION-0.9.0.md pour les comportements et les limites.
 
 APPLE TV : ouvrez FluxIPTV-AppleTV.xcodeproj (schéma FluxIPTVTV), puis
 choisissez la destination Apple TV. Voir LISEZ-MOI APPLE TV.txt.

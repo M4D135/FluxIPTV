@@ -49,11 +49,13 @@ public enum DeskZoneMap {
         return order[((index + (forward ? 1 : -1)) % order.count + order.count) % order.count]
     }
 
-    /// The zones in the order one key walks them: from the content to the
-    /// bar, which is asked for most, then the line of the search, the
-    /// column, the actions, and the content again. A long list keeps what
-    /// stands above and below it many presses away: this key is one press.
-    public static let hopOrder: [DeskZone] = [.content, .dock, .top, .column, .actions]
+    /// The zones in the order one key walks them: round the screen as the
+    /// hands of a clock, from the content to the actions on its right, the
+    /// bar below, the column on the left, the line of the search above, and
+    /// the content again. Where the next press goes is where the eye goes
+    /// next. A long list keeps what stands above and below it many presses
+    /// away: this key is one press.
+    public static let hopOrder: [DeskZone] = [.content, .actions, .dock, .column, .top]
 
     /// Next zone along `hopOrder`, or the one before, among those the screen
     /// offers. From nowhere it starts in the content.

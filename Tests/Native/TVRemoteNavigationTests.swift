@@ -167,6 +167,55 @@ final class TVRemoteNavigationTests: XCTestCase {
         print("PASS: TV_REMOTE the arrows alone reached the search field, the column, the actions and the dock, and came back")
     }
 
+    /// "ne pas laisser de fonctionnalité vide": after a pause, a press toward
+    /// an edge goes somewhere, as a fresh key of a Mac does. From the column
+    /// Left goes to Back; along the bar, past one end comes the other; Down
+    /// from the bar leads to the search, and Up from the search to the icon
+    /// of the screen; Right past the actions of a channel goes there too.
+    @MainActor
+    func testNoPressOfTheRemoteLeadsNowhere() {
+        let app = launch("live")
+        defer { app.terminate() }
+        let channel = element("live-channel-fixture-live-0", in: app)
+        let back = element("desk-back", in: app)
+        let television = element("navigation-tab-live", in: app)
+        let settings = element("navigation-settings", in: app)
+        let search = app.textFields.matching(identifier: "desk-search").firstMatch
+        let logical = element("flux-catalog-logical-focus", in: app)
+        assertFocus(channel, logical: "fixture-live-0", in: app)
+
+        XCUIRemote.shared.press(.left)
+        assertCondition(NSPredicate(format: "value BEGINSWITH %@ OR value == %@", "group-", "countries"), on: logical, in: app)
+        afterAPause(.left)
+        assertFocus(back, in: app)
+        retainScreenshot("edges-01-column-to-back", in: app)
+        afterAPause(.left)
+        assertFocus(settings, in: app)
+        afterAPause(.right)
+        assertFocus(back, in: app)
+        afterAPause(.down)
+        assertCondition("hasFocus == true", on: search, in: app)
+        retainScreenshot("edges-02-bar-to-search", in: app)
+        afterAPause(.up)
+        assertFocus(television, in: app)
+        retainScreenshot("edges-03-search-to-the-icon", in: app)
+
+        // Up from the bar into the list, then right along the actions of
+        // the channel and past them.
+        afterAPause(.up)
+        assertCondition("hasFocus == false", on: television, in: app)
+        for _ in 0..<5 where !holdsFocus(television) { afterAPause(.right) }
+        assertFocus(television, in: app)
+        print("PASS: TV_REMOTE after a pause, Left from the column reached Back, the bar went round both ways, Down from the bar reached the search, Up from the search and Right past the actions reached the icon of the screen")
+    }
+
+    /// A press after a pause: one that may cross an edge.
+    @MainActor
+    private func afterAPause(_ direction: XCUIRemote.Button) {
+        Thread.sleep(forTimeInterval: 0.8)
+        XCUIRemote.shared.press(direction)
+    }
+
     @MainActor
     func testMenuRetracesTheScreensLikeTheBackOfABrowser() {
         let app = launch("home")
@@ -650,10 +699,10 @@ final class TVRemoteNavigationTests: XCTestCase {
     }
 
     /// A page of sixty films keeps the line of the search and the bar many
-    /// presses away from a title in its middle. Lecture/Pause walks the
-    /// zones of the screen: one press from the content to the bar, one more
-    /// to the search, one more to the column, and one more back to the
-    /// title that was left.
+    /// presses away from a title in its middle. Lecture/Pause goes round
+    /// the zones of the screen as the hands of a clock: one press from the
+    /// content to the bar below, one more to the column on the left, one
+    /// more to the search above, and one more back to the title that was left.
     @MainActor
     func testPlayPauseWalksTheZonesOfALongPage() {
         let app = launch("movies-many")
@@ -674,10 +723,11 @@ final class TVRemoteNavigationTests: XCTestCase {
         assertFocus(films, logical: "tab-movie", in: app)
         retainScreenshot("zones-02-the-bar", in: app)
         XCUIRemote.shared.press(.playPause)
-        assertCondition("hasFocus == true", on: search, in: app)
-        retainScreenshot("zones-03-the-search", in: app)
-        XCUIRemote.shared.press(.playPause)
         assertFocus(scope, logical: "group-all", in: app)
+        retainScreenshot("zones-03-the-column", in: app)
+        XCUIRemote.shared.press(.playPause)
+        assertCondition("hasFocus == true", on: search, in: app)
+        retainScreenshot("zones-04-the-search", in: app)
         XCUIRemote.shared.press(.playPause)
         assertFocus(middle, logical: "fixture-movie-21", in: app)
         // From the bar the arrows go on as before: Left reaches Home and Back.
@@ -685,7 +735,7 @@ final class TVRemoteNavigationTests: XCTestCase {
         assertFocus(films, logical: "tab-movie", in: app)
         XCUIRemote.shared.press(.left)
         assertFocus(element("navigation-tab-live", in: app), logical: "tab-live", in: app)
-        print("PASS: TV_REMOTE Lecture/Pause walked the zones of a page of sixty films: the bar, the search, the column, and back to the title that was left")
+        print("PASS: TV_REMOTE Lecture/Pause went round the zones of a page of sixty films as the hands of a clock: the bar, the column, the search, and back to the title that was left")
     }
 
     /// As it fills, the bar of the home screen takes a second row instead

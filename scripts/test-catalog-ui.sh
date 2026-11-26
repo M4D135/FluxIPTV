@@ -37,7 +37,7 @@ cleanup() {
 }
 trap cleanup EXIT
 smoke_app="$smoke_root/CatalogUISmoke.app"
-mkdir -p "$smoke_app/Contents/MacOS" "$smoke_app/Contents/Resources/RoomBakes" "$capture_root"
+mkdir -p "$smoke_app/Contents/MacOS" "$smoke_app/Contents/Resources/Backdrops" "$capture_root"
 cat > "$smoke_app/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -53,10 +53,8 @@ version="$(sed -n 's/^[[:space:]]*MARKETING_VERSION = \([0-9.]*\);/\1/p' "$repo_
 [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
 /usr/libexec/PlistBuddy -c "Add :CFBundleShortVersionString string $version" "$smoke_app/Contents/Info.plist"
 
-# Copy only the production room assets used by the catalogue/season captures.
-for room in livingRoom-neo90 cinema-neo90 videoClub-neo90; do
-  cp "$repo_root/FluxIPTVMac/RoomBakes/$room.jpg" "$smoke_app/Contents/Resources/RoomBakes/"
-done
+# The pictures drawn for the screens, which they show behind them.
+cp "$repo_root"/FluxIPTVMac/Backdrops/*.jpg "$smoke_app/Contents/Resources/Backdrops/"
 
 # All real app sources, with only its ordinary @main entry point omitted.
 production_sources=()

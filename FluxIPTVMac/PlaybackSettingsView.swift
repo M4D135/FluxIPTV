@@ -46,7 +46,7 @@ struct PlaybackSettingsView: View {
         var subtitle: String {
             switch self {
             case .sources: "Vos abonnements et vos playlists."
-            case .appearance: "Décors, aperçu des chaînes et présentation."
+            case .appearance: "Fonds, couleurs, aperçu des chaînes et présentation."
             case .dock: "Emplacement, thème, icônes et raccourcis."
             case .video: "Moteur de lecture et déplacements dans la vidéo."
             case .network: "Compromis entre zapping et stabilité."
@@ -76,6 +76,12 @@ struct PlaybackSettingsView: View {
     var goHome: (() -> Void)?
     var close: () -> Void
     var sourceSaved: () -> Void = {}
+    /// Opens the studio of the appearance over the whole window of a Mac.
+    /// A television shows it over the settings, which take the remote back.
+    var openStudio: ((StudioShelf) -> Void)? = nil
+    /// Each new value hands the remote to the row of the page shown: a
+    /// television enters the settings so from the bar, away from the screen.
+    var pagesRequest = 0
 
     @EnvironmentObject private var library: IPTVLibrary
     @State private var draft = PlaybackSettings()
@@ -97,6 +103,10 @@ struct PlaybackSettingsView: View {
     @AppStorage("fluxiptv.remoteAppearance") private var remoteAppearance: RemoteAppearance = .black
     @AppStorage(FluxDockPosition.storageKey) private var dockPosition: FluxDockPosition = .defaultValue
     @AppStorage(FluxDockTheme.storageKey) private var dockTheme: FluxDockTheme = .defaultValue
+    @AppStorage(FluxDockThemeChoices.storageKey) private var spaceThemes = ""
+    #if os(tvOS)
+    @State private var studio: StudioShelf?
+    #endif
     @AppStorage(FluxDockItem.orderKey) private var dockOrder = ""
     @AppStorage(FluxDockItem.magnifyKey) private var dockMagnifies = true
     @AppStorage(DockShelf.recentsKey) private var dockRecents = true
@@ -176,11 +186,16 @@ struct PlaybackSettingsView: View {
             if old == nil, new != page { focusedPage = page; return }
             if new != page { page = new; sourceEditor = nil; removingSource = nil }
         }
+        .onChange(of: pagesRequest) { _, _ in focusedPage = page }
         #endif
         #if os(tvOS)
         .fullScreenCover(item: $sourceEditor) { editor in
             AddSourceSheet(existing: edited(editor), onSaved: { sourceEditor = nil; sourceSaved() })
                 .environmentObject(library)
+        }
+        // Closed, the studio gives the remote back to the key that opened it.
+        .fullScreenCover(item: $studio) { shelf in
+            AppearanceStudio(shelf: shelf, kind: library.contentKind) { studio = nil }
         }
         #endif
         .confirmationDialog("Effacer les positions de reprise ?",
@@ -252,7 +267,12 @@ struct PlaybackSettingsView: View {
                                 // The keyboard of a Mac shows each page as it walks the column.
                                 .deskTarget(DeskKeys.pagePrefix + destination.rawValue, follows: true, perform: show)
                             }
-                        }.padding(.vertical, Desk.pt(3))
+                        }
+                        // The row under the remote or the keyboard grows a
+                        // little, ring included: the room around the rows
+                        // keeps it whole inside the column, which clipped
+                        // its sides (David's television, 26/11).
+                        .padding(.vertical, Desk.pt(4)).padding(.horizontal, Desk.pt(5))
                     }
                     Text(versionLabel).font(Desk.font(.caption2).monospacedDigit()).foregroundStyle(.secondary)
                         .padding(.horizontal, Desk.pt(10)).padding(.bottom, Desk.pt(2))
@@ -645,9 +665,23 @@ struct PlaybackSettingsView: View {
                     ForEach(FluxDockPosition.allCases) { choice in positionTile(choice) }
                 }
             }
-            section("Thème", "L’apparence de la plaque et des icônes.") {
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 170), spacing: Desk.pt(10))], spacing: Desk.pt(10)) {
-                    ForEach(FluxDockTheme.allCases) { choice in themeTile(choice) }
+            section("Thème", "L’apparence de la plaque et des icônes, sur tous les écrans. Un écran peut garder le sien : le studio les essaie en plein écran, écran par écran.") {
+                ForEach(FluxDockTheme.Family.allCases) { family in
+                    Text(family.title).font(Desk.font(.headline, .semibold)).foregroundStyle(.secondary)
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 170), spacing: Desk.pt(10))], spacing: Desk.pt(10)) {
+                        ForEach(family.themes) { choice in themeTile(choice) }
+                    }
+                }
+                let own = FluxDockThemeChoices.parse(spaceThemes)
+                if !own.isEmpty {
+                    Text("Gardent leur propre thème : " + FluxSpace.allCases.compactMap { space in own[space].map { "\(space.title) (\($0.title))" } }.joined(separator: ", ") + ".")
+                        .font(Desk.font(.caption)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                }
+                HStack(spacing: Desk.pt(10)) {
+                    #if os(macOS) || os(tvOS)
+                    settingsKey("Un thème par écran", prominent: true) { showStudio(.dock) }
+                    #endif
+                    if !own.isEmpty { settingsKey("Le même thème sur tous les écrans") { spaceThemes = "" } }
                 }
             }
             section("Icônes", "Glissez une icône dans le dock pour la déplacer, ou utilisez les flèches.") {
@@ -669,7 +703,7 @@ struct PlaybackSettingsView: View {
                 }
                 DeskToggle(title: "Agrandir les icônes au survol", isOn: $dockMagnifies)
                 settingsKey("Dock par défaut") {
-                    dockPosition = .defaultValue; dockTheme = .defaultValue; dockOrder = ""; dockMagnifies = true
+                    dockPosition = .defaultValue; dockTheme = .defaultValue; spaceThemes = ""; dockOrder = ""; dockMagnifies = true
                 }
             }
             section("Raccourcis et dossiers", "Une chaîne, un film, une série, une saison ou un épisode se gardent dans le dock depuis « Favoris, listes et dock » : l’étoile d’un titre, ou un appui long sur lui. Une section s’y tient à part, entre deux séparateurs. Un dossier y est une seule icône, qui s’ouvre en éventail ; il peut en contenir d’autres, et porter l’icône de votre choix. Une liste de favoris y devient aussi un dossier, depuis son écran.") {
@@ -910,9 +944,14 @@ struct PlaybackSettingsView: View {
         return Button { dockTheme = choice } label: {
             VStack(alignment: .leading, spacing: Desk.pt(9)) {
                 HStack(spacing: Desk.pt(6)) {
-                    ForEach([FluxDockItem.live, .movie, .series], id: \.self) { item in
-                        FluxDockSwatch(item: item, theme: choice)
+                    HStack(spacing: Desk.pt(choice.skinned ? 4 : 6)) {
+                        ForEach([FluxDockItem.live, .movie, .series], id: \.self) { item in
+                            FluxDockSwatch(item: item, theme: choice)
+                        }
                     }
+                    // A skin draws its plate as well as its icons.
+                    .padding(choice.skinned ? Desk.pt(5) : 0)
+                    .background { if choice.skinned { DockSkinPlate(theme: choice, radius: Desk.pt(10)) } }
                     Spacer(minLength: 0)
                     if selected { Image(systemName: "checkmark.circle.fill").foregroundStyle(.cyan) }
                 }
@@ -932,11 +971,94 @@ struct PlaybackSettingsView: View {
 
     // MARK: Interface
 
+    private var currentPreset: FluxQualityPreset? {
+        FluxQualityPreset.matching(glass: glass, motion: motion, backdrops: stage != .off, livePreview: automaticLivePreview)
+    }
+    private func apply(_ preset: FluxQualityPreset) {
+        glass = preset.glass; motion = preset.motion
+        stage = preset.backdrops ? .orbit : .off
+        automaticLivePreview = preset.livePreview
+    }
+    private func presetTile(_ preset: FluxQualityPreset) -> some View {
+        let selected = currentPreset == preset
+        let tile = RoundedRectangle(cornerRadius: Desk.pt(14), style: .continuous)
+        return Button { apply(preset) } label: {
+            VStack(alignment: .leading, spacing: Desk.pt(8)) {
+                HStack {
+                    Image(systemName: preset.symbol).font(Desk.system(20, .semibold)).foregroundStyle(.cyan)
+                    Spacer(minLength: 0)
+                    if selected { Image(systemName: "checkmark.circle.fill").foregroundStyle(.cyan) }
+                }
+                Text(preset.title).font(Desk.font(.headline, .semibold)).lineLimit(1)
+                Text(preset.subtitle).font(Desk.font(.caption)).foregroundStyle(.secondary)
+                    .lineLimit(3, reservesSpace: true).fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(Desk.pt(14)).frame(maxWidth: .infinity, alignment: .leading)
+            .background(.white.opacity(selected ? 0.14 : 0.05), in: tile)
+            .overlay(tile.strokeBorder(Color.cyan.opacity(selected ? 0.85 : 0), lineWidth: 2).allowsHitTesting(false))
+            .contentShape(tile)
+        }
+        .buttonStyle(DeskFocusStyle(radius: Desk.pt(14)))
+        .accessibilityLabel("Préréglage \(preset.title)").accessibilityAddTraits(selected ? .isSelected : [])
+        .accessibilityIdentifier("settings-preset-\(preset.rawValue)")
+        .deskTarget("preset-\(preset.rawValue)") { apply(preset) }
+    }
+
+    #if os(macOS) || os(tvOS)
+    private func showStudio(_ shelf: StudioShelf) {
+        #if os(tvOS)
+        studio = shelf
+        #else
+        openStudio?(shelf)
+        #endif
+    }
+    private func studioTile(_ shelf: StudioShelf, line: String) -> some View {
+        let tile = RoundedRectangle(cornerRadius: Desk.pt(14), style: .continuous)
+        return Button { showStudio(shelf) } label: {
+            HStack(spacing: Desk.pt(14)) {
+                Image(systemName: shelf.symbol).font(Desk.system(26, .semibold)).foregroundStyle(.cyan)
+                    .frame(width: Desk.pt(44))
+                VStack(alignment: .leading, spacing: Desk.pt(4)) {
+                    Text(shelf.title).font(Desk.font(.headline, .semibold))
+                    Text(line).font(Desk.font(.caption)).foregroundStyle(.secondary).lineLimit(2)
+                }
+                Spacer(minLength: Desk.pt(8))
+                Image(systemName: "arrow.up.left.and.arrow.down.right").foregroundStyle(.secondary)
+            }
+            .padding(Desk.pt(14)).frame(maxWidth: .infinity, alignment: .leading)
+            .background(.white.opacity(0.06), in: tile)
+            .overlay(tile.strokeBorder(.white.opacity(0.12), lineWidth: 1).allowsHitTesting(false))
+            .contentShape(tile)
+        }
+        .buttonStyle(DeskFocusStyle(radius: Desk.pt(14)))
+        .accessibilityLabel("Studio d’apparence, \(shelf.title.lowercased())")
+        .accessibilityIdentifier("settings-studio-\(shelf.rawValue)")
+        .deskTarget("studio-\(shelf.rawValue)") { showStudio(shelf) }
+    }
+    #endif
+
     private var appearanceSettings: some View {
         VStack(alignment: .leading, spacing: Desk.pt(16)) {
-            section("Les trois espaces", "Films au cinéma, séries au vidéoclub, chaînes TV dans le salon. Chaque lieu possède son propre thème.") {
-                DeskToggle(title: "Afficher les décors", isOn: Binding(get: { stage != .off }, set: { stage = $0 ? .orbit : .off }))
-                Text("Les décors sont fixes. Ils disparaissent au lancement de la lecture plein écran.").font(Desk.font(.caption)).foregroundStyle(.secondary)
+            section("Qualité de l’affichage", "Chacun règle d’un coup le verre, les mouvements de la sélection, les fonds et l’aperçu des chaînes. Fluide convient aux Apple TV anciennes.") {
+                HStack(alignment: .top, spacing: Desk.pt(12)) {
+                    ForEach(FluxQualityPreset.allCases) { preset in presetTile(preset) }
+                }
+                if currentPreset == nil {
+                    Text("Personnalisé : les réglages plus bas ne suivent aucun des trois.")
+                        .font(Desk.font(.caption)).foregroundStyle(.secondary)
+                }
+            }
+            #if os(macOS) || os(tvOS)
+            section("Studio d’apparence", "Les fonds de chaque écran, seuls ou en diaporama, et le thème du dock, écran par écran. Tout s’essaie en plein écran avant d’être gardé.") {
+                HStack(spacing: Desk.pt(12)) {
+                    studioTile(.backdrops, line: "\(FluxBackdropLibrary.art.count) fonds dessinés, diaporama")
+                    studioTile(.dock, line: "15 thèmes, d’aujourd’hui et rétro")
+                }
+            }
+            #endif
+            section("Fonds et couleurs", "Films, séries et chaînes TV ont chacun leurs couleurs : celles des repères, et du fond uni quand un écran ne montre pas d’image.") {
+                DeskToggle(title: "Afficher les fonds", isOn: Binding(get: { stage != .off }, set: { stage = $0 ? .orbit : .off }))
+                Text("Les images dessinées derrière les écrans, choisies dans le studio. Elles disparaissent au lancement de la lecture plein écran.").font(Desk.font(.caption)).foregroundStyle(.secondary)
             }
             environmentSection(.cinema, selection: $cinemaTheme)
             environmentSection(.videoClub, selection: $seriesTheme)
@@ -955,7 +1077,7 @@ struct PlaybackSettingsView: View {
                             Image(systemName: concept.symbol).font(Desk.font(.title2)).frame(width: Desk.pt(40))
                             VStack(alignment: .leading, spacing: Desk.pt(4)) {
                                 Text(concept == .neoVideoClub ? "Néo rétro" : "Épurée").font(Desk.font(.headline))
-                                Text(concept == .neoVideoClub ? "Grandes jaquettes rapprochées et décor rétro." : "Cartes aérées et commandes discrètes.").font(Desk.font(.caption)).foregroundStyle(.secondary)
+                                Text(concept == .neoVideoClub ? "Grandes jaquettes rapprochées." : "Cartes aérées et commandes discrètes.").font(Desk.font(.caption)).foregroundStyle(.secondary)
                             }
                             Spacer(minLength: Desk.pt(8))
                             if clubProfile == concept { Image(systemName: "checkmark.circle.fill").foregroundStyle(.cyan) }
@@ -1010,12 +1132,7 @@ struct PlaybackSettingsView: View {
     }
 
     private func environmentSection(_ environment: MediaEnvironment, selection: Binding<VideoClubTheme>) -> some View {
-        section(environment.title + " · " + environment.kind.frenchTitle, environment.subtitle) {
-            if playback.playingItem == nil {
-                RoomEnvironmentPreview(environment: environment, theme: selection.wrappedValue)
-                    .frame(maxWidth: Desk.pt(560))
-                    .accessibilityLabel("Aperçu : " + environment.title + ", " + selection.wrappedValue.title)
-            }
+        section("Couleurs · " + environment.kind.frenchTitle, "Les repères de l’écran " + environment.kind.frenchTitle + " et son fond uni.") {
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 160), spacing: Desk.pt(10))], spacing: Desk.pt(10)) {
                 ForEach(VideoClubTheme.allCases, id: \.self) { candidate in themeButton(candidate, selection: selection, place: environment.title) }
             }
@@ -1121,6 +1238,12 @@ private struct FluxDockSwatch: View {
                 .background(LinearGradient(colors: [tint.opacity(0.52), tint.opacity(0.18)], startPoint: .top, endPoint: .bottom), in: shape)
                 .background(theme == .smoked ? Color(red: 0.035, green: 0.04, blue: 0.055) : Color.white.opacity(0.10), in: shape)
                 .overlay(shape.strokeBorder(.white.opacity(0.30), lineWidth: 1))
+        default:
+            // A skin draws its own tile, as its dock does; pixels keep their
+            // square on a side of 32.
+            let side = Desk.pt(theme.pixelated ? 32 : 28)
+            DockSkinDestination(item: item, theme: theme, selected: false, focused: false, side: side, glyph: Desk.pt(13))
+                .frame(width: side, height: side)
         }
     }
 }

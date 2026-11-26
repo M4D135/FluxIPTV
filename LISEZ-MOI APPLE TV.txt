@@ -1,4 +1,17 @@
-FLUX IPTV 0.9.2 — BUILD 40 — PROJET APPLE TV
+FLUX IPTV 0.9.3 — BUILD 41 — PROJET APPLE TV
+
+NOUVEAUTÉS DE LA 0.9.3 : Réglages > Interface > Studio d'apparence. Chaque
+écran (accueil, TV, Films, Séries, Recherche, Réglages) garde son fond et son
+thème de dock, ou suit ceux de tous les écrans : seize fonds dessinés, un
+diaporama par écran, quinze thèmes de dock en quatre familles. Les anciens
+décors, avec leurs enseignes « FLUX », sont retirés. Ce sur quoi le curseur
+s'arrête s'essaie aussitôt derrière le studio ; OK le garde, Lecture/Pause le
+montre en plein écran, Menu referme.
+Trois préréglages de qualité, Fluide, Équilibré et Qualité, règlent d'un coup
+le verre, les mouvements, les fonds et l'aperçu des chaînes : Fluide pour
+une Apple TV ancienne. Au bord de l'écran, plus aucune touche morte (voir
+plus bas). L'application a son icône, en couches comme le veut l'Apple TV,
+et ses images pour le Top Shelf.
 
 NOUVEAUTÉ DE LA 0.9.2 : le dock suit de nouveau la télécommande. En tvOS 26,
 la sélection avançait dans la barre — on l'entendait — mais le dock restait
@@ -6,7 +19,7 @@ dessiné sur l'icône de l'écran, sans grossir. L'icône sélectionnée grossit
 maintenant avec ses voisines, comme sous le pointeur d'un Mac.
 
 1. Décompressez tout le dossier, en conservant Sources et FluxIPTVMac à côté
-   des fichiers .xcodeproj. Les sources et les 18 décors 4K sont partagés.
+   des fichiers .xcodeproj. Les sources et les 16 fonds dessinés en 4K sont partagés.
 2. Ouvrez « FluxIPTV-AppleTV.xcodeproj », ou double-cliquez sur
    « Ouvrir Flux IPTV Apple TV.command ».
 3. Le seul schéma de ce projet est « FluxIPTVTV ».
@@ -42,13 +55,25 @@ verre de tvOS 26 à partir de l'Apple TV 4K de 2e génération ; sur l'Apple TV
 HD et la première Apple TV 4K, un verre dessiné avec le flou du système.
 Réglages > Interface > Liquid Glass le coupe (surfaces sombres), et
 Réglages > Interface > Mouvements de la sélection coupe ce qui bouge quand
-la sélection change, si cela saccade sur votre Apple TV.
+la sélection change, si cela saccade sur votre Apple TV. Le préréglage
+Fluide coupe les deux, avec les fonds et l'aperçu automatique.
 
-CHANGER DE ZONE : la touche Lecture/Pause de la télécommande passe d'une
-zone de l'écran à l'autre. Depuis un titre, même au milieu d'une longue
-liste : un appui mène à la barre du bas, un deuxième à la recherche, un
-troisième à la colonne, un quatrième au titre que l'on avait quitté. La
-barre le rappelle au-dessus de l'heure.
+CHANGER DE ZONE : la touche Lecture/Pause de la télécommande fait le tour
+des zones de l'écran, dans le sens des aiguilles d'une montre. Depuis un
+titre, même au milieu d'une longue liste : un appui mène à la barre du
+bas, un deuxième à la colonne de gauche, un troisième à la recherche en
+haut, un quatrième au titre que l'on avait quitté. Sur l'écran TV, les
+boutons à droite de l'aperçu viennent juste avant la barre. La barre le
+rappelle au-dessus de l'heure : « Zone suivante ».
+
+AUCUNE TOUCHE MORTE : au bord de l'écran, une flèche mène quelque part.
+Gauche depuis la colonne mène au bouton Retour de la barre ; Haut depuis
+Retour revient où l'on était. Droite au bout d'une rangée et Haut depuis
+la recherche mènent à l'icône de l'écran dans le dock. La barre fait le
+tour : Gauche sur Retour mène à la dernière icône, Droite sur la dernière
+revient à Retour. Bas depuis la barre remonte à la recherche. Une rafale
+d'appuis s'arrête au bord ; l'appui suivant, après une courte pause, le
+franchit.
 La dépendance VLCKit est fixée à une révision précise ; Xcode la résout au
 premier lancement. Le sous-ensemble YouTubeKit est fourni dans Vendor/.
 Conservez tout ce dossier avec le projet, sans déplacer le .xcodeproj seul.
@@ -134,7 +159,7 @@ Série : Valider ouvre le rayon des saisons ; choisir une saison affiche sa
 fiche, la grande boîte du titre et les épisodes.
 Lecture/Pause lit le film ou l’épisode choisi depuis sa fiche.
 Appui long sur une carte ouvre les favoris. La fiche conserve Lecture,
-Description complète, Favoris et Retour. Les décors restent visibles dans
+Description complète, Favoris et Retour. Les fonds restent visibles dans
 le catalogue ; seule la boîte du titre sélectionné apparaît dans sa fiche.
 
 Aucune bande-annonce n’est chargée ni proposée dans les fiches film/série.

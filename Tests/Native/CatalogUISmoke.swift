@@ -109,6 +109,9 @@ private enum CatalogUIFailure: Error, CustomStringConvertible {
 /// fixture enters the production catalogue/cache; it does not replace any UI.
 @main private struct CatalogUISmoke {
     private static let bundleID = "com.m4d135.FluxIPTV.CatalogUISmoke"
+    /// Seconds between two keys of a scenario, read by the screen: apart
+    /// by a pause, each key is a fresh press, which may cross an edge.
+    private static let keyGap = "fluxiptv.fixture.keyGap"
 
     @MainActor static func main() {
         let application = NSApplication.shared
@@ -143,14 +146,18 @@ private enum CatalogUIFailure: Error, CustomStringConvertible {
             }
         }
         Task { @MainActor in
-            try? await Task.sleep(nanoseconds: CatalogCaptureOptions.gallery ? 300_000_000_000 : 150_000_000_000)
+            // A hosted runner may take twice the time of a Mac at home: the
+            // run of 0.9.2 on its branch went past 150 s, the same on main not.
+            try? await Task.sleep(nanoseconds: CatalogCaptureOptions.gallery ? 480_000_000_000 : 240_000_000_000)
             fputs("FAIL: catalogue UI smoke exceeded its rendering deadline.\n", stderr)
             exit(1)
         }
         application.run()
     }
 
-    @MainActor private static func configureDefaults(_ overrides: [String: Any] = [:]) {
+    /// `writable`: the values only stand in for what is saved, and what the
+    /// app writes wins over them, as on a device. Otherwise they hold.
+    @MainActor private static func configureDefaults(_ overrides: [String: Any] = [:], writable: Bool = false) {
         // This dedicated bundle has a separate preferences domain from FluxIPTV.
         UserDefaults.standard.removePersistentDomain(forName: bundleID)
         let base: [String: Any] = [
@@ -166,8 +173,15 @@ private enum CatalogUIFailure: Error, CustomStringConvertible {
             LiveTVPreviewDelay.storageKey: LiveTVPreviewDelay.three.rawValue,
             TrailerPreviewDelay.automaticKey: false
         ]
-        UserDefaults.standard.setVolatileDomain(base.merging(overrides) { _, scenario in scenario },
-                                                forName: UserDefaults.argumentDomain)
+        let values = base.merging(overrides) { _, scenario in scenario }
+        if writable {
+            // The argument domain comes before what the app saves: a value
+            // left there would undo every change the keys make.
+            UserDefaults.standard.setVolatileDomain([:], forName: UserDefaults.argumentDomain)
+            UserDefaults.standard.register(defaults: values)
+        } else {
+            UserDefaults.standard.setVolatileDomain(values, forName: UserDefaults.argumentDomain)
+        }
     }
 
     /// One capture of the real ContentView. Gallery scenarios are further
@@ -197,6 +211,9 @@ private enum CatalogUIFailure: Error, CustomStringConvertible {
         var expectedFocus: String? = nil
         /// The channel those keys must leave on screen.
         var expectedPlaying: String? = nil
+        /// What those keys must leave saved. Such a scenario starts from
+        /// settings the app may change.
+        var expectedDefaults: [String: Any] = [:]
         /// The catalogue of a real subscription: tens of thousands of films,
         /// and so the pages of the catalogue on the line of the search.
         var manyFilms = false
@@ -210,21 +227,26 @@ private enum CatalogUIFailure: Error, CustomStringConvertible {
         /// The lists of the selected title, with its place in the dock.
         var lists = false
         var defaults: [String: Any] = [:]
+        /// The studio of the appearance over the settings, its cursor on
+        /// the item of that key.
+        var studio: StudioShelf? = nil
+        var studioStart: String? = nil
         var gallery = false
     }
 
     @MainActor private static func run(output: URL) async throws {
-        for room in ["livingRoom-neo90", "cinema-neo90", "videoClub-neo90"] {
-            guard let url = Bundle.main.url(forResource: room, withExtension: "jpg", subdirectory: "RoomBakes"),
+        for picture in FluxBackdropLibrary.all {
+            let resource = picture.resource
+            guard let url = Bundle.main.url(forResource: resource.name, withExtension: "jpg", subdirectory: resource.folder),
                   let source = CGImageSourceCreateWithURL(url as CFURL, nil),
                   let metadata = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
                   let width = metadata[kCGImagePropertyPixelWidth] as? Int,
                   let height = metadata[kCGImagePropertyPixelHeight] as? Int else {
-                throw CatalogUIFailure.assertion("Missing or unreadable production room resource: \(room).")
+                throw CatalogUIFailure.assertion("Missing or unreadable production backdrop: \(resource.name).")
             }
-            try require(width == 3840 && height == 2160, "Unexpected room resource dimensions for \(room).")
-            print("Bundled room: \(room).jpg (\(width)×\(height)).")
+            try require(width == 3840 && height == 2160, "Unexpected backdrop dimensions for \(resource.name).")
         }
+        print("Bundled backdrops: \(FluxBackdropLibrary.all.count) pictures in 3840×2160.")
         let source = IPTVSource(id: UUID(uuidString: "00000000-0000-0000-0000-000000000002")!,
                                 name: "Catalogue local de démonstration", kind: .m3uFile)
         let artworkRoot = FileManager.default.temporaryDirectory.appendingPathComponent("FluxCatalogFixtures-\(UUID().uuidString)")
@@ -324,9 +346,12 @@ private enum CatalogUIFailure: Error, CustomStringConvertible {
                      expectedFocus: "cinema-controls", expectedPlaying: "fixture-live-1"),
             // The settings at the keyboard of a Mac, as at the remote: Up
             // from the dock enters the column on the page shown, Right
-            // enters the page, and OK does what a click does — the decors go.
+            // enters the page on its first preset, and OK does what a click
+            // does — the display turns « Fluide », the decors go.
             Scenario(kind: .movie, filename: "keys-settings.png", settings: .appearance,
-                     actions: [.up, .right, .select], expectedFocus: "toggle-Afficher les décors"),
+                     actions: [.up, .right, .select], expectedFocus: "preset-fluid",
+                     expectedDefaults: [FluxAppearance.glassKey: false, FluxAppearance.motionKey: false,
+                                        "fluxiptv.appearance.stage": ProceduralCinema.Style.off.rawValue]),
             // Walking the column shows each page: two rows down is Vidéo,
             // and Right lands on its first setting.
             Scenario(kind: .movie, filename: "keys-settings-pages.png", settings: .appearance,
@@ -337,7 +362,36 @@ private enum CatalogUIFailure: Error, CustomStringConvertible {
                      actions: [.up, .right, .right, .down, .select], expectedFocus: "dock-theme-*"),
             // Past the last row of the column the keyboard returns to the dock.
             Scenario(kind: .movie, filename: "keys-settings-dock.png", settings: .appearance,
-                     actions: [.up] + Array(repeating: .down, count: 7), expectedFocus: FluxDockItem.settings.focusID)
+                     actions: [.up] + Array(repeating: .down, count: 7), expectedFocus: FluxDockItem.settings.focusID),
+            // "ne pas laisser de fonctionnalité vide": keys a pause apart, each
+            // a fresh press. The television starts in its column: Left goes
+            // to Back, and Up from Back returns to the row that was left.
+            // Past one end of the bar comes the other, both ways. Right past
+            // the actions of a channel and Up past the line of the search go
+            // to the icon of the screen; Down from the bar leads to the
+            // search, and Left from the column of the settings to Back.
+            Scenario(kind: .live, filename: "keys-edge-back.png", actions: [.left],
+                     expectedFocus: DeskZone.backID, defaults: [Self.keyGap: 0.6]),
+            Scenario(kind: .live, filename: "keys-edge-back-up.png", actions: [.left, .up],
+                     expectedFocus: "countries", defaults: [Self.keyGap: 0.6]),
+            Scenario(kind: .live, filename: "keys-edge-ring.png", actions: [.left, .left],
+                     expectedFocus: FluxDockItem.settings.focusID, defaults: [Self.keyGap: 0.6]),
+            Scenario(kind: .live, filename: "keys-edge-ring-back.png", actions: [.left, .left, .right],
+                     expectedFocus: DeskZone.backID, defaults: [Self.keyGap: 0.6]),
+            // A run of presses stops at the edge: the second Left, close
+            // behind the first, stays on Back.
+            Scenario(kind: .live, filename: "keys-edge-run.png", actions: [.left, .left],
+                     expectedFocus: DeskZone.backID),
+            Scenario(kind: .live, filename: "keys-edge-right.png", actions: [.right, .right, .right, .right],
+                     expectedFocus: FluxDockItem.live.focusID, defaults: [Self.keyGap: 0.6]),
+            Scenario(kind: .movie, filename: "keys-edge-top.png", actions: [.up, .up],
+                     expectedFocus: FluxDockItem.movie.focusID, defaults: [Self.keyGap: 0.6]),
+            // From the compass of the zones, Down enters the bar; the next
+            // Down, away from the screen, leads to its search.
+            Scenario(kind: .movie, filename: "keys-edge-down.png", zone: .content, actions: [.down, .down],
+                     expectedFocus: DeskZone.searchID, defaults: [Self.keyGap: 0.6]),
+            Scenario(kind: .movie, filename: "keys-settings-edge.png", settings: .appearance, actions: [.up, .left],
+                     expectedFocus: DeskZone.backID, defaults: [Self.keyGap: 0.6])
         ]
         for theme in FluxDockTheme.allCases {
             scenarios.append(Scenario(kind: .live, filename: "dock-theme-\(theme.rawValue).png",
@@ -345,6 +399,14 @@ private enum CatalogUIFailure: Error, CustomStringConvertible {
                                                  "fluxiptv.fixture.dockPointer": 1], gallery: true))
         }
         scenarios.append(Scenario(kind: .movie, filename: "languages.png", languages: true, gallery: true))
+        // The studio of the appearance: a picture drawn for the television
+        // tried behind it, and a theme of the dock tried on its dock.
+        // It opens on its shop window: the pictures of the boutique.
+        scenarios.append(Scenario(kind: .live, filename: "studio-vitrine.png", studio: .backdrops))
+        scenarios.append(Scenario(kind: .live, filename: "studio-fonds.png", studio: .backdrops, studioStart: "art:tv-2"))
+        scenarios.append(Scenario(kind: .live, filename: "studio-dock.png", studio: .dock, studioStart: "theme-bevel"))
+        scenarios.append(Scenario(kind: .live, filename: "studio-dock-phosphore.png", studio: .dock, studioStart: "theme-phosphor",
+                                  gallery: true))
         // The dock as a user fills it. A few shortcuts keep their full
         // size; the pointer on one of them shows its whole name.
         let folder = DockEntry.stack(listID: FavoritePresets.defaultID(for: .movie)).id
@@ -389,7 +451,7 @@ private enum CatalogUIFailure: Error, CustomStringConvertible {
         // after its lists, the sections and the folders of the dock.
         scenarios.append(Scenario(kind: .movie, filename: "favorites-dock.png", favorites: true, dock: "folders"))
         scenarios.append(Scenario(kind: .live, filename: "zones-top.png", zone: .top, gallery: true))
-        // The pointer on Films and on Séries: each brings its own room forward.
+        // The pointer on Films and on Séries: each brings its own pictures forward.
         scenarios.append(Scenario(kind: .live, filename: "home-films.png", home: true,
                                   defaults: ["fluxiptv.fixture.dockPointer": 1], gallery: true))
         scenarios.append(Scenario(kind: .live, filename: "home-series.png", home: true,
@@ -418,7 +480,7 @@ private enum CatalogUIFailure: Error, CustomStringConvertible {
         var captureFailures: [String] = []
         for scenario in scenarios where CatalogCaptureOptions.only?.contains(scenario.filename) ?? (!scenario.gallery || CatalogCaptureOptions.gallery) {
             let kind = scenario.kind
-            configureDefaults(scenario.defaults)
+            configureDefaults(scenario.defaults, writable: !scenario.expectedDefaults.isEmpty)
             let library = IPTVLibrary(catalogFixture: source,
                                       items: scenario.languages ? labelled : scenario.manyFilms ? items + manyFilms : items, kind: kind)
             try require(library.catalogResults.all.items.first != nil && !library.isLoading && !library.isFiltering, "Fixture catalogue was not installed synchronously.")
@@ -528,7 +590,8 @@ private enum CatalogUIFailure: Error, CustomStringConvertible {
                                    fixtureZapList: scenario.zapList, fixtureLists: scenario.lists,
                                    fixturePlayer: scenario.player != nil, fixtureHoldsControls: scenario.player != nil,
                                    fixtureTracksPanel: scenario.player == "tracks",
-                                   fixtureBanner: scenario.player == "banner")
+                                   fixtureBanner: scenario.player == "banner",
+                                   fixtureStudio: scenario.studio, fixtureStudioStart: scenario.studioStart)
                 .environmentObject(library).environmentObject(playback)
                 .preferredColorScheme(.dark)
                 .environment(\.scenePhase, .active)
@@ -538,7 +601,7 @@ private enum CatalogUIFailure: Error, CustomStringConvertible {
             window.contentView = host
             host.frame = CGRect(origin: .zero, size: size)
             CatalogCaptureOptions.show(window)
-            // Let actual SwiftUI tasks fill artwork and the bundled room image,
+            // Let actual SwiftUI tasks fill artwork and the bundled backdrop,
             // then let the native compositor settle before caching the view.
             try await Task.sleep(nanoseconds: 1_500_000_000)
             if scenario.season != nil {try await Task.sleep(nanoseconds: 1_500_000_000)}
@@ -576,6 +639,11 @@ private enum CatalogUIFailure: Error, CustomStringConvertible {
             if let expected = scenario.expectedPlaying {
                 try require(playback.playingItem?.id == expected && playback.isPlaying,
                             "\(filename): the keys \(scenario.actions) left \(playback.playingItem?.id ?? "nothing") on screen, not \(expected).")
+            }
+            for (key, expected) in scenario.expectedDefaults.sorted(by: { $0.key < $1.key }) {
+                let saved = UserDefaults.standard.object(forKey: key)
+                try require((saved as AnyObject?)?.isEqual(expected) == true,
+                            "\(filename): the keys \(scenario.actions) left \(key) at \(saved.map { "\($0)" } ?? "nothing"), not \(expected).")
             }
             do {
                 try await capture(host, window: window, to: output.appendingPathComponent(filename))

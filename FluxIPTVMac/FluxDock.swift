@@ -270,9 +270,26 @@ struct FluxDock: View {
     var folderSymbol: ((String, String?) -> Void)?
     var openFanList: (() -> Void)?
     let openSettings: () -> Void
+    /// The screen in front, whose theme the bar takes.
+    var space: FluxSpace = .live
 
     @AppStorage(FluxDockPosition.storageKey) private var position: FluxDockPosition = .defaultValue
-    @AppStorage(FluxDockTheme.storageKey) private var theme: FluxDockTheme = .defaultValue
+    @AppStorage(FluxDockTheme.storageKey) private var allScreensTheme: FluxDockTheme = .defaultValue
+    @AppStorage(FluxDockThemeChoices.storageKey) private var spaceThemes = ""
+    private var theme: FluxDockTheme { FluxDockThemeChoices.theme(for: space, all: allScreensTheme, stored: spaceThemes) }
+    #if !os(tvOS)
+    /// The menu of the bar changes the theme of the screen in front: its
+    /// own one, or that of all screens when it keeps none.
+    private var themeChoice: Binding<FluxDockTheme> {
+        Binding(get: { theme }, set: { chosen in
+            if FluxDockThemeChoices.parse(spaceThemes)[space] != nil {
+                spaceThemes = FluxDockThemeChoices.setting(chosen, for: space, in: spaceThemes)
+            } else {
+                allScreensTheme = chosen
+            }
+        })
+    }
+    #endif
     @AppStorage(FluxDockItem.orderKey) private var storedOrder = ""
     @AppStorage(FluxDockItem.magnifyKey) private var magnifies = true
     @AppStorage(FluxAppearance.motionKey) private var motion = FluxAppearance.motionDefault
@@ -660,8 +677,12 @@ struct FluxDock: View {
         Picker("Position", selection: $position) {
             ForEach(FluxDockPosition.allCases) { choice in Text(choice.title).tag(choice) }
         }
-        Picker("Thème", selection: $theme) {
-            ForEach(FluxDockTheme.allCases) { choice in Text(choice.title).tag(choice) }
+        Picker("Thème", selection: themeChoice) {
+            ForEach(FluxDockTheme.Family.allCases) { family in
+                Section(family.title) {
+                    ForEach(family.themes) { choice in Text(choice.title).tag(choice) }
+                }
+            }
         }
         Toggle("Agrandir au survol", isOn: $magnifies)
         Divider()
@@ -980,7 +1001,8 @@ private struct FluxDockStrip<Plate: View, Cell: View, Above: View>: View, Animat
     }
 }
 
-private struct FluxDockPlate: View {
+/// The plate under the icons, as the theme draws it; the studio shows it too.
+struct FluxDockPlate: View {
     let theme: FluxDockTheme
     let accent: Color
     let second: Color
@@ -1005,6 +1027,8 @@ private struct FluxDockPlate: View {
                 .shadow(color: accent.opacity(0.55), radius: 14)
         case .floating:
             Color.clear
+        default:
+            DockSkinPlate(theme: theme, radius: radius)
         }
     }
 }
@@ -1101,23 +1125,34 @@ struct FluxDockCell: View {
         VStack(spacing: metrics.labelSpacing) {
             face
             if !metrics.compact {
-                Text(tile.name)
-                    .font(.system(size: metrics.label, weight: .semibold)).lineLimit(1)
-                    .minimumScaleFactor(tile.destination == nil ? 1 : 0.8)
-                    .truncationMode(.tail)
-                    .foregroundStyle(selected && theme != .vivid ? tint : .white.opacity(0.88))
-                    .shadow(color: .black.opacity(theme == .floating ? 0.8 : 0.35), radius: 3, y: 1)
-                    .frame(maxWidth: .infinity)
+                if theme.skinned {
+                    DockSkinLabel(text: tile.name, theme: theme, selected: selected, size: metrics.label,
+                                  shrinks: tile.destination != nil)
+                        .frame(maxWidth: .infinity)
+                } else {
+                    Text(tile.name)
+                        .font(.system(size: metrics.label, weight: .semibold)).lineLimit(1)
+                        .minimumScaleFactor(tile.destination == nil ? 1 : 0.8)
+                        .truncationMode(.tail)
+                        .foregroundStyle(selected && theme != .vivid ? tint : .white.opacity(0.88))
+                        .shadow(color: .black.opacity(theme == .floating ? 0.8 : 0.35), radius: 3, y: 1)
+                        .frame(maxWidth: .infinity)
+                }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .overlay(alignment: indicatorAlignment) {
             if selected {
-                Capsule().fill(theme == .vivid ? Color.white : tint)
-                    .frame(width: Desk.tv(position.isVertical ? 3.5 : metrics.compact ? 12 : 16),
-                           height: Desk.tv(position.isVertical ? 16 : metrics.compact ? 3 : 3.5))
-                    .offset(x: Desk.tv(indicatorOffset.width), y: Desk.tv(indicatorOffset.height))
-                    .shadow(color: tint.opacity(theme == .neon ? 0.9 : 0), radius: 5)
+                if theme.skinned {
+                    DockSkinIndicator(theme: theme, tint: tint, side: metrics.tile, position: position)
+                        .offset(x: Desk.tv(indicatorOffset.width), y: Desk.tv(indicatorOffset.height))
+                } else {
+                    Capsule().fill(theme == .vivid ? Color.white : tint)
+                        .frame(width: Desk.tv(position.isVertical ? 3.5 : metrics.compact ? 12 : 16),
+                               height: Desk.tv(position.isVertical ? 16 : metrics.compact ? 3 : 3.5))
+                        .offset(x: Desk.tv(indicatorOffset.width), y: Desk.tv(indicatorOffset.height))
+                        .shadow(color: tint.opacity(theme == .neon ? 0.9 : 0), radius: 5)
+                }
             }
         }
         .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
@@ -1145,10 +1180,46 @@ struct FluxDockCell: View {
         switch tile.face {
         case .destination(let item): destination(item)
         case .title(let item, let kind, let badge, let progress):
-            FluxDockArt(item: item, kind: kind, badge: badge, progress: progress,
-                        side: metrics.tile, radius: metrics.tileRadius, focused: focused)
-        case .folder(let covers, let count, let symbol): folder(covers, count: count, symbol: symbol)
+            if theme.skinned {
+                FluxDockArt(item: item, kind: kind, badge: badge, progress: progress,
+                            side: metrics.tile, radius: DockSkin.radius(theme, side: metrics.tile), focused: focused)
+                    .modifier(DockSkinArtLook(theme: theme, side: metrics.tile))
+            } else {
+                FluxDockArt(item: item, kind: kind, badge: badge, progress: progress,
+                            side: metrics.tile, radius: metrics.tileRadius, focused: focused)
+            }
+        case .folder(let covers, let count, let symbol):
+            if theme.skinned { skinnedFolder(covers, count: count, symbol: symbol) } else { folder(covers, count: count, symbol: symbol) }
         }
+    }
+
+    /// The folder of a skin, its count in the same corner.
+    private func skinnedFolder(_ covers: [IPTVItem], count: Int, symbol: String) -> some View {
+        let side = metrics.tile
+        let radius = DockSkin.radius(theme, side: side)
+        return DockSkinFolder(theme: theme, selected: selected, focused: focused, side: side, glyph: metrics.glyph,
+                              symbol: symbol, empty: covers.isEmpty) {
+            let shown = Array(covers.prefix(3))
+            ForEach(Array(shown.enumerated().reversed()), id: \.element.id) { index, item in
+                let depth = CGFloat(index)
+                FluxDockArt(item: item, kind: item.kind, badge: nil, progress: nil,
+                            side: side * 0.66, radius: radius * 0.55, focused: false)
+                    .modifier(DockSkinArtLook(theme: theme, side: side * 0.66))
+                    .scaleEffect(1 - depth * 0.10)
+                    .offset(x: (depth - CGFloat(shown.count - 1) / 2) * side * 0.17, y: -depth * side * 0.035)
+                    .opacity(1 - Double(depth) * 0.16)
+            }
+        }
+        .overlay(alignment: .topTrailing) {
+            if count > 0 {
+                Text("\(count)").font(.system(size: max(9, side * 0.20), weight: .heavy)).monospacedDigit().lineLimit(1).fixedSize()
+                    .foregroundStyle(.black)
+                    .padding(.horizontal, side * 0.09).padding(.vertical, side * 0.03)
+                    .background(tint, in: theme.pixelated ? AnyShape(Rectangle()) : AnyShape(Capsule()))
+                    .offset(x: side * 0.10, y: -side * 0.08)
+            }
+        }
+        .accessibilityHidden(true)
     }
 
     /// A folder shows what it holds: its first titles, one behind the
@@ -1218,6 +1289,9 @@ struct FluxDockCell: View {
                 .overlay(tileShape.strokeBorder(.white.opacity(focused ? 0.95 : 0), lineWidth: 2).allowsHitTesting(false))
                 .shadow(color: tint.opacity(metrics.hero ? 0.30 : selected ? 0.38 : 0.16),
                         radius: metrics.hero ? 16 : 6, y: metrics.hero ? 8 : 3)
+        default:
+            DockSkinDestination(item: item, theme: theme, selected: selected, focused: focused,
+                                side: metrics.tile, glyph: metrics.glyph)
         }
     }
 

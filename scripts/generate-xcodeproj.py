@@ -37,6 +37,9 @@ PLATFORMS = [
     dict(name='FluxIPTVTV', suffix='tv', sdk='appletvos', supported='"appletvos appletvsimulator"', deployment='TVOS_DEPLOYMENT_TARGET = 17.0;', bundle='com.m4d135.FluxIPTV.tv', plist='Info-tvOS.plist', family='TARGETED_DEVICE_FAMILY = 3;', extra='SWIFT_OBJC_BRIDGING_HEADER = FluxIPTVMac/Compatibility/LegacyKeychainInteraction.h;'),
 ]
 META = ['Info.plist', 'Info-iOS.plist', 'Info-tvOS.plist', 'FluxIPTV.entitlements']
+# Catalog of each platform and the name of its icon in it.
+ASSETS = {'mac': ('assets', 'AppIcon'), 'ios': ('assets', 'AppIcon'), 'tv': ('assets-tv', '"App Icon & Top Shelf Image"')}
+CATALOG_PATHS = {'assets': 'Assets.xcassets', 'assets-tv': 'AssetsTV.xcassets'}
 
 def k(p, key):
     # Retain the original Mac target ID / scheme compatibility.
@@ -58,11 +61,17 @@ def generate(platforms, project_name):
         objects.append(item('compat', 'PBXGroup', 'children = (' + ' '.join(f'{fref(p)},' for p in compat) + '); path = Compatibility; sourceTree = "<group>"'))
     for name in META:
         objects.append(f'\t\t{uid("meta " + name)} /* {name} */ = {{isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = {name}; sourceTree = "<group>"; }};')
-    objects.append(item('room-resources', 'PBXFileReference', 'lastKnownFileType = folder; path = RoomBakes; sourceTree = "<group>"'))
+    # The pictures drawn for the screens, chosen in the studio of the appearance.
+    objects.append(item('backdrop-resources', 'PBXFileReference', 'lastKnownFileType = folder; path = Backdrops; sourceTree = "<group>"'))
+    # The icons, drawn by scripts/make-icons.swift: one catalog for the Mac
+    # and the iPhone, one for the layered icon and the Top Shelf of tvOS.
+    catalogs = sorted({ASSETS[p['suffix']][0] for p in platforms})
+    for catalog in catalogs:
+        objects.append(item(catalog, 'PBXFileReference', f'lastKnownFileType = folder.assetcatalog; path = {CATALOG_PATHS[catalog]}; sourceTree = "<group>"'))
     objects.append(item('root', 'PBXGroup', f'children = ({uid("core-parent")}, {uid("mac-parent")}, {uid("products")},); sourceTree = "<group>"'))
     objects.append(item('core-parent', 'PBXGroup', f'children = ({uid("core")},); path = Sources; sourceTree = "<group>"'))
     objects.append(item('core', 'PBXGroup', 'children = (' + ' '.join(f'{fref(p)},' for p in CORE) + '); path = FluxIPTVCore; sourceTree = "<group>"'))
-    objects.append(item('mac-parent', 'PBXGroup', 'children = (' + ' '.join(f'{fref(p)},' for p in MAC) + ' ' + ref_list(['meta '+s for s in META] + ['room-resources'] + (['compat'] if compat else [])) + '); path = FluxIPTVMac; name = FluxIPTVShared; sourceTree = "<group>"'))
+    objects.append(item('mac-parent', 'PBXGroup', 'children = (' + ' '.join(f'{fref(p)},' for p in MAC) + ' ' + ref_list(['meta '+s for s in META] + ['backdrop-resources'] + catalogs + (['compat'] if compat else [])) + '); path = FluxIPTVMac; name = FluxIPTVShared; sourceTree = "<group>"'))
     objects.append(item('products', 'PBXGroup', f'children = ({ref_list([k(p, "product") for p in platforms])}); name = Products; sourceTree = "<group>"'))
     objects.append(item('vlc-package', 'XCRemoteSwiftPackageReference', 'repositoryURL = "https://github.com/videolan/vlckit.git"; requirement = {kind = revision; revision = 7f98c70f9f0c11fbdf828220890bd6280361ae99; }'))
     package_keys = ['vlc-package']
@@ -89,13 +98,16 @@ def generate(platforms, project_name):
             framework_keys.append(k(p, 'youtube-build'))
             product_keys.append(k(p, 'youtube-product'))
         objects.append(item(k(p,'frameworks-phase'), 'PBXFrameworksBuildPhase', f'buildActionMask = 2147483647; files = ({ref_list(framework_keys)}); runOnlyForDeploymentPostprocessing = 0'))
-        objects.append(item(k(p,'room-build'), 'PBXBuildFile', f'fileRef = {uid("room-resources")}'))
-        objects.append(item(k(p,'resources-phase'), 'PBXResourcesBuildPhase', f'buildActionMask = 2147483647; files = ({u("room-build")},); runOnlyForDeploymentPostprocessing = 0'))
+        objects.append(item(k(p,'backdrop-build'), 'PBXBuildFile', f'fileRef = {uid("backdrop-resources")}'))
+        catalog, icon = ASSETS[p['suffix']]
+        objects.append(item(k(p,'assets-build'), 'PBXBuildFile', f'fileRef = {uid(catalog)}'))
+        objects.append(item(k(p,'resources-phase'), 'PBXResourcesBuildPhase', f'buildActionMask = 2147483647; files = ({u("backdrop-build")}, {u("assets-build")},); runOnlyForDeploymentPostprocessing = 0'))
         objects.append(item(k(p,'target'), 'PBXNativeTarget', f'buildConfigurationList = {u("target-configs")}; buildPhases = ({u("sources-phase")}, {u("frameworks-phase")}, {u("resources-phase")},); buildRules = (); dependencies = (); packageProductDependencies = ({ref_list(product_keys)}); name = {n}; productName = {n}; productReference = {u("product")}; productType = "com.apple.product-type.application"'))
         for config in ['Debug','Release']:
             settings = f"""
+            ASSETCATALOG_COMPILER_APPICON_NAME = {icon};
             CODE_SIGN_STYLE = Automatic;
-            CURRENT_PROJECT_VERSION = 40;
+            CURRENT_PROJECT_VERSION = 41;
             GENERATE_INFOPLIST_FILE = NO;
             INFOPLIST_FILE = FluxIPTVMac/{p['plist']};
             SDKROOT = {p['sdk']};
@@ -104,7 +116,7 @@ def generate(platforms, project_name):
             {p['extra']}
             LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/{'../Frameworks' if p['suffix'] == 'mac' else 'Frameworks'}";
             {'ENABLE_DEBUG_DYLIB = NO;' if p['suffix'] == 'mac' else ''}
-            MARKETING_VERSION = 0.9.2;
+            MARKETING_VERSION = 0.9.3;
             PRODUCT_BUNDLE_IDENTIFIER = {p['bundle']};
             PRODUCT_NAME = "$(TARGET_NAME)";
             SWIFT_VERSION = 5.0;
