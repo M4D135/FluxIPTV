@@ -35,7 +35,7 @@ Le contrôle des SDK exige son marqueur de réussite exact dans le journal. Son 
 
 Le banc Apple TV garde le Liquid Glass actif, comme l’application : ses contrôles de focus et de géométrie sont mesurés sur les panneaux de verre. Le rendu du verre sur appareil n’est pas mesuré ici.
 
-Les huit parcours XCUIRemote disposent de vingt-cinq minutes, compilation de leur cible comprise, et l’étape Apple TV de quarante-cinq : une machine hébergée lente a dépassé les dix minutes prévues pour quatre parcours.
+Les dix parcours XCUIRemote disposent de trente minutes, compilation de leur cible comprise, et l’étape Apple TV de quarante-cinq : une machine hébergée lente a dépassé les dix minutes prévues pour quatre parcours.
 
 Deux échecs de ces bancs ne se voient que sur les machines hébergées et ont été corrigés dans les bancs eux-mêmes : sous tvOS 26, l’identifiant du champ de recherche nomme aussi l’icône voisine, et le parcours interroge désormais le champ ; dans une fenêtre au premier plan, le premier focus natif arrive après l’ouverture et écrasait le résultat de touches envoyées trop tôt, que le banc Mac attend maintenant.
 

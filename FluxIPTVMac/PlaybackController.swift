@@ -193,6 +193,11 @@ final class PlaybackController: ObservableObject {
         subtitleTracks = subtitleTracks.map { PlaybackTrack(id: $0.id, title: $0.title, selected: $0.id == id) }
     }
     var showsFixture: Bool { fixtureTracks }
+    /// Titles the fixture cannot show: they take the ordinary path.
+    var fixtureUnplayable: Set<String> = []
+    /// Showing this title only changes the simulated state: the catalogue of
+    /// a fixture has no address to open.
+    func simulates(_ item: IPTVItem) -> Bool { fixtureTracks && !fixtureUnplayable.contains(item.id) }
     #endif
     @Published private var nativeAudioGroup: AVMediaSelectionGroup?
     @Published private var nativeSubtitleGroup: AVMediaSelectionGroup?
@@ -257,6 +262,10 @@ final class PlaybackController: ObservableObject {
     private var lastDiagnostic = ""
 
     func play(_ item: IPTVItem, urls: [URL]) {
+        #if FLUX_CATALOG_UI_TESTING
+        // The fixture changes channel as an engine would, without a connection.
+        if fixtureTracks { showFixture(item, playing: true, audio: audioTracks, subtitles: subtitleTracks); return }
+        #endif
         stop()
         playingItem = item
         self.urls = PlaybackPlan.candidateURLs(urls)

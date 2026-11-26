@@ -37,6 +37,21 @@ struct DeskFocusStyle: ButtonStyle {
     }
 }
 
+/// Tells whether the control it is drawn in really has the focus. A request
+/// the system declined still reads as granted in a focus binding: the
+/// control itself is the one to ask.
+struct DeskFocusReport: View {
+    let report: (Bool) -> Void
+    @Environment(\.isFocused) private var isFocused
+
+    var body: some View {
+        Color.clear
+            .onAppear { if isFocused { report(true) } }
+            .onChange(of: isFocused) { _, focused in report(focused) }
+            .onDisappear { report(false) }
+    }
+}
+
 /// System glass is reserved for navigation and transient playback controls.
 enum FluxAppearance {
     static let glassKey = "fluxiptv.appearance.glass.v2"

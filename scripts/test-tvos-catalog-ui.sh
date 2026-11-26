@@ -391,8 +391,8 @@ if python3 "$repo_root/scripts/add-tvos-remote-test-target.py" \
   > "$capture_root/remote-target.log" 2>&1 \
   && run_bounded 30 plutil -lint "$smoke_repo/FluxIPTV-AppleTV.xcodeproj/project.pbxproj" \
   >> "$capture_root/remote-target.log" 2>&1; then
-  # Eight flows: a hosted Intel runner needed more than ten minutes for six.
-  if run_bounded 1500 xcodebuild -project "$smoke_repo/FluxIPTV-AppleTV.xcodeproj" \
+  # Ten flows: a hosted Intel runner needed more than ten minutes for six.
+  if run_bounded 1800 xcodebuild -project "$smoke_repo/FluxIPTV-AppleTV.xcodeproj" \
     -scheme FluxIPTVTVRemoteNavigation -configuration Debug \
     -destination "platform=tvOS Simulator,id=$simulator_id" \
     -derivedDataPath "$smoke_root/DerivedData" -parallel-testing-enabled NO \
@@ -400,7 +400,7 @@ if python3 "$repo_root/scripts/add-tvos-remote-test-target.py" \
     'SWIFT_ACTIVE_COMPILATION_CONDITIONS=DEBUG FLUX_CATALOG_UI_TESTING' \
     CODE_SIGNING_ALLOWED=NO ONLY_ACTIVE_ARCH=YES test \
     > "$capture_root/remote-navigation.log" 2>&1; then
-    echo 'PASS: XCUIRemote country selection in the column, every zone by the arrows alone, Menu retracing the screens down to the home screen, film fiche with its lists and description, series fiche by columns, player panels during a stream, restored-channel reentry and failed-source reconnect highlight.'
+    echo 'PASS: XCUIRemote country selection in the column, every zone by the arrows alone, Menu retracing the screens down to the home screen, film fiche with its lists and description, series fiche by columns, player panels during a stream, zapping by the list and by the commands back to the watched channel, a message taking the remote and returning it, restored-channel reentry and failed-source reconnect highlight.'
   else
     failed=1
     tail -100 "$capture_root/remote-navigation.log" >&2

@@ -127,7 +127,7 @@ Les commandes se retirent seules — après trois secondes au pointeur, cinq sur
 
 ### Zapper sans quitter l’image
 
-Pendant une chaîne en direct, la liste des chaînes vient se poser à gauche de l’image, en verre, sans arrêter la lecture : bord gauche de la fenêtre au pointeur, bouton **Liste des chaînes** des commandes, ou **←** quand les commandes sont masquées — sur Mac, iPad et Apple TV. **↑ ↓** choisissent, **Entrée** change de chaîne, **← →** passent à la catégorie voisine, **Échap** referme. La liste s’ouvre sur la chaîne regardée et se retire seule après douze secondes sans geste. Sans la liste, **↑** et **↓** zappent toujours directement.
+Pendant une chaîne en direct, la liste des chaînes vient se poser à gauche de l’image, en verre, sans arrêter la lecture : bord gauche de la fenêtre au pointeur, touche **Chaînes** des commandes, ou **←** quand les commandes sont masquées — sur Mac, iPad et Apple TV. Elle prend la place des commandes. **↑ ↓** choisissent, sans limite : la liste tourne sa page toutes les soixante chaînes. **Entrée** ou **OK** change de chaîne, la liste restant ouverte pour continuer ; sur Apple TV, **Lecture/Pause** fait de même. **← →** passent à la catégorie voisine, **Échap**, **Menu** ou un clic à côté referme : les commandes reviennent sur la touche Chaînes si elle avait ouvert la liste, sinon l’image reste nue. La liste s’ouvre sur la chaîne regardée et se retire seule après douze secondes sans geste, deux secondes après que le pointeur l’a quittée. Sans la liste, **↑** et **↓** zappent toujours directement, et **Suivante** garde la sélection pour continuer.
 
 ### Réglages pendant la lecture
 

@@ -337,7 +337,10 @@ final class TVRemoteNavigationTests: XCTestCase {
         assertCondition("exists == false", on: play, in: app)
         assertFocus(element("season-sleeve-11", in: app), logical: "season-11", in: app)
         retainScreenshot("series-03-shelf", in: app)
-        print("PASS: TV_REMOTE series fiche entered its episodes and its seasons on the selected row, followed the season under the remote and returned to that season on the shelf")
+        // Menu again: the catalogue of the series, on the series that was open.
+        XCUIRemote.shared.press(.menu)
+        assertFocus(element("catalog-card-fixture-series", in: app), logical: "fixture-series", in: app)
+        print("PASS: TV_REMOTE series fiche entered its episodes and its seasons on the selected row, followed the season under the remote, returned to that season on the shelf and then to the series in its catalogue")
     }
 
     @MainActor
@@ -409,6 +412,151 @@ final class TVRemoteNavigationTests: XCTestCase {
         assertCondition("exists == false", on: languages, in: app)
         assertFocus(element("live-channel-fixture-live-0", in: app), logical: "fixture-live-0", in: app)
         print("PASS: TV_REMOTE player commands hid and came back, its settings and its languages kept the remote during a stream, Menu closed each panel and then left the stream")
+    }
+
+    @MainActor
+    func testZappingKeepsTheRemoteOnTheWatchedChannel() {
+        let app = launch("player-deep")
+        defer { app.terminate() }
+        let play = element("player-playpause", in: app)
+        let catcher = element("player-catcher", in: app)
+        let channels = element("player-zap-list", in: app)
+        let next = element("player-next", in: app)
+        func row(_ index: Int) -> XCUIElement { element("zap-channel-fixture-live-\(index)", in: app) }
+        // The fifty-ninth channel of a hundred and ten, which the
+        // catalogue had not selected: its row is far below the top of the
+        // list, which must scroll to it before it can take the remote.
+        let watched = row(58)
+        let playing = NSPredicate(format: "value == %@", "En cours")
+        assertFocus(play, in: app)
+        assertCondition("exists == false", on: play, in: app)
+        assertFocus(catcher, in: app)
+
+        // Commands hidden, Left brings the list of channels.
+        XCUIRemote.shared.press(.left)
+        assertFocus(watched, in: app)
+        assertCondition(playing, on: watched, in: app)
+        retainScreenshot("zap-01-on-the-watched-channel", in: app)
+        // Right shows the first category, where that channel is not: the
+        // remote is on its first channel. Left returns to all the channels,
+        // on the one being watched.
+        XCUIRemote.shared.press(.right)
+        assertFocus(row(1), in: app)
+        assertCondition("exists == false", on: watched, in: app)
+        retainScreenshot("zap-02-another-category", in: app)
+        XCUIRemote.shared.press(.left)
+        assertFocus(watched, in: app)
+        // The list builds sixty channels at a time: Down from the last one
+        // turns its page, Up from the first one turns it back.
+        XCUIRemote.shared.press(.down)
+        assertFocus(row(59), in: app)
+        XCUIRemote.shared.press(.down)
+        assertFocus(row(60), in: app)
+        XCUIRemote.shared.press(.up)
+        assertFocus(row(59), in: app)
+        // Up walks the list, OK shows that channel: the list stays under the
+        // remote, and the commands do not come over it.
+        XCUIRemote.shared.press(.up)
+        assertFocus(watched, in: app)
+        XCUIRemote.shared.press(.up)
+        assertFocus(row(57), in: app)
+        XCUIRemote.shared.press(.select)
+        assertCondition(playing, on: row(57), in: app)
+        assertFocus(row(57), in: app)
+        XCTAssertFalse(play.exists, "The list of channels stands alone over the picture.")
+        // The key Lecture/Pause of the remote shows the channel under it too.
+        XCUIRemote.shared.press(.up)
+        assertFocus(row(56), in: app)
+        XCUIRemote.shared.press(.playPause)
+        assertCondition(playing, on: row(56), in: app)
+        XCUIRemote.shared.press(.down)
+        XCUIRemote.shared.press(.select)
+        assertCondition(playing, on: row(57), in: app)
+        assertFocus(row(57), in: app)
+        // Menu closes it: opened from the picture, it leaves the picture bare.
+        XCUIRemote.shared.press(.menu)
+        assertCondition("exists == false", on: row(57), in: app)
+        assertFocus(catcher, in: app)
+
+        // OK brings the commands; their key Chaînes opens the list in their
+        // place, on the channel now watched, and Menu returns to that key.
+        XCUIRemote.shared.press(.select)
+        assertFocus(play, in: app)
+        move(.left, to: channels, maximumPresses: 4, in: app)
+        XCUIRemote.shared.press(.select)
+        assertFocus(row(57), in: app)
+        assertCondition("exists == false", on: channels, in: app)
+        retainScreenshot("zap-03-list-in-place-of-the-commands", in: app)
+        XCUIRemote.shared.press(.menu)
+        assertCondition("exists == false", on: row(57), in: app)
+        assertFocus(channels, in: app)
+        // Suivante changes channel and keeps the remote, to go on.
+        move(.right, to: next, maximumPresses: 4, in: app)
+        XCUIRemote.shared.press(.select)
+        RunLoop.current.run(until: Date().addingTimeInterval(1))
+        assertFocus(next, in: app)
+
+        // Menu leaves the stream for the catalogue, on the channel that was
+        // being watched: on its second page, and not the one it remembered.
+        XCUIRemote.shared.press(.menu)
+        assertCondition("exists == false", on: next, in: app)
+        assertFocus(element("live-channel-fixture-live-58", in: app), logical: "fixture-live-58", in: app)
+        retainScreenshot("zap-04-back-on-the-watched-channel", in: app)
+        print("PASS: TV_REMOTE the channel list opened on the watched channel from the picture and from its key, changed category, page and channel under the remote, Suivante kept the remote, and Menu returned to the watched channel in the catalogue")
+    }
+
+    @MainActor
+    func testMessageTakesTheRemoteAndGivesItBack() {
+        let app = launch("player-deep")
+        defer { app.terminate() }
+        let play = element("player-playpause", in: app)
+        let catcher = element("player-catcher", in: app)
+        let acknowledge = element("desk-notice-ok", in: app)
+        // The sixtieth channel of the fixture cannot be shown: it raises the
+        // message of a source whose credentials are missing.
+        let refused = element("zap-channel-fixture-live-59", in: app)
+        assertFocus(play, in: app)
+        assertCondition("exists == false", on: play, in: app)
+        assertFocus(catcher, in: app)
+
+        // Over the list of channels: the message takes the remote, nothing
+        // under it answers, OK acknowledges it and the list has the remote again.
+        XCUIRemote.shared.press(.left)
+        assertFocus(element("zap-channel-fixture-live-58", in: app), in: app)
+        XCUIRemote.shared.press(.down)
+        assertFocus(refused, in: app)
+        XCUIRemote.shared.press(.select)
+        assertFocus(acknowledge, in: app)
+        retainScreenshot("message-01-over-the-channel-list", in: app)
+        XCUIRemote.shared.press(.up)
+        assertFocus(acknowledge, in: app)
+        XCUIRemote.shared.press(.select)
+        assertCondition("exists == false", on: acknowledge, in: app)
+        assertFocus(refused, in: app)
+        XCUIRemote.shared.press(.menu)
+        assertCondition("exists == false", on: refused, in: app)
+        assertFocus(catcher, in: app)
+
+        // Over the catalogue: the same message, closed by Menu this time,
+        // returns the remote to the channel it was raised from.
+        XCUIRemote.shared.press(.menu)
+        let watched = element("live-channel-fixture-live-58", in: app)
+        let unplayable = element("live-channel-fixture-live-59", in: app)
+        assertFocus(watched, logical: "fixture-live-58", in: app)
+        XCUIRemote.shared.press(.down)
+        assertFocus(unplayable, logical: "fixture-live-59", in: app)
+        XCUIRemote.shared.press(.select)
+        assertFocus(acknowledge, in: app)
+        XCUIRemote.shared.press(.menu)
+        assertCondition("exists == false", on: acknowledge, in: app)
+        assertFocus(unplayable, logical: "fixture-live-59", in: app)
+
+        // A channel opened from the catalogue shows its commands on Pause.
+        XCUIRemote.shared.press(.up)
+        assertFocus(watched, logical: "fixture-live-58", in: app)
+        XCUIRemote.shared.press(.select)
+        assertFocus(play, in: app)
+        print("PASS: TV_REMOTE a message took the remote over the channel list and over the catalogue, OK and Menu closed it and returned the remote where it was, and a channel opened from the catalogue put the remote on Pause")
     }
 
     /// Keys of the dock, in their default order.

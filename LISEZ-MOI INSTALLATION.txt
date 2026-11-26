@@ -51,9 +51,9 @@ catégories de chaque espace, sans fenêtre surgissante.
 TV : catégories, chaînes en une seule liste, puis l'aperçu et les informations
 de la chaîne. Le pointeur sélectionne, l'aperçu démarre après une seconde, un
 clic ouvre la chaîne.
-Pendant un direct, la liste des chaînes se pose à gauche de l'image (bord
-gauche au pointeur, bouton Liste des chaînes, ou flèche gauche) pour zapper
-sans revenir au catalogue. Les réglages s'y ouvrent en panneaux de verre.
+Pendant un direct, la liste des chaînes se pose à gauche de l'image, à la
+place des commandes (bord gauche au pointeur, touche Chaînes, ou flèche
+gauche) pour zapper sans revenir au catalogue. Les réglages s'y ouvrent en panneaux de verre.
 Pendant la lecture : Retour, le titre et l'heure en haut ; en bas une barre
 de verre dont chaque touche porte son nom (Chaînes, Précédente, Pause,
 Suivante, Favori, Langues, Réglages ; -15 s et +15 s pour un film). Langues

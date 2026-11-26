@@ -113,6 +113,11 @@ final class TVCatalogControlProbeView: UIView {
                     playback.showFixture(item, playing: true,
                                          audio: [PlaybackTrack(id: "a1", title: "Français", selected: true),
                                                  PlaybackTrack(id: "a2", title: "Audiodescription", selected: false)])
+                    // The simulated playback changes channel as an engine
+                    // would. One channel cannot be shown: it takes the
+                    // ordinary path, which fails for a catalogue without
+                    // addresses and raises its message.
+                    playback.fixtureUnplayable = ["fixture-live-59"]
                 }
             }
             _playback = StateObject(wrappedValue: playback)
@@ -186,7 +191,7 @@ final class TVCatalogControlProbeView: UIView {
         case "lists": return "favorite-list-0"
         // The commands of the player open on play and pause; its languages
         // on the audio in use.
-        case "player", "player-film", "player-flow", "player-film-flow": return "player-playpause"
+        case "player", "player-film", "player-flow", "player-film-flow", "player-deep": return "player-playpause"
         case "player-tracks": return "track-audio-a1"
         // The desk: the bar of the home screen, the destination of the
         // settings, the channel on screen in the list of the player.
@@ -252,7 +257,7 @@ final class TVCatalogControlProbeView: UIView {
 
     /// Screens of the desk shown over the catalogue of the live scenario.
     static let deskScenarios = ["home", "settings", "settings-dock", "zapping", "player-settings",
-                                "player", "player-flow"]
+                                "player", "player-flow", "player-deep"]
     /// The commands of a film: its timeline, its languages.
     static let filmPlayerScenarios = ["player-film", "player-film-flow", "player-tracks"]
     var showsPlayer: Bool { scenario.hasPrefix("player") }
@@ -345,18 +350,26 @@ final class TVCatalogControlProbeView: UIView {
         if content == "live" {
             let categories = ["Généralistes", "Cinéma", "Documentaires", "Jeunesse", "Musique", "Sports"]
             let channelNames = ["Horizon", "Panorama", "Grand écran", "Découverte", "Évasion", "Scène"]
-            let channels = try (0..<18).map { (index: Int) in
+            // "player-deep" has more channels than the sixty its list builds
+            // at a time, and than a page of the catalogue. Their logos are
+            // smaller, so that the cache of the application keeps them all.
+            let deep = scenario == "player-deep"
+            let channels = try (0..<(deep ? 110 : 18)).map { (index: Int) in
                 let url = artworkRoot.appendingPathComponent("live-\(index).png")
                 let name = "\(channelNames[index % channelNames.count]) \(index + 1)"
-                cache(try artwork(width: 480, height: 270, index: index, title: name.uppercased(), subtitle: "CHAÎNE LOCALE"), at: url)
+                cache(try artwork(width: deep ? 240 : 480, height: deep ? 135 : 270, index: index,
+                                  title: name.uppercased(), subtitle: "CHAÎNE LOCALE"), at: url)
                 return IPTVItem(id: "fixture-live-\(index)", sourceID: source.id, name: name,
                                 group: categories[index % categories.count], logoURL: url, kind: .live,
                                 directURL: nil, xtreamStreamID: nil, fileExtension: nil)
             }
             // The home screen leads to every section: its catalogue has films too.
+            // "player-deep": a channel far down the list, whose row the
+            // channel list has to scroll to before it can take the remote,
+            // one row before the end of the sixty it builds.
             return TVCatalogFixture(scenario: scenario, source: source,
                                     items: channels + (scenario == "home" ? try films() : []), kind: .live,
-                                    selection: channels[0], seasons: [], openSeason: nil, episodeID: nil)
+                                    selection: channels[deep ? 58 : 0], seasons: [], openSeason: nil, episodeID: nil)
         }
         var items = try films()
         let seriesURL = artworkRoot.appendingPathComponent("series.png")

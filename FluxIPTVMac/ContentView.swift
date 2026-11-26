@@ -195,6 +195,14 @@ struct ContentView: View {
     @State private var zapFocusID: String?
     @State private var zapKeyboard = false
     @State private var zapListTask: Task<Void, Never>?
+    /// Channel of the list whose row is asked to take the remote.
+    @State private var zapFocusRequest: String?
+    /// Channel of the row that really has it, told by the row itself.
+    @State private var zapNativeFocus: String?
+    /// The key Chaînes opened the list: its commands return when it closes.
+    @State private var zapOpenedFromKey = false
+    /// Brings the list back to the row it awaits.
+    @State private var zapScrollTick = 0
     @State private var keyboardPointer: CGPoint?
     @State private var newListKind: IPTVMediaKind?
     @State private var newListName = ""
@@ -202,6 +210,8 @@ struct ContentView: View {
     @State private var confirmingListDeletion = false
     @State private var listNameInvalid = false
     @FocusState private var listNameFocus: Bool
+    /// The key of a message of the library, on a television.
+    @FocusState private var noticeFocus: Bool
     /// Shared by a sleeve of the catalogue and the case of its fiche.
     @Namespace private var caseNamespace
 
@@ -684,7 +694,8 @@ struct ContentView: View {
         #if os(tvOS)
         // The screen takes the remote back where it was when a panel closes.
         .onChange(of: deskCovered) { _, covered in
-            guard !covered, page != .player else { return }
+            guard !covered else { return }
+            if page == .player { restorePlayerFocus(); return }
             let id = focusID
             Task { @MainActor in
                 await Task.yield()
@@ -2012,12 +2023,14 @@ struct ContentView: View {
                     .focusable().focused($systemFocus, equals: "cinema-controls")
                     .id("cinema-controls").focusEffectDisabled()
                     .onTapGesture {
-                        if playerControlsVisible { hidePlayerControls() }
+                        // A click beside the list of channels closes it.
+                        if zapListVisible { closeZapList() }
+                        else if playerControlsVisible { hidePlayerControls() }
                         else { revealPlayerControls() }
                     }
                     #endif
                 #if os(tvOS)
-                if !playerControlsVisible && !zapListVisible && !playerPanelOpen {
+                if !playerControlsVisible && !playerCovered {
                     // An invisible native focus target lets Select restore the
                     // controls without keeping a permanent badge over the film.
                     // It never stands under a panel: it would take the remote
@@ -2056,7 +2069,8 @@ struct ContentView: View {
                     .transition(.opacity)
                 }
                 // The heading of the commands already names the channel.
-                if zapBanner && !playerChromeShown && !playerPanelOpen
+                // Nor does it stand beside the list, which marks that channel.
+                if zapBanner && !playerChromeShown && !playerCovered
                     && playback.playingItem?.kind == .live && playback.playbackError == nil {
                     VStack { Spacer(); liveBanner }
                         .allowsHitTesting(false).transition(.opacity)
@@ -2091,13 +2105,6 @@ struct ContentView: View {
         }
         .onChange(of: systemFocus) { _, id in
             if page == .player, playerControlsVisible, id != nil, id != "cinema-controls" { revealPlayerControls() }
-            #if os(tvOS)
-            // The channel under the remote is the one OK will show.
-            if zapListVisible, let id, id.hasPrefix("zap-") {
-                zapFocusID = String(id.dropFirst(4))
-                armZapListTimer()
-            }
-            #endif
         }
         .onChange(of: modalOpen) { _, _ in if page == .player { revealPlayerControls() } }
         .onChange(of: voiceOverEnabled) { _, _ in if page == .player { revealPlayerControls() } }
@@ -2110,16 +2117,16 @@ struct ContentView: View {
 
     // MARK: Zapping: the channel list over the picture
 
-    /// The commands leave the picture to the settings drawn above it.
-    private var playerChromeShown: Bool {
-        #if FLUX_CATALOG_UI_TESTING
-        if fixtureZapList { return false }
-        #endif
-        return playerControlsVisible && playerSettings == nil
-    }
+    /// The commands leave the picture to the settings drawn above it, and to
+    /// the list of channels: side by side they would overlap, and the remote
+    /// would wander from one to the other.
+    private var playerChromeShown: Bool { playerControlsVisible && playerSettings == nil && !zapListVisible }
     /// A panel above the picture: the settings or the languages. Nothing
     /// hides the commands under it, and nothing takes the remote from it.
     private var playerPanelOpen: Bool { playerSettings != nil || playerTracks }
+    /// A panel or the list of channels: the picture is not alone, the
+    /// commands neither hide nor take the remote.
+    private var playerCovered: Bool { playerPanelOpen || zapListVisible }
     /// Live television only; an episode keeps its own previous and next.
     private var zapListAvailable: Bool {
         #if FLUX_CATALOG_UI_TESTING
@@ -2133,39 +2140,101 @@ struct ContentView: View {
         #endif
         return playback.playingItem?.id
     }
-    private func openZapList(keyboard: Bool = false) {
+    /// `fromKey`: the key Chaînes of the commands opened it.
+    private func openZapList(keyboard: Bool = false, fromKey: Bool = false) {
         guard zapListAvailable else { return }
         zapKeyboard = keyboard
+        zapOpenedFromKey = fromKey
         zapFocusID = visibleSlice.item(id: playback.playingItem?.id)?.id ?? visible.first?.id
+        playerControlsTask?.cancel(); playerControlsTask = nil
         zapListVisible = true
         armZapListTimer()
         #if os(tvOS)
         // The remote lands on the channel being watched.
-        let target = zapFocusID.map { "zap-\($0)" }
-        Task { @MainActor in
-            await Task.yield()
-            guard zapListVisible, let target else { return }
-            systemFocus = target
-        }
+        requestZapFocus(zapFocusID)
         #endif
     }
+    #if os(tvOS)
+    /// Asks the remote for a row of the list, until that row has it. Its row
+    /// may be far down a list that has just been built, and a list rebuilt
+    /// under the remote has it on the first row the system finds, and
+    /// scrolls back there: the list is brought to the awaited row, which is
+    /// asked again while the list settles.
+    private func requestZapFocus(_ id: String?) {
+        zapFocusRequest = id
+        guard let id else { return }
+        Task { @MainActor in
+            for _ in 0..<40 {
+                await claimZapFocus(id)
+                try? await Task.sleep(nanoseconds: 100_000_000)
+                guard zapListVisible, zapFocusRequest == id else { return }
+                zapScrollTick &+= 1
+            }
+            // It never came: the remote stays where the system put it.
+            zapFocusRequest = nil
+            if let row = zapNativeFocus { zapFocusID = row }
+        }
+    }
+    /// One request. What the system declined still reads as granted in the
+    /// binding: it is emptied first, so that the request is made anew.
+    private func claimZapFocus(_ id: String) async {
+        await Task.yield()
+        guard zapListVisible, zapFocusRequest == id, zapNativeFocus != id else { return }
+        systemFocus = nil
+        await Task.yield()
+        guard zapListVisible, zapFocusRequest == id else { return }
+        systemFocus = "zap-\(id)"
+    }
+    /// A row says that it has the remote, or that it lost it: the channel
+    /// under the remote is the one OK will show. While a row is awaited, the
+    /// one the system falls back on is not a choice.
+    private func zapRowFocused(_ id: String, _ focused: Bool) {
+        guard focused else { if zapNativeFocus == id { zapNativeFocus = nil }; return }
+        zapNativeFocus = id
+        if let awaited = zapFocusRequest, awaited != id { return }
+        zapFocusRequest = nil
+        zapFocusID = id
+        armZapListTimer()
+    }
+    #endif
+    /// The picture returns as the list found it: its commands on the key
+    /// that opened the list, or nothing over it.
     private func closeZapList() {
         zapListTask?.cancel(); zapListTask = nil
+        zapFocusRequest = nil
+        guard zapListVisible else { return }
         zapListVisible = false
-        #if os(tvOS)
+        guard page == .player else { return }
+        if zapOpenedFromKey { revealPlayerControls(on: "zap-list"); return }
+        hidePlayerControls()
+        // A stream that is opening or has failed keeps its commands on screen.
+        if playerControlsVisible { revealPlayerControls(focus: true) }
+    }
+    #if os(tvOS)
+    /// The stream takes the remote back where a message found it: in the
+    /// list of channels, on its commands or on the picture. Its panels keep
+    /// their own place.
+    private func restorePlayerFocus() {
+        let key = focusID
         Task { @MainActor in
             await Task.yield()
-            guard page == .player, !zapListVisible else { return }
-            systemFocus = playerControlsVisible ? (focusID == "zap-list" ? "zap-list" : "playpause") : "cinema-controls"
+            guard page == .player, !deskCovered, !playerPanelOpen else { return }
+            if zapListVisible { requestZapFocus(zapFocusID) }
+            else if playerControlsVisible {
+                systemFocus = key.flatMap { playerBarIDs.contains($0) || $0 == "player-back" ? $0 : nil } ?? "playpause"
+            }
+            else { systemFocus = "cinema-controls" }
         }
-        #endif
     }
+    #endif
     /// The list leaves by itself when nothing is done with it.
-    private func armZapListTimer() {
+    private func armZapListTimer(seconds: UInt64 = 12) {
         zapListTask?.cancel()
         zapListTask = Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 12_000_000_000)
+            try? await Task.sleep(nanoseconds: seconds * 1_000_000_000)
             guard !Task.isCancelled else { return }
+            // Nothing moves under a message until it is acknowledged.
+            if library.alertMessage != nil { armZapListTimer(seconds: seconds); return }
             closeZapList()
         }
     }
@@ -2184,6 +2253,10 @@ struct ContentView: View {
         if next == 0 { group = nil; clearPreview(); resetCatalogWindow() }
         else { selectLiveGroup(names[next - 1]) }
         zapFocusID = visibleSlice.item(id: playback.playingItem?.id)?.id ?? visible.first?.id
+        #if os(tvOS)
+        // The rows of the other category replace these under the remote.
+        requestZapFocus(zapFocusID)
+        #endif
         armZapListTimer()
     }
     private func handleZapList(_ action: RemoteAction) {
@@ -2218,16 +2291,27 @@ struct ContentView: View {
                     Text("\(visible.count) \(visible.count == 1 ? "chaîne" : "chaînes")").font(Desk.font(.caption)).foregroundStyle(.secondary)
                 }.frame(maxWidth: .infinity)
                 zapHeaderButton("chevron.right", title: "Catégorie suivante") { cycleZapCategory(1) }
+                #if !os(tvOS)
                 zapHeaderButton("xmark", title: "Fermer la liste des chaînes") { closeZapList() }
+                #endif
             }
             ScrollViewReader { reader in
                 ScrollView {
                     LazyVStack(spacing: Desk.pt(6)) {
-                        ForEach(window) { item in zapRow(item, playing: item.id == playingID) }
+                        ForEach(window) { item in
+                            zapRow(item, playing: item.id == playingID,
+                                   first: item.id == window.first?.id, last: item.id == window.last?.id)
+                        }
                     }.padding(.horizontal, Desk.pt(10)).padding(.vertical, Desk.pt(6))
                 }
-                .onAppear { if let anchor { reader.scrollTo("zap-\(anchor)", anchor: .center) } }
-                .onChange(of: pageIndex) { _, _ in if let anchor { reader.scrollTo("zap-\(anchor)", anchor: .center) } }
+                // Another category or another sixty channels is another list,
+                // from its top: one that kept the place of the last would
+                // show nothing where the new one is shorter.
+                .id("\(group ?? "")|\(pageIndex)")
+                // A lazy list knows a row it has not built yet by the identity
+                // of its channel, not by the name given to the row.
+                .onAppear { if let anchor { reader.scrollTo(anchor, anchor: .center); reader.scrollTo("zap-\(anchor)", anchor: .center) } }
+                .onChange(of: zapScrollTick) { _, _ in if let anchor { reader.scrollTo(anchor, anchor: .center) } }
                 #if !os(tvOS)
                 .onChange(of: zapFocusID) { _, id in
                     // A pointer never moves the list under itself.
@@ -2235,7 +2319,6 @@ struct ContentView: View {
                     withAnimation(reduceMotion ? nil : .easeOut(duration: 0.16)) { reader.scrollTo("zap-\(id)", anchor: .center) }
                 }
                 #endif
-                .onChange(of: group) { _, _ in if let id = zapFocusID { reader.scrollTo("zap-\(id)", anchor: .center) } }
             }
             Text(zapHint)
                 .font(Desk.font(.caption2)).foregroundStyle(.white.opacity(0.6))
@@ -2246,7 +2329,8 @@ struct ContentView: View {
         .fluxMediaGlass(radius: Desk.pt(28))
         .padding(playerChromeInset)
         #if !os(tvOS)
-        .onHover { inside in if inside { armZapListTimer() } }
+        // A drawer: it stays under the pointer and retracts soon after it.
+        .onHover { inside in armZapListTimer(seconds: inside ? 12 : 2) }
         #endif
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Liste des chaînes")
@@ -2260,18 +2344,34 @@ struct ContentView: View {
         #endif
     }
 
-    private func zapHeaderButton(_ symbol: String, title: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Image(systemName: symbol).font(Desk.system(13, .bold))
-                .frame(width: Desk.pt(32), height: Desk.pt(32))
-                .background(.white.opacity(0.12), in: Circle())
-                .contentShape(Circle())
-        }
-        .buttonStyle(FluxBareButtonStyle()).foregroundStyle(.white)
-        .accessibilityLabel(title).fluxHelp(title)
+    @ViewBuilder private func zapHeaderButton(_ symbol: String, title: String, action: @escaping () -> Void) -> some View {
+        let glyph = Image(systemName: symbol).font(Desk.system(13, .bold))
+            .frame(width: Desk.pt(32), height: Desk.pt(32))
+            .background(.white.opacity(0.12), in: Circle())
+        #if os(tvOS)
+        // Left and Right of the remote change the category from any row:
+        // these are signs of it, and the remote never leaves the channels.
+        glyph.foregroundStyle(.white.opacity(0.75)).accessibilityHidden(true)
+        #else
+        Button(action: action) { glyph.contentShape(Circle()) }
+            .buttonStyle(FluxBareButtonStyle()).foregroundStyle(.white)
+            .accessibilityLabel(title).fluxHelp(title)
+        #endif
     }
 
-    private func zapRow(_ item: IPTVItem, playing: Bool) -> some View {
+    #if os(tvOS)
+    /// The remote walks the rows by itself. At an end of the sixty that are
+    /// built, the list turns its page and the next channel takes the remote.
+    private func zapWalk(_ delta: Int, from item: IPTVItem, atEnd: Bool) {
+        zapFocusRequest = nil
+        guard atEnd, let target = visibleSlice.adjacent(to: item.id, offset: delta) else { return }
+        zapFocusID = target.id
+        requestZapFocus(target.id)
+        armZapListTimer()
+    }
+    #endif
+
+    private func zapRow(_ item: IPTVItem, playing: Bool, first: Bool, last: Bool) -> some View {
         let highlighted = zapFocusID == item.id
         return Button { zap(to: item) } label: {
             LiveTVChannelRow(item: item, number: (visibleSlice.index(of: item.id) ?? 0) + 1,
@@ -2282,6 +2382,9 @@ struct ContentView: View {
                             .padding(Desk.pt(6)).background(.black.opacity(0.55), in: Circle()).padding(.trailing, Desk.pt(34))
                     }
                 }
+                #if os(tvOS)
+                .background(DeskFocusReport { zapRowFocused(item.id, $0) })
+                #endif
         }
         .buttonStyle(FluxBareButtonStyle())
         .id("zap-\(item.id)")
@@ -2291,8 +2394,15 @@ struct ContentView: View {
         // The remote walks the list; Left and Right, which lead nowhere in
         // it, change the category.
         .focused($systemFocus, equals: "zap-\(item.id)").focusEffectDisabled()
+        .onAppear { if zapFocusRequest == item.id { Task { @MainActor in await claimZapFocus(item.id) } } }
         .onMoveCommand { direction in
-            if direction == .left { cycleZapCategory(-1) } else if direction == .right { cycleZapCategory(1) }
+            switch direction {
+            case .left: cycleZapCategory(-1)
+            case .right: cycleZapCategory(1)
+            case .up: zapWalk(-1, from: item, atEnd: first)
+            case .down: zapWalk(1, from: item, atEnd: last)
+            @unknown default: break
+            }
         }
         #else
         .onHover { inside in
@@ -2656,22 +2766,22 @@ struct ContentView: View {
             focusID = id
             Task { @MainActor in
                 await Task.yield()
-                guard page == .player, playerControlsVisible, !modalOpen, !playerPanelOpen else { return }
+                guard page == .player, playerControlsVisible, !modalOpen, !playerCovered else { return }
                 systemFocus = id
             }
         }
-        guard playback.isPlaying, !playback.opening, playback.playbackError == nil, !playerPanelOpen, !playerControlsHeld,
+        guard playback.isPlaying, !playback.opening, playback.playbackError == nil, !playerCovered, !playerControlsHeld,
               hoveredPlayerControls.isEmpty, !scrubbing, !modalOpen, !voiceOverEnabled else { return }
         playerControlsTask = Task { @MainActor in
             try? await Task.sleep(nanoseconds: playerControlsDelay)
             guard !Task.isCancelled, page == .player, playback.isPlaying,
-                  !playback.opening, playback.playbackError == nil, !playerPanelOpen,
+                  !playback.opening, playback.playbackError == nil, !playerCovered,
                   hoveredPlayerControls.isEmpty, !scrubbing, !modalOpen, !voiceOverEnabled else { return }
             hidePlayerControls()
         }
     }
     private func hidePlayerControls() {
-        guard playback.isPlaying, !playback.opening, playback.playbackError == nil, !playerPanelOpen, !playerControlsHeld,
+        guard playback.isPlaying, !playback.opening, playback.playbackError == nil, !playerCovered, !playerControlsHeld,
               !scrubbing, !modalOpen, !voiceOverEnabled else { return }
         playerControlsTask?.cancel(); playerControlsTask = nil
         hoveredPlayerControls.removeAll()
@@ -2867,6 +2977,20 @@ struct ContentView: View {
         mountedBrowseFocusTargets.insert(id)
         resolveBrowseRestoreFocus()
     }
+    /// Gives the remote to a title of the catalogue when the catalogue comes
+    /// back on screen, after a stream or the shelf of a series. Its cell
+    /// returns with that update and cannot take the focus yet: tvOS 26 then
+    /// settles on a control beside the list. The catalogue already waits for
+    /// the cell of the title it remembers: this title becomes that one, be
+    /// it a channel reached by zapping, which the catalogue never selected.
+    private func focusWhenBackOnScreen(_ id: String) {
+        library.browseItemID = id
+        // The cell that was on screen before left with its page.
+        mountedBrowseFocusTargets.remove(id)
+        browserHasEnteredFocus = true
+        focusID = id
+        restoreBrowsingContext()
+    }
     private func resolveBrowseRestoreFocus() {
         guard pendingBrowseRestore, let request = pendingBrowseFocus else { return }
         guard request.revision == library.browsingRevision, request.context == catalogFocusContext else {
@@ -3002,7 +3126,11 @@ struct ContentView: View {
         cancelEntrance()
         dismissCaseImmediately()
         do {
+            #if FLUX_CATALOG_UI_TESTING
+            let urls = playback.simulates(item) ? [] : try library.playbackURLs(for: item)
+            #else
             let urls = try library.playbackURLs(for: item)
+            #endif
             let entering = page != .player
             guard entering && !reduceMotion else {
                 startPlayback(item, urls: urls, entering: entering)
@@ -3024,10 +3152,18 @@ struct ContentView: View {
         catch { library.alertMessage = IPTVLibrary.safeSourceError(error) }
     }
     private func startPlayback(_ item: IPTVItem, urls: [URL], entering: Bool) {
-        page = .player; focusID = "playpause"
+        page = .player
+        // A change of channel keeps the remote where it is: on Suivante, to
+        // go on, or in the list. Only a stream that opens goes to Pause.
+        if entering { focusID = "playpause" }
         playback.play(item, urls: urls)
         if entering && !cinema { toggleCinema() }
+        #if os(tvOS)
+        // Its commands come with this update: they take the remote after it.
+        revealPlayerControls(focus: entering)
+        #else
         revealPlayerControls()
+        #endif
         if item.kind == .live { showZapBanner() }
     }
     private func cancelEntrance() {
@@ -3090,6 +3226,9 @@ struct ContentView: View {
         case .player: stopPlayback()
         case .series:
             let id = series?.id; home(); focusID = id ?? "tab-series"
+            #if os(tvOS)
+            if let id, visibleSlice.item(id: id) != nil { focusWhenBackOnScreen(id) }
+            #endif
         case .settings:
             leaveSettings()
         case .catalogue:
@@ -3118,7 +3257,15 @@ struct ContentView: View {
             else {loadSeries(collection)}
         }
         else if let item = lastItem, item.kind == .movie { showCase(item) }
-        else { focusID = lastItem?.id ?? "tab-\(library.contentKind.rawValue)" }
+        else {
+            focusID = lastItem?.id ?? "tab-\(library.contentKind.rawValue)"
+            #if os(tvOS)
+            if let item = lastItem, visibleSlice.item(id: item.id) != nil { focusWhenBackOnScreen(item.id) }
+            // Another category was browsed from the stream and the channel
+            // is not in it: the remote goes to the content all the same.
+            else { restoreBrowsingContext() }
+            #endif
+        }
     }
     private func toggleCinema(restoringPreviousWindow: Bool = false) {
         #if !os(tvOS)
@@ -3313,7 +3460,7 @@ struct ContentView: View {
         case PlayerTracks.buttonID: openPlayerTracks()
         case PlayerTracks.closeID: closePlayerTracks()
         case "favorite-toggle": if let item = playback.playingItem { library.toggleFavorite(item) }
-        case "zap-list": if zapListVisible { closeZapList() } else { openZapList(keyboard: remoteNavigationActive) }
+        case "zap-list": if zapListVisible { closeZapList() } else { openZapList(keyboard: remoteNavigationActive, fromKey: true) }
         case "live-watch": if let item = previewItem { playItem(item) }
         case "live-favorite": if let item = previewItem { chooseFavorites(item) }
         case "live-preview-mute": livePreview.toggleMuted()
@@ -3497,7 +3644,12 @@ extension ContentView {
                     #endif
                     .transition(.opacity)
             }
-            if page == .player, let request = playerSettings { deskPlayerSettings(request) }
+            if page == .player, let request = playerSettings {
+                deskPlayerSettings(request)
+                    #if os(tvOS)
+                    .disabled(library.alertMessage != nil)
+                    #endif
+            }
             if zoneMode {
                 Color.black.opacity(0.34).ignoresSafeArea().allowsHitTesting(false).transition(.opacity)
                 zoneCaption
@@ -3510,7 +3662,12 @@ extension ContentView {
                 .accessibilityIdentifier("flux-catalog-logical-focus")
                 .accessibilityValue(focusID ?? "none")
             #endif
-            if let item = itemOptions { deskItemPanel(item) }
+            if let item = itemOptions {
+                deskItemPanel(item)
+                    #if os(tvOS)
+                    .disabled(library.alertMessage != nil)
+                    #endif
+            }
             if let message = library.alertMessage { deskNotice(message) }
         }
         .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: playerSettings)
@@ -3670,7 +3827,14 @@ extension ContentView {
                     Button { library.alertMessage = nil } label: {
                         Text("OK").font(Desk.font(.headline)).padding(.horizontal, Desk.pt(28)).padding(.vertical, Desk.pt(10))
                             .fluxNavigationGlass(selected: true, tint: themeAccent, radius: Desk.pt(15))
-                    }.buttonStyle(FluxBareButtonStyle()).accessibilityIdentifier("desk-notice-ok")
+                    }.buttonStyle(FluxBareButtonStyle())
+                    #if os(tvOS)
+                    // What a message covers is only put out of reach: the
+                    // focus stays there until the message asks for it.
+                    .focused($noticeFocus)
+                    .onAppear { Task { @MainActor in await Task.yield(); noticeFocus = true } }
+                    #endif
+                    .accessibilityIdentifier("desk-notice-ok")
                 }
             }
             .padding(Desk.pt(24)).frame(maxWidth: Desk.pt(540)).fluxGlass(radius: Desk.pt(26))
