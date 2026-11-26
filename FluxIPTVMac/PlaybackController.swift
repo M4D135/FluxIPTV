@@ -12,6 +12,14 @@ import Foundation
 import VLCKit
 #endif
 
+/// One audio or subtitle track of the media on screen, whichever engine
+/// reads it.
+struct PlaybackTrack: Identifiable, Hashable {
+    let id: String
+    let title: String
+    let selected: Bool
+}
+
 @MainActor
 final class PlaybackController: ObservableObject {
     let player = AVPlayer()
@@ -63,13 +71,129 @@ final class PlaybackController: ObservableObject {
     @Published private(set) var reconnectCount = 0
     private var activeSettings = PlaybackSettings()
     private var userPaused = false
+    /// True while the stream on screen was opened with other settings than
+    /// those saved now: the engine reads them when it opens a stream.
+    var restartPending: Bool {
+        guard playingItem != nil else { return false }
+        var active = activeSettings, saved = settings
+        // The length of a jump is read at each jump.
+        active.skipSeconds = 0; saved.skipSeconds = 0
+        return active != saved
+    }
     func saveSettings(_ value: PlaybackSettings, restart: Bool) {
         settings = value.normalized
         if let data = try? JSONEncoder().encode(settings) { UserDefaults.standard.set(data, forKey: "fluxiptv.playback.settings.v1") }
         if restart, playingItem != nil { retry(preferred: nil) }
     }
-    func audioOptions() -> [AVMediaSelectionOption] { nativeGroup(.audible)?.options ?? [] }
-    func subtitleOptions() -> [AVMediaSelectionOption] { nativeGroup(.legible)?.options ?? [] }
+    // MARK: Tracks of the media on screen, for both engines
+
+    @Published private(set) var audioTracks: [PlaybackTrack] = []
+    @Published private(set) var subtitleTracks: [PlaybackTrack] = []
+    /// False when the media gives no way of showing no subtitle at all.
+    @Published private(set) var subtitlesCanBeOff = true
+
+    func selectAudioTrack(_ id: String) {
+        #if FLUX_CATALOG_UI_TESTING
+        if fixtureTracks { fixtureSelect(audio: id); return }
+        #endif
+        if engine == .native {
+            guard let group = nativeGroup(.audible), let index = Self.nativeIndex(id), group.options.indices.contains(index) else { return }
+            selectTrack(group.options[index], characteristic: .audible)
+        }
+        #if !os(macOS)
+        if engine == .vlc, vlcActive, let track = vlcPlayer?.audioTracks.first(where: { $0.trackId == id }) {
+            track.isSelectedExclusively = true
+        }
+        #endif
+        refreshTracks()
+    }
+
+    /// `nil` turns the subtitles off.
+    func selectSubtitleTrack(_ id: String?) {
+        #if FLUX_CATALOG_UI_TESTING
+        if fixtureTracks { fixtureSelect(subtitle: id); return }
+        #endif
+        if engine == .native {
+            if let id {
+                guard let group = nativeGroup(.legible), let index = Self.nativeIndex(id), group.options.indices.contains(index) else { return }
+                selectTrack(group.options[index], characteristic: .legible)
+            } else { selectTrack(nil, characteristic: .legible) }
+        }
+        #if !os(macOS)
+        if engine == .vlc, vlcActive, let vlcPlayer {
+            if let id, let track = vlcPlayer.textTracks.first(where: { $0.trackId == id }) { track.isSelectedExclusively = true }
+            else if id == nil { vlcPlayer.deselectAllTextTracks() }
+        }
+        #endif
+        refreshTracks()
+    }
+
+    private static func nativeIndex(_ id: String) -> Int? { id.hasPrefix("n") ? Int(id.dropFirst()) : nil }
+
+    private func nativeTracks(_ characteristic: AVMediaCharacteristic) -> [PlaybackTrack] {
+        guard let group = nativeGroup(characteristic), let media = nativeSelectionItem else { return [] }
+        let current = media.currentMediaSelection.selectedMediaOption(in: group)
+        return group.options.enumerated().map { index, option in
+            PlaybackTrack(id: "n\(index)", title: option.displayName, selected: option == current)
+        }
+    }
+
+    /// Reads the tracks the engine knows now, and publishes them only when
+    /// they changed: the monitor calls this several times a second.
+    private func refreshTracks() {
+        #if FLUX_CATALOG_UI_TESTING
+        if fixtureTracks { return }
+        #endif
+        var audio: [PlaybackTrack] = [], subtitles: [PlaybackTrack] = [], canBeOff = true
+        if playingItem != nil {
+            if engine == .native {
+                audio = nativeTracks(.audible); subtitles = nativeTracks(.legible)
+                canBeOff = nativeGroup(.legible)?.allowsEmptySelection ?? true
+            }
+            #if !os(macOS)
+            if engine == .vlc, vlcActive, let vlcPlayer {
+                audio = Self.vlcTracks(vlcPlayer.audioTracks); subtitles = Self.vlcTracks(vlcPlayer.textTracks)
+            }
+            #endif
+        }
+        if audioTracks != audio { audioTracks = audio }
+        if subtitleTracks != subtitles { subtitleTracks = subtitles }
+        if subtitlesCanBeOff != canBeOff { subtitlesCanBeOff = canBeOff }
+    }
+
+    #if !os(macOS)
+    private static func vlcTracks(_ tracks: [VLCMediaPlayer.Track]) -> [PlaybackTrack] {
+        tracks.enumerated().map { index, track in
+            // A provider names its tracks, describes them, or only gives a language code.
+            let candidates = [track.trackName, track.trackDescription ?? "", track.language ?? ""]
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            let title = candidates.first(where: { !$0.isEmpty }) ?? "Piste \(index + 1)"
+            return PlaybackTrack(id: track.trackId, title: title, selected: track.isSelected)
+        }
+    }
+    #endif
+
+    #if FLUX_CATALOG_UI_TESTING
+    private var fixtureTracks = false
+    /// A capture or a remote flow shows the commands of a media that plays,
+    /// without opening any connection: only the published state is set.
+    func showFixture(_ item: IPTVItem, playing: Bool, fraction: Double = 0, elapsed: String = "0:00", duration: String = "–:––",
+                     audio: [PlaybackTrack] = [], subtitles: [PlaybackTrack] = []) {
+        playingItem = item; opening = false; isPlaying = playing; playbackError = nil
+        seekable = item.kind != .live; position = fraction
+        self.elapsed = elapsed; self.duration = duration
+        fixtureTracks = true; audioTracks = audio; subtitleTracks = subtitles
+        attemptLabel = "Maquette"
+    }
+    /// The fixture answers the commands the way an engine would.
+    private func fixtureSelect(audio id: String) {
+        audioTracks = audioTracks.map { PlaybackTrack(id: $0.id, title: $0.title, selected: $0.id == id) }
+    }
+    private func fixtureSelect(subtitle id: String?) {
+        subtitleTracks = subtitleTracks.map { PlaybackTrack(id: $0.id, title: $0.title, selected: $0.id == id) }
+    }
+    var showsFixture: Bool { fixtureTracks }
+    #endif
     @Published private var nativeAudioGroup: AVMediaSelectionGroup?
     @Published private var nativeSubtitleGroup: AVMediaSelectionGroup?
     private weak var nativeSelectionItem: AVPlayerItem?
@@ -80,7 +204,7 @@ final class PlaybackController: ObservableObject {
         if characteristic == .legible { return nativeSubtitleGroup }
         return nil
     }
-    func selectTrack(_ option: AVMediaSelectionOption?, characteristic: AVMediaCharacteristic) {
+    private func selectTrack(_ option: AVMediaSelectionOption?, characteristic: AVMediaCharacteristic) {
         guard let group = nativeGroup(characteristic), let media = nativeSelectionItem else { return }
         // A settings button from an earlier item must not select its old option
         // in the current item's group after a rapid channel/episode change.
@@ -142,6 +266,10 @@ final class PlaybackController: ObservableObject {
 
     func retry(preferred: PlaybackEngine? = nil) {
         guard playingItem != nil else { return }
+        #if FLUX_CATALOG_UI_TESTING
+        // The fixture has no stream to open again: it only takes the settings.
+        if fixtureTracks { objectWillChange.send(); activeSettings = settings; return }
+        #endif
         saveProgress()
         if resumeEnabled, let item = playingItem { pendingResume = history.resumeSeconds(for: item.id) }
         preferredEngine = preferred
@@ -301,6 +429,7 @@ final class PlaybackController: ObservableObject {
                 }
                 #endif
                 if self.isPlaying != playing { self.isPlaying = playing }
+                self.refreshTracks()
                 if playing {
                     lastPlaying = Date()
                     // VLC's audio output can be absent while the media is opening.
@@ -433,6 +562,8 @@ final class PlaybackController: ObservableObject {
         #endif
         opening = false; isPlaying = false; seekable = false; position = 0
         elapsed = "0:00"; duration = "–:––"; durationSeconds = 0; currentSeconds = 0; hasPlayed = false
+        if !audioTracks.isEmpty { audioTracks = [] }
+        if !subtitleTracks.isEmpty { subtitleTracks = [] }
     }
 
     #if os(macOS)

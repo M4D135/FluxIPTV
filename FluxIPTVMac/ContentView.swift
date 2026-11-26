@@ -157,6 +157,10 @@ struct ContentView: View {
     @State private var cinemaControls = true
     @State private var playerControlsTask: Task<Void, Never>?
     @State private var hoveredPlayerControls: Set<String> = []
+    /// Key of the bar under the pointer.
+    @State private var hoveredPlayerButton: String?
+    /// Languages of the media on screen, shown in place of the bar.
+    @State private var playerTracks = false
     @State private var playerWidth: CGFloat = 900
     @State private var scrubPosition = 0.0
     @State private var scrubbing = false
@@ -182,7 +186,6 @@ struct ContentView: View {
     /// Zones of the screen, shown by Back for a keyboard or a remote.
     @State private var zoneMode = false
     @State private var zoneFocus: DeskZone = .content
-    @State private var zoneReturnFocus: String?
     /// Row of the navigation column that must receive the remote when the
     /// content of the column changes under it.
     @State private var sidebarFocusRequest: String?
@@ -211,13 +214,22 @@ struct ContentView: View {
     private var fixturePictureStandIn = false
     /// Keys of a remote, sent once the screen is up.
     private var fixtureActions: [RemoteAction] = []
+    /// A capture of the commands keeps them on a media that plays.
+    private var fixtureHoldsControls = false
     /// A capture plays nothing: the channel list of the player is drawn as
     /// if the selected channel were on screen.
     private var fixtureZapList = false
     /// Seed only the initial selection; layout, controls and artwork remain the
     /// same production views used by the application.
-    init(fixtureSelection: IPTVItem? = nil, fixtureSeasons: [IPTVSeason] = [], fixtureOpenSeason: Int? = nil, fixtureEpisodeID: String? = nil, fixtureOpenItem: Bool = false, fixtureSearchSubmission: String? = nil, fixtureSearchObservation: ((CatalogSearchFocusSnapshot) -> Void)? = nil, fixtureOpenCountries: Bool = false, fixtureRestoreBrowsing: Bool = false, fixtureSettingsPage: PlaybackSettingsView.Page? = nil, fixtureFavorites: Bool = false, fixtureHome: Bool = false, fixturePlayerSettings: Bool = false, fixtureZone: DeskZone? = nil, fixtureActions: [RemoteAction] = [], fixtureZapList: Bool = false, fixtureAddSource: Bool = false, fixtureLists: Bool = false) {
+    init(fixtureSelection: IPTVItem? = nil, fixtureSeasons: [IPTVSeason] = [], fixtureOpenSeason: Int? = nil, fixtureEpisodeID: String? = nil, fixtureOpenItem: Bool = false, fixtureSearchSubmission: String? = nil, fixtureSearchObservation: ((CatalogSearchFocusSnapshot) -> Void)? = nil, fixtureOpenCountries: Bool = false, fixtureRestoreBrowsing: Bool = false, fixtureSettingsPage: PlaybackSettingsView.Page? = nil, fixtureFavorites: Bool = false, fixtureHome: Bool = false, fixturePlayerSettings: Bool = false, fixtureZone: DeskZone? = nil, fixtureActions: [RemoteAction] = [], fixtureZapList: Bool = false, fixtureAddSource: Bool = false, fixtureLists: Bool = false,
+         fixturePlayer: Bool = false, fixtureHoldsControls: Bool = false, fixtureTracksPanel: Bool = false) {
         self.fixtureActions = fixtureActions
+        self.fixtureHoldsControls = fixtureHoldsControls
+        if fixturePlayer {
+            fixturePictureStandIn = true
+            _page = State(initialValue: .player)
+            _playerTracks = State(initialValue: fixtureTracksPanel)
+        }
         _addingSource = State(initialValue: fixtureAddSource)
         if fixtureLists { _itemOptions = State(initialValue: fixtureSelection) }
         if fixtureZapList {
@@ -256,7 +268,7 @@ struct ContentView: View {
         #endif
         _previewID = State(initialValue: fixtureSelection?.id)
         _previewItem = State(initialValue: fixtureSelection)
-        _focusID = State(initialValue: fixtureSelection?.id ?? "tab-live")
+        _focusID = State(initialValue: fixturePlayer ? "playpause" : fixtureSelection?.id ?? "tab-live")
         if let fixtureSelection, !fixtureSelection.isSeriesCollection, fixtureOpenItem {
             _heldItem = State(initialValue: fixtureSelection)
             _heldDetails = State(initialValue: fixtureSelection.details)
@@ -576,7 +588,18 @@ struct ContentView: View {
                 focusID = library.countryCode.map { "country-\($0)" } ?? "country-all"
                 systemFocus = focusID
             }
-            if page == .settings { focusID = FluxDockItem.settings.focusID; systemFocus = focusID }
+            if page == .settings {
+                focusID = FluxDockItem.settings.focusID
+                #if !os(tvOS)
+                systemFocus = focusID
+                #endif
+            }
+            if page == .player, playerTracks {
+                // The languages open on the audio in use.
+                focusID = PlayerTracks.entry(audio: playback.audioTracks, subtitles: playback.subtitleTracks,
+                                             canBeOff: playback.subtitlesCanBeOff)
+                systemFocus = focusID
+            }
             #endif
             #if os(tvOS)
             if fixtureZapList, let id = zapFocusID { systemFocus = "zap-\(id)" }
@@ -1075,6 +1098,17 @@ struct ContentView: View {
         remoteNavigationActive
         #endif
     }
+    /// Control that the dock and the bars draw as focused. A keyboard moves a
+    /// selection of the screen; a television has a focus of its own, which
+    /// may be in a panel this screen does not follow: nothing here is drawn
+    /// as focused then.
+    private var shownFocusID: String? {
+        #if os(tvOS)
+        systemFocus
+        #else
+        focusID
+        #endif
+    }
     private func presentSources() {
         #if os(macOS) || os(tvOS)
         openSettings(.sources)
@@ -1107,7 +1141,13 @@ struct ContentView: View {
     /// keeps playing; elsewhere on the Mac they are a screen of the window.
     private func presentSettings(diagnostic: Bool = false) {
         #if os(macOS) || os(tvOS)
-        if page == .player { playerSettings = DeskSettingsRequest(page: diagnostic ? .diagnostic : nil) }
+        if page == .player {
+            // The commands stay where they are, under the panels.
+            playerControlsTask?.cancel(); playerControlsTask = nil
+            playerTracks = false
+            if !cinemaControls { cinemaControls = true }
+            playerSettings = DeskSettingsRequest(page: diagnostic ? .diagnostic : nil)
+        }
         else { openSettings(diagnostic ? .diagnostic : nil) }
         #else
         diagnosticSettings = diagnostic; showingEngines = true
@@ -1959,6 +1999,11 @@ struct ContentView: View {
         GeometryReader { geometry in
             ZStack {
                 PlayerSurface(playback: playback, immersive: cinema)
+                    #if os(tvOS)
+                    // The picture fills the television. What is written over
+                    // it keeps to the safe area.
+                    .ignoresSafeArea()
+                    #endif
                     .contentShape(Rectangle())
                     #if FLUX_CATALOG_UI_TESTING
                     .overlay { if fixturePictureStandIn { ProceduralStage(kind: .movie) } }
@@ -1972,9 +2017,11 @@ struct ContentView: View {
                     }
                     #endif
                 #if os(tvOS)
-                if !playerControlsVisible && !zapListVisible {
+                if !playerControlsVisible && !zapListVisible && !playerPanelOpen {
                     // An invisible native focus target lets Select restore the
                     // controls without keeping a permanent badge over the film.
+                    // It never stands under a panel: it would take the remote
+                    // from the settings as soon as the commands hide.
                     Button { revealPlayerControls(focus: true) } label: {
                         Color.clear.contentShape(Rectangle())
                     }
@@ -1983,6 +2030,7 @@ struct ContentView: View {
                     .focused($systemFocus, equals: "cinema-controls")
                     .id("cinema-controls")
                     .accessibilityLabel("Afficher les commandes")
+                    .accessibilityIdentifier("player-catcher")
                     .onMoveCommand { direction in
                         switch direction {
                         case .left: dispatch(.left)
@@ -1995,18 +2043,22 @@ struct ContentView: View {
                 }
                 #endif
                 if playerChromeShown {
+                    PlayerScrim().transition(.opacity)
                     FluxGlassGroup {
-                        VStack(spacing: 12) {
+                        VStack(spacing: 0) {
                             playerHeading
                             Spacer(minLength: 0)
-                            playerDock
+                            if playerTracks { playerTracksPanel.transition(.opacity) }
+                            else { playerBar.transition(.opacity) }
                         }
                         .padding(playerChromeInset)
                     }
                     .transition(.opacity)
                 }
-                if zapBanner && playback.playingItem?.kind == .live && playback.playbackError == nil {
-                    VStack { Spacer(); liveBanner.padding(.bottom, playerControlsVisible ? 104 : 0) }
+                // The heading of the commands already names the channel.
+                if zapBanner && !playerChromeShown && !playerPanelOpen
+                    && playback.playingItem?.kind == .live && playback.playbackError == nil {
+                    VStack { Spacer(); liveBanner }
                         .allowsHitTesting(false).transition(.opacity)
                 }
                 if zapListVisible, zapListAvailable {
@@ -2052,7 +2104,7 @@ struct ContentView: View {
         .onDisappear {
             playerControlsTask?.cancel(); playerControlsTask = nil; hoveredPlayerControls.removeAll()
             zapListTask?.cancel(); zapListTask = nil; zapListVisible = false
-            playerSettings = nil
+            playerSettings = nil; playerTracks = false; hoveredPlayerButton = nil
         }
     }
 
@@ -2065,6 +2117,9 @@ struct ContentView: View {
         #endif
         return playerControlsVisible && playerSettings == nil
     }
+    /// A panel above the picture: the settings or the languages. Nothing
+    /// hides the commands under it, and nothing takes the remote from it.
+    private var playerPanelOpen: Bool { playerSettings != nil || playerTracks }
     /// Live television only; an episode keeps its own previous and next.
     private var zapListAvailable: Bool {
         #if FLUX_CATALOG_UI_TESTING
@@ -2101,7 +2156,7 @@ struct ContentView: View {
         Task { @MainActor in
             await Task.yield()
             guard page == .player, !zapListVisible else { return }
-            systemFocus = playerControlsVisible ? "playpause" : "cinema-controls"
+            systemFocus = playerControlsVisible ? (focusID == "zap-list" ? "zap-list" : "playpause") : "cinema-controls"
         }
         #endif
     }
@@ -2262,88 +2317,248 @@ struct ContentView: View {
         return narrowPlayer ? 10 : 20
         #endif
     }
-    private var playerButtonSize: CGFloat {
-        #if os(tvOS)
-        return 56
-        #elseif os(iOS)
-        return 44
-        #else
-        return 40
-        #endif
-    }
-    private var playerTransportIDs: [String] {
-        var ids: [String]
-        if playback.playingItem?.kind == .live {
-            #if os(tvOS)
-            ids = ["previous", "playpause", "next"]
-            #else
-            ids = (series == nil ? ["zap-list"] : []) + ["previous", "playpause", "next"]
-            #endif
+    /// Keys of the bar, by group: the channels, the transport, the options.
+    private var playerBarGroups: [[String]] {
+        let item = playback.playingItem
+        var groups: [[String]] = []
+        if item?.kind == .live {
+            if series == nil && !narrowPlayer { groups.append(["zap-list"]) }
+            groups.append(["previous", "playpause", "next"])
+        } else if series != nil && !narrowPlayer {
+            groups.append(["previous", "rewind", "playpause", "forward", "next"])
+        } else {
+            // A film has no neighbour worth a key: the catalogue is one Back away.
+            groups.append(["rewind", "playpause", "forward"])
         }
-        else if narrowPlayer { ids = ["rewind", "playpause", "forward"] }
-        else { ids = ["previous", "rewind", "playpause", "forward", "next"] }
+        var options: [String] = []
+        if item != nil && !narrowPlayer { options.append("favorite-toggle") }
+        options.append(PlayerTracks.buttonID)
+        options.append("engine")
         #if !os(tvOS)
-        ids.append("mute")
+        options.append("mute")
         #endif
-        ids.append("engine")
-        return ids
+        groups.append(options)
+        return groups
     }
+    private var playerBarIDs: [String] { playerBarGroups.flatMap { $0 } }
+    private var playerBarWidth: CGFloat {
+        let groups = playerBarGroups
+        let keys = CGFloat(groups.reduce(0) { $0 + $1.count })
+        if narrowPlayer { return keys * 46 + (keys - 1) * 2 }
+        let separators = CGFloat(max(0, groups.count - 1))
+        return keys * PlayerActionLabel.width + (keys - 1 - separators) * Desk.pt(2) + separators * Desk.pt(21)
+    }
+    private var playerTrackRows: [[String]] {
+        PlayerTracks.rows(audio: playback.audioTracks, subtitles: playback.subtitleTracks, canBeOff: playback.subtitlesCanBeOff)
+    }
+
+    /// Back, what is on screen, and the time: nothing else stands on the picture.
     private var playerHeading: some View {
-        HStack(spacing: 8) {
-            playerButton("player-back")
-            Text(playback.playingItem?.name ?? "Lecteur")
-                .font(.callout.weight(.semibold)).lineLimit(1)
-                .frame(maxWidth: .infinity, alignment: .leading)
+        HStack(alignment: .center, spacing: Desk.pt(14)) {
+            playerPill("player-back", symbol: "chevron.backward", title: narrowPlayer ? nil : "Retour")
+            playerTitle
+            Spacer(minLength: Desk.pt(8))
             #if !os(tvOS)
-            playerButton("player-full")
+            playerPill("player-full", symbol: playerButtonLabel("player-full").icon, title: nil)
             #endif
+            if !narrowPlayer {
+                TimelineView(.everyMinute) { context in
+                    Text(context.date.formatted(.dateTime.hour().minute()))
+                        .font(Desk.font(.callout, .bold).monospacedDigit())
+                        .padding(.horizontal, Desk.pt(15)).frame(height: Desk.pt(40))
+                        .fluxMediaGlass(radius: Desk.pt(20))
+                }
+                .accessibilityHidden(true)
+            }
         }
-        .padding(5).frame(maxWidth: 620)
-        .fluxMediaGlass(radius: 28)
-        #if !os(tvOS)
+        #if os(tvOS)
+        .focusSection()
+        #else
         .onHover { playerControlHover("heading", inside: $0) }
         #endif
     }
-    private var playerDock: some View {
-        VStack(spacing: 7) {
-            if playback.seekable && !playback.opening && playback.playbackError == nil {
-                HStack(spacing: 9) {
-                    Text(playback.elapsed).font(.caption.monospacedDigit())
-                    #if os(tvOS)
-                    ProgressView(value: playback.position).tint(.white)
-                        .accessibilityLabel("Progression")
-                        .accessibilityValue(playback.elapsed + " sur " + playback.duration)
-                    #else
-                    Slider(value: $scrubPosition, in: 0...1, onEditingChanged: { editing in
-                        scrubbing = editing
-                        if !editing { playback.seek(scrubPosition) }
-                        revealPlayerControls()
-                    }).labelsHidden().tint(.white)
-                        .accessibilityLabel("Position de lecture")
-                    #endif
-                    Text(playback.duration).font(.caption.monospacedDigit())
-                }
-                .padding(.horizontal, 10)
+
+    private var playerTitle: some View {
+        let item = playback.playingItem
+        return HStack(spacing: Desk.pt(12)) {
+            if let item, item.kind == .live, !narrowPlayer {
+                ArtworkView(url: item.logoURL, fit: true) { Image(systemName: "tv").font(Desk.font(.title3)).foregroundStyle(.white.opacity(0.7)) }
+                    .frame(width: Desk.pt(52), height: Desk.pt(38))
+                    .padding(Desk.pt(5))
+                    .background(.black.opacity(0.38), in: RoundedRectangle(cornerRadius: Desk.pt(11), style: .continuous))
             }
-            HStack(spacing: narrowPlayer ? 2 : 6) {
-                ForEach(playerTransportIDs, id: \.self) { id in playerButton(id) }
+            VStack(alignment: .leading, spacing: Desk.pt(2)) {
+                Text(item?.name ?? "Lecteur").font(Desk.font(narrowPlayer ? .headline : .title2, .bold)).lineLimit(1)
+                if !narrowPlayer { playerSubtitle }
             }
-            .frame(maxWidth: .infinity)
         }
-        .padding(.horizontal, narrowPlayer ? 8 : 12).padding(.vertical, 8)
-        .frame(maxWidth: playerDockWidth)
-        .fluxMediaGlass(radius: 28)
+        .foregroundStyle(.white)
+        .shadow(color: .black.opacity(0.65), radius: 6, y: 2)
+        .accessibilityElement(children: .combine)
+    }
+
+    /// Under the title: the direct and its number, or where a film or an
+    /// episode stands in its catalogue.
+    @ViewBuilder private var playerSubtitle: some View {
+        if let item = playback.playingItem {
+            if item.kind == .live {
+                HStack(spacing: Desk.pt(7)) {
+                    Circle().fill(.red).frame(width: Desk.pt(8), height: Desk.pt(8))
+                    Text("EN DIRECT").font(Desk.font(.caption, .bold)).tracking(0.8)
+                    Text(([visibleSlice.index(of: item.id).map { "N° \($0 + 1)" }, item.group.isEmpty ? nil : item.group] as [String?])
+                        .compactMap { $0 }.joined(separator: "  ·  "))
+                        .font(Desk.font(.caption)).foregroundStyle(.white.opacity(0.78)).lineLimit(1)
+                }
+            } else {
+                // The category of a film often repeats its genre.
+                let genre = item.details.genre?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                let parts: [String?] = series != nil
+                    ? [series?.name, item.seasonNumber.map { "Saison \($0)" }, item.episodeNumber.map { "Épisode \($0)" }]
+                    : [item.details.year, item.details.duration, genre.isEmpty ? item.group : genre]
+                let line = parts.compactMap { value -> String? in
+                    guard let text = value?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty, text != "0" else { return nil }
+                    return text
+                }.prefix(3).joined(separator: "  ·  ")
+                if !line.isEmpty { Text(line).font(Desk.font(.caption)).foregroundStyle(.white.opacity(0.78)).lineLimit(1) }
+            }
+        }
+    }
+
+    private func playerPill(_ id: String, symbol: String, title: String?) -> some View {
+        let lit = playerButtonFocused(id) || hoveredPlayerButton == id
+        let label = playerButtonLabel(id)
+        return Button {
+            pointerSelect(id); activateFocus()
+            if page == .player { revealPlayerControls() }
+        } label: {
+            HStack(spacing: Desk.pt(7)) {
+                Image(systemName: symbol).font(Desk.font(.callout, .bold))
+                if let title { Text(title).font(Desk.font(.callout, .semibold)).lineLimit(1) }
+            }
+            .foregroundStyle(lit ? Color.black : .white)
+            .padding(.horizontal, Desk.pt(title == nil ? 12 : 15)).frame(minWidth: Desk.pt(40), minHeight: Desk.pt(40))
+            .background(lit ? Color.white : Color.clear, in: Capsule())
+            .fluxMediaGlass(radius: Desk.pt(20))
+            .scaleEffect(lit && !reduceMotion ? 1.06 : 1)
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.14), value: lit)
+        }
+        .buttonStyle(FluxBareButtonStyle())
+        .fluxFocus($systemFocus, id: id).id(id)
+        .accessibilityLabel(label.title).fluxHelp(label.title)
+        .accessibilityIdentifier("player-\(id)")
+        #if os(tvOS) && FLUX_CATALOG_UI_TESTING
+        .background(TVCatalogControlFrameProbe(identifier: "player-\(id)").allowsHitTesting(false))
+        #endif
         #if !os(tvOS)
+        .onHover { inside in hoveredPlayerButton = inside ? id : (hoveredPlayerButton == id ? nil : hoveredPlayerButton) }
+        #endif
+    }
+
+    /// The bar under the picture: a dock of what can be done while watching.
+    private var playerBar: some View {
+        let groups = playerBarGroups
+        return VStack(spacing: Desk.pt(10)) {
+            if playback.seekable && !playback.opening && playback.playbackError == nil {
+                playerTimeline.frame(width: max(playerBarWidth, min(Desk.pt(560), playerWidth - 80)))
+            }
+            HStack(spacing: narrowPlayer ? 2 : Desk.pt(2)) {
+                ForEach(Array(groups.enumerated()), id: \.offset) { index, group in
+                    if index > 0 && !narrowPlayer {
+                        Rectangle().fill(.white.opacity(0.16)).frame(width: 1, height: Desk.pt(40))
+                            .padding(.horizontal, Desk.pt(10)).padding(.bottom, Desk.pt(18))
+                    }
+                    ForEach(group, id: \.self) { id in playerButton(id) }
+                }
+            }
+        }
+        .padding(.horizontal, narrowPlayer ? 8 : Desk.pt(16)).padding(.top, Desk.pt(12)).padding(.bottom, Desk.pt(9))
+        .fluxMediaGlass(radius: Desk.pt(30))
+        #if os(tvOS)
+        .frame(maxWidth: .infinity)
+        .focusSection()
+        #else
         .onHover { playerControlHover("dock", inside: $0) }
         #endif
     }
-    private var playerDockWidth: CGFloat {
+
+    private var playerTimeline: some View {
+        HStack(spacing: Desk.pt(12)) {
+            Text(playback.elapsed).font(Desk.font(.caption).monospacedDigit())
+            #if os(tvOS)
+            PlayerProgressTrack(fraction: playback.position)
+                .accessibilityElement()
+                .accessibilityLabel("Progression")
+                .accessibilityValue(playback.elapsed + " sur " + playback.duration)
+            #else
+            Slider(value: $scrubPosition, in: 0...1, onEditingChanged: { editing in
+                scrubbing = editing
+                if !editing { playback.seek(scrubPosition) }
+                revealPlayerControls()
+            }).labelsHidden().tint(.white)
+                .accessibilityLabel("Position de lecture")
+            #endif
+            Text(playback.duration).font(Desk.font(.caption).monospacedDigit())
+        }
+        .foregroundStyle(.white)
+    }
+
+    private var playerTracksPanel: some View {
+        PlayerTracksPanel(audio: playback.audioTracks, subtitles: playback.subtitleTracks,
+                          subtitlesCanBeOff: playback.subtitlesCanBeOff,
+                          focusedID: focusShown || playerPanelFocusNative ? playerFocusedID : nil,
+                          systemFocus: $systemFocus, accent: themeAccent,
+                          selectAudio: { playback.selectAudioTrack($0) },
+                          selectSubtitle: { playback.selectSubtitleTrack($0) },
+                          close: { closePlayerTracks() })
         #if os(tvOS)
-        return 520
+        .frame(maxWidth: .infinity)
         #else
-        return playback.seekable && !narrowPlayer ? 500 : CGFloat(playerTransportIDs.count) * (playerButtonSize + (narrowPlayer ? 2 : 6)) + 24
+        .onHover { playerControlHover("tracks", inside: $0) }
         #endif
     }
+    /// The remote shows its own focus; a keyboard shows the selection it moves.
+    private var playerPanelFocusNative: Bool {
+        #if os(tvOS)
+        true
+        #else
+        false
+        #endif
+    }
+    private var playerFocusedID: String? {
+        #if os(tvOS)
+        systemFocus
+        #else
+        remoteNavigationActive ? focusID : nil
+        #endif
+    }
+
+    private func openPlayerTracks() {
+        guard page == .player else { return }
+        playerControlsTask?.cancel(); playerControlsTask = nil
+        if !cinemaControls { cinemaControls = true }
+        withAnimation(reduceMotion ? nil : .easeOut(duration: 0.18)) { playerTracks = true }
+        let target = PlayerTracks.entry(audio: playback.audioTracks, subtitles: playback.subtitleTracks,
+                                        canBeOff: playback.subtitlesCanBeOff)
+        focusID = target
+        Task { @MainActor in
+            await Task.yield()
+            guard page == .player, playerTracks else { return }
+            systemFocus = target
+        }
+    }
+    private func closePlayerTracks() {
+        guard playerTracks else { return }
+        withAnimation(reduceMotion ? nil : .easeOut(duration: 0.18)) { playerTracks = false }
+        revealPlayerControls(on: PlayerTracks.buttonID)
+    }
+    /// The settings leave the picture: the remote returns to the key that
+    /// opened them, and the commands hide again after their delay.
+    private func closePlayerSettings() {
+        guard playerSettings != nil else { return }
+        playerSettings = nil
+        revealPlayerControls(on: "engine")
+    }
+
     private func playerButton(_ id: String) -> some View {
         let label = playerButtonLabel(id)
         return Button {
@@ -2351,38 +2566,50 @@ struct ContentView: View {
             activateFocus()
             if page == .player { revealPlayerControls() }
         } label: {
-            Image(systemName: label.icon)
-                .font(.system(size: playerSymbolSize(id), weight: .semibold))
-                .frame(width: playerButtonSize, height: playerButtonSize)
-                .background(.white.opacity(id == "playpause" ? 0.14 : 0), in: Circle())
-                .overlay(Circle().strokeBorder(playerButtonFocused(id) ? .white.opacity(0.9) : .clear, lineWidth: 1.5))
-                .contentShape(Circle())
+            PlayerActionLabel(symbol: label.icon, title: label.short, prominent: id == "playpause",
+                              highlighted: playerButtonFocused(id) || hoveredPlayerButton == id,
+                              active: playerButtonActive(id), tint: id == "favorite-toggle" ? .yellow : themeAccent,
+                              compact: narrowPlayer)
         }
-        .buttonStyle(FluxBareButtonStyle()).foregroundStyle(.white)
+        .buttonStyle(FluxBareButtonStyle())
         .fluxFocus($systemFocus, id: id).id(id)
         .accessibilityLabel(label.title).fluxHelp(label.title)
+        .accessibilityIdentifier("player-\(id)")
+        #if os(tvOS) && FLUX_CATALOG_UI_TESTING
+        .background(TVCatalogControlFrameProbe(identifier: "player-\(id)").allowsHitTesting(false))
+        #endif
         .disabled((id == "rewind" || id == "forward") && !playback.seekable)
+        #if !os(tvOS)
+        .onHover { inside in hoveredPlayerButton = inside ? id : (hoveredPlayerButton == id ? nil : hoveredPlayerButton) }
+        #endif
     }
-    private func playerButtonLabel(_ id: String) -> (title: String, icon: String) {
+    /// `title` is spoken and shown as a tip; `short` is written under the key.
+    private func playerButtonLabel(_ id: String) -> (title: String, icon: String, short: String) {
+        let live = playback.playingItem?.kind == .live
         switch id {
-        case "player-back": return ("Retour", "chevron.backward")
-        case "player-full": return cinema ? ("Quitter le plein écran", "arrow.down.right.and.arrow.up.left") : ("Plein écran", "arrow.up.left.and.arrow.down.right")
-        case "previous": return ("Précédent", "backward.end.fill")
-        case "next": return ("Suivant", "forward.end.fill")
-        case "rewind": return ("Reculer de \(playback.settings.skipSeconds) secondes", "gobackward")
-        case "forward": return ("Avancer de \(playback.settings.skipSeconds) secondes", "goforward")
-        case "playpause": return playback.isPlaying ? ("Pause", "pause.fill") : ("Lecture", "play.fill")
-        case "mute": return playback.muted ? ("Rétablir le son", "speaker.slash.fill") : ("Couper le son", "speaker.wave.2.fill")
-        case "zap-list": return ("Liste des chaînes", "list.bullet")
-        default: return ("Audio, sous-titres et réglages", "gearshape")
+        case "player-back": return ("Retour", "chevron.backward", "Retour")
+        case "player-full": return cinema ? ("Quitter le plein écran", "arrow.down.right.and.arrow.up.left", "Fenêtre") : ("Plein écran", "arrow.up.left.and.arrow.down.right", "Plein écran")
+        case "previous": return live ? ("Chaîne précédente", "backward.end.fill", "Précédente") : ("Épisode précédent", "backward.end.fill", "Précédent")
+        case "next": return live ? ("Chaîne suivante", "forward.end.fill", "Suivante") : ("Épisode suivant", "forward.end.fill", "Suivant")
+        case "rewind": return ("Reculer de \(playback.settings.skipSeconds) secondes", "gobackward", "−\(playback.settings.skipSeconds) s")
+        case "forward": return ("Avancer de \(playback.settings.skipSeconds) secondes", "goforward", "+\(playback.settings.skipSeconds) s")
+        case "playpause": return playback.isPlaying ? ("Pause", "pause.fill", "Pause") : ("Lecture", "play.fill", "Lecture")
+        case "mute": return playback.muted ? ("Rétablir le son", "speaker.slash.fill", "Son") : ("Couper le son", "speaker.wave.2.fill", "Son")
+        case "zap-list": return ("Liste des chaînes", "list.bullet", "Chaînes")
+        case "favorite-toggle":
+            let favorite = playback.playingItem.map { library.isFavorite($0) } ?? false
+            return favorite ? ("Retirer des favoris", "star.fill", "Favori") : ("Ajouter aux favoris", "star", "Favori")
+        case PlayerTracks.buttonID: return ("Audio et sous-titres", "captions.bubble", "Langues")
+        default: return ("Réglages du lecteur", "gearshape", "Réglages")
         }
     }
-    private func playerSymbolSize(_ id: String) -> CGFloat {
-        #if os(tvOS)
-        return id == "playpause" ? 28 : 23
-        #else
-        return id == "playpause" ? 20 : 16
-        #endif
+    private func playerButtonActive(_ id: String) -> Bool {
+        switch id {
+        case "favorite-toggle": return playback.playingItem.map { library.isFavorite($0) } ?? false
+        case "mute": return playback.muted
+        case "zap-list": return zapListVisible
+        default: return false
+        }
     }
     private func playerButtonFocused(_ id: String) -> Bool {
         #if os(tvOS)
@@ -2400,32 +2627,51 @@ struct ContentView: View {
             if cinemaControls { revealPlayerControls() }
         }
     }
-    private func revealPlayerControls(focus: Bool = false) {
+    /// A television is read from a sofa and its bar is walked key by key:
+    /// the commands stay a little longer there.
+    private var playerControlsDelay: UInt64 {
+        #if os(tvOS)
+        5_000_000_000
+        #else
+        3_000_000_000
+        #endif
+    }
+    /// The commands stay while a capture or a remote flow needs them.
+    private var playerControlsHeld: Bool {
+        #if FLUX_CATALOG_UI_TESTING
+        fixtureHoldsControls
+        #else
+        false
+        #endif
+    }
+    /// `on`: the key that receives the remote; `focus` alone means play/pause.
+    private func revealPlayerControls(focus: Bool = false, on target: String? = nil) {
         guard page == .player else { return }
         playerControlsTask?.cancel()
         if !cinemaControls {
             withAnimation(reduceMotion ? nil : .easeOut(duration: 0.18)) { cinemaControls = true }
         }
-        if focus {
-            focusID = "playpause"
+        if focus || target != nil {
+            let id = target ?? "playpause"
+            focusID = id
             Task { @MainActor in
                 await Task.yield()
-                guard page == .player, playerControlsVisible, !modalOpen else { return }
-                systemFocus = "playpause"
+                guard page == .player, playerControlsVisible, !modalOpen, !playerPanelOpen else { return }
+                systemFocus = id
             }
         }
-        guard playback.isPlaying, !playback.opening, playback.playbackError == nil,
+        guard playback.isPlaying, !playback.opening, playback.playbackError == nil, !playerPanelOpen, !playerControlsHeld,
               hoveredPlayerControls.isEmpty, !scrubbing, !modalOpen, !voiceOverEnabled else { return }
         playerControlsTask = Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 3_000_000_000)
+            try? await Task.sleep(nanoseconds: playerControlsDelay)
             guard !Task.isCancelled, page == .player, playback.isPlaying,
-                  !playback.opening, playback.playbackError == nil,
+                  !playback.opening, playback.playbackError == nil, !playerPanelOpen,
                   hoveredPlayerControls.isEmpty, !scrubbing, !modalOpen, !voiceOverEnabled else { return }
             hidePlayerControls()
         }
     }
     private func hidePlayerControls() {
-        guard playback.isPlaying, !playback.opening, playback.playbackError == nil,
+        guard playback.isPlaying, !playback.opening, playback.playbackError == nil, !playerPanelOpen, !playerControlsHeld,
               !scrubbing, !modalOpen, !voiceOverEnabled else { return }
         playerControlsTask?.cancel(); playerControlsTask = nil
         hoveredPlayerControls.removeAll()
@@ -2582,10 +2828,28 @@ struct ContentView: View {
                 setPreview(item)
                 target = item.id
             } else {
+                #if os(tvOS)
+                // Nothing is remembered here: the remote starts on the first
+                // title, in the content, rather than on a control beside it.
+                if let first = visible.first {
+                    revealCatalogItem(first.id)
+                    setPreview(first)
+                    target = first.id
+                } else { target = "tab-\(kind.rawValue)" }
+                #else
                 target = "tab-\(kind.rawValue)"
+                #endif
             }
             browseRestoreTask = nil
             #if os(tvOS)
+            if target.hasPrefix("tab-") {
+                // An empty section: its key of the dock is always on screen.
+                pendingBrowseFocus = nil
+                pendingBrowseRestore = false
+                focusID = target
+                systemFocus = target
+                return
+            }
             pendingBrowseFocus = BrowseRestoreFocusRequest(revision: revision, context: context, targetID: target)
             focusID = target
             resolveBrowseRestoreFocus()
@@ -2777,14 +3041,29 @@ struct ContentView: View {
             guard zapToken==token else{return};withAnimation(.easeOut(duration:0.22)){zapBanner=false}
         }
     }
-    private var liveBanner:some View {
-        HStack(spacing:14) {
-            if let item=playback.playingItem {
-                ArtworkView(url:item.logoURL,fit:true){Image(systemName:"tv").font(.title2)}.frame(width:44,height:36)
-                VStack(alignment:.leading,spacing:4){Text(item.name).font(.headline).lineLimit(1);Text("DIRECT  ·  \(item.group)").font(.caption).foregroundStyle(.secondary).lineLimit(1)}
-                Spacer(); if let number=visibleSlice.index(of:item.id) {Text(String(format:"%03d",number+1)).font(.title.monospacedDigit().weight(.bold))}
+    /// Shown alone when a channel changes while the commands are hidden.
+    private var liveBanner: some View {
+        HStack(spacing: Desk.pt(14)) {
+            if let item = playback.playingItem {
+                if let number = visibleSlice.index(of: item.id) {
+                    Text("\(number + 1)").font(Desk.font(.title, .bold).monospacedDigit()).foregroundStyle(themeAccent)
+                }
+                ArtworkView(url: item.logoURL, fit: true) { Image(systemName: "tv").font(Desk.font(.title3)) }
+                    .frame(width: Desk.pt(48), height: Desk.pt(36))
+                VStack(alignment: .leading, spacing: Desk.pt(3)) {
+                    Text(item.name).font(Desk.font(.headline)).lineLimit(1)
+                    Text(item.group.isEmpty ? "EN DIRECT" : "EN DIRECT  ·  \(item.group)")
+                        .font(Desk.font(.caption)).foregroundStyle(.white.opacity(0.72)).lineLimit(1)
+                }
+                Spacer(minLength: 0)
             }
-        }.padding(12).frame(maxWidth: 440).fluxMediaGlass(radius:23).padding(20).allowsHitTesting(false)
+        }
+        .foregroundStyle(.white)
+        .padding(.horizontal, Desk.pt(16)).padding(.vertical, Desk.pt(12))
+        .frame(maxWidth: Desk.pt(460))
+        .fluxMediaGlass(radius: Desk.pt(24))
+        .padding(playerChromeInset)
+        .allowsHitTesting(false)
     }
     private func adjacent(_ delta: Int) {
         guard let item = playback.playingItem else { return }
@@ -2803,7 +3082,8 @@ struct ContentView: View {
     private func home() { playerControlsTask?.cancel(); seriesTask?.cancel(); seriesTask=nil; cancelEntrance(); dismissCaseImmediately(); if cinema { toggleCinema(restoringPreviousWindow: true) }; playback.stop(); page = .catalogue; series = nil; seasons = []; seasonNumber=nil; episodesLoading=false; episodesFailed=false; seriesRequest = UUID(); focusID = "tab-\(library.contentKind.rawValue)" }
     private func back() {
         if entranceItem != nil { cancelEntrance(); return }
-        if page == .player, playerSettings != nil { playerSettings = nil; return }
+        if page == .player, playerTracks { closePlayerTracks(); return }
+        if page == .player, playerSettings != nil { closePlayerSettings(); return }
         if page == .player, zapListVisible { closeZapList(); return }
         if heldItem != nil {putCaseBack();return}
         switch page {
@@ -2912,13 +3192,14 @@ struct ContentView: View {
                 }
             }
         case .player:
-            if playerControlsVisible {
+            if playerTracks { rows += playerTrackRows }
+            else if playerControlsVisible {
                 #if os(tvOS)
                 rows.append(["player-back"])
                 #else
                 rows.append(["player-back", "player-full"])
                 #endif
-                rows.append(playerTransportIDs)
+                rows.append(playerBarIDs)
             } else { rows.append(["cinema-controls"]) }
         }
         return rows
@@ -2939,6 +3220,14 @@ struct ContentView: View {
         #if os(macOS) || os(tvOS)
         if zoneMode { handleZones(action); return }
         #endif
+        // The settings are worked with the pointer or the remote of a
+        // television: the keys of the player wait under them, and none of
+        // them changes channel behind the panels.
+        if page == .player, playerSettings != nil {
+            if action == .back || action == .home { closePlayerSettings() }
+            else if action == .playPause { playback.togglePause() }
+            return
+        }
         if page == .player, zapListVisible { handleZapList(action); return }
         // In live television a jump back has no meaning: Left and OK bring the
         // channel list, Up and Down keep changing channel directly.
@@ -3015,7 +3304,15 @@ struct ContentView: View {
         if id.hasPrefix("live-preset-") { selectLivePreset(String(id.dropFirst("live-preset-".count))); return }
         if id == "group-all" { showAllCatalog(); return }
         if id.hasPrefix("group-") { group = String(id.dropFirst(6)); return }
+        if id.hasPrefix("track-audio-") { playback.selectAudioTrack(String(id.dropFirst("track-audio-".count))); return }
+        if id.hasPrefix("track-sub-") {
+            let track = String(id.dropFirst("track-sub-".count))
+            playback.selectSubtitleTrack(track == "off" ? nil : track); return
+        }
         switch id {
+        case PlayerTracks.buttonID: openPlayerTracks()
+        case PlayerTracks.closeID: closePlayerTracks()
+        case "favorite-toggle": if let item = playback.playingItem { library.toggleFavorite(item) }
         case "zap-list": if zapListVisible { closeZapList() } else { openZapList(keyboard: remoteNavigationActive) }
         case "live-watch": if let item = previewItem { playItem(item) }
         case "live-favorite": if let item = previewItem { chooseFavorites(item) }
@@ -3205,16 +3502,13 @@ extension ContentView {
                 Color.black.opacity(0.34).ignoresSafeArea().allowsHitTesting(false).transition(.opacity)
                 zoneCaption
             }
-            #if os(tvOS)
-            if zoneMode { zoneCompassCatcher }
-            #if FLUX_CATALOG_UI_TESTING
+            #if os(tvOS) && FLUX_CATALOG_UI_TESTING
             // Read the drawn selection independently from UIKit focus
             // without adding a focusable control to the fixture.
             Color.clear.frame(width: 1, height: 1).allowsHitTesting(false)
                 .accessibilityElement().accessibilityLabel("Flux IPTV")
                 .accessibilityIdentifier("flux-catalog-logical-focus")
-                .accessibilityValue(zoneMode ? Self.compassID : focusID ?? "none")
-            #endif
+                .accessibilityValue(focusID ?? "none")
             #endif
             if let item = itemOptions { deskItemPanel(item) }
             if let message = library.alertMessage { deskNotice(message) }
@@ -3254,7 +3548,7 @@ extension ContentView {
     }
 
     private var dockItself: some View {
-        FluxDock(selection: dockSelection, focusedID: focusID, showsFocus: focusShown,
+        FluxDock(selection: dockSelection, focusedID: shownFocusID, showsFocus: focusShown,
                  accent: themeAccent, second: themeSecond,
                  zoneRing: zoneMode && deskZoneEntry(.dock) != nil ? zoneFocus == .dock : nil,
                  systemFocus: $systemFocus,
@@ -3318,7 +3612,7 @@ extension ContentView {
     /// The last button of the flank answers for the whole of it, up to the dock.
     private func barButton(_ id: String, symbol: String, title: String?, help: String, fills: Bool,
                            action: @escaping () -> Void) -> some View {
-        let focused = focusShown && focusID == id
+        let focused = focusShown && shownFocusID == id
         return Button { pointerSelect(id); action() } label: {
             HStack(spacing: 0) {
                 HStack(spacing: Desk.pt(7)) {
@@ -3393,7 +3687,8 @@ extension ContentView {
             if key == .return || key == .escape || key == .space { library.alertMessage = nil }
             return true
         }
-        if playerSettings != nil, key == .escape { playerSettings = nil; return true }
+        if playerTracks, key == .escape { closePlayerTracks(); return true }
+        if playerSettings != nil, key == .escape { closePlayerSettings(); return true }
         return false
     }
     #endif
@@ -3403,9 +3698,9 @@ extension ContentView {
     private func deskPlayerSettings(_ request: DeskSettingsRequest) -> some View {
         ZStack {
             Color.black.opacity(0.30).ignoresSafeArea()
-                .contentShape(Rectangle()).onTapGesture { playerSettings = nil }
+                .contentShape(Rectangle()).onTapGesture { closePlayerSettings() }
             PlaybackSettingsView(playback: playback, inline: true, overPlayback: true, initialPage: request.page,
-                                 close: { playerSettings = nil })
+                                 close: { closePlayerSettings() })
                 .environmentObject(library)
                 .id(request.revision)
                 .frame(maxWidth: Desk.pt(1180), maxHeight: Desk.pt(780))
@@ -3437,10 +3732,11 @@ extension ContentView {
         deskHistory.visit(place)
     }
 
-    /// Back first closes what is open in the screen. From a list it then
-    /// shows the zones of the screen, which the arrows alone do not all
-    /// reach; from there, or from the dock, it shows the screen that came
-    /// before this one, down to the home screen.
+    /// Back first closes what is open in the screen, then shows the screen
+    /// that came before this one, as the Back of a web browser does, down to
+    /// the home screen. On a television that is all it does: the remote
+    /// reaches every control with its arrows. With a keyboard, whose arrows
+    /// follow rows, it may first show the zones of the screen.
     func deskBack() {
         if page == .catalogue {
             if sidebarCountries { closeCountries(); return }
@@ -3448,10 +3744,12 @@ extension ContentView {
                 newListKind = nil; renamingList = false; confirmingListDeletion = false
                 return
             }
+            #if os(macOS)
             if zoneMode { deskLeaveScreen(); return }
             if backShowsZones, deskZones.count > 1, deskZone(of: focusID) != .dock {
                 openZones(); return
             }
+            #endif
         }
         deskLeaveScreen()
     }
@@ -3515,36 +3813,16 @@ extension ContentView {
         let zones = deskZones
         zoneFocus = deskZone(of: focusID).flatMap { zones.contains($0) ? $0 : nil }
             ?? (zones.contains(.content) ? .content : zones.first ?? .dock)
-        zoneReturnFocus = focusID
         zoneMode = true
-        #if os(tvOS)
-        // The compass takes the focus of the remote: no control under it moves.
-        Task { @MainActor in
-            await Task.yield()
-            guard zoneMode else { return }
-            systemFocus = Self.compassID
-        }
-        #endif
     }
 
     /// Leaves the compass where the selection was.
-    func closeZones() {
-        zoneMode = false
-        #if os(tvOS)
-        guard let id = zoneReturnFocus else { return }
-        focusID = id
-        if id == DeskZone.searchID { searchFocus = true } else { systemFocus = id }
-        #endif
-    }
+    func closeZones() { zoneMode = false }
 
     private func enterZone(_ zone: DeskZone) {
         zoneMode = false
         guard let id = deskZoneEntry(zone) else { return }
         if zone == .content, let item = visibleSlice.item(id: id) { revealCatalogItem(id); setPreview(item) }
-        #if os(tvOS)
-        // The search field is a native control of the television.
-        if zone == .top { focusID = id; searchFocus = true; return }
-        #endif
         focusID = id
         systemFocus = id
     }
@@ -3562,30 +3840,6 @@ extension ContentView {
         default: closeZones()
         }
     }
-    static let compassID = "zone-compass"
-
-    #if os(tvOS)
-    /// The compass holds the focus of the remote while the zones are shown:
-    /// with nothing beyond its edges, every arrow reaches `handleZones`.
-    private var zoneCompassCatcher: some View {
-        Button { closeZones() } label: { Color.clear.contentShape(Rectangle()) }
-            .buttonStyle(FluxBareButtonStyle())
-            .focusEffectDisabled()
-            .focused($systemFocus, equals: Self.compassID)
-            .onMoveCommand { direction in
-                switch direction {
-                case .up: handleZones(.up)
-                case .down: handleZones(.down)
-                case .left: handleZones(.left)
-                case .right: handleZones(.right)
-                @unknown default: break
-                }
-            }
-            .ignoresSafeArea()
-            .accessibilityLabel("Zones de l’écran")
-            .accessibilityIdentifier(Self.compassID)
-    }
-    #endif
 
     /// Tab enters the next zone of the screen without the overview.
     func cycleZone(forward: Bool) -> Bool {
@@ -3667,13 +3921,20 @@ extension ContentView {
         sidebarCountries = false
         if library.contentKind == kind {
             home()
-            // The section opens where it was left, as it did at launch.
+            // The section opens where it was left, as it did at launch. A
+            // television always puts the remote back in its content.
+            #if os(tvOS)
+            restoreBrowsingContext()
+            #else
             if fromHome { restoreBrowsingContext() }
+            #endif
         } else { changeKind(kind) }
         // A list opened from the favourites belongs to that destination; the
         // section itself opens on its whole catalogue.
         if leavingFavorites { library.selectedPresetID = nil }
+        #if !os(tvOS)
         focusID = currentDockID
+        #endif
     }
 
     func openSettings(_ destination: PlaybackSettingsView.Page? = nil, editing: PlaybackSettingsView.SourceEditor? = nil) {
@@ -3685,7 +3946,10 @@ extension ContentView {
         page = .settings
         // The control that held the keyboard focus leaves with its screen.
         focusID = FluxDockItem.settings.focusID
+        #if !os(tvOS)
+        // On a television the settings take the remote on their own pages.
         systemFocus = focusID
+        #endif
         recordPlace()
     }
 
@@ -3698,8 +3962,13 @@ extension ContentView {
             let filled = kinds.lazy.compactMap { kind in library.presets.lists(for: kind).first(where: { !$0.itemIDs.isEmpty }) }.first
             if let target = filled ?? library.presets.lists(for: library.contentKind).first { selectFavoriteList(target) }
         }
+        #if os(tvOS)
+        // The remote goes to the first title of the list, as in a section.
+        restoreBrowsingContext()
+        #else
         focusID = currentDockID
         systemFocus = focusID
+        #endif
         recordPlace()
     }
 
@@ -3901,7 +4170,7 @@ extension ContentView {
             ZStack {
                 // The plate of the bar is in the middle of the window; the
                 // name of the destination stands above it.
-                FluxDock(selection: [], focusedID: focusID, showsFocus: focusShown,
+                FluxDock(selection: [], focusedID: shownFocusID, showsFocus: focusShown,
                          accent: themeAccent, second: themeSecond, hero: scale, hover: { homeHover = $0 },
                          systemFocus: $systemFocus,
                          activate: { item in pointerSelect(item.focusID); dockAction(item) },
@@ -3990,7 +4259,7 @@ extension ContentView {
     private func sidebarHeading(_ title: String) -> some View {
         DeskColumnHeader(title: title, backTitle: deskBackTitle,
                          back: barFlanks ? nil : { deskLeaveScreen() }, home: barFlanks ? nil : { showHome() },
-                         focusedID: focusShown ? focusID : nil, systemFocus: $systemFocus)
+                         focusedID: focusShown ? shownFocusID : nil, systemFocus: $systemFocus)
             .overlay { if !barFlanks { zoneFrame(.top, radius: Desk.pt(14), outset: 6, labelled: false) } }
     }
 
@@ -4382,14 +4651,17 @@ extension ContentView {
     var liveDeskCatalogue: some View {
         FluxGlassGroup {
             HStack(alignment: .top, spacing: Desk.pt(18)) {
-                deskSidebar
+                deskSidebar.deskFocusSection()
                 VStack(alignment: .leading, spacing: Desk.pt(12)) {
                     deskTopBand
                     liveNotices
                     liveDeskChannels
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-                liveDeskPreviewPanel.frame(width: deskPreviewWidth)
+                .deskFocusSection()
+                // Regarder and Favoris stand lower than most channels: the
+                // panel answers Right from any of them.
+                liveDeskPreviewPanel.frame(width: deskPreviewWidth).deskFocusSection()
             }
         }
         .padding(.horizontal, Desk.pt(24))
@@ -4480,6 +4752,13 @@ extension ContentView {
     private var liveDeskPreviewPanel: some View {
         VStack(alignment: .leading, spacing: Desk.pt(14)) {
             if let item = previewItem, item.kind == .live, visibleSlice.index(of: item.id) != nil {
+                #if os(tvOS)
+                // A remote has Regarder just under the picture: a picture that
+                // took its focus without showing it would be a lost press.
+                LiveTVPreviewScreen(preview: livePreview, item: item, delay: livePreviewDelay,
+                                    automatic: automaticLivePreview, large: true)
+                    .accessibilityIdentifier("live-preview")
+                #else
                 Button { playItem(item) } label: {
                     LiveTVPreviewScreen(preview: livePreview, item: item, delay: livePreviewDelay,
                                         automatic: automaticLivePreview, large: true)
@@ -4489,6 +4768,7 @@ extension ContentView {
                 .accessibilityLabel("Regarder \(item.name)")
                 .accessibilityIdentifier("live-preview")
                 .fluxHelp("Regarder la chaîne")
+                #endif
                 liveDeskDetails(item)
             } else {
                 ZStack {
@@ -4540,6 +4820,7 @@ extension ContentView {
                                 .allowsHitTesting(false)
                         }
                 }.buttonStyle(FluxBareButtonStyle()).fluxFocus($systemFocus, id: "live-watch").id("live-watch")
+                    .accessibilityIdentifier("live-watch")
                 navButton("Favoris", icon: library.isFavorite(item) ? "star.fill" : "star", id: "live-favorite") { chooseFavorites(item) }
                 if livePreview.player != nil {
                     navButton(livePreview.isMuted ? "Activer le son de l’aperçu" : "Couper le son de l’aperçu",
@@ -4574,13 +4855,14 @@ extension ContentView {
     var mediaDeskCatalogue: some View {
         FluxGlassGroup {
             HStack(alignment: .top, spacing: Desk.pt(18)) {
-                deskSidebar
+                deskSidebar.deskFocusSection()
                 VStack(alignment: .leading, spacing: Desk.pt(12)) {
                     deskTopBand
                     liveNotices
                     mediaDeskContent
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                .deskFocusSection()
             }
         }
         .padding(.horizontal, Desk.pt(24))

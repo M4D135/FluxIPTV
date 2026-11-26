@@ -54,12 +54,19 @@ clic ouvre la chaîne.
 Pendant un direct, la liste des chaînes se pose à gauche de l'image (bord
 gauche au pointeur, bouton Liste des chaînes, ou flèche gauche) pour zapper
 sans revenir au catalogue. Les réglages s'y ouvrent en panneaux de verre.
+Pendant la lecture : Retour, le titre et l'heure en haut ; en bas une barre
+de verre dont chaque touche porte son nom (Chaînes, Précédente, Pause,
+Suivante, Favori, Langues, Réglages ; -15 s et +15 s pour un film). Langues
+choisit l'audio et les sous-titres, appliqués aussitôt. Un réglage est
+enregistré dès qu'il est choisi ; ceux que le moteur lit à l'ouverture d'un
+flux proposent « Relancer le flux ».
 Au clavier ou à la télécommande : les flèches vont au contrôle voisin, OK
-valide, Retour affiche la boussole des zones (haut, colonne, contenu, aperçu,
-dock) où une flèche saute dans la zone voisine, et Retour une seconde fois
-revient à l'écran précédent. Tab change de zone.
+valide, Retour revient en arrière comme le Précédent d'un navigateur, écran
+après écran jusqu'à l'accueil. Sur Mac, Retour montre d'abord la boussole des
+zones (haut, colonne, contenu, aperçu, dock) et Tab change de zone.
 L'Apple TV reprend la même interface : accueil, dock, colonnes, fiches en
-verre, favoris et listes d'un titre, zapping.
+verre, favoris et listes d'un titre, lecture, zapping. Menu y est Retour, et
+chaque destination s'ouvre avec la télécommande dans son contenu.
 Films et séries : filtre par langue reconnue dans les titres et catégories.
 Fiche d'un film : panneau de verre sur le catalogue flouté, boîtier à gauche.
 Fiche d'une série : saisons, épisodes en liste, visuel de l'épisode.

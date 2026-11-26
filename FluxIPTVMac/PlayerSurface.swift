@@ -76,25 +76,31 @@ struct PlayerSurface: View {
             #endif
             #endif
             if playback.opening {
-                VStack(spacing: 10) {
+                VStack(spacing: Desk.pt(10)) {
                     ProgressView()
                         #if !os(tvOS)
                         .controlSize(.large)
                         #endif
-                    Text("Ouverture du flux…").font(.headline)
+                    Text("Ouverture du flux…").font(Desk.font(.headline))
+                    // Which engine is trying, and which of its attempts.
+                    if !playback.attemptLabel.isEmpty {
+                        Text(playback.attemptLabel).font(Desk.font(.caption)).foregroundStyle(.white.opacity(0.7))
+                    }
                 }
-                .padding(22).fluxMediaGlass(radius: 22)
+                .foregroundStyle(.white)
+                .padding(Desk.pt(22)).fluxMediaGlass(radius: Desk.pt(22))
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .allowsHitTesting(false)
             }
             if let error = playback.playbackError {
-                VStack(spacing: 12) {
-                    Image(systemName: "play.slash.fill").font(.largeTitle)
-                    Text("Impossible de lire ce flux").font(.headline)
-                    Text(error).font(.caption).foregroundStyle(.secondary)
+                VStack(spacing: Desk.pt(12)) {
+                    Image(systemName: "play.slash.fill").font(Desk.font(.largeTitle))
+                    Text("Impossible de lire ce flux").font(Desk.font(.headline))
+                    Text(error).font(Desk.font(.caption)).foregroundStyle(.white.opacity(0.72))
                         .multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
                     Button("Réessayer") { playback.retry(preferred: playback.preferredEngine) }
-                        .buttonStyle(.borderedProminent)
+                        .deskKey(prominent: true)
+                        .accessibilityIdentifier("player-retry")
                     #if os(macOS)
                     if playback.externalVLCVariants.count > 1 {
                         Menu("Ouvrir dans VLC externe") {
@@ -109,8 +115,9 @@ struct PlayerSurface: View {
                     }
                     #endif
                 }
-                .padding(20).frame(maxWidth: 440).fluxGlass(radius: 22)
-                .padding(20)
+                .foregroundStyle(.white)
+                .padding(Desk.pt(20)).frame(maxWidth: Desk.pt(440)).fluxGlass(radius: Desk.pt(22))
+                .padding(Desk.pt(20))
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }

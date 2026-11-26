@@ -14,17 +14,17 @@ Les deux plateformes partagent les mêmes écrans. Sur Apple TV les tailles sont
 
 L’application s’ouvre sur l’accueil : TV, Films, Séries, Recherche, Favoris et Réglages forment un grand dock au milieu de la fenêtre, sur le décor adouci de l’espace. Le nom de la destination pointée s’affiche au-dessus avec son effectif — chaînes, films, séries, listes — et le décor devient celui de cet espace. Un clic, ou **Entrée**, ouvre la destination ; une section s’ouvre là où elle a été laissée.
 
-**Retour** revient à l’écran précédent, écran après écran, jusqu’à l’accueil : la fiche se referme, puis la section laisse la place à celle qui la précédait. Un écran déjà visité ne revient qu’une fois, si bien que Retour ne tourne jamais en rond. À gauche du dock, un bouton porte le nom de l’écran où Retour ramène, et une maison ramène directement à l’accueil.
+**Retour** est le bouton Précédent d’un navigateur : il referme d’abord ce qui est ouvert dans l’écran — une fiche, une liste, un panneau —, puis revient à l’écran précédent, écran après écran, dans l’ordre exact où ils ont été ouverts, jusqu’à l’accueil. Chaque écran se retrouve sur le titre qui y était sélectionné. À gauche du dock, un bouton porte le nom de l’écran où Retour ramène, et une maison ramène directement à l’accueil.
 
 ### Une seule logique au clavier et à la télécommande
 
 - **Les flèches** vont au contrôle voisin.
-- **OK** valide.
-- **Retour** affiche la boussole des zones ; **une flèche** saute alors directement dans la zone voisine ; **Retour** une seconde fois revient à l’écran précédent.
+- **OK** valide ; une destination s’ouvre avec la sélection dans son contenu, sur le titre laissé la fois précédente.
+- **Retour** revient en arrière.
 
-Sous une longue liste, les flèches seules n’atteignent ni les commandes du haut ni le dock : c’est le rôle de la boussole. Elle encadre les zones de l’écran — **Haut** (recherche, actualiser, pages), **Colonne**, **Contenu**, **Aperçu** pour la télévision, **Dock** (avec Retour et Accueil) — et écrit où mène chaque flèche et où ramène Retour. Depuis le contenu, chaque zone est à deux pressions. La sélection arrive sur la catégorie, la chaîne ou la destination en cours ; **OK** referme la boussole sans rien changer. Depuis le dock, Retour revient directement.
+Sur Apple TV, **Menu** est ce Retour et ne fait rien d’autre. Chaque colonne de l’écran répond comme un tout à la flèche qui pointe vers elle : depuis la liste, **Gauche** mène à la colonne de navigation, **Droite** à Regarder et Favoris, **Haut** à la recherche, **Bas** au dock, où que la télécommande se trouve dans la liste.
 
-Sur Mac, **Tab** et **⇧Tab** entrent dans la zone suivante ou précédente sans la boussole, et Réglages › Interface permet de la supprimer : Retour revient alors tout de suite à l’écran précédent.
+Au clavier du Mac, dont les flèches suivent des rangées, Retour affiche d’abord la boussole des zones : elle encadre **Haut** (recherche, actualiser, pages), **Colonne**, **Contenu**, **Aperçu** pour la télévision et **Dock**, et écrit où mène chaque flèche. Une flèche saute dans la zone voisine, **OK** referme la boussole, Retour une seconde fois revient à l’écran précédent. **Tab** et **⇧Tab** changent de zone sans la boussole, et Réglages › Interface permet de la supprimer.
 
 ### Dock
 
@@ -83,7 +83,7 @@ Les 18 fonds 4K sont fabriqués par un script Blender à partir de géométrie e
 
 ## Apple TV
 
-L’Apple TV reprend le bureau du Mac : accueil, dock en bas au centre, colonne de navigation, télévision en trois colonnes avec l’aperçu, catalogue des films et des séries, rayon des saisons, fiches en verre, favoris, réglages et sources dans l’écran, liste des chaînes sur l’image pendant un direct. Les pays et les langues se choisissent dans la colonne. Ce qui diffère encore du Mac : le dock ne se réordonne pas à la télécommande ; son emplacement et son thème se règlent dans Réglages › Dock.
+L’Apple TV reprend le bureau du Mac : accueil, dock en bas au centre, colonne de navigation, télévision en trois colonnes avec l’aperçu, catalogue des films et des séries, rayon des saisons, fiches en verre, favoris, réglages et sources dans l’écran, commandes de lecture, langues et liste des chaînes sur l’image. Les pays et les langues se choisissent dans la colonne. **Menu** revient en arrière comme le Précédent d’un navigateur, et chaque destination s’ouvre avec la télécommande dans son contenu. Ce qui diffère du Mac : pas de boussole des zones, dont la télécommande n’a pas besoin, et le dock ne se réordonne pas à la télécommande ; son emplacement et son thème se règlent dans Réglages › Dock.
 
 **Charger une liste** et **Modifier la source** occupent tout l’écran : le type de source à gauche, les champs et les deux boutons à droite, visibles d’un coup, sans défilement.
 
@@ -111,9 +111,19 @@ Le délai de l’aperçu des chaînes se règle sur 1, 3, 5 ou 10 secondes : une
 
 ## Lecture et commandes flottantes
 
-La vidéo occupe la fenêtre entière ; le dock et la navigation sont retirés de cette vue. Les commandes de lecture se limitent à un panneau centré de largeur bornée, avec une petite capsule supérieure pour Retour, le titre et Plein écran. Afficher les commandes ne redimensionne pas l’image.
+L’image occupe tout l’écran — sur Apple TV jusqu’aux bords du téléviseur —, sans dock ni navigation. Ce qui s’écrit par-dessus tient en deux endroits. En haut : **Retour**, le titre, et dessous « En direct », le numéro et la catégorie d’une chaîne, ou l’année, la durée et le genre d’un film ; à droite, l’heure. En bas : une barre de verre, sur le modèle du dock, dont chaque touche porte son nom.
 
-Le panneau se masque après trois secondes de lecture sans interaction ; pointeur, toucher, clavier et télécommande le rappellent. Pause, chargement, erreur, déplacement du curseur ou VoiceOver le maintiennent visible.
+| Direct | Film ou épisode | Toujours |
+|---|---|---|
+| Chaînes · Précédente · Pause · Suivante | −15 s · Pause · +15 s, sous la ligne du temps | Favori · Langues · Réglages |
+
+La touche sous la télécommande, le clavier ou le pointeur devient blanche et grossit. **Favori** ajoute ou retire le titre des favoris d’une pression. Afficher les commandes ne redimensionne pas l’image.
+
+Les commandes se retirent seules — après trois secondes au pointeur, cinq sur Apple TV — et tout geste les rappelle ; pause, chargement, erreur ou VoiceOver les maintiennent. Sur Apple TV, commandes masquées : **OK** les rappelle, **Haut** et **Bas** changent de chaîne, **Gauche** ouvre la liste des chaînes ou recule dans un film, **Droite** avance, **Lecture/Pause** suspend, **Menu** revient à l’écran d’où la lecture est partie.
+
+### Langues
+
+**Langues** remplace la barre par un panneau à deux colonnes : les pistes audio à gauche, les sous-titres à droite, avec « Désactivés ». Le choix s’applique aussitôt, quel que soit le moteur — Apple ou VLC. Retour referme le panneau et la sélection revient sur la touche Langues.
 
 ### Zapper sans quitter l’image
 
@@ -121,7 +131,11 @@ Pendant une chaîne en direct, la liste des chaînes vient se poser à gauche de
 
 ### Réglages pendant la lecture
 
-Sur Mac et sur Apple TV, les réglages demandés depuis le lecteur sont deux panneaux de verre posés sur l’image, qui continue de jouer derrière : Interface, Vidéo, Réseau, Audio et sous-titres, Bibliothèque et Diagnostic. La croix, **Échap**, **Menu** ou un clic à côté les referment. Sur iPhone et iPad, ils restent une feuille.
+Sur Mac et sur Apple TV, **Réglages** pose deux panneaux de verre sur l’image, qui continue de jouer derrière : Interface, Vidéo, Réseau, Audio et sous-titres, Bibliothèque et Diagnostic. Tant qu’ils sont ouverts, les commandes attendent dessous et rien ne les masque. La croix, **Échap**, **Menu** ou un clic à côté les referment, et la sélection revient sur la touche Réglages. Sur iPhone et iPad, ils restent une feuille.
+
+Un réglage est enregistré dès qu’il est choisi : il n’y a pas de bouton Enregistrer à ne pas manquer. Ceux que le moteur lit à l’ouverture d’un flux — moteur, décodage, cache, délais — s’appliquent au flux suivant ; pendant une lecture, une ligne le dit et propose **Relancer le flux**.
+
+Sur Apple TV, parcourir la liste des pages affiche chacune aussitôt, **Droite** entre dans la page et **Gauche** revient sur la page en cours. Les choix sont des touches du bureau, lisibles et jamais coupées, avec leur nom au-dessus.
 
 ## Ce qui reste à faire pour le clavier du Mac
 

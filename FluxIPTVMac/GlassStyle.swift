@@ -9,6 +9,34 @@ struct FluxBareButtonStyle: ButtonStyle {
     }
 }
 
+/// A control that draws nothing of its own for the focus. On a television a
+/// white ring shows where the remote stands; elsewhere it is the bare style.
+struct DeskFocusStyle: ButtonStyle {
+    var radius: CGFloat = 12
+
+    func makeBody(configuration: Configuration) -> some View {
+        Ring(configuration: configuration, radius: radius)
+    }
+
+    private struct Ring: View {
+        let configuration: ButtonStyleConfiguration
+        let radius: CGFloat
+        @Environment(\.isFocused) private var isFocused
+        @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+        var body: some View {
+            configuration.label
+                .opacity(configuration.isPressed ? 0.82 : 1)
+                #if os(tvOS)
+                .overlay(RoundedRectangle(cornerRadius: radius, style: .continuous)
+                    .strokeBorder(.white.opacity(isFocused ? 0.92 : 0), lineWidth: 3).allowsHitTesting(false))
+                .scaleEffect(isFocused && !reduceMotion ? 1.02 : 1)
+                .animation(reduceMotion ? nil : .easeOut(duration: 0.14), value: isFocused)
+                #endif
+        }
+    }
+}
+
 /// System glass is reserved for navigation and transient playback controls.
 enum FluxAppearance {
     static let glassKey = "fluxiptv.appearance.glass.v2"
@@ -246,6 +274,47 @@ enum Desk {
     /// A size stated for the Mac layout.
     static func system(_ size: CGFloat, _ weight: Font.Weight = .regular) -> Font {
         .system(size: Desk.size(size), weight: weight)
+    }
+}
+
+extension View {
+    /// On a television a column answers as a whole: the arrow that points to
+    /// it enters it, whatever stands at the height the remote comes from.
+    @ViewBuilder func deskFocusSection() -> some View {
+        #if os(tvOS)
+        focusSection()
+        #else
+        self
+        #endif
+    }
+}
+
+/// Places its views in rows and starts a new row when the width is used:
+/// chips of a fiche, choices of a setting.
+struct DeskFlow: Layout {
+    var spacing: CGFloat = 8
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let limit = proposal.width ?? .infinity
+        var x: CGFloat = 0, y: CGFloat = 0, row: CGFloat = 0, widest: CGFloat = 0
+        for view in subviews {
+            let size = view.sizeThatFits(.unspecified)
+            if x > 0 && x + size.width > limit { x = 0; y += row + spacing; row = 0 }
+            x += size.width + spacing
+            row = max(row, size.height); widest = max(widest, x - spacing)
+        }
+        return CGSize(width: limit.isFinite ? limit : widest, height: y + row)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        var x = bounds.minX, y = bounds.minY, row: CGFloat = 0
+        for view in subviews {
+            let size = view.sizeThatFits(.unspecified)
+            if x > bounds.minX && x + size.width > bounds.maxX { x = bounds.minX; y += row + spacing; row = 0 }
+            view.place(at: CGPoint(x: x, y: y), proposal: ProposedViewSize(size))
+            x += size.width + spacing
+            row = max(row, size.height)
+        }
     }
 }
 

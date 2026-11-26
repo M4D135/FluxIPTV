@@ -97,7 +97,25 @@ final class TVCatalogControlProbeView: UIView {
             self.fixture = fixture
             self.restoredDefaultsSuite = restoredDefaultsSuite
             _library = StateObject(wrappedValue: library)
-            _playback = StateObject(wrappedValue: PlaybackController())
+            let playback = PlaybackController()
+            if fixture.showsPlayer, let item = fixture.selection {
+                // A media that plays, without any connection: the commands
+                // hide and the remote behaves as during a stream.
+                if fixture.playsFilm {
+                    playback.showFixture(item, playing: true, fraction: 0.357, elapsed: "42:10", duration: "1:58:00",
+                                         audio: [PlaybackTrack(id: "a1", title: "Français", selected: true),
+                                                 PlaybackTrack(id: "a2", title: "Anglais (version originale)", selected: false),
+                                                 PlaybackTrack(id: "a3", title: "Espagnol", selected: false)],
+                                         subtitles: [PlaybackTrack(id: "s1", title: "Français", selected: false),
+                                                     PlaybackTrack(id: "s2", title: "Français (malentendants)", selected: false),
+                                                     PlaybackTrack(id: "s3", title: "Anglais", selected: false)])
+                } else {
+                    playback.showFixture(item, playing: true,
+                                         audio: [PlaybackTrack(id: "a1", title: "Français", selected: true),
+                                                 PlaybackTrack(id: "a2", title: "Audiodescription", selected: false)])
+                }
+            }
+            _playback = StateObject(wrappedValue: playback)
         } catch {
             TVCatalogCapture.fail(error)
         }
@@ -115,10 +133,12 @@ final class TVCatalogControlProbeView: UIView {
                         fixtureSettingsPage: fixture.settingsPage,
                         fixtureHome: fixture.scenario == "home",
                         fixturePlayerSettings: fixture.scenario == "player-settings",
-                        fixtureZone: fixture.zone,
                         fixtureZapList: fixture.scenario == "zapping",
                         fixtureAddSource: fixture.scenario == "add-source",
-                        fixtureLists: fixture.scenario == "lists")
+                        fixtureLists: fixture.scenario == "lists",
+                        fixturePlayer: fixture.showsPlayer,
+                        fixtureHoldsControls: fixture.holdsPlayerControls,
+                        fixtureTracksPanel: fixture.scenario == "player-tracks")
                 .environmentObject(library)
                 .environmentObject(playback)
                 .preferredColorScheme(.dark)
@@ -164,12 +184,18 @@ final class TVCatalogControlProbeView: UIView {
         case "seasons": return "season-sleeve-1"
         // The lists of a title open on the first of them.
         case "lists": return "favorite-list-0"
+        // The commands of the player open on play and pause; its languages
+        // on the audio in use.
+        case "player", "player-film", "player-flow", "player-film-flow": return "player-playpause"
+        case "player-tracks": return "track-audio-a1"
         // The desk: the bar of the home screen, the destination of the
         // settings, the channel on screen in the list of the player.
         case "home": return "navigation-tab-live"
         // Without a catalogue the remote starts on the first control of the column.
         case "live-error": return "navigation-countries"
-        case "settings": return "navigation-settings"
+        // Réglages opens with the remote on the page it shows.
+        case "settings": return "settings-page-sources"
+        case "player-settings": return "settings-page-video"
         case "zapping": return "zap-channel-fixture-live-0"
         default: return "media-detail-play"
         }
@@ -180,7 +206,7 @@ final class TVCatalogControlProbeView: UIView {
         // A channel is a row of the list, not a tile.
         case "live", "live-fr", "live-es", "live-restored", "zapping": return CGSize(width: 300, height: 60)
         case "home": return CGSize(width: 150, height: 150)
-        case "settings": return CGSize(width: 90, height: 90)
+        case "settings", "player-settings": return CGSize(width: 240, height: 48)
         case "live-error": return CGSize(width: 150, height: 50)
         case "country-picker": return CGSize(width: 240, height: 54)
         case "movies", "search-result", "seasons": return CGSize(width: 240, height: 350)
@@ -188,6 +214,8 @@ final class TVCatalogControlProbeView: UIView {
         case "welcome": return CGSize(width: 300, height: 72)
         case "add-source": return CGSize(width: 500, height: 50)
         case "lists": return CGSize(width: 400, height: 48)
+        case "player", "player-film", "player-flow", "player-film-flow": return CGSize(width: 70, height: 70)
+        case "player-tracks": return CGSize(width: 300, height: 44)
         default: return CGSize(width: 180, height: 64)
         }
     }
@@ -223,18 +251,19 @@ final class TVCatalogControlProbeView: UIView {
     }
 
     /// Screens of the desk shown over the catalogue of the live scenario.
-    static let deskScenarios = ["home", "zones", "zones-dock", "settings", "settings-dock", "zapping", "player-settings"]
+    static let deskScenarios = ["home", "settings", "settings-dock", "zapping", "player-settings",
+                                "player", "player-flow"]
+    /// The commands of a film: its timeline, its languages.
+    static let filmPlayerScenarios = ["player-film", "player-film-flow", "player-tracks"]
+    var showsPlayer: Bool { scenario.hasPrefix("player") }
+    var playsFilm: Bool { Self.filmPlayerScenarios.contains(scenario) }
+    /// A capture keeps the commands on a media that plays; a remote flow lets
+    /// them hide, as they do during a stream.
+    var holdsPlayerControls: Bool { ["player", "player-film", "player-tracks"].contains(scenario) }
     var settingsPage: PlaybackSettingsView.Page? {
         switch scenario {
         case "settings": return .sources
         case "settings-dock": return .dock
-        default: return nil
-        }
-    }
-    var zone: DeskZone? {
-        switch scenario {
-        case "zones": return .content
-        case "zones-dock": return .dock
         default: return nil
         }
     }
@@ -257,7 +286,7 @@ final class TVCatalogControlProbeView: UIView {
         // A screen of the desk reuses the catalogue of the live scenario.
         let content = deskScenarios.contains(scenario) ? "live" : scenario
         try TVCatalogCapture.require((["movie", "movies", "lists", "series", "seasons", "live", "welcome", "add-source", "search-empty", "search-result",
-                                       "live-fr", "live-es", "country-picker", "live-restored", "live-error"] + deskScenarios).contains(scenario),
+                                       "live-fr", "live-es", "country-picker", "live-restored", "live-error"] + deskScenarios + filmPlayerScenarios).contains(scenario),
                                      "FLUX_UI_SCENARIO must name a supported catalogue, detail, welcome or search scenario.")
         let source = IPTVSource(id: UUID(uuidString: "00000000-0000-0000-0000-000000000003")!,
                                 name: "Catalogue local de démonstration", kind: scenario == "live-error" ? .xtream : .m3uFile)
@@ -297,6 +326,22 @@ final class TVCatalogControlProbeView: UIView {
             return TVCatalogFixture(scenario: scenario, source: source, items: channels, kind: .live,
                                     selection: selected, seasons: [], openSeason: nil, episodeID: nil)
         }
+        func films() throws -> [IPTVItem] {
+            let titles = ["Au-delà des dunes", "La dernière séance", "Les lumières du port"]
+            var items: [IPTVItem] = []
+            for (index, title) in titles.enumerated() {
+                let url = artworkRoot.appendingPathComponent("movie-\(index).png")
+                cache(try artwork(index: index, title: title.uppercased(), subtitle: "JAQUETTE LOCALE · 2024"), at: url)
+                items.append(IPTVItem(id: "fixture-movie-\(index)", sourceID: source.id, name: title,
+                                      group: "Cinéma · Aventure", logoURL: url, kind: .movie,
+                                      directURL: nil, xtreamStreamID: nil, fileExtension: nil,
+                                      details: IPTVDetails(
+                                        synopsis: "À la veille de la fermeture de son cinéma, une projectionniste retrouve une bobine oubliée. Les images la conduisent vers une petite ville du littoral, où personne ne semble se souvenir du tournage. Avec un jeune musicien et une ancienne comédienne, elle remonte le fil d’une histoire qui relie trois générations. Un voyage entre mémoire, transmission et promesses, porté par les paysages de la côte et les lumières de la dernière séance.",
+                                        year: "2024", duration: "1 h 58 min", rating: "8.4", genre: "Aventure · Drame",
+                                        cast: "Camille Morel, Gabriel Martin, Louise Perrin", director: "Alexandre Laurent")))
+            }
+            return items
+        }
         if content == "live" {
             let categories = ["Généralistes", "Cinéma", "Documentaires", "Jeunesse", "Musique", "Sports"]
             let channelNames = ["Horizon", "Panorama", "Grand écran", "Découverte", "Évasion", "Scène"]
@@ -308,22 +353,12 @@ final class TVCatalogControlProbeView: UIView {
                                 group: categories[index % categories.count], logoURL: url, kind: .live,
                                 directURL: nil, xtreamStreamID: nil, fileExtension: nil)
             }
-            return TVCatalogFixture(scenario: scenario, source: source, items: channels, kind: .live,
+            // The home screen leads to every section: its catalogue has films too.
+            return TVCatalogFixture(scenario: scenario, source: source,
+                                    items: channels + (scenario == "home" ? try films() : []), kind: .live,
                                     selection: channels[0], seasons: [], openSeason: nil, episodeID: nil)
         }
-        let titles = ["Au-delà des dunes", "La dernière séance", "Les lumières du port"]
-        var items: [IPTVItem] = []
-        for (index, title) in titles.enumerated() {
-            let url = artworkRoot.appendingPathComponent("movie-\(index).png")
-            cache(try artwork(index: index, title: title.uppercased(), subtitle: "JAQUETTE LOCALE · 2024"), at: url)
-            items.append(IPTVItem(id: "fixture-movie-\(index)", sourceID: source.id, name: title,
-                                  group: "Cinéma · Aventure", logoURL: url, kind: .movie,
-                                  directURL: nil, xtreamStreamID: nil, fileExtension: nil,
-                                  details: IPTVDetails(
-                                    synopsis: "À la veille de la fermeture de son cinéma, une projectionniste retrouve une bobine oubliée. Les images la conduisent vers une petite ville du littoral, où personne ne semble se souvenir du tournage. Avec un jeune musicien et une ancienne comédienne, elle remonte le fil d’une histoire qui relie trois générations. Un voyage entre mémoire, transmission et promesses, porté par les paysages de la côte et les lumières de la dernière séance.",
-                                    year: "2024", duration: "1 h 58 min", rating: "8.4", genre: "Aventure · Drame",
-                                    cast: "Camille Morel, Gabriel Martin, Louise Perrin", director: "Alexandre Laurent")))
-        }
+        var items = try films()
         let seriesURL = artworkRoot.appendingPathComponent("series.png")
         cache(try artwork(index: 3, title: "LES SAISONS", subtitle: "JAQUETTE LOCALE · 2014"), at: seriesURL)
         let collection = IPTVItem(id: "fixture-series", sourceID: source.id, name: "Les saisons",
@@ -349,6 +384,7 @@ final class TVCatalogControlProbeView: UIView {
         try TVCatalogCapture.require(seasons.first(where: { $0.number == 12 })?.episodes.contains(where: { $0.id == episodeID }) == true,
                                      "The exact requested S12/E15 fixture identifier is absent.")
         let isMovie = scenario == "movie" || scenario == "movies" || scenario == "lists" || scenario.hasPrefix("search-")
+            || filmPlayerScenarios.contains(scenario)
         return TVCatalogFixture(scenario: scenario, source: source, items: items,
                                 kind: isMovie ? .movie : .series,
                                 selection: isMovie ? items[1] : collection,
@@ -484,7 +520,10 @@ final class TVCatalogControlProbeView: UIView {
                 try Task.checkCancellation()
                 let precedingFocus = previousFocus
                 previousFocus = ""
-                try require(playback.playingItem == nil && playback.player.currentItem == nil,
+                // The screens of the player show the state of a media that
+                // plays; no engine holds anything for them either.
+                try require((playback.playingItem == nil || (fixture.showsPlayer && playback.showsFixture))
+                            && playback.player.currentItem == nil,
                             "The visual fixture unexpectedly started main playback.")
                 let search = searchEvidence(fixture: fixture, library: library, observations: searches.snapshots)
                 lastObservation = search.report

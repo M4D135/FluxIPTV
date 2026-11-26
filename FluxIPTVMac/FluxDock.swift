@@ -505,21 +505,34 @@ struct DeskHeaderButton: View {
     private var side: CGFloat { 28 * FluxDockMetrics.screenUnit }
 
     var body: some View {
-        Button(action: action) {
-            Image(systemName: symbol).font(.system(size: side * 0.43, weight: .bold))
-                .foregroundStyle(.white.opacity(hovered || focused ? 1 : 0.82))
-                .frame(width: side, height: side)
-                .background(.white.opacity(hovered || focused ? 0.22 : 0.09), in: Circle())
-                .overlay(Circle().strokeBorder(.white.opacity(focused ? 0.9 : 0), lineWidth: 2).allowsHitTesting(false))
-                .contentShape(Circle())
-                .scaleEffect(focused ? 1.12 : 1)
-        }
+        Button(action: action) { Glyph(symbol: symbol, side: side, lit: hovered || focused, ringed: focused) }
         .buttonStyle(FluxBareButtonStyle())
         #if os(macOS)
         .onHover { hovered = $0 }
         .help(title)
         #endif
         .accessibilityLabel(title).accessibilityIdentifier(identifier)
+    }
+
+    /// Where nothing tells this button that it is selected, the remote of a
+    /// television still shows on it.
+    private struct Glyph: View {
+        let symbol: String
+        let side: CGFloat
+        let lit: Bool
+        let ringed: Bool
+        @Environment(\.isFocused) private var isFocused
+
+        var body: some View {
+            let on = lit || isFocused, ring = ringed || isFocused
+            Image(systemName: symbol).font(.system(size: side * 0.43, weight: .bold))
+                .foregroundStyle(.white.opacity(on ? 1 : 0.82))
+                .frame(width: side, height: side)
+                .background(.white.opacity(on ? 0.22 : 0.09), in: Circle())
+                .overlay(Circle().strokeBorder(.white.opacity(ring ? 0.9 : 0), lineWidth: 2).allowsHitTesting(false))
+                .contentShape(Circle())
+                .scaleEffect(ring ? 1.12 : 1)
+        }
     }
 }
 

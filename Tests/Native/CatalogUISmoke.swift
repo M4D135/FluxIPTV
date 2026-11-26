@@ -187,6 +187,9 @@ private enum CatalogUIFailure: Error, CustomStringConvertible {
         var zone: DeskZone? = nil
         /// The channel list of the player, above a stand-in picture.
         var zapList = false
+        /// The commands of the player on a media that plays, drawn without any
+        /// stream: "live", "film", or "tracks" for the languages of a film.
+        var player: String? = nil
         /// Keys of a remote sent to the screen, and the control that must
         /// hold the selection after them.
         var actions: [RemoteAction] = []
@@ -268,7 +271,10 @@ private enum CatalogUIFailure: Error, CustomStringConvertible {
             Scenario(kind: .live, filename: "favorites.png", favorites: true),
             Scenario(kind: .live, filename: "settings-sources.png", settings: .sources),
             Scenario(kind: .live, filename: "settings-dock.png", settings: .dock),
-            Scenario(kind: .live, filename: "player-settings.png", playerSettings: true),
+            Scenario(kind: .live, filename: "player-live.png", player: "live"),
+            Scenario(kind: .movie, filename: "player-film.png", player: "film"),
+            Scenario(kind: .movie, filename: "player-languages.png", player: "tracks"),
+            Scenario(kind: .live, filename: "player-settings.png", playerSettings: true, player: "live"),
             Scenario(kind: .live, filename: "player-zapping.png", zapList: true),
             Scenario(kind: .live, filename: "zones-tv.png", zone: .content),
             Scenario(kind: .movie, filename: "zones-dock.png", zone: .dock),
@@ -282,7 +288,13 @@ private enum CatalogUIFailure: Error, CustomStringConvertible {
             Scenario(kind: .movie, filename: "keys-bar.png", actions: [.back, .down, .left, .left],
                      expectedFocus: DeskZone.backID),
             Scenario(kind: .movie, filename: "keys-home.png", actions: [.back, .back],
-                     expectedFocus: FluxDockItem.movie.focusID)
+                     expectedFocus: FluxDockItem.movie.focusID),
+            // The bar of the player: three keys to the right is Langues, OK
+            // opens its panel on the audio in use, Down moves in it, and Back
+            // closes it on the key that opened it.
+            Scenario(kind: .movie, filename: "keys-player.png", player: "film",
+                     actions: [.right, .right, .right, .select, .down, .back],
+                     expectedFocus: PlayerTracks.buttonID)
         ]
         for theme in FluxDockTheme.allCases {
             scenarios.append(Scenario(kind: .live, filename: "dock-theme-\(theme.rawValue).png",
@@ -327,6 +339,24 @@ private enum CatalogUIFailure: Error, CustomStringConvertible {
                 try require(library.catalogResults.all.items.count == 5, "The favourites fixture did not filter the catalogue.")
             }
             let selected = library.catalogResults.all.items.first
+            if let mode = scenario.player, let item = selected {
+                // The published state of a media that plays, and nothing else:
+                // no engine starts and no connection opens.
+                if mode == "live" {
+                    playback.showFixture(item, playing: true,
+                                         audio: [PlaybackTrack(id: "a1", title: "Français", selected: true),
+                                                 PlaybackTrack(id: "a2", title: "Audiodescription", selected: false)])
+                } else {
+                    playback.showFixture(item, playing: true, fraction: 0.357, elapsed: "42:10", duration: "1:58:00",
+                                         audio: [PlaybackTrack(id: "a1", title: "Français", selected: true),
+                                                 PlaybackTrack(id: "a2", title: "Anglais (version originale)", selected: false),
+                                                 PlaybackTrack(id: "a3", title: "Espagnol", selected: false)],
+                                         subtitles: [PlaybackTrack(id: "s1", title: "Français", selected: false),
+                                                     PlaybackTrack(id: "s2", title: "Français (malentendants)", selected: false),
+                                                     PlaybackTrack(id: "s3", title: "Anglais", selected: false)])
+                }
+            }
+            defer { if scenario.player != nil { playback.stop() } }
             var observedFocus: String?
             let root = ContentView(fixtureSelection: selected, fixtureSeasons: kind == .series ? seasons : [],
                                    fixtureOpenSeason: scenario.season, fixtureEpisodeID: scenario.season == nil ? nil : restoredEpisodeID, fixtureOpenItem: scenario.detail,
@@ -335,7 +365,9 @@ private enum CatalogUIFailure: Error, CustomStringConvertible {
                                    fixtureSettingsPage: scenario.settings, fixtureFavorites: scenario.favorites,
                                    fixtureHome: scenario.home, fixturePlayerSettings: scenario.playerSettings,
                                    fixtureZone: scenario.zone, fixtureActions: scenario.actions,
-                                   fixtureZapList: scenario.zapList)
+                                   fixtureZapList: scenario.zapList,
+                                   fixturePlayer: scenario.player != nil, fixtureHoldsControls: scenario.player != nil,
+                                   fixtureTracksPanel: scenario.player == "tracks")
                 .environmentObject(library).environmentObject(playback)
                 .preferredColorScheme(.dark)
                 .environment(\.scenePhase, .active)
@@ -353,7 +385,8 @@ private enum CatalogUIFailure: Error, CustomStringConvertible {
             window.displayIfNeeded()
             CATransaction.flush()
             try await Task.sleep(nanoseconds: 300_000_000)
-            try require(playback.playingItem == nil && playback.player.currentItem == nil, "A visual capture unexpectedly started main playback.")
+            try require((playback.playingItem == nil || scenario.player != nil) && playback.player.currentItem == nil,
+                        "A visual capture unexpectedly started main playback.")
             let filename = scenario.filename
             if let expected = scenario.expectedFocus {
                 try require(observedFocus == expected,

@@ -21,25 +21,53 @@ final class NavigationHistoryTests: XCTestCase {
         XCTAssertTrue(history.isEmpty)
     }
 
-    func testAScreenOpenedAgainMovesToTheEndSoBackNeverLoops() {
+    /// As in a web browser, a screen opened twice is two steps: Back retraces
+    /// the path that was taken, not a shortened one.
+    func testBackRetracesAScreenThatWasOpenedTwice() {
         var history = FluxNavigationHistory<FluxDockItem>()
-        for _ in 0..<50 {
+        history.visit(.live)
+        history.visit(.movie)
+        history.visit(.live)
+        XCTAssertEqual(history.places, [.live, .movie, .live])
+        XCTAssertEqual(history.previous(from: .live), .movie)
+
+        XCTAssertEqual(history.leave(.live), .movie)
+        // Showing the screen Back returned to is not a new step.
+        history.visit(.movie)
+        XCTAssertEqual(history.places, [.live, .movie])
+        XCTAssertEqual(history.leave(.movie), .live)
+        history.visit(.live)
+        XCTAssertNil(history.leave(.live))
+        XCTAssertTrue(history.isEmpty)
+    }
+
+    func testShowingTheScreenOnTopAgainAddsNoStep() {
+        var history = FluxNavigationHistory<FluxDockItem>()
+        history.visit(.series)
+        history.visit(.series)
+        history.visit(.series)
+        XCTAssertEqual(history.places, [.series])
+        XCTAssertNil(history.leave(.series))
+    }
+
+    func testALongPendulumForgetsItsOldestStepsAndStillEndsAtHome() {
+        var history = FluxNavigationHistory<FluxDockItem>()
+        for _ in 0..<200 {
             history.visit(.live)
             history.visit(.movie)
         }
-        history.visit(.live)
-        XCTAssertEqual(history.places, [.movie, .live])
-        history.visit(.live)
-        XCTAssertEqual(history.places, [.movie, .live])
+        XCTAssertEqual(history.places.count, FluxNavigationHistory<FluxDockItem>.capacity)
+        XCTAssertEqual(history.places.last, .movie)
 
         var steps = 0
-        var current: FluxDockItem? = .live
+        var current: FluxDockItem? = .movie
         while let screen = current {
             current = history.leave(screen)
             steps += 1
-            XCTAssertLessThanOrEqual(steps, FluxDockItem.allCases.count)
+            XCTAssertLessThanOrEqual(steps, FluxNavigationHistory<FluxDockItem>.capacity)
         }
-        XCTAssertEqual(steps, 2)
+        XCTAssertEqual(steps, FluxNavigationHistory<FluxDockItem>.capacity)
+        XCTAssertTrue(history.isEmpty)
     }
 
     func testLeavingAScreenThatWasNeverRecordedStillReturnsToThePreviousOne() {

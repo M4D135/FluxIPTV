@@ -99,6 +99,10 @@ struct PlaybackSettingsView: View {
     @AppStorage(FluxDockItem.orderKey) private var dockOrder = ""
     @AppStorage(FluxDockItem.magnifyKey) private var dockMagnifies = true
     @AppStorage(DeskZone.backKey) private var backShowsZones = true
+    #if os(tvOS)
+    /// Page under the remote: walking the list shows each page at once.
+    @FocusState private var focusedPage: Page?
+    #endif
 
     /// Sources and the dock belong to the screen drawn in the window.
     private var pages: [Page] { Page.allCases.filter { (inline && !overPlayback) || ($0 != .sources && $0 != .dock) } }
@@ -120,7 +124,29 @@ struct PlaybackSettingsView: View {
             else if overPlayback { page = .video }
             else if inline { page = .sources }
             if inline { sourceEditor = initialSourceEditor }
+            #if os(tvOS)
+            if inline {
+                // A destination opens with the remote in its content: here,
+                // on the page that is shown.
+                let shown = page
+                Task { @MainActor in await Task.yield(); focusedPage = shown }
+            }
+            #endif
         }
+        // In the window the settings are saved as they are chosen: nothing is
+        // lost by closing the panel, and nothing waits for a Save key.
+        .onChange(of: draft) { _, value in
+            if inline, value != playback.settings { playback.saveSettings(value, restart: false) }
+        }
+        #if os(tvOS)
+        .onChange(of: focusedPage) { old, new in
+            guard let new else { return }
+            // Coming back from the content, the remote lands on the page in
+            // use, not on the nearest row: that row would replace the page.
+            if old == nil, new != page { focusedPage = page; return }
+            if new != page { page = new; sourceEditor = nil; removingSource = nil }
+        }
+        #endif
         #if os(tvOS)
         .fullScreenCover(item: $sourceEditor) { editor in
             AddSourceSheet(existing: edited(editor), onSaved: { sourceEditor = nil; sourceSaved() })
@@ -183,8 +209,14 @@ struct PlaybackSettingsView: View {
                                     LiveTVScopeLabel(title: destination.title, symbol: destination.icon,
                                                      selected: page == destination, focused: false, accent: .cyan)
                                 }
-                                .buttonStyle(FluxBareButtonStyle())
+                                .buttonStyle(DeskFocusStyle(radius: Desk.pt(13)))
+                                #if os(tvOS)
+                                .focused($focusedPage, equals: destination)
+                                #endif
                                 .accessibilityIdentifier("settings-page-\(destination.rawValue)")
+                                #if os(tvOS) && FLUX_CATALOG_UI_TESTING
+                                .background(TVCatalogControlFrameProbe(identifier: "settings-page-\(destination.rawValue)").allowsHitTesting(false))
+                                #endif
                                 .accessibilityValue(page == destination ? "Sélectionné" : "")
                             }
                         }.padding(.vertical, Desk.pt(3))
@@ -196,6 +228,9 @@ struct PlaybackSettingsView: View {
                 .frame(maxHeight: .infinity, alignment: .top)
                 .fluxGlass(radius: Desk.pt(25))
                 .padding(.bottom, navigationFootRoom)
+                #if os(tvOS)
+                .focusSection()
+                #endif
 
                 VStack(alignment: .leading, spacing: 0) {
                     VStack(alignment: .leading, spacing: Desk.pt(5)) {
@@ -209,10 +244,14 @@ struct PlaybackSettingsView: View {
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(.horizontal, Desk.pt(26)).padding(.bottom, Desk.pt(24))
                     }.id(page)
-                    if draft != playback.settings { saveBar.padding(Desk.pt(14)) }
+                    if playback.restartPending { restartBar.padding(Desk.pt(14)) }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 .fluxGlass(radius: Desk.pt(27))
+                #if os(tvOS)
+                // Right from any page enters its content, wherever it starts.
+                .focusSection()
+                #endif
             }
         }
         .padding(.horizontal, Desk.pt(24))
@@ -236,6 +275,21 @@ struct PlaybackSettingsView: View {
         Label("RÉGLAGES", systemImage: "gearshape")
             .font(Desk.font(.caption, .semibold)).tracking(1.5).foregroundStyle(.secondary)
             .padding(.horizontal, Desk.pt(10)).padding(.top, Desk.pt(4))
+    }
+
+    /// The settings are saved as they are chosen. Those the engine reads when
+    /// it opens a stream wait for the next one, or for this key.
+    private var restartBar: some View {
+        HStack(spacing: Desk.pt(12)) {
+            Label("Enregistré. Ce flux garde ses réglages d’ouverture jusqu’à sa relance.", systemImage: "checkmark.circle.fill")
+                .font(Desk.font(.callout)).foregroundStyle(.white.opacity(0.86))
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: Desk.pt(8))
+            Button("Relancer le flux") { playback.retry(preferred: nil); close() }
+                .deskKey(prominent: true)
+                .accessibilityIdentifier("settings-restart")
+        }
+        .padding(Desk.pt(12)).modifier(SettingsCard())
     }
 
     private var saveBar: some View {
@@ -269,7 +323,7 @@ struct PlaybackSettingsView: View {
             Text(detail).font(Desk.font(.callout)).foregroundStyle(.secondary)
             Divider()
             content()
-        }.padding(Desk.pt(18)).frame(maxWidth: .infinity, alignment: .leading)
+        }.font(Desk.font(.body)).padding(Desk.pt(18)).frame(maxWidth: .infinity, alignment: .leading)
         return Group {
             if inline { card.modifier(SettingsCard()) } else { card.fluxFrosted(radius: Desk.pt(20)) }
         }
@@ -290,11 +344,12 @@ struct PlaybackSettingsView: View {
                     Label("AVPlayer natif · mode sécurisé", systemImage: "shield.checkered")
                     Text("VLC intégré désactivé sur Mac après le plantage OpenGL. Les flux incompatibles peuvent être ouverts dans VLC externe, sur demande.").font(Desk.font(.caption)).foregroundStyle(.secondary)
                     #else
-                    Picker("Moteur", selection: $draft.engine) { ForEach(PlaybackSettings.Engine.allCases, id: \.self) { Text($0.title).tag($0) } }
-                    Toggle("Décodage matériel VLC (si disponible)", isOn: $draft.hardware)
+                    DeskChoice(title: "Moteur de lecture", options: PlaybackSettings.Engine.allCases.map { ($0, $0.title) },
+                               selection: $draft.engine)
+                    DeskToggle(title: "Décodage matériel VLC (si disponible)", isOn: $draft.hardware)
                     #endif
                     choice("Saut avant / arrière", value: $draft.skipSeconds, values: [5, 10, 15, 30, 60, 120], unit: "s")
-                    Toggle("Reprendre automatiquement films et épisodes", isOn: Binding(get: { playback.resumeEnabled }, set: { playback.setResumeEnabled($0) }))
+                    DeskToggle(title: "Reprendre automatiquement films et épisodes", isOn: Binding(get: { playback.resumeEnabled }, set: { playback.setResumeEnabled($0) }))
                     Text("Le format et les codecs du fournisseur déterminent les possibilités de lecture.").font(Desk.font(.caption)).foregroundStyle(.secondary)
                 }
             case .network:
@@ -305,28 +360,28 @@ struct PlaybackSettingsView: View {
                             draft = profile.settings
                             draft.engine = old.engine; draft.hardware = old.hardware; draft.skipSeconds = old.skipSeconds
                             draft.bitrateMbps = old.bitrateMbps; draft.nativeWait = old.nativeWait; draft.reconnectLive = old.reconnectLive
-                        } label: { Label(profile.title, systemImage: "slider.horizontal.3") }.buttonStyle(.bordered)
+                        } label: { Label(profile.title, systemImage: "slider.horizontal.3") }.deskKey()
                     }
                     choice("Cache réseau", value: $draft.cacheMS, values: [250, 500, 700, 1000, 1500, 2500, 5000, 10000, 15000], unit: "ms")
                     choice("Délai d’ouverture", value: $draft.timeout, values: [5, 10, 12, 15, 20, 30, 40, 60, 90], unit: "s")
-                    Toggle("Reconnexion du direct", isOn: $draft.reconnectLive)
+                    DeskToggle(title: "Reconnexion du direct", isOn: $draft.reconnectLive)
                     choice("Détection d’interruption", value: $draft.stallTimeout, values: [5, 10, 12, 15, 20, 30, 60, 90], unit: "s").disabled(!draft.reconnectLive)
                     choice("Tentatives", value: $draft.retries, values: Array(0...5), unit: "").disabled(!draft.reconnectLive)
                     choice("Débit maximal Apple (adaptatif)", value: $draft.bitrateMbps, values: [0, 1, 2, 4, 8, 15, 25, 50, 100], unit: "Mbit/s")
-                    Toggle("Apple : privilégier la stabilité", isOn: $draft.nativeWait)
+                    DeskToggle(title: "Apple : privilégier la stabilité", isOn: $draft.nativeWait)
                 }
             case .audio:
-                section("Pistes du flux", "Ces choix s’appliquent au média en cours.") {
-                    if playback.playingItem == nil { Text("Lancez une vidéo pour sélectionner ses pistes.").foregroundStyle(.secondary) }
-                    else if playback.engine == .native {
-                        ForEach(Array(playback.audioOptions().enumerated()), id: \.offset) { _, option in
-                            Button("Audio : " + option.displayName) { playback.selectTrack(option, characteristic: .audible) }
+                section("Pistes du flux", "Ces choix s’appliquent tout de suite au média en cours, quel que soit le moteur.") {
+                    if playback.playingItem == nil {
+                        Text("Lancez une vidéo pour choisir ses pistes.").font(Desk.font(.body)).foregroundStyle(.secondary)
+                    } else {
+                        trackList("Audio", tracks: playback.audioTracks, off: false,
+                                  empty: "Ce flux n’annonce pas ses pistes audio.") { id in
+                            if let id { playback.selectAudioTrack(id) }
                         }
-                        Button("Désactiver les sous-titres") { playback.selectTrack(nil, characteristic: .legible) }
-                        ForEach(Array(playback.subtitleOptions().enumerated()), id: \.offset) { _, option in
-                            Button("Sous-titres : " + option.displayName) { playback.selectTrack(option, characteristic: .legible) }
-                        }
-                    } else { Text("Sélection des pistes VLC à compléter.").foregroundStyle(.secondary) }
+                        trackList("Sous-titres", tracks: playback.subtitleTracks, off: playback.subtitlesCanBeOff,
+                                  empty: "Ce flux n’annonce aucun sous-titre.") { playback.selectSubtitleTrack($0) }
+                    }
                     #if !os(tvOS)
                     HStack {
                         Text("Volume")
@@ -338,7 +393,7 @@ struct PlaybackSettingsView: View {
             case .library:
                 section("Historique et confidentialité", "Les listes et les positions restent sur votre appareil.") {
                     Text("\(playback.history.entries.count) positions enregistrées")
-                    Toggle("Reprise automatique", isOn: Binding(get: { playback.resumeEnabled }, set: { playback.setResumeEnabled($0) }))
+                    DeskToggle(title: "Reprise automatique", isOn: Binding(get: { playback.resumeEnabled }, set: { playback.setResumeEnabled($0) }))
                     if inline && confirmingClear {
                         HStack(spacing: Desk.pt(10)) {
                             Text("Effacer les positions de reprise ?").font(Desk.font(.callout, .semibold))
@@ -347,7 +402,7 @@ struct PlaybackSettingsView: View {
                             actionButton("Effacer", icon: "trash", tint: .red) { playback.clearHistory(); confirmingClear = false }
                         }
                     } else {
-                        Button("Effacer l’historique", role: .destructive) { confirmingClear = true }
+                        Button("Effacer l’historique", role: .destructive) { confirmingClear = true }.deskKey()
                     }
                     Text("Les identifiants restent dans le stockage choisi pour chaque source. Les sources et les favoris ne sont pas supprimés par cette action.").font(Desk.font(.caption)).foregroundStyle(.secondary)
                 }
@@ -359,9 +414,9 @@ struct PlaybackSettingsView: View {
                     if let error = playback.playbackError { Text(error).foregroundStyle(.orange) }
                     if playback.recoveryMode {
                         Label("Session VLC précédente non terminée : AVPlayer uniquement", systemImage: "shield.lefthalf.filled").foregroundStyle(.orange)
-                        Button("Effacer le marqueur de récupération") { playback.resumeNormalMode() }.buttonStyle(.bordered)
+                        Button("Effacer le marqueur de récupération") { playback.resumeNormalMode() }.deskKey()
                     } else { Label("Mode normal", systemImage: "checkmark.circle") }
-                    if playback.playingItem != nil { Button("Réessayer le flux") { playback.retry(); close() }.buttonStyle(.bordered) }
+                    if playback.playingItem != nil { Button("Réessayer le flux") { playback.retry(); close() }.deskKey() }
                     Text("Si l’app se ferme brutalement, conservez le rapport de crash macOS (.ips) pour identifier la cause exacte.").font(Desk.font(.caption)).foregroundStyle(.secondary)
                 }
             }
@@ -424,7 +479,7 @@ struct PlaybackSettingsView: View {
                         .padding(.horizontal, Desk.pt(15)).padding(.vertical, Desk.pt(10))
                         .background(.white.opacity(0.09), in: Capsule())
                         .contentShape(Capsule())
-                }.buttonStyle(FluxBareButtonStyle()).accessibilityIdentifier("settings-sources-back")
+                }.buttonStyle(DeskFocusStyle(radius: Desk.pt(22))).accessibilityIdentifier("settings-sources-back")
                 AddSourceSheet(existing: edited(editor), onSaved: { sourceEditor = nil; sourceSaved() },
                                inlineClose: { sourceEditor = nil })
                     .environmentObject(library)
@@ -453,7 +508,7 @@ struct PlaybackSettingsView: View {
                     .background(.white.opacity(0.045), in: shape)
                     .overlay(shape.strokeBorder(style: StrokeStyle(lineWidth: 1.2, dash: [7, 6])).foregroundStyle(.white.opacity(0.28)).allowsHitTesting(false))
                     .contentShape(shape)
-                }.buttonStyle(FluxBareButtonStyle()).accessibilityIdentifier("settings-add-source")
+                }.buttonStyle(DeskFocusStyle(radius: Desk.pt(20))).accessibilityIdentifier("settings-add-source")
                 Label("Les identifiants restent sur cet appareil, dans le stockage choisi pour chaque source.", systemImage: "lock.shield")
                     .font(Desk.font(.caption)).foregroundStyle(.secondary).padding(.top, Desk.pt(4))
             }
@@ -517,7 +572,7 @@ struct PlaybackSettingsView: View {
             .background((tint ?? .white).opacity(tint == nil ? 0.09 : 0.18), in: shape)
             .overlay(shape.strokeBorder((tint ?? .white).opacity(0.22), lineWidth: 1).allowsHitTesting(false))
             .contentShape(shape)
-        }.buttonStyle(FluxBareButtonStyle()).accessibilityLabel(title)
+        }.buttonStyle(DeskFocusStyle(radius: Desk.pt(13))).accessibilityLabel(title)
     }
 
     // MARK: Dock
@@ -551,10 +606,10 @@ struct PlaybackSettingsView: View {
                         }.disabled(index == order.count - 1).opacity(index == order.count - 1 ? 0.35 : 1)
                     }
                 }
-                Toggle("Agrandir les icônes au survol", isOn: $dockMagnifies)
+                DeskToggle(title: "Agrandir les icônes au survol", isOn: $dockMagnifies)
                 Button("Dock par défaut") {
                     dockPosition = .defaultValue; dockTheme = .defaultValue; dockOrder = ""; dockMagnifies = true
-                }
+                }.deskKey()
             }
         }
     }
@@ -581,7 +636,7 @@ struct PlaybackSettingsView: View {
             .overlay(tile.strokeBorder(Color.cyan.opacity(selected ? 0.85 : 0), lineWidth: 2).allowsHitTesting(false))
             .contentShape(tile)
         }
-        .buttonStyle(FluxBareButtonStyle())
+        .buttonStyle(DeskFocusStyle(radius: Desk.pt(16)))
         .accessibilityLabel("Dock \(choice.title.lowercased())").accessibilityAddTraits(selected ? .isSelected : [])
         .accessibilityIdentifier("settings-dock-position-\(choice.rawValue)")
     }
@@ -606,7 +661,7 @@ struct PlaybackSettingsView: View {
             .overlay(tile.strokeBorder(Color.cyan.opacity(selected ? 0.85 : 0), lineWidth: 2).allowsHitTesting(false))
             .contentShape(tile)
         }
-        .buttonStyle(FluxBareButtonStyle())
+        .buttonStyle(DeskFocusStyle(radius: Desk.pt(14)))
         .accessibilityLabel("Thème \(choice.title)").accessibilityAddTraits(selected ? .isSelected : [])
         .accessibilityIdentifier("settings-dock-theme-\(choice.rawValue)")
     }
@@ -616,17 +671,16 @@ struct PlaybackSettingsView: View {
     private var appearanceSettings: some View {
         VStack(alignment: .leading, spacing: Desk.pt(16)) {
             section("Les trois espaces", "Films au cinéma, séries au vidéoclub, chaînes TV dans le salon. Chaque lieu possède son propre thème.") {
-                Toggle("Afficher les décors", isOn: Binding(get: { stage != .off }, set: { stage = $0 ? .orbit : .off }))
+                DeskToggle(title: "Afficher les décors", isOn: Binding(get: { stage != .off }, set: { stage = $0 ? .orbit : .off }))
                 Text("Les décors sont fixes. Ils disparaissent au lancement de la lecture plein écran.").font(Desk.font(.caption)).foregroundStyle(.secondary)
             }
             environmentSection(.cinema, selection: $cinemaTheme)
             environmentSection(.videoClub, selection: $seriesTheme)
             environmentSection(.livingRoom, selection: $tvTheme)
             section("Aperçu des chaînes TV", "La chaîne sélectionnée s’anime dans son écran après un délai.") {
-                Toggle("Aperçu TV automatique", isOn: $automaticLivePreview)
-                Picker("Délai avant l’aperçu TV", selection: $livePreviewDelay) {
-                    ForEach(LiveTVPreviewDelay.allCases) { delay in Text(delay.title).tag(delay) }
-                }.disabled(!automaticLivePreview)
+                DeskToggle(title: "Aperçu TV automatique", isOn: $automaticLivePreview)
+                DeskChoice(title: "Délai avant l’aperçu TV", options: LiveTVPreviewDelay.allCases.map { ($0, $0.title) },
+                           selection: $livePreviewDelay).disabled(!automaticLivePreview)
                 Text("Un seul aperçu à la fois, muet au départ. Le bouton Son active son audio ; Regarder ouvre la chaîne. Changer de chaîne, de catégorie ou d’espace arrête l’aperçu précédent.")
                     .font(Desk.font(.caption)).foregroundStyle(.secondary)
             }
@@ -643,28 +697,33 @@ struct PlaybackSettingsView: View {
                             if clubProfile == concept { Image(systemName: "checkmark.circle.fill").foregroundStyle(.cyan) }
                         }.padding(Desk.pt(10)).frame(maxWidth: .infinity, alignment: .leading)
                             .background(.white.opacity(clubProfile == concept ? 0.16 : 0.04), in: RoundedRectangle(cornerRadius: Desk.pt(12)))
-                    }.buttonStyle(.bordered)
+                    }
+                    #if os(tvOS)
+                    .buttonStyle(DeskFocusStyle(radius: Desk.pt(12)))
+                    #else
+                    .buttonStyle(.bordered)
+                    #endif
                 }
                 #if os(tvOS)
-                Toggle(FluxAppearance.nativeAvailable ? "Liquid Glass" : "Transparence légère", isOn: $glass)
+                DeskToggle(title: FluxAppearance.nativeAvailable ? "Liquid Glass" : "Transparence légère", isOn: $glass)
                 Text(FluxAppearance.nativeAvailable
                      ? "Effet Apple natif sur les panneaux et les commandes. Désactivez-le pour revenir aux surfaces sombres, plus légères à afficher."
                      : "Décors conservés, surfaces sombres et transitions animées.").font(Desk.font(.caption)).foregroundStyle(.secondary)
                 #else
-                Toggle("Liquid Glass", isOn: $glass)
+                DeskToggle(title: "Liquid Glass", isOn: $glass)
                 Text(FluxAppearance.nativeAvailable ? "Effet Apple natif disponible." : "Matériau translucide système sur cette version d’OS.").font(Desk.font(.caption)).foregroundStyle(.secondary)
                 #endif
-                Toggle("Afficher les jaquettes", isOn: $artwork)
-                Picker("Taille des cartes", selection: $density) { Text("Grand écran").tag("cinema"); Text("Compacte").tag("compact") }
+                DeskToggle(title: "Afficher les jaquettes", isOn: $artwork)
+                DeskChoice(title: "Taille des cartes", options: [("cinema", "Grand écran"), ("compact", "Compacte")], selection: $density)
                 #if !os(tvOS)
                 #if os(macOS)
                 if inline && !overPlayback {
-                    Toggle("Retour affiche d’abord les zones de l’écran", isOn: $backShowsZones)
+                    DeskToggle(title: "Retour affiche d’abord les zones de l’écran", isOn: $backShowsZones)
                     Text("Au clavier ou à la télécommande, Retour encadre le haut, la colonne, le contenu, l’aperçu et le dock, et indique où mène chaque flèche : une flèche entre dans la zone voisine, OK referme, Retour une seconde fois revient à l’écran précédent. Désactivé, Retour revient tout de suite à l’écran précédent ; Tab passe toujours d’une zone à l’autre.")
                         .font(Desk.font(.caption)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 }
                 #endif
-                if let remoteVisible { Toggle("Afficher la télécommande virtuelle", isOn: remoteVisible) }
+                if let remoteVisible { DeskToggle(title: "Afficher la télécommande virtuelle", isOn: remoteVisible) }
                 Picker("Télécommande virtuelle", selection: $remoteAppearance) { Text("Noire tactile").tag(RemoteAppearance.black); Text("Aluminium").tag(RemoteAppearance.silver) }
                 #endif
                 Button("Apparence par défaut") {
@@ -708,16 +767,48 @@ struct PlaybackSettingsView: View {
             }.padding(Desk.pt(12)).frame(maxWidth: .infinity, alignment: .leading)
                 .background(.white.opacity(selected ? 0.15 : 0.05), in: RoundedRectangle(cornerRadius: Desk.pt(14)))
                 .overlay(RoundedRectangle(cornerRadius: Desk.pt(14)).strokeBorder(Color(red: palette.accent.x, green: palette.accent.y, blue: palette.accent.z).opacity(selected ? 0.95 : 0.15), lineWidth: selected ? 2 : 1))
-        }.buttonStyle(.plain)
+        }.buttonStyle(DeskFocusStyle(radius: Desk.pt(14)))
         .accessibilityLabel(candidate.title + (selected ? ", sélectionné" : ""))
         .accessibilityAddTraits(selected ? .isSelected : [])
     }
 
     private func choice(_ title: String, value: Binding<Int>, values: [Int], unit: String) -> some View {
         let choices = Array(Set(values + [value.wrappedValue])).sorted()
-        return Picker(title, selection: value) {
-            ForEach(choices, id: \.self) { n in Text(n == 0 && unit == "Mbit/s" ? "Automatique" : "\(n) \(unit)").tag(n) }
+        return DeskChoice(title: title,
+                          options: choices.map { ($0, $0 == 0 && unit == "Mbit/s" ? "Automatique" : unit.isEmpty ? "\($0)" : "\($0) \(unit)") },
+                          selection: value)
+    }
+
+    /// Tracks of the media on screen; `off` adds the row that shows none.
+    private func trackList(_ title: String, tracks: [PlaybackTrack], off: Bool, empty: String,
+                           select: @escaping (String?) -> Void) -> some View {
+        VStack(alignment: .leading, spacing: Desk.pt(6)) {
+            Text(title).font(Desk.font(.callout, .semibold)).foregroundStyle(.white.opacity(0.78))
+            if tracks.isEmpty {
+                Text(empty).font(Desk.font(.body)).foregroundStyle(.secondary)
+            } else {
+                if off { trackRow("Désactivés", selected: !tracks.contains(where: \.selected)) { select(nil) } }
+                ForEach(tracks) { track in trackRow(track.title, selected: track.selected) { select(track.id) } }
+            }
         }
+    }
+
+    private func trackRow(_ title: String, selected: Bool, action: @escaping () -> Void) -> some View {
+        let shape = RoundedRectangle(cornerRadius: Desk.pt(12), style: .continuous)
+        return Button(action: action) {
+            HStack(spacing: Desk.pt(10)) {
+                Image(systemName: selected ? "checkmark.circle.fill" : "circle")
+                    .font(Desk.font(.body)).foregroundStyle(selected ? Color.cyan : Color.white.opacity(0.5))
+                Text(title).font(Desk.font(.body, selected ? .semibold : .regular)).lineLimit(1)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, Desk.pt(12)).padding(.vertical, Desk.pt(9))
+            .frame(maxWidth: Desk.pt(520), alignment: .leading)
+            .background(.white.opacity(selected ? 0.14 : 0.06), in: shape)
+            .contentShape(shape)
+        }
+        .buttonStyle(DeskFocusStyle(radius: Desk.pt(12)))
+        .accessibilityLabel(title).accessibilityValue(selected ? "Sélectionnée" : "")
     }
 }
 

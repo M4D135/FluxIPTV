@@ -827,18 +827,6 @@ private struct MediaDetailEpisodeStyle: ButtonStyle {
 #if os(macOS) || os(tvOS)
 // MARK: - Desk fiche (Mac and Apple TV): a glass sheet over the blurred catalogue
 
-private extension View {
-    /// On a television, leads the remote to the controls of this group from
-    /// anywhere beside it, however far they stand from the focused one.
-    @ViewBuilder func deskFocusSection() -> some View {
-        #if os(tvOS)
-        focusSection()
-        #else
-        self
-        #endif
-    }
-}
-
 extension MediaDetailPresentation {
     private var sectionTint: Color { item.isSeriesCollection ? .purple : item.kind == .live ? .cyan : .orange }
     private var sectionTitle: String { item.isSeriesCollection ? "SÉRIE" : item.kind == .live ? "EN DIRECT" : "CINÉMA" }
@@ -950,7 +938,7 @@ extension MediaDetailPresentation {
     }
 
     private var chips: some View {
-        MediaDetailFlow(spacing: Desk.pt(8)) {
+        DeskFlow(spacing: Desk.pt(8)) {
             if let year = yearText(details.year) { chip(year, symbol: "calendar") }
             if let duration = durationText(details.duration) { chip(duration, symbol: "clock") }
             if let rating = ratingText(details.rating) { chip(rating, symbol: "star.fill", tint: .yellow) }
@@ -1314,7 +1302,7 @@ extension MediaDetailPresentation {
                 episodeStill(episode, season: episode.seasonNumber ?? selectedSeason?.number ?? 1)
                 Text(episode.name).font(Desk.system(20, .bold)).lineLimit(2)
                     .fixedSize(horizontal: false, vertical: true)
-                MediaDetailFlow(spacing: Desk.pt(8)) {
+                DeskFlow(spacing: Desk.pt(8)) {
                     if let duration = durationText(episode.details.duration ?? details.duration) { chip(duration, symbol: "clock") }
                     if let year = yearText(details.year) { chip(year, symbol: "calendar") }
                     if let rating = ratingText(episode.details.rating ?? details.rating) { chip(rating, symbol: "star.fill", tint: .yellow) }
@@ -1408,31 +1396,4 @@ extension MediaDetailPresentation {
     #endif
 }
 
-/// Wraps chips onto as many lines as the width requires.
-private struct MediaDetailFlow: Layout {
-    var spacing: CGFloat = 8
-
-    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-        let limit = proposal.width ?? .infinity
-        var x: CGFloat = 0, y: CGFloat = 0, row: CGFloat = 0, widest: CGFloat = 0
-        for view in subviews {
-            let size = view.sizeThatFits(.unspecified)
-            if x > 0 && x + size.width > limit { x = 0; y += row + spacing; row = 0 }
-            x += size.width + spacing
-            row = max(row, size.height); widest = max(widest, x - spacing)
-        }
-        return CGSize(width: limit.isFinite ? limit : widest, height: y + row)
-    }
-
-    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        var x = bounds.minX, y = bounds.minY, row: CGFloat = 0
-        for view in subviews {
-            let size = view.sizeThatFits(.unspecified)
-            if x > bounds.minX && x + size.width > bounds.maxX { x = bounds.minX; y += row + spacing; row = 0 }
-            view.place(at: CGPoint(x: x, y: y), proposal: ProposedViewSize(size))
-            x += size.width + spacing
-            row = max(row, size.height)
-        }
-    }
-}
 #endif
