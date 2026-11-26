@@ -51,7 +51,22 @@ struct CatalogSearchFocusSnapshot {
 
 /// One living-room UI for Mac, iPhone, iPad and Apple TV. All actual tvOS navigation
 /// uses the OS focus engine; the Mac simulator and gamepad use the shared focus grid.
-struct ContentView: View {
+///
+/// The focus of the system is owned by `ContentView`, the window above this
+/// screen: a view is rebuilt each time a focus it owns moves, and this one
+/// holds the whole catalogue. Here that focus is a binding, written to send
+/// the remote somewhere and read when something happens, never to draw.
+struct FluxScreen: View, Equatable {
+    let nativeFocus: FocusState<String?>.Binding
+    /// Where the window tells this screen that the focus has moved.
+    let focusRelay: FluxFocusRelay
+    private var systemFocus: String? {
+        get { nativeFocus.wrappedValue }
+        nonmutating set { nativeFocus.wrappedValue = newValue }
+    }
+    /// Nothing the window hands over changes during its life: the screen
+    /// is rebuilt by its own state alone.
+    nonisolated static func == (left: FluxScreen, right: FluxScreen) -> Bool { true }
     @EnvironmentObject private var library: IPTVLibrary
     @EnvironmentObject private var playback: PlaybackController
     #if os(iOS)
@@ -87,7 +102,7 @@ struct ContentView: View {
     @State private var diagnosticSettings = false
     @State private var showRemote = false
     @AppStorage("fluxiptv.remoteAppearance") private var remoteAppearance: RemoteAppearance = .black
-    @AppStorage(FluxAppearance.glassKey) private var richGlass = true
+    @AppStorage(FluxAppearance.glassKey) private var richGlass = FluxAppearance.richDefault
     @AppStorage(FluxAppearance.densityKey) private var density = "cinema"
     @AppStorage(ClubInterfaceProfile.storageKey) private var clubProfile: ClubInterfaceProfile = .neoVideoClub
     @State private var remoteNavigationActive = false
@@ -101,7 +116,9 @@ struct ContentView: View {
     @State private var liveSidebarVisible = false
     @State private var browserHeight: CGFloat = 900
     @FocusState private var liveGroupSearchFocus: Bool
-    @StateObject private var livePreview = LiveTVPreviewController()
+    /// Kept, not watched: each change of the preview would rebuild the whole
+    /// screen. The picture and the key of its sound watch it themselves.
+    @State private var livePreview = LiveTVPreviewController()
     @AppStorage(LiveTVPreviewDelay.storageKey) private var livePreviewDelay: LiveTVPreviewDelay = LiveTVPreviewDelay.platformDefault
     @AppStorage(LiveTVPreviewDelay.automaticKey) private var automaticLivePreview = true
     @Environment(\.scenePhase) private var scenePhase
@@ -154,7 +171,6 @@ struct ContentView: View {
     /// asked for: Up and Down go on changing channel.
     @State private var zapSurfing = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @FocusState private var systemFocus: String?
     @FocusState private var searchFocus: Bool
     @State private var pendingCatalogFocus: CatalogFocusRequest?
     @State private var cinema = false
@@ -196,6 +212,13 @@ struct ContentView: View {
     /// Row of the navigation column asked to take the remote when the column
     /// is entered from the catalogue, until that row has it.
     @State private var columnEntryRequest: String?
+    /// What scrolls the lists, for the requests of the focus.
+    @State private var scrolls = FluxScrollHandles()
+    #if os(tvOS)
+    /// Control of the player that is being handed the remote, until it
+    /// says it has it.
+    @State private var remoteHold: String?
+    #endif
     @AppStorage(DeskZone.backKey) private var backShowsZones = true
     // Channel list over the picture, to change channel without leaving it.
     @State private var zapListVisible = false
@@ -208,8 +231,6 @@ struct ContentView: View {
     @State private var zapNativeFocus: String?
     /// The key Chaînes opened the list: its commands return when it closes.
     @State private var zapOpenedFromKey = false
-    /// Brings the list back to the row it awaits.
-    @State private var zapScrollTick = 0
     @State private var keyboardPointer: CGPoint?
     @State private var newListKind: IPTVMediaKind?
     @State private var newListName = ""
@@ -238,9 +259,11 @@ struct ContentView: View {
     private var fixtureZapList = false
     /// Seed only the initial selection; layout, controls and artwork remain the
     /// same production views used by the application.
-    init(fixtureSelection: IPTVItem? = nil, fixtureSeasons: [IPTVSeason] = [], fixtureOpenSeason: Int? = nil, fixtureEpisodeID: String? = nil, fixtureOpenItem: Bool = false, fixtureSearchSubmission: String? = nil, fixtureSearchObservation: ((CatalogSearchFocusSnapshot) -> Void)? = nil, fixtureOpenCountries: Bool = false, fixtureRestoreBrowsing: Bool = false, fixtureSettingsPage: PlaybackSettingsView.Page? = nil, fixtureFavorites: Bool = false, fixtureHome: Bool = false, fixturePlayerSettings: Bool = false, fixtureZone: DeskZone? = nil, fixtureActions: [RemoteAction] = [], fixtureZapList: Bool = false, fixtureAddSource: Bool = false, fixtureLists: Bool = false,
+    init(nativeFocus: FocusState<String?>.Binding, focusRelay: FluxFocusRelay, fixtureSelection: IPTVItem? = nil, fixtureSeasons: [IPTVSeason] = [], fixtureOpenSeason: Int? = nil, fixtureEpisodeID: String? = nil, fixtureOpenItem: Bool = false, fixtureSearchSubmission: String? = nil, fixtureSearchObservation: ((CatalogSearchFocusSnapshot) -> Void)? = nil, fixtureOpenCountries: Bool = false, fixtureRestoreBrowsing: Bool = false, fixtureSettingsPage: PlaybackSettingsView.Page? = nil, fixtureFavorites: Bool = false, fixtureHome: Bool = false, fixturePlayerSettings: Bool = false, fixtureZone: DeskZone? = nil, fixtureActions: [RemoteAction] = [], fixtureZapList: Bool = false, fixtureAddSource: Bool = false, fixtureLists: Bool = false,
          fixturePlayer: Bool = false, fixtureHoldsControls: Bool = false, fixtureTracksPanel: Bool = false,
          fixtureBanner: Bool = false) {
+        self.nativeFocus = nativeFocus
+        self.focusRelay = focusRelay
         self.fixtureActions = fixtureActions
         self.fixtureHoldsControls = fixtureHoldsControls
         if fixturePlayer {
@@ -314,6 +337,11 @@ struct ContentView: View {
                 _caseExpanded=State(initialValue:true)
             }
         }
+    }
+    #else
+    init(nativeFocus: FocusState<String?>.Binding, focusRelay: FluxFocusRelay) {
+        self.nativeFocus = nativeFocus
+        self.focusRelay = focusRelay
     }
     #endif
 
@@ -417,7 +445,12 @@ struct ContentView: View {
         #endif
     }
 
-    var body: some View { activeCatalogue }
+    var body: some View {
+        let _ = FluxProbe.hit("screen")
+        // The actions of this screen read its state when they run.
+        let _ = (focusRelay.moved = { id in nativeFocusMoved(to: id) })
+        activeCatalogue
+    }
 
     // Opaque subview boundaries keep each SwiftUI expression small enough for
     // all four Apple SDK builds without erasing view identity or adding layers.
@@ -457,7 +490,8 @@ struct ContentView: View {
     }
 
     private func focusedBrowserPane(reader: ScrollViewProxy) -> some View {
-        browserPane(reader: reader)
+        scrolls.pane = reader
+        return browserPane(reader: reader)
         .onChange(of: page) { previous, destination in
             pendingCatalogFocus = nil
             if destination == .catalogue, pendingBrowseRestore { restoreBrowsingContext(); return }
@@ -466,7 +500,7 @@ struct ContentView: View {
             Task { @MainActor in
                 await Task.yield()
                 guard page == .catalogue,heldItem == nil,focusID == target else{return}
-                reader.scrollTo(target,anchor:.center);systemFocus=target
+                sendRemote(to: target, reader: reader) { page == .catalogue && heldItem == nil }
             }
         }
         .onChange(of: heldItem?.id) { _, id in
@@ -477,11 +511,10 @@ struct ContentView: View {
             Task { @MainActor in
                 await Task.yield()
                 guard heldItem == nil, page != .player, !searchFocus else{return}
-                reader.scrollTo(target,anchor:.center)
-                systemFocus=target
+                sendRemote(to: target, reader: reader) { heldItem == nil && page != .player && !searchFocus }
             }
         }
-        .onChange(of: focusID) { _, id in
+        .onChange(of: focusID) { previous, id in
             #if FLUX_CATALOG_UI_TESTING
             reportSearchFocusFixture()
             #endif
@@ -496,7 +529,14 @@ struct ContentView: View {
             // Scroll lazy destinations into existence without mistaking an
             // early programmatic binding write for native focus readiness.
             if !pendingBrowseRestore || page != .catalogue { systemFocus = id }
-            reader.scrollTo(id, anchor: .center)
+            // A move along a row of sleeves leaves the list where it is:
+            // asking it again would lay the whole grid out for nothing.
+            let sameRow: Bool = {
+                guard page == .catalogue, library.contentKind != .live, !pendingBrowseRestore,
+                      let from = visibleSlice.index(of: previous), let to = visibleSlice.index(of: id) else { return false }
+                return from / max(1, columns) == to / max(1, columns)
+            }()
+            if !sameRow { reader.scrollTo(id, anchor: .center) }
             #else
             if remoteNavigationActive && !searchFocus && !liveGroupSearchFocus {
                 systemFocus = id
@@ -517,74 +557,7 @@ struct ContentView: View {
                 if heldItem == nil && remoteNavigationActive && !pendingBrowseRestore { systemFocus=id }
             }
         }
-        .onChange(of: systemFocus) { _, id in
-            #if os(tvOS)
-            // The first native entry into a list that has just replaced the
-            // content of the column is redirected to its selected row. The
-            // request is consumed before the binding is written, so that
-            // later moves never snap back.
-            if let request = sidebarFocusRequest, let id, id == "countries-back" || id.hasPrefix("country-") {
-                sidebarFocusRequest = nil
-                focusID = request
-                if id != request { systemFocus = request }
-                return
-            }
-            // The navigation column is entered on the row of what is shown,
-            // whatever stands at the height the remote came from.
-            // Not while the catalogue hands the remote back to a title: the
-            // system may then rest a moment on a control of the column.
-            if let id, columnEntryRequest == nil, !pendingBrowseRestore, page == .catalogue, heldItem == nil, !modalOpen,
-               deskSidebarIDs.contains(id), id != deskScopeID, visibleSlice.item(id: focusID) != nil {
-                enterColumn()
-                return
-            }
-            // And the catalogue is entered from the column on the title that
-            // was left there, not on the one that faces the row of the column.
-            if let id, columnEntryRequest == nil, !pendingBrowseRestore, page == .catalogue, heldItem == nil, !modalOpen,
-               let from = focusID, deskSidebarIDs.contains(from), visibleSlice.item(id: id) != nil,
-               let kept = library.browseItemID ?? previewID, kept != id, visibleSlice.item(id: kept) != nil {
-                library.browseItemID = kept
-                restoreBrowsingContext()
-                return
-            }
-            if id != nil, page == .catalogue, heldItem == nil, !modalOpen {
-                browserHasEnteredFocus = true
-            }
-            if pendingBrowseRestore, pendingBrowseFocus != nil,
-               page == .catalogue, heldItem == nil, !modalOpen {
-                resolveBrowseRestoreFocus()
-                // The incoming ID may be a temporary header. Do not let it
-                // overwrite the destination that was just handed off.
-                return
-            }
-            // Waiting for source data alone must not freeze the drawn focus:
-            // there may never be a handoff if loading ends in an error.
-            #endif
-            // Removing the old results can make the native focus engine pick
-            // the first header button before our submitted-search destination
-            // is mounted. Keep that temporary fallback from cancelling the
-            // explicit handoff; acknowledge only the requested destination.
-            if let request = pendingCatalogFocus, request == catalogFocusContext,
-               !library.isFiltering, page == .catalogue, heldItem == nil,
-               !modalOpen, !searchFocus, !liveGroupSearchFocus {
-                let target = visible.first?.id ?? "tab-\(library.contentKind.rawValue)"
-                guard id == target else { return }
-                pendingCatalogFocus = nil
-                #if FLUX_CATALOG_UI_TESTING
-                reportSearchFocusFixture()
-                #endif
-            }
-            if heldItem == nil, let id, focusID != id { focusID = id }
-            #if FLUX_CATALOG_UI_TESTING
-            reportSearchFocusFixture()
-            #endif
-        }
         #if os(tvOS)
-        .onChange(of: pendingBrowseFocus?.targetID) { _, id in
-            // A return to the same remembered item may not change focusID.
-            // Realize that lazy cell even when the logical selection is equal.
-            if let id { reader.scrollTo(id, anchor: .center) }
-        }
         .onChange(of: searchFocus) { _, focused in
             if focused, page == .catalogue, heldItem == nil, !modalOpen {
                 browserHasEnteredFocus = true
@@ -597,6 +570,83 @@ struct ContentView: View {
             if focused, columnEntryRequest == nil, !pendingBrowseRestore, page == .catalogue, heldItem == nil, !modalOpen,
                visibleSlice.item(id: focusID) != nil { enterColumn() }
         }
+        #endif
+    }
+    /// The focus of the system has moved: the window says so. The screen
+    /// is not rebuilt for the move itself, only for what it changes here.
+    private func nativeFocusMoved(to id: String?) {
+        if page == .player, playerControlsVisible, id != nil, id != "cinema-controls" { revealPlayerControls() }
+        #if os(tvOS)
+        // A control of the player is being handed the remote: where the
+        // system rests meanwhile is not a move of the user.
+        if let held = remoteHold, id != held { return }
+        // The first native entry into a list that has just replaced the
+        // content of the column is redirected to its selected row. The
+        // request is consumed before the binding is written, so that
+        // later moves never snap back.
+        if let request = sidebarFocusRequest, let id, id == "countries-back" || id.hasPrefix("country-") {
+            sidebarFocusRequest = nil
+            focusID = request
+            if id != request { systemFocus = request }
+            return
+        }
+        // The navigation column is entered on the row of what is shown,
+        // whatever stands at the height the remote came from.
+        // Not while the catalogue hands the remote back to a title: the
+        // system may then rest a moment on a control of the column.
+        if let id, columnEntryRequest == nil, !pendingBrowseRestore, page == .catalogue, heldItem == nil, !modalOpen,
+           deskSidebarIDs.contains(id), id != deskScopeID, visibleSlice.item(id: focusID) != nil {
+            enterColumn()
+            return
+        }
+        // And the catalogue is entered from the column on the title that
+        // was left there, not on the one that faces the row of the column.
+        if let id, columnEntryRequest == nil, !pendingBrowseRestore, page == .catalogue, heldItem == nil, !modalOpen,
+           let from = focusID, deskSidebarIDs.contains(from), visibleSlice.item(id: id) != nil,
+           let kept = library.browseItemID ?? previewID, kept != id, visibleSlice.item(id: kept) != nil {
+            library.browseItemID = kept
+            restoreBrowsingContext()
+            return
+        }
+        if id != nil, page == .catalogue, heldItem == nil, !modalOpen {
+            browserHasEnteredFocus = true
+        }
+        if pendingBrowseRestore, pendingBrowseFocus != nil,
+           page == .catalogue, heldItem == nil, !modalOpen {
+            resolveBrowseRestoreFocus()
+            // The incoming ID may be a temporary header. Do not let it
+            // overwrite the destination that was just handed off.
+            return
+        }
+        // Waiting for source data alone must not freeze the drawn focus:
+        // there may never be a handoff if loading ends in an error.
+        #endif
+        // Removing the old results can make the native focus engine pick
+        // the first header button before our submitted-search destination
+        // is mounted. Keep that temporary fallback from cancelling the
+        // explicit handoff; acknowledge only the requested destination.
+        if let request = pendingCatalogFocus, request == catalogFocusContext,
+           !library.isFiltering, page == .catalogue, heldItem == nil,
+           !modalOpen, !searchFocus, !liveGroupSearchFocus {
+            let target = visible.first?.id ?? "tab-\(library.contentKind.rawValue)"
+            guard id == target else { return }
+            pendingCatalogFocus = nil
+            #if FLUX_CATALOG_UI_TESTING
+            reportSearchFocusFixture()
+            #endif
+        }
+        if heldItem == nil, let id, focusID != id {
+            #if os(tvOS)
+            // A move of the remote is one update of the screen: what follows
+            // the selection is set with it, not after it.
+            if page == .catalogue, !pendingBrowseRestore, let item = visibleSlice.item(id: id) {
+                revealCatalogItem(id); setPreview(item)
+            }
+            #endif
+            focusID = id
+        }
+        #if FLUX_CATALOG_UI_TESTING
+        reportSearchFocusFixture()
         #endif
     }
     #if os(tvOS)
@@ -613,6 +663,10 @@ struct ContentView: View {
             for _ in 0..<10 {
                 await Task.yield()
                 guard columnEntryRequest == id, page == .catalogue else { return }
+                // A lazy list knows a row it has not built yet by its
+                // category, not by the name given to the row.
+                if id.hasPrefix("live-category-") { scrolls.column?.scrollTo(String(id.dropFirst("live-category-".count)), anchor: .center) }
+                scrolls.column?.scrollTo(id, anchor: .center)
                 // A request the system declined still reads as granted.
                 liveGroupSearchFocus = false
                 systemFocus = nil
@@ -668,7 +722,14 @@ struct ContentView: View {
             #endif
             #if FLUX_CATALOG_UI_TESTING
             if fixtureRestoreBrowsing { restoreBrowsingContext() }
-            else if !library.sources.isEmpty, heldItem == nil { systemFocus = focusID }
+            else if !library.sources.isEmpty, heldItem == nil {
+                #if os(tvOS)
+                // The player hands the remote over as it does when a stream opens.
+                if page == .player { restorePlayerFocus() } else { systemFocus = focusID }
+                #else
+                systemFocus = focusID
+                #endif
+            }
             #if os(macOS) || os(tvOS)
             if sidebarCountries {
                 // The list of countries opens on the one in use.
@@ -777,7 +838,7 @@ struct ContentView: View {
             Task { @MainActor in
                 await Task.yield()
                 guard !deskCovered, focusID == id else { return }
-                systemFocus = id
+                if let id { sendRemote(to: id) { !deskCovered } } else { systemFocus = id }
             }
         }
         #endif
@@ -974,12 +1035,26 @@ struct ContentView: View {
                     #endif
                 }
                 // A fiche or the settings float over the same room, out of focus.
-                .blur(radius: backdropBlur)
+                .blur(radius: livesBlur ? backdropBlur : 0)
                 .animation(reduceMotion ? nil : .easeOut(duration: 0.22), value: caseExpanded)
                 LinearGradient(colors:[.black.opacity(televisionLayout ? 0.52 : 0.12),.black.opacity(televisionLayout ? 0.72 : 0.52)],startPoint:.top,endPoint:.bottom)
                     .ignoresSafeArea().allowsHitTesting(false)
+                // Without the blur a veil keeps the room behind what is read.
+                if !livesBlur, backdropBlur > 0 {
+                    Color.black.opacity(backdropBlur > 20 ? 0.46 : 0.24).ignoresSafeArea().allowsHitTesting(false)
+                }
             }
         }.accessibilityHidden(true)
+    }
+    /// A whole screen put out of focus is blurred again for every picture
+    /// that moves above it. The full effects do it; a slow Apple TV dims
+    /// what is behind instead, which costs it nothing.
+    private var livesBlur: Bool {
+        #if os(tvOS)
+        richGlass
+        #else
+        true
+        #endif
     }
     private var backdropBlur: CGFloat {
         #if os(macOS) || os(tvOS)
@@ -991,14 +1066,36 @@ struct ContentView: View {
         return 0
         #endif
     }
+    /// Hands the remote to a control this screen returns to. A title of the
+    /// catalogue comes back with the update that asks for it, and a slow
+    /// Apple TV has not built it yet: it is asked until it answers.
+    private func sendRemote(to id: String, reader: ScrollViewProxy? = nil, while valid: @escaping () -> Bool) {
+        reader?.scrollTo(id, anchor: .center)
+        #if os(tvOS)
+        if visibleSlice.item(id: id) != nil {
+            holdRemote(on: id, inCatalogue: true, while: valid)
+            return
+        }
+        #endif
+        systemFocus = id
+    }
     private func setPreview(_ item: IPTVItem) {
-        if !library.isLoading && !library.isFiltering && !pendingBrowseRestore { library.browseItemID = item.id }
+        // A value written again would rebuild the screen for nothing.
+        if !library.isLoading && !library.isFiltering && !pendingBrowseRestore, library.browseItemID != item.id {
+            library.browseItemID = item.id
+        }
         guard previewID != item.id else { return }
         if item.kind == .live {
             livePreview.stop()
+            #if os(tvOS)
+            // A remote runs down a list: the panel follows it at once. A
+            // spring would redraw it for half a second after every press.
+            previewID = item.id; previewItem = item
+            #else
             withAnimation(reduceMotion ? nil : .spring(response: 0.38, dampingFraction: 0.86)) {
                 previewID = item.id; previewItem = item
             }
+            #endif
         } else { previewID = item.id; previewItem = item }
     }
     private func clearPreview() { previewID=nil; previewItem=nil }
@@ -1060,7 +1157,7 @@ struct ContentView: View {
             // selected poster. No hidden grid or neighboring cases stay mounted.
             await Task.yield()
             guard !Task.isCancelled,caseToken==token,heldItem == nil else{return}
-            reader?.scrollTo(destination,anchor:.center);systemFocus=destination
+            sendRemote(to: destination, reader: reader) { heldItem == nil && page != .player }
         }
     }
     private func dismissCaseImmediately() {caseDetailTask?.cancel();caseTransitionTask?.cancel();caseToken=UUID();heldItem=nil;heldSeasonNumber=nil;heldEpisodeID=nil;caseExpanded=false}
@@ -1186,15 +1283,24 @@ struct ContentView: View {
         remoteNavigationActive
         #endif
     }
-    /// Control that the dock and the bars draw as focused. A keyboard moves a
-    /// selection of the screen; a television has a focus of its own, which
-    /// may be in a panel this screen does not follow: nothing here is drawn
-    /// as focused then.
+    /// Control that the dock and the bars draw as selected. A keyboard moves
+    /// a selection of the screen. A television has a focus of its own, that
+    /// each control reads from itself: the screen is not rebuilt when the
+    /// remote moves, and nothing is drawn where the remote is not.
     private var shownFocusID: String? {
         #if os(tvOS)
-        systemFocus
+        nil
         #else
         focusID
+        #endif
+    }
+    /// Whether the keyboard has selected this control; never on a
+    /// television, whose controls show the focus of the system.
+    private func selectedByKeyboard(_ id: String) -> Bool {
+        #if os(tvOS)
+        false
+        #else
+        focusID == id
         #endif
     }
     private func presentSources() {
@@ -1280,9 +1386,10 @@ struct ContentView: View {
                     .padding(.horizontal, televisionLayout ? 34 : 24)
                     .padding(.vertical, televisionLayout ? 23 : 16)
                     .fluxNavigationGlass(selected: true, tint: .cyan, radius: 24)
-                    .overlay(RoundedRectangle(cornerRadius: 24)
-                        .strokeBorder(focusID == "add-source" ? .white : .clear, lineWidth: 3))
-            }.buttonStyle(FluxBareButtonStyle()).fluxFocus($systemFocus, id: "add-source")
+                    .overlay(FluxFocused(id: "add-source", logical: selectedByKeyboard("add-source")) { focused in
+                        RoundedRectangle(cornerRadius: 24).strokeBorder(focused ? .white : .clear, lineWidth: 3)
+                    })
+            }.buttonStyle(FluxBareButtonStyle()).fluxFocus(nativeFocus, id: "add-source")
                 .id("add-source").accessibilityIdentifier("welcome-load-source")
                 #if os(tvOS) && FLUX_CATALOG_UI_TESTING
                 .background(TVCatalogControlFrameProbe(identifier: "welcome-load-source").allowsHitTesting(false))
@@ -1365,7 +1472,7 @@ struct ContentView: View {
                     .strokeBorder(focused ? .white.opacity(0.95) : .clear, lineWidth: televisionLayout ? 3 : 2)
                     .allowsHitTesting(false)
             }
-        }.buttonStyle(FluxBareButtonStyle()).fluxFocus($systemFocus, id: id).id(id)
+        }.buttonStyle(FluxBareButtonStyle()).fluxFocus(nativeFocus, id: id).id(id)
             .scaleEffect(focused && !reduceMotion ? 1.045 : 1)
             .animation(reduceMotion ? nil : .spring(response: 0.25, dampingFraction: 0.88), value: focused)
             .accessibilityLabel(title).accessibilityValue(selected ? "Sélectionné" : "")
@@ -1380,23 +1487,25 @@ struct ContentView: View {
     }
 
     private func navButton(_ title: String, icon: String, id: String, active: Bool = false, iconOnly: Bool = false, action: @escaping () -> Void) -> some View {
-        Button { pointerSelect(id); action() } label: {
-            HStack(spacing: 6) {
-                Image(systemName: icon)
-                #if os(iOS)
-                if !iconOnly && sizeClass != .compact { Text(title).lineLimit(1) }
-                #elseif os(macOS)
-                if !iconOnly && (!compactChrome || id.hasPrefix("tab-") || id == "categories") { Text(title).lineLimit(1) }
-                #else
-                if !iconOnly { Text(title).lineLimit(1) }
-                #endif
+        return Button { pointerSelect(id); action() } label: {
+            FluxFocused(id: id, logical: selectedByKeyboard(id)) { focused in
+                HStack(spacing: 6) {
+                    Image(systemName: icon)
+                    #if os(iOS)
+                    if !iconOnly && sizeClass != .compact { Text(title).lineLimit(1) }
+                    #elseif os(macOS)
+                    if !iconOnly && (!compactChrome || id.hasPrefix("tab-") || id == "categories") { Text(title).lineLimit(1) }
+                    #else
+                    if !iconOnly { Text(title).lineLimit(1) }
+                    #endif
+                }
+                .font(televisionLayout ? .system(size: 25, weight: .semibold) : .callout.weight(.semibold))
+                .padding(.vertical, televisionLayout ? 16 : 10).padding(.horizontal, televisionLayout ? 18 : 12)
+                .foregroundStyle(active ? .white : .primary)
+                .background(active ? themeAccent.opacity(0.20) : Color.white.opacity(focused ? 0.13 : 0.035), in: RoundedRectangle(cornerRadius: 16))
+                .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(focused ? Color.white.opacity(0.8) : .white.opacity(active ? 0.18 : 0.04), lineWidth: focused ? 2 : 1).allowsHitTesting(false))
             }
-            .font(televisionLayout ? .system(size: 25, weight: .semibold) : .callout.weight(.semibold))
-            .padding(.vertical, televisionLayout ? 16 : 10).padding(.horizontal, televisionLayout ? 18 : 12)
-            .foregroundStyle(active ? .white : .primary)
-            .background(active ? themeAccent.opacity(0.20) : Color.white.opacity(focusID == id ? 0.13 : 0.035), in: RoundedRectangle(cornerRadius: 16))
-            .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(focusID == id ? Color.white.opacity(0.8) : .white.opacity(active ? 0.18 : 0.04), lineWidth: focusID == id ? 2 : 1).allowsHitTesting(false))
-        }.buttonStyle(FluxBareButtonStyle()).fluxFocus($systemFocus, id: id).id(id).accessibilityLabel(title).fluxHelp(title)
+        }.buttonStyle(FluxBareButtonStyle()).fluxFocus(nativeFocus, id: id).id(id).accessibilityLabel(title).fluxHelp(title)
             .accessibilityIdentifier("navigation-\(id)")
     }
 
@@ -1480,17 +1589,35 @@ struct ContentView: View {
         if id == "continue-only" { return continueOnly }
         return false
     }
+    /// What a row of the navigation column is drawn from. Its identifier
+    /// names what its action does.
+    private struct ScopeKey: Equatable {
+        let title: String
+        let symbol: String
+        let id: String
+        let count: Int?
+        let selected: Bool
+        /// Selected with the keyboard; a television shows its own focus.
+        let keyboard: Bool
+        let theme: VideoClubTheme
+    }
     private func liveScopeButton(_ title: String, symbol: String, id: String, count: Int? = nil, action: @escaping () -> Void) -> some View {
-        Button { pointerSelect(id); action() } label: {
-            LiveTVScopeLabel(title: title, symbol: symbol, count: count,
-                             selected: liveScopeSelected(id), focused: focusID == id, accent: themeAccent)
+        let key = ScopeKey(title: title, symbol: symbol, id: id, count: count, selected: liveScopeSelected(id),
+                           keyboard: selectedByKeyboard(id), theme: theme)
+        return FluxStable(key) {
+            Button { pointerSelect(id); action() } label: {
+                FluxFocused(id: id, logical: key.keyboard) { focused in
+                    LiveTVScopeLabel(title: title, symbol: symbol, count: count,
+                                     selected: key.selected, focused: focused, accent: themeAccent)
+                }
                 #if os(tvOS)
                 // The row says when it really has the remote.
                 .background(DeskFocusReport { focused in if focused, columnEntryRequest == id { columnEntryRequest = nil } })
                 #endif
-        }.buttonStyle(FluxBareButtonStyle()).fluxFocus($systemFocus, id: id).id(id)
-            .accessibilityLabel(title)
-            .accessibilityValue(liveScopeSelected(id) ? "Sélectionné" : "")
+            }.buttonStyle(FluxBareButtonStyle()).fluxFocus(nativeFocus, id: id).id(id)
+                .accessibilityLabel(title)
+                .accessibilityValue(key.selected ? "Sélectionné" : "")
+        }.equatable()
     }
     private var liveSidebar: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -1550,7 +1677,7 @@ struct ContentView: View {
                     Text(group ?? "Catégories").font(.callout.weight(.semibold)).lineLimit(1)
                     Image(systemName: "chevron.down").font(.caption2)
                 }.padding(.horizontal, 13).padding(.vertical, 10)
-            }.buttonStyle(FluxBareButtonStyle()).fluxFocus($systemFocus, id: "categories").id("categories")
+            }.buttonStyle(FluxBareButtonStyle()).fluxFocus(nativeFocus, id: "categories").id("categories")
                 .fluxNavigationGlass(selected: group != nil, tint: themeAccent, radius: 17)
             Spacer(minLength: 0)
             navButton("Favoris", icon: "star.fill", id: "favorites-quick", active: library.selectedPresetID == FavoritePresets.defaultID(for: .live), iconOnly: true) {
@@ -1634,7 +1761,7 @@ struct ContentView: View {
                 .overlay(alignment: .bottom) {
                     if selected { Capsule().fill(themeAccent).frame(height: 4).padding(.horizontal, 20) }
                 }
-        }.buttonStyle(FluxBareButtonStyle()).fluxFocus($systemFocus, id: id).id(id)
+        }.buttonStyle(FluxBareButtonStyle()).fluxFocus(nativeFocus, id: id).id(id)
             .scaleEffect(focused && !reduceMotion ? 1.035 : 1)
             .animation(reduceMotion ? nil : .spring(response: 0.24, dampingFraction: 0.9), value: focused)
             .accessibilityValue(selected ? "Sélectionné" : "")
@@ -1664,7 +1791,7 @@ struct ContentView: View {
                         if browserHeight < 580 && !liveSidebarVisible {
                             liveCountryButton
                             Button { showingGroups = true } label: { Image(systemName: "line.3.horizontal.decrease") }
-                                .buttonStyle(FluxBareButtonStyle()).fluxFocus($systemFocus, id: "categories").id("categories")
+                                .buttonStyle(FluxBareButtonStyle()).fluxFocus(nativeFocus, id: "categories").id("categories")
                                 .accessibilityLabel("Catégories TV")
                         } else { Image(systemName: "magnifyingglass").foregroundStyle(.secondary) }
                         TextField("Rechercher une chaîne", text: $library.search)
@@ -1759,7 +1886,7 @@ struct ContentView: View {
                                accent: themeAccent,
                                preview: televisionLayout && focusID == item.id ? livePreview : nil,
                                delay: livePreviewDelay, automaticPreview: automaticLivePreview)
-        }.buttonStyle(FluxBareButtonStyle()).fluxFocus($systemFocus, id: item.id).id(item.id)
+        }.buttonStyle(FluxBareButtonStyle()).fluxFocus(nativeFocus, id: item.id).id(item.id)
             .accessibilityLabel(item.name).accessibilityHint(televisionLayout ? "L’aperçu démarre dans cette vignette. Valider pour regarder. Appui long pour les favoris." : "Sélectionner pour afficher l’aperçu. Regarder ouvre la chaîne. Appui long pour les favoris.")
             .accessibilityIdentifier("live-channel-\(item.id)")
             #if os(tvOS)
@@ -1807,16 +1934,18 @@ struct ContentView: View {
                     Label("Regarder", systemImage: "play.fill").font((compactNavigation ? Font.caption : .callout).weight(.semibold))
                         .padding(.horizontal, compactNavigation ? 10 : 15).padding(.vertical, browserHeight < 700 ? 7 : 10)
                         .fluxNavigationGlass(selected: true, tint: themeAccent, radius: 17)
-                }.buttonStyle(FluxBareButtonStyle()).fluxFocus($systemFocus, id: "live-watch").id("live-watch")
+                }.buttonStyle(FluxBareButtonStyle()).fluxFocus(nativeFocus, id: "live-watch").id("live-watch")
                 if !compactNavigation && browserHeight >= 580 {
                 navButton("Favoris", icon: library.isFavorite(item) ? "star.fill" : "star", id: "live-favorite", iconOnly: true) { chooseFavorites(item) }
                 }
-                if livePreview.player != nil {
-                    Button { livePreview.toggleMuted() } label: {
-                        Image(systemName: livePreview.isMuted ? "speaker.slash.fill" : "speaker.wave.2.fill")
-                            .font(.caption).padding(compactNavigation ? 7 : 10)
-                    }.buttonStyle(FluxBareButtonStyle()).fluxFocus($systemFocus, id: "live-preview-mute").id("live-preview-mute")
-                        .accessibilityLabel(livePreview.isMuted ? "Activer le son de l’aperçu" : "Couper le son de l’aperçu")
+                LiveTVPreviewObserver(preview: livePreview) { preview in
+                    if preview.player != nil {
+                        Button { preview.toggleMuted() } label: {
+                            Image(systemName: preview.isMuted ? "speaker.slash.fill" : "speaker.wave.2.fill")
+                                .font(.caption).padding(compactNavigation ? 7 : 10)
+                        }.buttonStyle(FluxBareButtonStyle()).fluxFocus(nativeFocus, id: "live-preview-mute").id("live-preview-mute")
+                            .accessibilityLabel(preview.isMuted ? "Activer le son de l’aperçu" : "Couper le son de l’aperçu")
+                    }
                 }
             }
         }
@@ -1945,56 +2074,122 @@ struct ContentView: View {
         }.padding(.horizontal,30)
     }
 
+    /// What a sleeve of the catalogue is drawn from.
+    private struct CardKey: Equatable {
+        let item: IPTVItem
+        let height: CGFloat?
+        /// The full effects: the focus is animated.
+        let rich: Bool
+        /// Selected with the keyboard; a television shows its own focus.
+        let selected: Bool
+        let favorite: Bool
+        /// Share already watched of a title that can be resumed.
+        let progress: Double?
+        let watched: Bool
+        /// The fiche has taken this sleeve out of the catalogue.
+        let held: Bool
+        let expanded: Bool
+        let theme: VideoClubTheme
+        let desk: Bool
+        let television: Bool
+        let reduceMotion: Bool
+    }
+
     private func card(_ item: IPTVItem, height: CGFloat? = nil) -> some View {
-        let focused = focusID == item.id
-        let favorite = library.isFavorite(item)
+        let entry = playback.history.entries[item.id]
+        #if os(macOS)
+        let held = sleeveHeld(item)
+        #else
+        let held = false
+        #endif
+        let key = CardKey(item: item, height: height, rich: richGlass, selected: selectedByKeyboard(item.id),
+                          favorite: library.isFavorite(item), progress: entry.flatMap { $0.resumable ? $0.fraction : nil },
+                          watched: entry != nil, held: held, expanded: held && caseExpanded, theme: theme,
+                          desk: usesDesk, television: televisionLayout, reduceMotion: reduceMotion)
+        #if os(tvOS)
+        // The sleeve under the remote grows over its neighbours.
+        return FluxRaised { report in
+            FluxStable(key) { cardBody(item, key: key, report: report) }.equatable()
+        }
+        #else
+        return FluxStable(key) { cardBody(item, key: key, report: { _ in }) }.equatable()
+            .zIndex(key.selected ? 1 : 0)
+        #endif
+    }
+
+    /// Rebuilt only when `key` changes: a move of the remote leaves every
+    /// sleeve alone but the two it concerns, which read the focus themselves.
+    private func cardBody(_ item: IPTVItem, key: CardKey, report: @escaping (Bool) -> Void) -> some View {
+        FluxProbe.hit("sleeve")
+        let favorite = key.favorite
         return ZStack(alignment: .topTrailing) {
             Button { selectCard(item) } label: {
-                VStack(alignment: .leading, spacing: 8) {
-                    CatalogSleeveArtwork(item: item)
-                    .aspectRatio(2.0/3.0, contentMode: .fit)
-                    #if os(macOS)
-                    .matchedGeometryEffect(id: sleeveID(item), in: caseNamespace, properties: .frame, anchor: .center,
-                                           isSource: !(sleeveHeld(item) && caseExpanded))
-                    .opacity(sleeveHeld(item) ? 0 : 1)
-                    #endif
-                    .rotation3DEffect(.degrees(focused && !reduceMotion ? -4 : 0),axis:(x:0,y:1,z:0),perspective:0.6)
-                    .scaleEffect(focused && !reduceMotion ? (usesDesk ? 1.05 : 1.025) : 1)
-                    .offset(y: focused && !reduceMotion ? -3 : 0)
-                    #if os(tvOS)
-                    .frame(maxWidth: .infinity)
-                    #endif
-                    Text(item.name).font(Desk.font(.callout, .semibold)).lineLimit(2, reservesSpace: true).frame(maxWidth: .infinity, alignment: .leading)
-                        #if os(tvOS)
-                        .fixedSize(horizontal: false, vertical: true).layoutPriority(1)
+                FluxFocused(id: item.id, logical: key.selected) { focused in
+                    VStack(alignment: .leading, spacing: 8) {
+                        CatalogSleeveArtwork(item: item)
+                        .aspectRatio(2.0/3.0, contentMode: .fit)
+                        #if os(macOS)
+                        .matchedGeometryEffect(id: sleeveID(item), in: caseNamespace, properties: .frame, anchor: .center,
+                                               isSource: !key.expanded)
+                        .opacity(key.held ? 0 : 1)
                         #endif
-                    HStack(spacing: 5) {
-                        Text(CasePackageFormat.resolve(year: item.details.year).title)
-                            .font(.system(size: televisionLayout ? 15 : 9, weight: .semibold, design: .rounded))
-                            .padding(.horizontal, 5).padding(.vertical, 2)
-                            .background(.white.opacity(0.09), in: RoundedRectangle(cornerRadius: 3))
-                        Text(item.group).font(Desk.font(.caption)).lineLimit(1)
-                    }.foregroundStyle(.secondary)
                         #if os(tvOS)
-                        .fixedSize(horizontal: false, vertical: true).layoutPriority(1)
+                        // The sleeve under the remote grows and follows the thumb.
+                        .fluxFocusLean(focused)
+                        .frame(maxWidth: .infinity)
+                        #else
+                        .rotation3DEffect(.degrees(focused && !key.reduceMotion ? -4 : 0),axis:(x:0,y:1,z:0),perspective:0.6)
+                        .scaleEffect(focused && !key.reduceMotion ? (key.desk ? 1.05 : 1.025) : 1)
+                        .offset(y: focused && !key.reduceMotion ? -3 : 0)
                         #endif
-                    if let entry = playback.history.entries[item.id], entry.resumable {
-                        ProgressView(value: entry.fraction).tint(themeAccent)
+                        Text(item.name).font(Desk.font(.callout, .semibold)).lineLimit(2, reservesSpace: true).frame(maxWidth: .infinity, alignment: .leading)
                             #if os(tvOS)
-                            .layoutPriority(1)
+                            .fixedSize(horizontal: false, vertical: true).layoutPriority(1)
                             #endif
+                        HStack(spacing: 5) {
+                            Text(CasePackageFormat.resolve(year: item.details.year).title)
+                                .font(.system(size: key.television ? 15 : 9, weight: .semibold, design: .rounded))
+                                .padding(.horizontal, 5).padding(.vertical, 2)
+                                .background(.white.opacity(0.09), in: RoundedRectangle(cornerRadius: 3))
+                            Text(item.group).font(Desk.font(.caption)).lineLimit(1)
+                        }.foregroundStyle(.secondary)
+                            #if os(tvOS)
+                            .fixedSize(horizontal: false, vertical: true).layoutPriority(1)
+                            #endif
+                        if let progress = key.progress {
+                            ProgressView(value: progress).tint(themeAccent)
+                                #if os(tvOS)
+                                .layoutPriority(1)
+                                #endif
+                        }
                     }
+                    #if os(tvOS)
+                    // Text keeps its natural size. The flexible 2:3 artwork takes
+                    // the height left by the labels and optional progress bar;
+                    // reserve the card's own 5-point vertical padding on each side.
+                    .frame(height: key.height.map { max(0, $0 - 10) }, alignment: .top)
+                    #endif
+                    .padding(.horizontal,2).padding(.vertical,5)
+                    #if os(tvOS)
+                    // The plate and the ring of the focus are drawn once and
+                    // only shown or hidden: a colour or a width that changes
+                    // is drawn again for every picture of its animation.
+                    .background(.white.opacity(0.025), in: RoundedRectangle(cornerRadius: 21))
+                    .background(RoundedRectangle(cornerRadius: 21).fill(.white.opacity(0.11)).opacity(focused ? 1 : 0))
+                    .overlay(RoundedRectangle(cornerRadius: 21).strokeBorder(.white.opacity(0.08), lineWidth: 1).allowsHitTesting(false))
+                    .overlay(RoundedRectangle(cornerRadius: 21).strokeBorder(.white.opacity(0.88), lineWidth: 2)
+                        .opacity(focused ? 1 : 0).allowsHitTesting(false))
+                    .animation(key.reduceMotion || !key.rich ? nil : .easeOut(duration: 0.12), value: focused)
+                    #else
+                    .background(.white.opacity(focused ? 0.13 : 0.025), in: RoundedRectangle(cornerRadius: 21))
+                    .overlay(RoundedRectangle(cornerRadius: 21).strokeBorder(focused ? Color.white.opacity(0.88) : .white.opacity(0.08), lineWidth: focused ? 2 : 1).allowsHitTesting(false))
+                    .animation(key.reduceMotion ? nil : .spring(response: 0.28, dampingFraction: 0.85), value: focused)
+                    #endif
                 }
                 #if os(tvOS)
-                // Text keeps its natural size. The flexible 2:3 artwork takes
-                // the height left by the labels and optional progress bar;
-                // reserve the card's own 5-point vertical padding on each side.
-                .frame(height: height.map { max(0, $0 - 10) }, alignment: .top)
+                .background(DeskFocusReport(report: report))
                 #endif
-                .padding(.horizontal,2).padding(.vertical,5)
-                .background(.white.opacity(focused ? 0.13 : 0.025), in: RoundedRectangle(cornerRadius: 21))
-                .overlay(RoundedRectangle(cornerRadius: 21).strokeBorder(focused ? Color.white.opacity(0.88) : .white.opacity(0.08), lineWidth: focused ? 2 : 1).allowsHitTesting(false))
-            }.buttonStyle(FluxBareButtonStyle()).fluxFocus($systemFocus, id: item.id).id(item.id)
+            }.buttonStyle(FluxBareButtonStyle()).fluxFocus(nativeFocus, id: item.id).id(item.id)
                 .accessibilityIdentifier("catalog-card-\(item.id)")
                 #if os(tvOS)
                 .onAppear { browseFocusTargetAppeared(item.id) }
@@ -2012,7 +2207,7 @@ struct ContentView: View {
                 .onHover { inside in if inside { deskHover(item) } }
                 .contextMenu {
                     Button("Favoris et listes…") { chooseFavorites(item) }
-                    if playback.history.entries[item.id] != nil {
+                    if key.watched {
                         Button("Recommencer") {
                             playback.forgetProgress(item.id)
                             if item.isSeriesCollection { loadSeries(item) } else { playItem(item) }
@@ -2031,8 +2226,6 @@ struct ContentView: View {
             }.padding(13)
             #endif
         }
-        .zIndex(focused ? 1 : 0)
-        .animation(reduceMotion ? nil : .spring(response: 0.28, dampingFraction: 0.85), value: focused)
     }
 
     /// The shelf of the seasons spans the screen. On a television its sleeves
@@ -2075,7 +2268,7 @@ struct ContentView: View {
                 Spacer()
             } else if let series {
                 SeriesSeasonShelf(series: series, seasons: seasons, columns: shelfColumns,
-                                  focusedID: focusID, systemFocus: $systemFocus,
+                                  focusedID: focusID, systemFocus: nativeFocus,
                                   focus: focusSeason, open: {showSeason($0)},
                                   heroNamespace: usesDesk ? caseNamespace : nil,
                                   heldSeason: heldItem?.id == series.id ? heldSeasonNumber : nil,
@@ -2102,7 +2295,7 @@ struct ContentView: View {
                     .overlay { if fixturePictureStandIn { ProceduralStage(kind: .movie) } }
                     #endif
                     #if !os(tvOS)
-                    .focusable().focused($systemFocus, equals: "cinema-controls")
+                    .focusable().focused(nativeFocus, equals: "cinema-controls")
                     .id("cinema-controls").focusEffectDisabled()
                     .onTapGesture {
                         // A click beside the list of channels closes it.
@@ -2118,11 +2311,11 @@ struct ContentView: View {
                     // It never stands under a panel: it would take the remote
                     // from the settings as soon as the commands hide.
                     Button { revealPlayerControls(focus: true) } label: {
-                        Color.clear.contentShape(Rectangle())
+                        FluxFocused(id: "cinema-controls", logical: false) { _ in Color.clear.contentShape(Rectangle()) }
                     }
                     .buttonStyle(FluxBareButtonStyle())
                     .focusEffectDisabled()
-                    .focused($systemFocus, equals: "cinema-controls")
+                    .focused(nativeFocus, equals: "cinema-controls")
                     .id("cinema-controls")
                     .accessibilityLabel("Afficher les commandes")
                     .accessibilityIdentifier("player-catcher")
@@ -2193,9 +2386,6 @@ struct ContentView: View {
         .onChange(of: playback.playingItem?.id) { _, _ in
             scrubbing = false; scrubPosition = 0; revealPlayerControls()
         }
-        .onChange(of: systemFocus) { _, id in
-            if page == .player, playerControlsVisible, id != nil, id != "cinema-controls" { revealPlayerControls() }
-        }
         .onChange(of: modalOpen) { _, _ in if page == .player { revealPlayerControls() } }
         .onChange(of: voiceOverEnabled) { _, _ in if page == .player { revealPlayerControls() } }
         .onDisappear {
@@ -2259,7 +2449,9 @@ struct ContentView: View {
                 await claimZapFocus(id)
                 try? await Task.sleep(nanoseconds: 100_000_000)
                 guard zapListVisible, zapFocusRequest == id else { return }
-                zapScrollTick &+= 1
+                // A lazy list knows a row it has not built yet by the
+                // identity of its channel, not by the name given to the row.
+                scrolls.channels?.scrollTo(id, anchor: .center)
             }
             // It never came: the remote stays where the system put it.
             zapFocusRequest = nil
@@ -2312,9 +2504,10 @@ struct ContentView: View {
             guard page == .player, !deskCovered, !playerPanelOpen else { return }
             if zapListVisible { requestZapFocus(zapFocusID) }
             else if playerControlsVisible {
-                systemFocus = key.flatMap { playerBarIDs.contains($0) || $0 == "player-back" ? $0 : nil } ?? "playpause"
+                let id = key.flatMap { playerBarIDs.contains($0) || $0 == "player-back" ? $0 : nil } ?? "playpause"
+                holdRemote(on: id) { page == .player && playerControlsVisible && !deskCovered && !playerPanelOpen }
             }
-            else { systemFocus = "cinema-controls" }
+            else { focusPicture() }
         }
     }
     #endif
@@ -2389,6 +2582,7 @@ struct ContentView: View {
                 #endif
             }
             ScrollViewReader { reader in
+                let _ = (scrolls.channels = reader)
                 ScrollView {
                     LazyVStack(spacing: Desk.pt(6)) {
                         ForEach(window) { item in
@@ -2404,7 +2598,6 @@ struct ContentView: View {
                 // A lazy list knows a row it has not built yet by the identity
                 // of its channel, not by the name given to the row.
                 .onAppear { if let anchor { reader.scrollTo(anchor, anchor: .center); reader.scrollTo("zap-\(anchor)", anchor: .center) } }
-                .onChange(of: zapScrollTick) { _, _ in if let anchor { reader.scrollTo(anchor, anchor: .center) } }
                 #if !os(tvOS)
                 .onChange(of: zapFocusID) { _, id in
                     // A pointer never moves the list under itself.
@@ -2486,7 +2679,7 @@ struct ContentView: View {
         #if os(tvOS)
         // The remote walks the list; Left and Right, which lead nowhere in
         // it, change the category.
-        .focused($systemFocus, equals: "zap-\(item.id)").focusEffectDisabled()
+        .focused(nativeFocus, equals: "zap-\(item.id)").focusEffectDisabled()
         .onAppear { if zapFocusRequest == item.id { Task { @MainActor in await claimZapFocus(item.id) } } }
         .onMoveCommand { direction in
             switch direction {
@@ -2638,25 +2831,27 @@ struct ContentView: View {
     }
 
     private func playerPill(_ id: String, symbol: String, title: String?) -> some View {
-        let lit = playerButtonFocused(id) || hoveredPlayerButton == id
+        let selected = playerButtonFocused(id) || hoveredPlayerButton == id
         let label = playerButtonLabel(id)
         return Button {
             pointerSelect(id); activateFocus()
             if page == .player { revealPlayerControls() }
         } label: {
-            HStack(spacing: Desk.pt(7)) {
-                Image(systemName: symbol).font(Desk.font(.callout, .bold))
-                if let title { Text(title).font(Desk.font(.callout, .semibold)).lineLimit(1) }
+            FluxFocused(id: id, logical: selected) { lit in
+                HStack(spacing: Desk.pt(7)) {
+                    Image(systemName: symbol).font(Desk.font(.callout, .bold))
+                    if let title { Text(title).font(Desk.font(.callout, .semibold)).lineLimit(1) }
+                }
+                .foregroundStyle(lit ? Color.black : .white)
+                .padding(.horizontal, Desk.pt(title == nil ? 12 : 15)).frame(minWidth: Desk.pt(40), minHeight: Desk.pt(40))
+                .background(lit ? Color.white : Color.clear, in: Capsule())
+                .fluxMediaGlass(radius: Desk.pt(20))
+                .scaleEffect(lit && !reduceMotion ? 1.06 : 1)
+                .animation(reduceMotion ? nil : .easeOut(duration: 0.14), value: lit)
             }
-            .foregroundStyle(lit ? Color.black : .white)
-            .padding(.horizontal, Desk.pt(title == nil ? 12 : 15)).frame(minWidth: Desk.pt(40), minHeight: Desk.pt(40))
-            .background(lit ? Color.white : Color.clear, in: Capsule())
-            .fluxMediaGlass(radius: Desk.pt(20))
-            .scaleEffect(lit && !reduceMotion ? 1.06 : 1)
-            .animation(reduceMotion ? nil : .easeOut(duration: 0.14), value: lit)
         }
         .buttonStyle(FluxBareButtonStyle())
-        .fluxFocus($systemFocus, id: id).id(id)
+        .fluxFocus(nativeFocus, id: id).id(id)
         .accessibilityLabel(label.title).fluxHelp(label.title)
         .accessibilityIdentifier("player-\(id)")
         #if os(tvOS) && FLUX_CATALOG_UI_TESTING
@@ -2719,7 +2914,7 @@ struct ContentView: View {
         PlayerTracksPanel(audio: playback.audioTracks, subtitles: playback.subtitleTracks,
                           subtitlesCanBeOff: playback.subtitlesCanBeOff,
                           focusedID: focusShown || playerPanelFocusNative ? playerFocusedID : nil,
-                          systemFocus: $systemFocus, accent: themeAccent,
+                          systemFocus: nativeFocus, accent: themeAccent,
                           selectAudio: { playback.selectAudioTrack($0) },
                           selectSubtitle: { playback.selectSubtitleTrack($0) },
                           close: { closePlayerTracks() })
@@ -2737,9 +2932,11 @@ struct ContentView: View {
         false
         #endif
     }
+    /// Row of a panel of the player that the keyboard has selected; the
+    /// panel reads the focus of a television by itself.
     private var playerFocusedID: String? {
         #if os(tvOS)
-        systemFocus
+        nil
         #else
         remoteNavigationActive ? focusID : nil
         #endif
@@ -2779,13 +2976,15 @@ struct ContentView: View {
             activateFocus()
             if page == .player { revealPlayerControls() }
         } label: {
-            PlayerActionLabel(symbol: label.icon, title: label.short, prominent: id == "playpause",
-                              highlighted: playerButtonFocused(id) || hoveredPlayerButton == id,
-                              active: playerButtonActive(id), tint: id == "favorite-toggle" ? .yellow : themeAccent,
-                              compact: narrowPlayer)
+            FluxFocused(id: id, logical: playerButtonFocused(id) || hoveredPlayerButton == id) { lit in
+                PlayerActionLabel(symbol: label.icon, title: label.short, prominent: id == "playpause",
+                                  highlighted: lit,
+                                  active: playerButtonActive(id), tint: id == "favorite-toggle" ? .yellow : themeAccent,
+                                  compact: narrowPlayer)
+            }
         }
         .buttonStyle(FluxBareButtonStyle())
-        .fluxFocus($systemFocus, id: id).id(id)
+        .fluxFocus(nativeFocus, id: id).id(id)
         .accessibilityLabel(label.title).fluxHelp(label.title)
         .accessibilityIdentifier("player-\(id)")
         #if os(tvOS) && FLUX_CATALOG_UI_TESTING
@@ -2824,9 +3023,11 @@ struct ContentView: View {
         default: return false
         }
     }
+    /// A key of the player selected with the keyboard; on a television the
+    /// key shows the focus of the system by itself.
     private func playerButtonFocused(_ id: String) -> Bool {
         #if os(tvOS)
-        return systemFocus == id
+        return false
         #else
         return remoteNavigationActive && focusID == id
         #endif
@@ -2873,11 +3074,15 @@ struct ContentView: View {
         if focus || target != nil {
             let id = target ?? "playpause"
             focusID = id
+            #if os(tvOS)
+            holdRemote(on: id) { page == .player && playerControlsVisible && !modalOpen && !playerCovered }
+            #else
             Task { @MainActor in
                 await Task.yield()
                 guard page == .player, playerControlsVisible, !modalOpen, !playerCovered else { return }
                 systemFocus = id
             }
+            #endif
         }
         guard playback.isPlaying, !playback.opening, playback.playbackError == nil, !playerCovered, !playerControlsHeld,
               hoveredPlayerControls.isEmpty, !scrubbing, !modalOpen, !voiceOverEnabled else { return }
@@ -2901,12 +3106,43 @@ struct ContentView: View {
     /// The bare picture takes the remote: the control that waits there comes
     /// back with this update, and can take the focus only after it.
     private func focusPicture() {
+        #if os(tvOS)
+        holdRemote(on: "cinema-controls") { page == .player && !playerControlsVisible && !playerCovered }
+        #else
         Task { @MainActor in
             await Task.yield()
             guard page == .player, !playerControlsVisible, !playerCovered else { return }
             systemFocus = "cinema-controls"
         }
+        #endif
     }
+    #if os(tvOS)
+    /// Hands the remote to a control of the player, and asks again until
+    /// that control says it has it. The system declines a request made
+    /// before the control can take it, the sooner as the Apple TV is
+    /// slow, and the binding then reads as if the request had been
+    /// granted: the remote was nowhere, on a screen that showed nothing
+    /// selected. Only for controls that report to the ledger: the keys of
+    /// the player, the picture, the titles of the catalogue.
+    private func holdRemote(on id: String, inCatalogue: Bool = false, while valid: @escaping () -> Bool) {
+        remoteHold = id
+        Task { @MainActor in
+            for _ in 0..<15 {
+                await Task.yield()
+                guard remoteHold == id, valid() else { break }
+                if FluxFocusLedger.shared.real == id { break }
+                // A lazy list has to build the cell before it can answer.
+                if inCatalogue { scrolls.pane?.scrollTo(id, anchor: .center) }
+                systemFocus = nil
+                await Task.yield()
+                guard remoteHold == id, valid() else { break }
+                systemFocus = id
+                try? await Task.sleep(nanoseconds: 100_000_000)
+            }
+            if remoteHold == id { remoteHold = nil }
+        }
+    }
+    #endif
 
     private var groupsPanel: some View {
         panel("Catégories · \(library.contentKind.frenchTitle)") {
@@ -3076,6 +3312,10 @@ struct ContentView: View {
             }
             pendingBrowseFocus = BrowseRestoreFocusRequest(revision: revision, context: context, targetID: target)
             focusID = target
+            // A return to the same remembered item does not change the
+            // selection: its cell, which a lazy list has yet to build, is
+            // brought on screen all the same.
+            scrolls.pane?.scrollTo(target, anchor: .center)
             resolveBrowseRestoreFocus()
             #else
             focusID = target
@@ -3121,7 +3361,7 @@ struct ContentView: View {
         searchFocus = false
         liveGroupSearchFocus = false
         focusID = request.targetID
-        systemFocus = request.targetID
+        sendRemote(to: request.targetID) { page == .catalogue && heldItem == nil && !modalOpen }
     }
     #endif
     private func cancelBrowsingRestore() {
@@ -3652,6 +3892,42 @@ struct ContentView: View {
     }
 }
 
+/// The window of the application. It owns the focus of the system and
+/// nothing else: a move of the remote changes that focus, which rebuilds
+/// the view that owns it. The screen under it is rebuilt by its own state.
+struct ContentView: View {
+    @FocusState private var focus: String?
+    @State private var relay = FluxFocusRelay()
+    private let screen: (FocusState<String?>.Binding, FluxFocusRelay) -> FluxScreen
+
+    #if FLUX_CATALOG_UI_TESTING
+    /// The parameters of a fixture, handed to the screen as they are.
+    init(fixtureSelection: IPTVItem? = nil, fixtureSeasons: [IPTVSeason] = [], fixtureOpenSeason: Int? = nil, fixtureEpisodeID: String? = nil,
+         fixtureOpenItem: Bool = false, fixtureSearchSubmission: String? = nil, fixtureSearchObservation: ((CatalogSearchFocusSnapshot) -> Void)? = nil,
+         fixtureOpenCountries: Bool = false, fixtureRestoreBrowsing: Bool = false, fixtureSettingsPage: PlaybackSettingsView.Page? = nil,
+         fixtureFavorites: Bool = false, fixtureHome: Bool = false, fixturePlayerSettings: Bool = false, fixtureZone: DeskZone? = nil,
+         fixtureActions: [RemoteAction] = [], fixtureZapList: Bool = false, fixtureAddSource: Bool = false, fixtureLists: Bool = false,
+         fixturePlayer: Bool = false, fixtureHoldsControls: Bool = false, fixtureTracksPanel: Bool = false, fixtureBanner: Bool = false) {
+        screen = { focus, relay in
+            FluxScreen(nativeFocus: focus, focusRelay: relay, fixtureSelection: fixtureSelection, fixtureSeasons: fixtureSeasons, fixtureOpenSeason: fixtureOpenSeason,
+                       fixtureEpisodeID: fixtureEpisodeID, fixtureOpenItem: fixtureOpenItem, fixtureSearchSubmission: fixtureSearchSubmission,
+                       fixtureSearchObservation: fixtureSearchObservation, fixtureOpenCountries: fixtureOpenCountries,
+                       fixtureRestoreBrowsing: fixtureRestoreBrowsing, fixtureSettingsPage: fixtureSettingsPage, fixtureFavorites: fixtureFavorites,
+                       fixtureHome: fixtureHome, fixturePlayerSettings: fixturePlayerSettings, fixtureZone: fixtureZone, fixtureActions: fixtureActions,
+                       fixtureZapList: fixtureZapList, fixtureAddSource: fixtureAddSource, fixtureLists: fixtureLists, fixturePlayer: fixturePlayer,
+                       fixtureHoldsControls: fixtureHoldsControls, fixtureTracksPanel: fixtureTracksPanel, fixtureBanner: fixtureBanner)
+        }
+    }
+    #else
+    init() { screen = { FluxScreen(nativeFocus: $0, focusRelay: $1) } }
+    #endif
+
+    var body: some View {
+        screen($focus, relay).equatable()
+            .onChange(of: focus) { _, id in relay.moved?(id) }
+    }
+}
+
 private extension View {
     @ViewBuilder func fluxFocus(_ binding: FocusState<String?>.Binding, id: String) -> some View {
         #if os(tvOS)
@@ -3690,7 +3966,7 @@ private extension View {
 #if os(macOS) || os(tvOS)
 // MARK: - Desk layout (Mac): dock, screens and panels drawn in the window
 
-extension ContentView {
+extension FluxScreen {
     private var themeSecond: Color {
         let p = theme.palette.second
         return Color(red: p.x, green: p.y, blue: p.z)
@@ -3765,7 +4041,7 @@ extension ContentView {
                 deskPage
                     .padding(dockInsets)
                     // The catalogue stays in place, out of focus, behind a fiche.
-                    .blur(radius: fichePresented || itemOptions != nil || library.alertMessage != nil ? 22 : 0)
+                    .blur(radius: livesBlur && (fichePresented || itemOptions != nil || library.alertMessage != nil) ? 22 : 0)
                     .allowsHitTesting(!deskCovered)
                     #if os(tvOS)
                     .disabled(deskCovered)
@@ -3774,10 +4050,10 @@ extension ContentView {
                     .transition(.opacity)
             }
             if let heldItem {
-                Color.black.opacity(fichePresented ? 0.36 : 0).ignoresSafeArea().allowsHitTesting(false)
+                Color.black.opacity(fichePresented ? (livesBlur ? 0.36 : 0.68) : 0).ignoresSafeArea().allowsHitTesting(false)
                 heldOverlay(heldItem, reader: reader).padding(ficheInsets)
                     // What stands above the fiche puts it out of focus too.
-                    .blur(radius: itemOptions != nil || library.alertMessage != nil ? 16 : 0)
+                    .blur(radius: livesBlur && (itemOptions != nil || library.alertMessage != nil) ? 16 : 0)
                     #if os(tvOS)
                     .disabled(itemOptions != nil || library.alertMessage != nil)
                     #endif
@@ -3853,7 +4129,7 @@ extension ContentView {
         FluxDock(selection: dockSelection, focusedID: shownFocusID, showsFocus: focusShown,
                  accent: themeAccent, second: themeSecond,
                  zoneRing: zoneMode && deskZoneEntry(.dock) != nil ? zoneFocus == .dock : nil,
-                 systemFocus: $systemFocus,
+                 systemFocus: nativeFocus,
                  activate: { item in pointerSelect(item.focusID); dockAction(item) },
                  openSettings: { openSettings(.dock) })
     }
@@ -3868,8 +4144,33 @@ extension ContentView {
         return [DeskZone.backID] + (deskBackPlace == nil ? [] : [DeskZone.homeID])
     }
 
+    /// What the bar at the foot of the screen is drawn from.
+    private struct BarKey: Equatable {
+        let backTarget: String
+        let home: Bool
+        let selection: Set<FluxDockItem>
+        /// Selected with the keyboard; a television shows its own focus.
+        let keyboard: String?
+        /// The zones of the screen are shown, and whether the dock is the one chosen.
+        let zone: Bool?
+        let date: Bool
+        let theme: VideoClubTheme
+        let rich: Bool
+    }
+
     /// The two flanks have the same width: the dock stays in the middle.
     private var deskBar: some View {
+        let key = BarKey(backTarget: deskBackTarget, home: deskBackPlace != nil, selection: dockSelection,
+                         keyboard: focusShown ? shownFocusID : nil,
+                         zone: zoneMode && deskZoneEntry(.dock) != nil ? zoneFocus == .dock : nil,
+                         date: deskWidth >= Desk.pt(1240), theme: theme, rich: richGlass)
+        return FluxStable(key) { deskBarBody }.equatable()
+    }
+
+    /// Rebuilt only when what it shows changes: a move of the remote in
+    /// the catalogue leaves the bar alone.
+    private var deskBarBody: some View {
+        FluxProbe.hit("bar")
         let metrics = FluxDockMetrics(.bottom)
         let plate = metrics.cell.height + metrics.platePadding * 2
         return HStack(alignment: .bottom, spacing: 0) {
@@ -3914,24 +4215,27 @@ extension ContentView {
     /// The last button of the flank answers for the whole of it, up to the dock.
     private func barButton(_ id: String, symbol: String, title: String?, help: String, fills: Bool,
                            action: @escaping () -> Void) -> some View {
-        let focused = focusShown && shownFocusID == id
+        let selected = focusShown && shownFocusID == id
         return Button { pointerSelect(id); action() } label: {
             HStack(spacing: 0) {
-                HStack(spacing: Desk.pt(7)) {
-                    Image(systemName: symbol).font(Desk.font(.callout, .bold))
-                    if let title { Text(title).font(Desk.font(.callout, .semibold)).lineLimit(1) }
+                FluxFocused(id: id, logical: selected) { focused in
+                    HStack(spacing: Desk.pt(7)) {
+                        Image(systemName: symbol).font(Desk.font(.callout, .bold))
+                        if let title { Text(title).font(Desk.font(.callout, .semibold)).lineLimit(1) }
+                    }
+                    .padding(.horizontal, Desk.pt(title == nil ? 12 : 15)).frame(minWidth: Desk.pt(40), minHeight: Desk.pt(40))
+                    .fluxGlass(radius: Desk.pt(20))
+                    .overlay(Capsule().strokeBorder(.white.opacity(focused ? 0.9 : 0), lineWidth: 2).allowsHitTesting(false))
+                    .scaleEffect(focused && !reduceMotion ? 1.06 : 1)
+                    .animation(reduceMotion ? nil : .easeOut(duration: 0.14), value: focused)
                 }
-                .padding(.horizontal, Desk.pt(title == nil ? 12 : 15)).frame(minWidth: Desk.pt(40), minHeight: Desk.pt(40))
-                .fluxGlass(radius: Desk.pt(20))
-                .overlay(Capsule().strokeBorder(.white.opacity(focused ? 0.9 : 0), lineWidth: 2).allowsHitTesting(false))
-                .scaleEffect(focused && !reduceMotion ? 1.06 : 1)
             }
             #if os(tvOS)
             .frame(maxWidth: fills ? .infinity : nil, alignment: .leading)
             .contentShape(Rectangle())
             #endif
         }
-        .buttonStyle(FluxBareButtonStyle()).fluxFocus($systemFocus, id: id).id(id)
+        .buttonStyle(FluxBareButtonStyle()).fluxFocus(nativeFocus, id: id).id(id)
         .fluxHelp(help).accessibilityLabel(help).accessibilityIdentifier(id)
     }
 
@@ -4398,7 +4702,7 @@ extension ContentView {
 #if os(macOS) || os(tvOS)
 // MARK: - Home screen (Mac): the destinations in the middle of the window
 
-extension ContentView {
+extension FluxScreen {
     /// Destination that the home screen describes: under the pointer, else
     /// held by the keyboard, else the section used last.
     private var homeItem: FluxDockItem {
@@ -4481,7 +4785,7 @@ extension ContentView {
                 // name of the destination stands above it.
                 FluxDock(selection: [], focusedID: shownFocusID, showsFocus: focusShown,
                          accent: themeAccent, second: themeSecond, hero: scale, hover: { homeHover = $0 },
-                         systemFocus: $systemFocus,
+                         systemFocus: nativeFocus,
                          activate: { item in pointerSelect(item.focusID); dockAction(item) },
                          openSettings: { openSettings(.dock) })
                     .overlay(alignment: .top) {
@@ -4543,13 +4847,13 @@ extension ContentView {
 #if os(macOS) || os(tvOS)
 // MARK: - Desk screens (Mac): navigation column, channels, preview, catalogue
 
-extension ContentView {
+extension FluxScreen {
     // MARK: Navigation column
 
     /// The same column in every section: scopes and categories, the countries
     /// of the channels, or the favourite lists of the three kinds.
     private var deskSidebar: some View {
-        VStack(alignment: .leading, spacing: Desk.pt(12)) {
+        return VStack(alignment: .leading, spacing: Desk.pt(12)) {
             if favoritesMode { favoritesSidebar }
             else if sidebarCountries && facetAvailable { countriesSidebar }
             else { scopeSidebar }
@@ -4568,7 +4872,7 @@ extension ContentView {
     private func sidebarHeading(_ title: String) -> some View {
         DeskColumnHeader(title: title, backTitle: deskBackTitle,
                          back: barFlanks ? nil : { deskLeaveScreen() }, home: barFlanks ? nil : { showHome() },
-                         focusedID: focusShown ? shownFocusID : nil, systemFocus: $systemFocus)
+                         focusedID: focusShown ? shownFocusID : nil, systemFocus: nativeFocus)
             .overlay { if !barFlanks { zoneFrame(.top, radius: Desk.pt(14), outset: 6, labelled: false) } }
     }
 
@@ -4617,6 +4921,7 @@ extension ContentView {
         .background(.black.opacity(0.15), in: RoundedRectangle(cornerRadius: Desk.pt(13)))
         #endif
         ScrollViewReader { reader in
+            let _ = (scrolls.column = reader)
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: Desk.pt(5)) {
                     liveScopeButton(kind == .live ? "Toutes les chaînes" : kind == .movie ? "Tous les films" : "Toutes les séries",
@@ -4647,13 +4952,6 @@ extension ContentView {
             }
             .onChange(of: focusID) { _, id in
                 if let id, remoteNavigationActive, deskSidebarIDs.contains(id) { reader.scrollTo(id, anchor: .center) }
-            }
-            .onChange(of: columnEntryRequest) { _, id in
-                // A lazy list knows a row it has not built yet by its
-                // category, not by the name given to the row.
-                guard let id else { return }
-                if id.hasPrefix("live-category-") { reader.scrollTo(String(id.dropFirst("live-category-".count)), anchor: .center) }
-                reader.scrollTo(id, anchor: .center)
             }
         }
     }
@@ -4692,20 +4990,21 @@ extension ContentView {
     }
 
     @ViewBuilder private var countriesSidebar: some View {
-        let focusedBack = focusID == "countries-back"
         Button { pointerSelect("countries"); closeCountries() } label: {
-            HStack(spacing: Desk.pt(8)) {
-                Image(systemName: "chevron.left").font(Desk.font(.caption, .bold))
-                Text(library.contentKind == .live ? "Pays des chaînes" : library.contentKind == .movie ? "Langue des films" : "Langue des séries")
-                    .font(Desk.font(.callout, .semibold))
-                Spacer(minLength: 0)
+            FluxFocused(id: "countries-back", logical: selectedByKeyboard("countries-back")) { focusedBack in
+                HStack(spacing: Desk.pt(8)) {
+                    Image(systemName: "chevron.left").font(Desk.font(.caption, .bold))
+                    Text(library.contentKind == .live ? "Pays des chaînes" : library.contentKind == .movie ? "Langue des films" : "Langue des séries")
+                        .font(Desk.font(.callout, .semibold))
+                    Spacer(minLength: 0)
+                }
+                .padding(.horizontal, Desk.pt(12)).padding(.vertical, Desk.pt(11))
+                .background(.white.opacity(focusedBack ? 0.14 : 0.06), in: RoundedRectangle(cornerRadius: Desk.pt(13)))
+                .overlay { RoundedRectangle(cornerRadius: Desk.pt(13)).strokeBorder(focusedBack ? .white.opacity(0.75) : .clear, lineWidth: 2).allowsHitTesting(false) }
+                .contentShape(RoundedRectangle(cornerRadius: Desk.pt(13)))
             }
-            .padding(.horizontal, Desk.pt(12)).padding(.vertical, Desk.pt(11))
-            .background(.white.opacity(focusedBack ? 0.14 : 0.06), in: RoundedRectangle(cornerRadius: Desk.pt(13)))
-            .overlay { RoundedRectangle(cornerRadius: Desk.pt(13)).strokeBorder(focusedBack ? .white.opacity(0.75) : .clear, lineWidth: 2).allowsHitTesting(false) }
-            .contentShape(RoundedRectangle(cornerRadius: Desk.pt(13)))
         }
-        .buttonStyle(FluxBareButtonStyle()).fluxFocus($systemFocus, id: "countries-back").id("countries-back")
+        .buttonStyle(FluxBareButtonStyle()).fluxFocus(nativeFocus, id: "countries-back").id("countries-back")
         .accessibilityLabel("Revenir aux catégories")
         ScrollViewReader { reader in
             ScrollView {
@@ -4727,8 +5026,26 @@ extension ContentView {
     private func countryRow(code: String?, name: String, count: Int) -> some View {
         let id = code.map { "country-\($0)" } ?? "country-all"
         let selected = library.countryCode == code
-        let focused = focusID == id
+        let key = CountryKey(code: code, name: name, count: count, selected: selected, keyboard: selectedByKeyboard(id),
+                             live: library.contentKind == .live, theme: theme)
+        return FluxStable(key) { countryRowBody(code: code, name: name, count: count, id: id, key: key) }.equatable()
+    }
+
+    /// What a row of the countries or of the languages is drawn from.
+    private struct CountryKey: Equatable {
+        let code: String?
+        let name: String
+        let count: Int
+        let selected: Bool
+        let keyboard: Bool
+        let live: Bool
+        let theme: VideoClubTheme
+    }
+
+    private func countryRowBody(code: String?, name: String, count: Int, id: String, key: CountryKey) -> some View {
+        let selected = key.selected
         return Button { pointerSelect(id); selectLiveCountry(code) } label: {
+          FluxFocused(id: id, logical: key.keyboard) { focused in
             HStack(spacing: Desk.pt(10)) {
                 if library.contentKind == .live {
                     Text(flag(code)).font(Desk.font(.title3)).frame(width: Desk.pt(30))
@@ -4748,10 +5065,11 @@ extension ContentView {
             .background(selected ? themeAccent.opacity(0.16) : .white.opacity(focused ? 0.09 : 0), in: RoundedRectangle(cornerRadius: Desk.pt(13)))
             .overlay { RoundedRectangle(cornerRadius: Desk.pt(13)).strokeBorder(focused ? .white.opacity(0.75) : .clear, lineWidth: 2).allowsHitTesting(false) }
             .contentShape(RoundedRectangle(cornerRadius: Desk.pt(13)))
+          }
         }
         // The focus binding belongs to the button itself: nothing may stand
         // between them, or the remote cannot be sent to the row.
-        .buttonStyle(FluxBareButtonStyle()).fluxFocus($systemFocus, id: id).id(id)
+        .buttonStyle(FluxBareButtonStyle()).fluxFocus(nativeFocus, id: id).id(id)
         .accessibilityIdentifier("live-country-option-\(code ?? "all")")
         .accessibilityLabel(name)
         .accessibilityValue("\(count) \(library.contentKind == .live ? "chaînes" : "titres")\(selected ? ", sélectionné" : "")")
@@ -4961,7 +5279,7 @@ extension ContentView {
         return HStack(spacing: Desk.pt(10)) {
             // A remote selects the field as a control; OK then places the cursor in it.
             Image(systemName: "magnifyingglass").foregroundStyle(selected ? .primary : .secondary)
-                .fluxFocus($systemFocus, id: DeskZone.searchID).id(DeskZone.searchID)
+                .fluxFocus(nativeFocus, id: DeskZone.searchID).id(DeskZone.searchID)
             TextField(prompt, text: $library.search)
                 .textFieldStyle(.plain)
                 .focused($searchFocus).onSubmit { searchFocus = false; focusFirstItem() }
@@ -4985,7 +5303,54 @@ extension ContentView {
     /// catalogue starts as high as it can: with what the screen holds under
     /// its name, then without it, and on two lines only in a narrow column.
     private var deskTopBand: some View {
-        ViewThatFits(in: .horizontal) {
+        let preset = favoritesMode ? library.selectedPreset : nil
+        let bandIDs: Set<String> = [DeskZone.searchID, "page-prev", "page-next", "reload", "favorite-rename", "favorite-rename-save",
+                                    "favorite-rename-cancel", "favorite-delete", "favorite-delete-cancel", "favorite-delete-confirm"]
+        let key = TopBandKey(title: deskTitle, subtitle: deskSubtitle, search: library.search, searching: searchFocus,
+                             kind: library.contentKind, pager: deskPagerInBand, page: catalogPage, pages: catalogPageCount,
+                             reloadable: !(library.selectedSourceID == nil || library.isLoading),
+                             presetID: preset?.id, presetName: preset?.name, presetLocked: preset?.isDefault ?? true,
+                             renaming: renamingList, confirming: confirmingListDeletion, listName: newListName,
+                             listInvalid: listNameInvalid, naming: listNameFocus,
+                             keyboard: focusShown ? shownFocusID.flatMap { bandIDs.contains($0) ? $0 : nil } : nil,
+                             zone: zoneMode && deskZoneEntry(.top) != nil ? zoneFocus == .top : nil,
+                             theme: theme, rich: richGlass)
+        return FluxStable(key) { deskTopBandBody }.equatable()
+    }
+
+    /// What the line above the catalogue is drawn from.
+    private struct TopBandKey: Equatable {
+        let title: String
+        let subtitle: String
+        let search: String
+        let searching: Bool
+        let kind: IPTVMediaKind
+        let pager: Bool
+        let page: Int
+        let pages: Int
+        let reloadable: Bool
+        /// A list of favourites on screen, and what can be done with it.
+        let presetID: String?
+        let presetName: String?
+        let presetLocked: Bool
+        let renaming: Bool
+        let confirming: Bool
+        let listName: String
+        let listInvalid: Bool
+        let naming: Bool
+        /// Selected with the keyboard; a television shows its own focus.
+        let keyboard: String?
+        let zone: Bool?
+        let theme: VideoClubTheme
+        let rich: Bool
+    }
+
+    /// Rebuilt only when what it shows changes. It measures up to three
+    /// layouts to choose one: a move of the remote in the catalogue must
+    /// not ask it again.
+    private var deskTopBandBody: some View {
+        FluxProbe.hit("band")
+        return ViewThatFits(in: .horizontal) {
             deskTopLine(subtitle: true)
             deskTopLine(subtitle: false)
             VStack(alignment: .leading, spacing: Desk.pt(12)) {
@@ -4999,7 +5364,7 @@ extension ContentView {
         .deskFocusSection()
     }
     private func deskTopLine(subtitle: Bool) -> some View {
-        HStack(alignment: .center, spacing: Desk.pt(14)) {
+        return HStack(alignment: .center, spacing: Desk.pt(14)) {
             // The title takes its own width and no more: what remains of
             // the line is the search.
             deskTitleBlock(subtitle: subtitle).frame(maxWidth: Desk.pt(290), alignment: .leading)
@@ -5069,23 +5434,60 @@ extension ContentView {
         .fluxGlass(radius: Desk.pt(25))
     }
 
+    /// What a channel of the list is drawn from.
+    private struct ChannelKey: Equatable {
+        let item: IPTVItem
+        let number: Int
+        /// The full effects: the focus is animated.
+        let rich: Bool
+        let favorite: Bool
+        /// Selected with the keyboard; a television shows its own focus.
+        let selected: Bool
+        let theme: VideoClubTheme
+        let reduceMotion: Bool
+    }
+
     private func liveDeskChannel(_ item: IPTVItem) -> some View {
-        Button {
+        let key = ChannelKey(item: item, number: (visibleSlice.index(of: item.id) ?? 0) + 1, rich: richGlass, favorite: library.isFavorite(item),
+                             selected: selectedByKeyboard(item.id), theme: theme, reduceMotion: reduceMotion)
+        #if os(tvOS)
+        // The row under the remote grows over its neighbours.
+        return FluxRaised { report in
+            FluxStable(key) { liveDeskChannelBody(item, key: key, report: report) }.equatable()
+        }
+        #else
+        return FluxStable(key) { liveDeskChannelBody(item, key: key, report: { _ in }) }.equatable()
+            .zIndex(key.selected ? 1 : 0)
+        #endif
+    }
+
+    /// Rebuilt only when `key` changes: a move of the remote leaves every
+    /// row alone but the two it concerns, which read the focus themselves.
+    private func liveDeskChannelBody(_ item: IPTVItem, key: ChannelKey, report: @escaping (Bool) -> Void) -> some View {
+        FluxProbe.hit("channel")
+        return Button {
             guard !modalOpen else { return }
             // The pointer has already selected the row under it: a click
             // watches that channel. A touch selects first, then watches.
             if previewID == item.id { selectCard(item) }
             else { pointerSelect(item.id); setPreview(item) }
         } label: {
-            LiveTVChannelRow(item: item, number: (visibleSlice.index(of: item.id) ?? 0) + 1,
-                             favorite: library.isFavorite(item), highlighted: focusID == item.id, accent: themeAccent)
+            FluxFocused(id: item.id, logical: key.selected) { highlighted in
+                LiveTVChannelRow(item: item, number: key.number, favorite: key.favorite, highlighted: highlighted, accent: themeAccent)
+                    #if os(tvOS)
+                    .animation(key.reduceMotion || !key.rich ? nil : .easeOut(duration: 0.12), value: highlighted)
+                    #else
+                    .animation(key.reduceMotion ? nil : .spring(response: 0.26, dampingFraction: 0.8), value: highlighted)
+                    #endif
+            }
+            #if os(tvOS)
+            .background(DeskFocusReport(report: report))
+            #endif
         }
-        .buttonStyle(FluxBareButtonStyle()).fluxFocus($systemFocus, id: item.id).id(item.id)
+        .buttonStyle(FluxBareButtonStyle()).fluxFocus(nativeFocus, id: item.id).id(item.id)
         .accessibilityLabel(item.name)
         .accessibilityHint("Le pointeur affiche l’aperçu. Cliquer pour regarder. Appui long pour les favoris.")
         .accessibilityIdentifier("live-channel-\(item.id)")
-        .zIndex(focusID == item.id ? 1 : 0)
-        .animation(reduceMotion ? nil : .spring(response: 0.26, dampingFraction: 0.8), value: focusID == item.id)
         #if os(tvOS)
         // The remote selects a channel by resting on it; a long press opens its lists.
         .simultaneousGesture(LongPressGesture(minimumDuration: 0.65).onEnded { _ in chooseFavorites(item) })
@@ -5117,7 +5519,7 @@ extension ContentView {
     #endif
 
     private var liveDeskPreviewPanel: some View {
-        VStack(alignment: .leading, spacing: Desk.pt(14)) {
+        return VStack(alignment: .leading, spacing: Desk.pt(14)) {
             if let item = previewItem, item.kind == .live, visibleSlice.index(of: item.id) != nil {
                 #if os(tvOS)
                 // A remote has Regarder just under the picture: a picture that
@@ -5183,16 +5585,20 @@ extension ContentView {
                         .padding(.horizontal, Desk.pt(18)).padding(.vertical, Desk.pt(11))
                         .fluxNavigationGlass(selected: true, tint: themeAccent, radius: Desk.pt(17))
                         .overlay {
-                            RoundedRectangle(cornerRadius: Desk.pt(17)).strokeBorder(focusID == "live-watch" && focusShown ? .white.opacity(0.9) : .clear, lineWidth: 2)
-                                .allowsHitTesting(false)
+                            FluxFocused(id: "live-watch", logical: selectedByKeyboard("live-watch") && focusShown) { focused in
+                                RoundedRectangle(cornerRadius: Desk.pt(17)).strokeBorder(focused ? .white.opacity(0.9) : .clear, lineWidth: 2)
+                            }
+                            .allowsHitTesting(false)
                         }
-                }.buttonStyle(FluxBareButtonStyle()).fluxFocus($systemFocus, id: "live-watch").id("live-watch")
+                }.buttonStyle(FluxBareButtonStyle()).fluxFocus(nativeFocus, id: "live-watch").id("live-watch")
                     .accessibilityIdentifier("live-watch")
                 navButton("Favoris", icon: library.isFavorite(item) ? "star.fill" : "star", id: "live-favorite") { chooseFavorites(item) }
-                if livePreview.player != nil {
-                    navButton(livePreview.isMuted ? "Activer le son de l’aperçu" : "Couper le son de l’aperçu",
-                              icon: livePreview.isMuted ? "speaker.slash.fill" : "speaker.wave.2.fill",
-                              id: "live-preview-mute", iconOnly: true) { livePreview.toggleMuted() }
+                LiveTVPreviewObserver(preview: livePreview) { preview in
+                    if preview.player != nil {
+                        navButton(preview.isMuted ? "Activer le son de l’aperçu" : "Couper le son de l’aperçu",
+                                  icon: preview.isMuted ? "speaker.slash.fill" : "speaker.wave.2.fill",
+                                  id: "live-preview-mute", iconOnly: true) { preview.toggleMuted() }
+                    }
                 }
             }
             Divider().overlay(.white.opacity(0.14))

@@ -37,6 +37,148 @@ struct DeskFocusStyle: ButtonStyle {
     }
 }
 
+/// A part of a screen that is rebuilt only when what it shows changes.
+/// The screen keeps its state in one place, and any change of that state
+/// rebuilds all of it: a move of the remote used to rebuild every sleeve,
+/// row and button five times. A part gives here the values it is drawn
+/// from; it is left alone while they are the same. Its actions read the
+/// state when they run, not when they were built.
+struct FluxStable<Key: Equatable, Content: View>: View, Equatable {
+    let key: Key
+    let content: () -> Content
+
+    init(_ key: Key, @ViewBuilder content: @escaping () -> Content) {
+        self.key = key
+        self.content = content
+    }
+
+    static func == (left: Self, right: Self) -> Bool { left.key == right.key }
+    var body: some View { content() }
+}
+
+/// What a control shows when it is selected. A keyboard moves a selection
+/// that the screen keeps. The remote of a television moves the focus of the
+/// system, which each control reads from itself: a move then redraws the
+/// two controls it concerns, and shows where the remote really is.
+struct FluxFocused<Content: View>: View {
+    /// Name under which the control says that it really has the remote,
+    /// for a request that waits for it.
+    var id: String? = nil
+    /// The selection of a keyboard; a television does not read it.
+    let logical: Bool
+    @ViewBuilder let content: (Bool) -> Content
+    @Environment(\.isFocused) private var isFocused
+
+    var body: some View {
+        #if os(tvOS)
+        if let id {
+            content(isFocused)
+                .onChange(of: isFocused, initial: true) { _, now in FluxFocusLedger.shared.report(id, focused: now) }
+                .onDisappear { FluxFocusLedger.shared.report(id, focused: false) }
+        } else {
+            content(isFocused)
+        }
+        #else
+        content(logical)
+        #endif
+    }
+}
+
+/// What really has the focus of a remote, told by the controls themselves.
+/// A focus that was asked for reads as granted even when the system has
+/// declined it, which it does for a control that cannot take it yet: a
+/// request is repeated until the control it names is found here.
+@MainActor final class FluxFocusLedger {
+    static let shared = FluxFocusLedger()
+    private(set) var real: String?
+
+    func report(_ id: String, focused: Bool) {
+        if focused { real = id } else if real == id { real = nil }
+    }
+}
+
+/// Draws above its neighbours the control that has the focus of a remote:
+/// what it shows grows over them. The control tells it by itself, and the
+/// list that holds it is not rebuilt.
+struct FluxRaised<Content: View>: View {
+    @ViewBuilder let content: (_ focused: @escaping (Bool) -> Void) -> Content
+    @State private var raised = false
+
+    var body: some View {
+        content { focused in if raised != focused { raised = focused } }
+            .zIndex(raised ? 1 : 0)
+    }
+}
+
+/// What has the focus of a remote grows, and leans with the thumb that
+/// rests on the remote, as the tiles of the system do. Only its layer
+/// moves: nothing is drawn again, whatever the television. The effect of
+/// the system itself draws the tile again for every picture it shows,
+/// which cost more than all the rest of a move of the remote.
+struct FluxFocusLean: ViewModifier {
+    let focused: Bool
+    var grow: CGFloat = 1.06
+    /// Degrees and points when the thumb is at the edge of the remote.
+    var angle: Double = 7
+    var shift: CGFloat = 8
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @AppStorage(FluxAppearance.glassKey) private var rich = FluxAppearance.richDefault
+    #if os(tvOS)
+    @State private var lean: CGSize = .zero
+    #endif
+
+    func body(content: Content) -> some View {
+        #if os(tvOS)
+        content
+            .rotation3DEffect(.degrees(Double(lean.width) * angle), axis: (x: 0, y: 1, z: 0), perspective: 0.45)
+            .rotation3DEffect(.degrees(Double(-lean.height) * angle), axis: (x: 1, y: 0, z: 0), perspective: 0.45)
+            .offset(x: lean.width * shift, y: lean.height * shift)
+            .scaleEffect(focused && !reduceMotion ? grow : 1)
+            // Each picture of an animation walks the whole screen: a
+            // slow Apple TV shows the focus at once instead.
+            .animation(reduceMotion || !rich ? nil : .easeOut(duration: 0.14), value: focused)
+            .onReceive(focused && !reduceMotion ? RemoteTouch.shared.leans : RemoteTouch.shared.still) { value in
+                // The layer follows the thumb at once, and comes back
+                // gently when the thumb lifts.
+                if value == .zero { withAnimation(rich ? .easeOut(duration: 0.22) : nil) { lean = .zero } }
+                else { lean = value }
+            }
+            .onChange(of: focused) { _, now in
+                if !now, lean != .zero { withAnimation(rich ? .easeOut(duration: 0.14) : nil) { lean = .zero } }
+            }
+        #else
+        content
+        #endif
+    }
+}
+
+extension View {
+    func fluxFocusLean(_ focused: Bool, grow: CGFloat = 1.06, angle: Double = 7, shift: CGFloat = 8) -> some View {
+        modifier(FluxFocusLean(focused: focused, grow: grow, angle: angle, shift: shift))
+    }
+}
+
+/// The handles that scroll the lists of a screen, kept for requests made
+/// when nothing is being rebuilt. A list observed a counter to learn that
+/// it had to move: its observer sits in the part of the screen that is
+/// built when the list is, and that part is not built again for a state
+/// it alone reads. The request is made to the list itself.
+@MainActor final class FluxScrollHandles {
+    /// The catalogue of the screen.
+    var pane: ScrollViewProxy?
+    /// The navigation column.
+    var column: ScrollViewProxy?
+    /// The list of channels over the picture.
+    var channels: ScrollViewProxy?
+}
+
+/// Hands the moves of the focus of the system to a screen that does not
+/// own it. The view that owns a focus is rebuilt each time it moves, and
+/// only that view is told: the window owns it, and tells the screen here.
+@MainActor final class FluxFocusRelay {
+    var moved: ((String?) -> Void)?
+}
+
 /// Tells whether the control it is drawn in really has the focus. A request
 /// the system declined still reads as granted in a focus binding: the
 /// control itself is the one to ask.
@@ -52,9 +194,46 @@ struct DeskFocusReport: View {
     }
 }
 
+#if FLUX_CATALOG_UI_TESTING
+/// Counts what a screen rebuilds, for the bench: a move of the remote must
+/// not rebuild the whole catalogue, and a flow checks that it does not.
+/// It counts nothing in the application.
+enum FluxProbe {
+    nonisolated(unsafe) static var counts: [String: Int] = [:]
+    @inline(__always) static func hit(_ name: String) { counts[name, default: 0] += 1 }
+}
+#else
+enum FluxProbe {
+    @inline(__always) static func hit(_ name: String) {}
+}
+#endif
+
 /// System glass is reserved for navigation and transient playback controls.
 enum FluxAppearance {
     static let glassKey = "fluxiptv.appearance.glass.v2"
+    /// Whether the full effects are on until the user says otherwise: the
+    /// glass of the system, what is put out of focus behind a panel, the
+    /// animations of the focus. An Apple TV HD and the first Apple TV 4K
+    /// draw them too slowly for a remote that is held down: they start
+    /// with the dark surfaces and the immediate focus, which cost them
+    /// next to nothing. The setting stays theirs to turn on.
+    static let richDefault: Bool = {
+        #if os(tvOS)
+        var system = utsname()
+        uname(&system)
+        let machine = withUnsafeBytes(of: &system.machine) { String(decoding: $0.prefix { $0 != 0 }, as: UTF8.self) }
+        // A simulator names the model it stands for in its environment.
+        let model = machine.hasPrefix("AppleTV") ? machine
+            : ProcessInfo.processInfo.environment["SIMULATOR_MODEL_IDENTIFIER"] ?? machine
+        // "AppleTV5,3" is the Apple TV HD and "AppleTV6,2" the first
+        // Apple TV 4K; the second one, "AppleTV11,1", has the chip the
+        // system itself asks for its glass.
+        guard model.hasPrefix("AppleTV"), let generation = Int(model.dropFirst(7).prefix { $0.isNumber }) else { return true }
+        return generation >= 11
+        #else
+        return true
+        #endif
+    }()
     static let artworkKey = "fluxiptv.appearance.artwork"
     static let wallpaperKey = "fluxiptv.appearance.wallpaper"
     static let intensityKey = "fluxiptv.appearance.wallpaperIntensity"
@@ -70,7 +249,7 @@ enum FluxAppearance {
 }
 
 private struct FluxGlassChrome: ViewModifier {
-    @AppStorage(FluxAppearance.glassKey) private var richGlass = true
+    @AppStorage(FluxAppearance.glassKey) private var richGlass = FluxAppearance.richDefault
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     let radius: CGFloat
 
@@ -91,7 +270,7 @@ private struct FluxGlassChrome: ViewModifier {
 /// local dimming layer keeps the white controls legible even over a bright shot.
 /// The system remains responsible for the refraction and live material.
 private struct FluxMediaGlass: ViewModifier {
-    @AppStorage(FluxAppearance.glassKey) private var richGlass = true
+    @AppStorage(FluxAppearance.glassKey) private var richGlass = FluxAppearance.richDefault
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     let radius: CGFloat
 
@@ -114,7 +293,7 @@ private struct FluxMediaGlass: ViewModifier {
 /// Independent navigation capsules reveal the room between controls. Selected
 /// destinations use a tinted native glass; other destinations stay clear.
 private struct FluxNavigationGlass: ViewModifier {
-    @AppStorage(FluxAppearance.glassKey) private var richGlass = true
+    @AppStorage(FluxAppearance.glassKey) private var richGlass = FluxAppearance.richDefault
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     let selected: Bool
     let tint: Color

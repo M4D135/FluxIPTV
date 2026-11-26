@@ -15,6 +15,16 @@ struct MediaDetailHero {
 /// A readable screen for one selected title and its physical sleeve. The
 /// artwork is static: this screen creates no video session or catalogue grid.
 struct MediaDetailPresentation: View {
+    /// The full effects: without them a slow Apple TV is spared the blurred
+    /// cover and the wide shadow of the sheet, drawn again while it opens.
+    @AppStorage(FluxAppearance.glassKey) private var richEffects = FluxAppearance.richDefault
+    private var softens: Bool {
+        #if os(tvOS)
+        richEffects
+        #else
+        true
+        #endif
+    }
     let item: IPTVItem
     let details: IPTVDetails
     let close: () -> Void
@@ -865,14 +875,16 @@ extension MediaDetailPresentation {
             .frame(width: sheet.width, height: sheet.height, alignment: .topLeading)
             .background {
                 // The cover lends its colours to the sheet.
-                ArtworkView(url: item.logoURL, fit: false) { Color.clear }
-                    .frame(width: sheet.width, height: sheet.height)
-                    .blur(radius: 70).opacity(0.20)
-                    .clipShape(shape).allowsHitTesting(false).accessibilityHidden(true)
+                if softens {
+                    ArtworkView(url: item.logoURL, fit: false) { Color.clear }
+                        .frame(width: sheet.width, height: sheet.height)
+                        .blur(radius: 70).opacity(0.20)
+                        .clipShape(shape).allowsHitTesting(false).accessibilityHidden(true)
+                }
             }
             .background(.black.opacity(0.18), in: shape)
             .fluxGlass(radius: Desk.pt(34))
-            .shadow(color: .black.opacity(0.5), radius: 36, x: 0, y: 20)
+            .shadow(color: .black.opacity(softens ? 0.5 : 0), radius: softens ? 36 : 0, x: 0, y: softens ? 20 : 0)
             // A television gives its focus to nothing invisible: there the
             // sheet starts just above nothing, so that its controls can take
             // the remote as soon as the catalogue under it stops answering.

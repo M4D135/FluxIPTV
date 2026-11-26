@@ -83,7 +83,7 @@ struct PlaybackSettingsView: View {
     @State private var sourceEditor: SourceEditor?
     @State private var removingSource: IPTVSource?
     @State private var confirmingClear = false
-    @AppStorage(FluxAppearance.glassKey) private var glass = true
+    @AppStorage(FluxAppearance.glassKey) private var glass = FluxAppearance.richDefault
     @AppStorage(FluxAppearance.artworkKey) private var artwork = true
     @AppStorage(FluxAppearance.densityKey) private var density = "cinema"
     @AppStorage(LiveTVPreviewDelay.storageKey) private var livePreviewDelay: LiveTVPreviewDelay = LiveTVPreviewDelay.platformDefault
@@ -705,10 +705,11 @@ struct PlaybackSettingsView: View {
                     #endif
                 }
                 #if os(tvOS)
-                DeskToggle(title: FluxAppearance.nativeAvailable ? "Liquid Glass" : "Transparence légère", isOn: $glass)
-                Text(FluxAppearance.nativeAvailable
-                     ? "Effet Apple natif sur les panneaux et les commandes. Désactivez-le pour revenir aux surfaces sombres, plus légères à afficher."
-                     : "Décors conservés, surfaces sombres et transitions animées.").font(Desk.font(.caption)).foregroundStyle(.secondary)
+                DeskToggle(title: FluxAppearance.nativeAvailable ? "Effets complets (Liquid Glass)" : "Effets complets", isOn: $glass)
+                Text(FluxAppearance.richDefault
+                     ? "Verre Apple sur les panneaux, flou derrière une fiche et focus animé. Coupez-les si la télécommande manque de fluidité : surfaces sombres et focus immédiat, bien plus légers à afficher."
+                     : "Verre Apple sur les panneaux, flou derrière une fiche et focus animé. Coupés au départ sur cette Apple TV, dont la puce les affiche trop lentement : surfaces sombres et focus immédiat gardent la télécommande fluide.")
+                    .font(Desk.font(.caption)).foregroundStyle(.secondary)
                 #else
                 DeskToggle(title: "Liquid Glass", isOn: $glass)
                 Text(FluxAppearance.nativeAvailable ? "Effet Apple natif disponible." : "Matériau translucide système sur cette version d’OS.").font(Desk.font(.caption)).foregroundStyle(.secondary)

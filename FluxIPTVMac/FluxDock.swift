@@ -114,7 +114,17 @@ struct FluxDock: View {
     @AppStorage(FluxDockTheme.storageKey) private var theme: FluxDockTheme = .defaultValue
     @AppStorage(FluxDockItem.orderKey) private var storedOrder = ""
     @AppStorage(FluxDockItem.magnifyKey) private var magnifies = true
+    @AppStorage(FluxAppearance.glassKey) private var richEffects = FluxAppearance.richDefault
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// The icons slide and grow over several pictures, each of which lays
+    /// the bar out again: a slow Apple TV shows the selected one at once.
+    private var still: Bool {
+        #if os(tvOS)
+        reduceMotion || !richEffects
+        #else
+        reduceMotion
+        #endif
+    }
 
     @State private var pointer = 0.0
     @State private var hovering = false
@@ -155,8 +165,17 @@ struct FluxDock: View {
         case .trailing: return EdgeInsets(top: room, leading: room, bottom: room, trailing: 0)
         }
     }
+    /// Destination drawn as selected. The bar reads the focus of a television
+    /// by itself: the screen behind it is not rebuilt when the remote moves.
+    private var shownID: String? {
+        #if os(tvOS)
+        systemFocus.wrappedValue
+        #else
+        focusedID
+        #endif
+    }
     /// A remote has no pointer: the destination it selects is the one that grows.
-    private var focusIndex: Int? { focusedID.flatMap { id in order.firstIndex { $0.focusID == id } } }
+    private var focusIndex: Int? { shownID.flatMap { id in order.firstIndex { $0.focusID == id } } }
     private var magnification: Double {
         #if os(tvOS)
         return focusIndex != nil && magnifies && !reduceMotion ? 1 : 0
@@ -189,10 +208,10 @@ struct FluxDock: View {
                               }
                       },
                       cell: { item in cell(item, items: items) })
-            .animation(reduceMotion ? nil : .spring(response: 0.24, dampingFraction: 0.8), value: magnification)
+            .animation(still ? nil : .spring(response: 0.24, dampingFraction: 0.8), value: magnification)
             #if os(tvOS)
             // The icons slide as the selection moves along the bar.
-            .animation(reduceMotion ? nil : .spring(response: 0.28, dampingFraction: 0.82), value: focusIndex)
+            .animation(still ? nil : .spring(response: 0.28, dampingFraction: 0.82), value: focusIndex)
             .padding(growthInsets)
             #else
             .coordinateSpace(name: "flux-dock")
@@ -246,13 +265,18 @@ struct FluxDock: View {
 
     private func cell(_ item: FluxDockItem, items: [FluxDockItem]) -> some View {
         let id = item.focusID
-        let focused = showsFocus && focusedID == id
+        let focused = showsFocus && shownID == id
         return Button {
             guard !suppressActivation else { return }
             activate(item)
         } label: {
             FluxDockCell(item: item, selected: selection.contains(item), focused: focused,
                          theme: theme, position: placement, metrics: metrics)
+                #if os(tvOS)
+                // The magnifier already grows the icon: it only follows the thumb.
+                .fluxFocusLean(focused, grow: 1, angle: 8, shift: 5)
+                .background(DeskFocusReport { FluxFocusLedger.shared.report(id, focused: $0) })
+                #endif
         }
         .buttonStyle(FluxBareButtonStyle())
         #if os(tvOS)

@@ -50,14 +50,16 @@ import Foundation
         }
     }
 
+    /// A published value written again tells every view that watches this
+    /// preview to rebuild: a preview already stopped is left as it is.
     func stop() {
         generation = UUID()
         request = nil
-        previewedItemID = nil
+        if previewedItemID != nil { previewedItemID = nil }
         delayTask?.cancel(); delayTask = nil
         releasePlayer()
-        isMuted = true
-        phase = .idle
+        if !isMuted { isMuted = true }
+        if phase != .idle { phase = .idle }
     }
 
     func markUnavailable(id: String) {
@@ -163,7 +165,7 @@ import Foundation
         let cleanup = playerCleanup
         playerCleanup = nil
         cleanup?()
-        player = nil
+        if player != nil { player = nil }
     }
 
     deinit {

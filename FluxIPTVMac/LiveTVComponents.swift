@@ -190,6 +190,18 @@ struct LiveTVChannelRow: View {
         }
         .padding(.horizontal, 12 * k).padding(.vertical, 9 * k)
         .frame(maxWidth: .infinity, minHeight: 64 * k, alignment: .leading)
+        #if os(tvOS)
+        // The plate and the ring of the focus are drawn once, then shown
+        // or hidden: a colour or a width that changes is drawn again for
+        // every picture of its animation, and a remote runs down a list.
+        .background(shape.fill(accent.opacity(0.34)).opacity(highlighted ? 1 : 0))
+        .background(Color.black.opacity(0.28), in: shape)
+        .overlay { shape.strokeBorder(Color.white.opacity(0.10), lineWidth: 0.8).allowsHitTesting(false) }
+        .overlay { shape.strokeBorder(Color.white.opacity(0.88), lineWidth: 2).opacity(highlighted ? 1 : 0).allowsHitTesting(false) }
+        .contentShape(shape)
+        // The row under the remote grows a little and follows the thumb.
+        .fluxFocusLean(highlighted, grow: 1.04, angle: 2, shift: 5)
+        #else
         .background(highlighted ? accent.opacity(0.26) : Color.black.opacity(0.28), in: shape)
         .overlay {
             shape.strokeBorder(highlighted ? Color.white.opacity(0.88) : Color.white.opacity(0.10), lineWidth: highlighted ? 2 : 0.8)
@@ -198,7 +210,17 @@ struct LiveTVChannelRow: View {
         .contentShape(shape)
         .scaleEffect(highlighted && !reduceMotion ? 1.045 : 1)
         .shadow(color: .black.opacity(highlighted ? 0.38 : 0), radius: 12, x: 0, y: 8)
+        #endif
     }
+}
+
+/// What depends on the preview of a channel, read here so that the screen
+/// around it is not rebuilt each time that preview changes state.
+struct LiveTVPreviewObserver<Content: View>: View {
+    @ObservedObject var preview: LiveTVPreviewController
+    @ViewBuilder let content: (LiveTVPreviewController) -> Content
+
+    var body: some View { content(preview) }
 }
 
 struct LiveTVPreviewScreen: View {

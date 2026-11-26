@@ -5,11 +5,25 @@ import Foundation
 public enum CasePackageFormat: String, CaseIterable, Sendable {
     case vhs, dvd
 
+    /// The first group of exactly four digits that reads as a year, from
+    /// 1800 to 2199, decides. Read by hand: every sleeve of a catalogue
+    /// asks, and a regular expression built for each of them cost more
+    /// than the rest of the sleeve.
     public static func resolve(year: String?) -> CasePackageFormat {
-        guard let year,
-              let range = year.range(of: #"(?<![0-9])(?:18|19|20|21)[0-9]{2}(?![0-9])"#, options: .regularExpression),
-              let value = Int(year[range]) else { return .dvd }
-        return value < 2000 ? .vhs : .dvd
+        guard let year else { return .dvd }
+        var value = 0, digits = 0
+        func found() -> Bool { digits == 4 && (1800...2199).contains(value) }
+        for byte in year.utf8 {
+            if (48...57).contains(byte) {
+                digits += 1
+                // A longer run is not a year; its value no longer matters.
+                if digits <= 4 { value = value * 10 + Int(byte - 48) }
+            } else {
+                if found() { return value < 2000 ? .vhs : .dvd }
+                value = 0; digits = 0
+            }
+        }
+        return found() && value < 2000 ? .vhs : .dvd
     }
 
     public var title: String { self == .vhs ? "VHS" : "DVD" }

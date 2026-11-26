@@ -350,3 +350,41 @@ private struct RemotePressStyle: ButtonStyle {
         if let p = c.microGamepad { p.dpad.valueChangedHandler = nil; for b in [p.buttonA,p.buttonX,p.buttonMenu] { b.pressedChangedHandler = nil } }
     }
 }
+
+#if os(tvOS)
+/// Where the thumb rests on the remote of an Apple TV, counted from the
+/// place it landed: what has the focus leans with it, as the tiles of the
+/// system do. It is only read: the focus engine keeps every swipe and click.
+final class RemoteTouch: @unchecked Sendable {
+    static let shared = RemoteTouch()
+    /// Offset of the thumb on each axis, from -1 to 1, down and right being
+    /// positive; zero when it lifts.
+    let leans: AnyPublisher<CGSize, Never>
+    /// For what does not have the focus: nothing ever comes.
+    let still: AnyPublisher<CGSize, Never> = Empty(completeImmediately: false).eraseToAnyPublisher()
+    private let subject = PassthroughSubject<CGSize, Never>()
+    private var observer: NSObjectProtocol?
+
+    private init() {
+        leans = subject.eraseToAnyPublisher()
+        observer = NotificationCenter.default.addObserver(forName: .GCControllerDidConnect, object: nil, queue: .main) { [weak self] note in
+            if let controller = note.object as? GCController { self?.attach(controller) }
+        }
+        GCController.controllers().forEach(attach)
+    }
+
+    private func attach(_ controller: GCController) {
+        guard let pad = controller.microGamepad else { return }
+        // Counted from where the thumb landed, back to zero when it lifts.
+        pad.reportsAbsoluteDpadValues = false
+        pad.dpad.valueChangedHandler = { [weak self] _, x, y in
+            self?.subject.send(CGSize(width: CGFloat(x), height: CGFloat(-y)))
+        }
+    }
+
+    #if FLUX_CATALOG_UI_TESTING
+    /// A bench has no thumb: it places one.
+    func place(_ lean: CGSize) { subject.send(lean) }
+    #endif
+}
+#endif

@@ -4,7 +4,7 @@ Application native SwiftUI pour macOS, iOS et tvOS.
 
 **La 0.9.0 donne au Mac et à l’Apple TV la même interface de bureau.** L’application s’ouvre sur un accueil où le dock occupe le milieu de l’écran ; il se range ensuite en bas, au centre, comme le Dock de macOS, sous les colonnes qui accompagnent les trois espaces. La télévision se lit en trois colonnes, les fiches flottent en verre sur le catalogue flouté, et plus aucune feuille ne recouvre la fenêtre : catégories, pays, langues, listes, sources et réglages sont dessinés dans l’interface, y compris pendant la lecture. Les films et les séries se filtrent par langue, comme les chaînes par pays.
 
-iPhone et iPad conservent la disposition de la 0.8.9. Sur Apple TV, le Liquid Glass est actif par défaut à partir de tvOS 26, avec un réglage pour revenir aux surfaces sombres plus légères.
+iPhone et iPad conservent la disposition de la 0.8.9. Sur Apple TV, les effets complets — Liquid Glass à partir de tvOS 26, flou derrière une fiche, focus animé — sont actifs au départ sur l’Apple TV 4K de 2ᵉ génération et les suivantes ; l’Apple TV HD et la première Apple TV 4K commencent avec les surfaces sombres et le focus immédiat, et un réglage permet de changer.
 
 ## Le bureau, sur Mac et sur Apple TV
 
@@ -89,6 +89,21 @@ L’Apple TV reprend le bureau du Mac : accueil, dock en bas au centre, colonne 
 
 **Charger une liste** et **Modifier la source** occupent tout l’écran : le type de source à gauche, les champs et les deux boutons à droite, visibles d’un coup, sans défilement.
 
+### Fluidité à la télécommande
+
+Un appui de la télécommande ne reconstruit que ce qu’il concerne. L’écran garde son état en un seul endroit, et tout changement de cet état le reconstruisait en entier : avec le catalogue d’un abonnement réel — 58 093 films, 24 665 chaînes — un seul appui reconstruisait l’écran cinq fois, dont 89 jaquettes, 50 boutons et 40 lignes de la colonne. Désormais :
+
+- chaque jaquette, chaque chaîne, chaque ligne de la colonne, la ligne du haut et la barre du bas disent de quoi elles sont dessinées, et sont laissées telles quelles tant que rien de cela ne change ;
+- le focus est celui du système, que chaque contrôle lit lui-même : un appui redessine les deux contrôles concernés, et ce qui est dessiné comme sélectionné est toujours là où est la télécommande ;
+- la fenêtre possède le focus du système et prévient l’écran qu’il a bougé, au lieu que l’écran soit reconstruit à chaque déplacement ;
+- l’aperçu d’une chaîne n’est plus observé par l’écran entier, seulement par son image et sa touche de son.
+
+Mesuré dans le simulateur, à la télécommande, un appui reconstruit l’écran une fois, sans aucune jaquette ; un parcours du banc le vérifie à chaque exécution. Les chiffres sont dans `docs/VALIDATION-0.9.0.md`.
+
+Ce qui a le focus grossit et **suit le pouce posé sur la télécommande** : la jaquette, la chaîne ou l’icône du dock s’incline du côté où le pouce glisse et revient quand il se lève, comme les tuiles du système. Seul le calque bouge, rien n’est redessiné. L’effet de survol du système (`hoverEffect`) a été essayé et écarté : il redessine la tuile à chaque image, ce qui coûtait à lui seul plus que tout le reste d’un appui.
+
+Une demande de focus faite avant que le contrôle puisse la recevoir est refusée par le système, d’autant plus souvent que l’appareil est lent, et se lit pourtant comme accordée. Les contrôles du lecteur, l’image nue et les titres du catalogue disent eux-mêmes quand ils ont la télécommande : la demande est répétée jusque-là, au retour d’une fiche, d’une série, d’un message ou d’un flux.
+
 ## iPhone et iPad
 
 La disposition de la 0.8.9 est conservée : bandeau TV, Films, Séries et Recherche, fiches plein écran, feuilles pour les catégories, les pays, les listes et les sources. Le tableau ci-dessous décrit cette disposition.
@@ -107,7 +122,7 @@ La disposition de la 0.8.9 est conservée : bandeau TV, Films, Séries et Recher
 | Chaînes TV | Valider | Regarder la chaîne en plein écran |
 | Catalogue | Appui long | Ouvrir les favoris et listes |
 
-Sur Apple TV, **Réglages → Interface → Liquid Glass** applique le verre natif aux panneaux et aux commandes à partir de tvOS 26 ; il est actif par défaut. Le désactiver rétablit les surfaces sombres sans flou, plus légères à afficher. Sa fluidité sur un appareil physique reste à mesurer.
+Sur Apple TV, **Réglages → Interface → Effets complets** réunit ce qui coûte à afficher : le verre natif des panneaux et des commandes à partir de tvOS 26, le flou de ce qui passe derrière une fiche, un message ou les réglages, et l’animation du focus. Le réglage est actif au départ sur l’Apple TV 4K de 2ᵉ génération et les suivantes, dont la puce est celle que le système demande pour son propre verre. Il est coupé au départ sur l’Apple TV HD et sur la première Apple TV 4K : les panneaux y sont des surfaces sombres, ce qui est derrière une fiche est assombri au lieu d’être flouté, et le focus se pose d’un coup. Le modèle est lu sur l’appareil ; le choix reste modifiable. La fluidité sur un appareil physique reste à mesurer.
 
 Le délai de l’aperçu des chaînes se règle sur 1, 3, 5 ou 10 secondes : une seconde par défaut au pointeur, trois sur Apple TV où la télécommande traverse beaucoup de vignettes.
 

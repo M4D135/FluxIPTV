@@ -655,6 +655,67 @@ final class TVRemoteNavigationTests: XCTestCase {
     private static let dockKeys = ["navigation-tab-live", "navigation-tab-movie", "navigation-tab-series",
                                    "navigation-search", "navigation-tab-favorites", "navigation-settings"]
 
+    /// A move of the remote rebuilds what it concerns, and nothing else.
+    /// The screen keeps its state in one place, and any change of that
+    /// state rebuilds all of it: one press used to rebuild the screen five
+    /// times, with eighty-nine sleeves, fifty keys and forty rows of the
+    /// column. An Apple TV HD spent most of a second on it. The parts of
+    /// the catalogue now say what they are drawn from, and the controls
+    /// read the focus themselves; this flow counts what a press rebuilds,
+    /// in catalogues of the size of a real subscription.
+    @MainActor
+    func testAMoveOfTheRemoteRebuildsOnlyWhatItConcerns() {
+        func counters(in app: XCUIApplication) -> [String: Int] {
+            // The readout refreshes five times a second.
+            Thread.sleep(forTimeInterval: 0.7)
+            let text = element("flux-probe", in: app).value as? String ?? ""
+            var result: [String: Int] = [:]
+            for pair in text.split(separator: " ") {
+                let parts = pair.split(separator: "=")
+                if parts.count == 2, let count = Int(parts[1]) { result[String(parts[0])] = count }
+            }
+            return result
+        }
+        func rebuilt(_ name: String, _ before: [String: Int], _ after: [String: Int]) -> Int {
+            after[name, default: 0] - before[name, default: 0]
+        }
+
+        // Along a row of 58 093 films: three presses.
+        var app = launch("movies-many", environment: ["FLUX_UI_PROBE": "1"])
+        assertFocus(element("catalog-card-fixture-movie-1", in: app), logical: "fixture-movie-1", in: app)
+        var before = counters(in: app)
+        XCTAssertGreaterThan(before["screen", default: 0], 0, "The readout of the counters is missing.")
+        for _ in 0..<3 { XCUIRemote.shared.press(.right) }
+        assertFocus(element("catalog-card-fixture-movie-4", in: app), logical: "fixture-movie-4", in: app)
+        var after = counters(in: app)
+        print("TV_REMOTE rebuilt along a row: \(after.keys.sorted().map { "\($0)=\(rebuilt($0, before, after))" }.joined(separator: " "))")
+        // One update of the screen for a press; twice that is still far
+        // from the five it used to take.
+        XCTAssertLessThanOrEqual(rebuilt("screen", before, after), 6)
+        // No sleeve is drawn again: the two a press concerns show the
+        // focus they read themselves.
+        XCTAssertEqual(rebuilt("sleeve", before, after), 0)
+        XCTAssertEqual(rebuilt("band", before, after), 0)
+        XCTAssertEqual(rebuilt("bar", before, after), 0)
+        app.terminate()
+
+        // Down a list of 24 665 channels: three presses, which bring at
+        // most three new rows on screen.
+        app = launch("live-many", environment: ["FLUX_UI_PROBE": "1"])
+        defer { app.terminate() }
+        assertFocus(element("live-channel-fixture-live-0", in: app), logical: "fixture-live-0", in: app)
+        before = counters(in: app)
+        for _ in 0..<3 { XCUIRemote.shared.press(.down) }
+        assertFocus(element("live-channel-fixture-live-3", in: app), logical: "fixture-live-3", in: app)
+        after = counters(in: app)
+        print("TV_REMOTE rebuilt down a list: \(after.keys.sorted().map { "\($0)=\(rebuilt($0, before, after))" }.joined(separator: " "))")
+        XCTAssertLessThanOrEqual(rebuilt("screen", before, after), 6)
+        XCTAssertLessThanOrEqual(rebuilt("channel", before, after), 4)
+        XCTAssertEqual(rebuilt("band", before, after), 0)
+        XCTAssertEqual(rebuilt("bar", before, after), 0)
+        retainScreenshot("rebuild-01-down-a-large-list", in: app)
+    }
+
     @MainActor
     private func assertOneHasFocus(_ controls: [XCUIElement], in app: XCUIApplication,
                                    file: StaticString = #filePath, line: UInt = #line) {
@@ -668,10 +729,14 @@ final class TVRemoteNavigationTests: XCTestCase {
     }
 
     @MainActor
-    private func launch(_ scenario: String) -> XCUIApplication {
+    private func launch(_ scenario: String, environment: [String: String] = [:]) -> XCUIApplication {
         let app = XCUIApplication(bundleIdentifier: "com.m4d135.FluxIPTV.TVCatalogUISmoke")
         app.launchEnvironment["FLUX_UI_SCENARIO"] = scenario
         app.launchEnvironment["FLUX_UI_REMOTE_TESTING"] = "1"
+        // "light": every flow on the dark surfaces and the immediate focus
+        // that an Apple TV HD starts with.
+        if let effects = ProcessInfo.processInfo.environment["FLUX_UI_EFFECTS"] { app.launchEnvironment["FLUX_UI_EFFECTS"] = effects }
+        for (name, value) in environment { app.launchEnvironment[name] = value }
         app.launch()
         XCTAssertTrue(element("flux-catalog-logical-focus", in: app).waitForExistence(timeout: 15))
         return app
@@ -691,7 +756,12 @@ final class TVRemoteNavigationTests: XCTestCase {
             assertCondition(NSPredicate(format: "value == %@", logical),
                             on: element("flux-catalog-logical-focus", in: app), in: app, file: file, line: line)
         }
-        print("TV_REMOTE focus: \(control.identifier), native=\(control.hasFocus), logical=\(logical ?? "picker-local"), frame=\(control.frame)")
+        // Told only while the control is there: the commands of the player
+        // hide by themselves, and a slow machine reads this line after they
+        // have. What is asserted is above.
+        if control.exists {
+            print("TV_REMOTE focus: \(control.identifier), native=\(control.hasFocus), logical=\(logical ?? "picker-local"), frame=\(control.frame)")
+        }
     }
 
     @MainActor
@@ -705,14 +775,17 @@ final class TVRemoteNavigationTests: XCTestCase {
                                  file: StaticString = #filePath, line: UInt = #line) {
         let expectation = XCTNSPredicateExpectation(predicate: predicate, object: control)
         let result = XCTWaiter.wait(for: [expectation], timeout: 10)
+        // A control that has left the screen cannot be asked its name: the
+        // question itself would be recorded as a second failure.
+        let name = control.exists ? control.identifier : "\(control)"
         if result != .completed {
-            retainScreenshot("failure-\(control.identifier)", in: app)
+            retainScreenshot("failure-\(name)", in: app)
             let tree = XCTAttachment(string: app.debugDescription)
             tree.name = "failed-remote-navigation-accessibility-tree"
             tree.lifetime = .keepAlways
             add(tree)
         }
-        XCTAssertEqual(result, .completed, "\(control.identifier): \(predicate.predicateFormat)", file: file, line: line)
+        XCTAssertEqual(result, .completed, "\(name): \(predicate.predicateFormat)", file: file, line: line)
     }
 
     @MainActor

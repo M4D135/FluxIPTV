@@ -32,8 +32,12 @@ Xcode 26 ou plus récent, avec la prise en charge de tvOS installée.
 Cible minimale : tvOS 17. Apple TV HD et Apple TV 4K, dont la 4K 3e génération.
 L’ancienne Apple TV 3e génération (sans tvOS/App Store) ne peut pas installer
 ce projet. Voir https://support.apple.com/fr-fr/102348.
-Le Liquid Glass est actif par défaut à partir de tvOS 26 ; Réglages >
-Interface rétablit les surfaces sombres sans flou, plus légères à afficher.
+Les effets complets (Liquid Glass à partir de tvOS 26, flou derrière une
+fiche, focus animé) sont actifs au départ sur l'Apple TV 4K de 2e génération
+et les suivantes. Ils sont coupés au départ sur l'Apple TV HD et sur la
+première Apple TV 4K, dont la puce les affiche trop lentement : surfaces
+sombres et focus immédiat y gardent la télécommande fluide. Le choix se
+change dans Réglages > Interface > Effets complets.
 La dépendance VLCKit est fixée à une révision précise ; Xcode la résout au
 premier lancement. Le sous-ensemble YouTubeKit est fourni dans Vendor/.
 Conservez tout ce dossier avec le projet, sans déplacer le .xcodeproj seul.
@@ -59,6 +63,9 @@ Depuis le catalogue : Gauche mène à la colonne, Haut à la recherche, Bas au
 dock, et pour une chaîne Droite mène à Regarder et Favoris.
 La colonne s'ouvre sur la ligne de ce qui est affiché ; Droite en ressort
 sur le titre que l'on venait de quitter.
+Ce qui a le focus grossit un peu et suit le pouce posé sur la télécommande :
+la jaquette, la chaîne ou l'icône du dock s'incline du côté où il glisse et
+revient quand il se lève, comme les tuiles du système.
 
 TV : catégories, chaînes en une seule liste, puis l'aperçu et ce que la liste
 sait de la chaîne. « Tous les pays » ouvre dans la colonne le filtre détecté

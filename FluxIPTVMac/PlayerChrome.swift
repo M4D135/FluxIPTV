@@ -273,6 +273,15 @@ struct PlayerTracksPanel: View {
 
     private static var rowHeight: CGFloat { Desk.pt(42) }
     private static var rowGap: CGFloat { Desk.pt(5) }
+    /// Row drawn as selected. A television reads its focus here, so that
+    /// this panel alone follows the remote.
+    private var shownID: String? {
+        #if os(tvOS)
+        systemFocus.wrappedValue
+        #else
+        focusedID
+        #endif
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: Desk.pt(12)) {
@@ -308,7 +317,7 @@ struct PlayerTracksPanel: View {
 
     private var closeButton: some View {
         let id = PlayerTracks.closeID
-        let lit = focusedID == id || hovered == id
+        let lit = shownID == id || hovered == id
         return Button(action: close) {
             Image(systemName: "xmark").font(Desk.system(13, .bold))
                 .foregroundStyle(lit ? Color.black : .white)
@@ -349,7 +358,7 @@ struct PlayerTracksPanel: View {
     }
 
     private func row(_ id: String, title: String, selected: Bool, action: @escaping () -> Void) -> some View {
-        let lit = focusedID == id || hovered == id
+        let lit = shownID == id || hovered == id
         let shape = RoundedRectangle(cornerRadius: Desk.pt(12), style: .continuous)
         return Button(action: action) {
             HStack(spacing: Desk.pt(10)) {

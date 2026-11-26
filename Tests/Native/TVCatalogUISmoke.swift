@@ -45,6 +45,20 @@ final class TVCatalogControlProbeView: UIView {
     override var canBecomeFocused: Bool { false }
 }
 
+/// What the screen has rebuilt since it started, as the value of an element
+/// that a remote flow reads before and after a move. It is drawn outside
+/// the screen it counts, and refreshes by itself.
+private struct TVProbeReadout: View {
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 0.2)) { _ in
+            Color.clear.frame(width: 1, height: 1).allowsHitTesting(false)
+                .accessibilityElement().accessibilityLabel("Compteurs")
+                .accessibilityIdentifier("flux-probe")
+                .accessibilityValue(FluxProbe.counts.sorted { $0.key < $1.key }.map { "\($0.key)=\($0.value)" }.joined(separator: " "))
+        }
+    }
+}
+
 @MainActor private final class TVCatalogSearchObservations: ObservableObject {
     var snapshots: [CatalogSearchFocusSnapshot] = []
 }
@@ -154,6 +168,23 @@ final class TVCatalogControlProbeView: UIView {
                 .environmentObject(playback)
                 .preferredColorScheme(.dark)
                 .task {
+                    // A capture has no thumb on the remote: "x,y" places one,
+                    // to show what has the focus leaning with it.
+                    // "movies-many-lean": the thumb rests up and right of where it landed.
+                    let lean = ProcessInfo.processInfo.environment["FLUX_UI_LEAN"]
+                        ?? (fixture.scenario == "movies-many-lean" ? "0.9,-0.6" : "")
+                    let parts = lean.split(separator: ",").compactMap { Double($0) }
+                    guard parts.count == 2 else { return }
+                    for _ in 0..<40 {
+                        try? await Task.sleep(nanoseconds: 250_000_000)
+                        RemoteTouch.shared.place(CGSize(width: parts[0], height: parts[1]))
+                    }
+                }
+                // What the screen rebuilds, for the flow that counts it.
+                .overlay(alignment: .topLeading) {
+                    if ProcessInfo.processInfo.environment["FLUX_UI_PROBE"] == "1" { TVProbeReadout() }
+                }
+                .task {
                     // XCUIRemote owns readiness and subsequent input during
                     // interaction tests. The initial-capture observer must not
                     // keep asserting an old destination while the user moves.
@@ -181,12 +212,12 @@ final class TVCatalogControlProbeView: UIView {
 
     var expectedInitialControl: String {
         switch scenario {
-        case "live": return "live-channel-fixture-live-0"
+        case "live", "live-many", "live-many-light": return "live-channel-fixture-live-0"
         case "live-fr": return "live-channel-fixture-country-fr-0"
         case "live-es": return "live-channel-fixture-country-es-0"
         case "live-restored": return "live-channel-fixture-country-fr-1"
         case "country-picker": return "live-country-option-FR"
-        case "movies", "movies-many": return "catalog-card-fixture-movie-1"
+        case "movies", "movies-many", "movies-many-lean": return "catalog-card-fixture-movie-1"
         case "search-empty": return "navigation-tab-movie"
         case "search-result": return "catalog-card-fixture-movie-0"
         case "welcome": return "welcome-load-source"
@@ -217,12 +248,12 @@ final class TVCatalogControlProbeView: UIView {
     var minimumFocusSize: CGSize {
         switch scenario {
         // A channel is a row of the list, not a tile.
-        case "live", "live-fr", "live-es", "live-restored", "zapping": return CGSize(width: 300, height: 60)
+        case "live", "live-many", "live-many-light", "live-fr", "live-es", "live-restored", "zapping": return CGSize(width: 300, height: 60)
         case "home": return CGSize(width: 150, height: 150)
         case "settings", "player-settings": return CGSize(width: 240, height: 48)
         case "live-error": return CGSize(width: 150, height: 50)
         case "country-picker": return CGSize(width: 240, height: 54)
-        case "movies", "movies-many", "search-result", "seasons": return CGSize(width: 240, height: 350)
+        case "movies", "movies-many", "movies-many-lean", "search-result", "seasons": return CGSize(width: 240, height: 350)
         case "search-empty": return CGSize(width: 90, height: 90)
         case "welcome": return CGSize(width: 300, height: 72)
         case "add-source": return CGSize(width: 500, height: 50)
@@ -253,7 +284,7 @@ final class TVCatalogControlProbeView: UIView {
         scenario == "search-result" ? ["fixture-movie-0"] : []
     }
 
-    var usesPortraitControl: Bool { scenario == "movies" || scenario == "movies-many" || scenario == "search-result" }
+    var usesPortraitControl: Bool { scenario == "movies" || scenario.hasPrefix("movies-many") || scenario == "search-result" }
 
     var countryCode: String? {
         switch scenario {
@@ -299,8 +330,8 @@ final class TVCatalogControlProbeView: UIView {
     static func make() throws -> TVCatalogFixture {
         let scenario = ProcessInfo.processInfo.environment["FLUX_UI_SCENARIO"] ?? ""
         // A screen of the desk reuses the catalogue of the live scenario.
-        let content = deskScenarios.contains(scenario) ? "live" : scenario
-        try TVCatalogCapture.require((["movie", "movies", "movies-many", "lists", "series", "seasons", "live", "welcome", "add-source", "search-empty", "search-result",
+        let content = deskScenarios.contains(scenario) || scenario.hasPrefix("live-many") ? "live" : scenario
+        try TVCatalogCapture.require((["movie", "movies", "movies-many", "movies-many-lean", "lists", "series", "seasons", "live", "live-many", "live-many-light", "welcome", "add-source", "search-empty", "search-result",
                                        "live-fr", "live-es", "country-picker", "live-restored", "live-error"] + deskScenarios + filmPlayerScenarios).contains(scenario),
                                      "FLUX_UI_SCENARIO must name a supported catalogue, detail, welcome or search scenario.")
         let source = IPTVSource(id: UUID(uuidString: "00000000-0000-0000-0000-000000000003")!,
@@ -367,15 +398,19 @@ final class TVCatalogControlProbeView: UIView {
             // The banner is read on the catalogue of a real subscription:
             // tens of thousands of channels, so a number of five digits.
             let banner = scenario.hasPrefix("player-banner")
+            // "live-many": the same catalogue on the page of the channels,
+            // with the categories of several countries.
+            let many = scenario.hasPrefix("live-many")
+            let countries = ["FR", "UK", "ES", "IT", "DE", "PT", "BE", "CH"]
             let watched = banner ? 24_013 : deep ? 58 : 0
             // What is drawn over the picture is read with names shaped like
             // those of a real playlist: a prefix, a long title, a mark of
             // quality, and categories that carry their country.
-            let real = scenario.hasPrefix("player") || scenario == "zapping"
+            let real = scenario.hasPrefix("player") || scenario == "zapping" || many
             let realNames = ["FR: HORIZON INFO", "PRISME: GRAND ÉCRAN FESTIVAL", "FR| DÉCOUVERTE NATURE & VOYAGES",
                              "PRISME: PANORAMA JEUNESSE", "ÉVASION MUSIQUE HITS", "FR: SCÈNE SPORT 360"]
             let marks = ["ᴴᴰ", "ᴿᴬᵂ", "ᶠᴴᴰ", "⁴ᴷ", "ᴴᴰ", "ᴿᴬᵂ"]
-            let channels = try (0..<(banner ? 24_665 : deep ? 110 : 18)).map { (index: Int) in
+            let channels = try (0..<(banner || many ? 24_665 : deep ? 110 : 18)).map { (index: Int) in
                 let kind = index % channelNames.count
                 let name: String
                 if real {
@@ -386,15 +421,16 @@ final class TVCatalogControlProbeView: UIView {
                 // A logo for what can come on screen: the cache of the
                 // application would not keep thousands of them.
                 var url: URL? = nil
-                if !banner || abs(index - watched) < 40 {
+                if !(banner || many) || abs(index - watched) < (many ? 84 : 40) {
                     let file = artworkRoot.appendingPathComponent("live-\(index).png")
-                    let small = deep || banner
+                    let small = deep || banner || many
                     cache(try artwork(width: small ? 240 : 480, height: small ? 135 : 270, index: index,
                                       title: (real ? realNames[kind] : name).uppercased(), subtitle: "CHAÎNE LOCALE"), at: file)
                     url = file
                 }
                 return IPTVItem(id: "fixture-live-\(index)", sourceID: source.id, name: name,
-                                group: real ? "DIRECT - FR| " + categories[kind].uppercased() : categories[kind],
+                                group: many ? "DIRECT - \(countries[index / 420 % countries.count])| " + categories[kind].uppercased()
+                                    : real ? "DIRECT - FR| " + categories[kind].uppercased() : categories[kind],
                                 logoURL: url, kind: .live,
                                 directURL: nil, xtreamStreamID: nil, fileExtension: nil)
             }
@@ -407,7 +443,7 @@ final class TVCatalogControlProbeView: UIView {
                                     selection: channels[watched], seasons: [], openSeason: nil, episodeID: nil)
         }
         var items = try films()
-        if scenario == "movies-many" {
+        if scenario.hasPrefix("movies-many") {
             // The catalogue of a real subscription: tens of thousands of films,
             // titles that carry their language and their year, categories by
             // language. The first page alone has jackets, small enough for
@@ -462,7 +498,7 @@ final class TVCatalogControlProbeView: UIView {
         let episodeID = "fixture-series-s12-e15"
         try TVCatalogCapture.require(seasons.first(where: { $0.number == 12 })?.episodes.contains(where: { $0.id == episodeID }) == true,
                                      "The exact requested S12/E15 fixture identifier is absent.")
-        let isMovie = scenario == "movie" || scenario == "movies" || scenario == "movies-many" || scenario == "lists" || scenario.hasPrefix("search-")
+        let isMovie = scenario == "movie" || scenario == "movies" || scenario.hasPrefix("movies-many") || scenario == "lists" || scenario.hasPrefix("search-")
             || filmPlayerScenarios.contains(scenario)
         return TVCatalogFixture(scenario: scenario, source: source, items: items,
                                 kind: isMovie ? .movie : .series,
@@ -524,7 +560,10 @@ final class TVCatalogControlProbeView: UIView {
         UserDefaults.standard.setVolatileDomain([
             // Liquid Glass is what the application shows by default: the
             // captures and the focus checks run on it.
-            FluxAppearance.glassKey: true,
+            // "…-light", or the bench asking for it: the dark surfaces and
+            // the immediate focus that an Apple TV HD starts with.
+            FluxAppearance.glassKey: ProcessInfo.processInfo.environment["FLUX_UI_EFFECTS"] != "light"
+                && !(ProcessInfo.processInfo.environment["FLUX_UI_SCENARIO"] ?? "").hasSuffix("-light"),
             FluxAppearance.artworkKey: true,
             FluxAppearance.wallpaperKey: false,
             FluxAppearance.densityKey: "cinema",
