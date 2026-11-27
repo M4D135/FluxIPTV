@@ -1,4 +1,26 @@
-FLUX IPTV 0.9.8 — BUILD 49 — PROJET APPLE TV
+FLUX IPTV 0.9.9 — BUILD 50 — PROJET APPLE TV
+
+NOUVEAUTÉS DE LA 0.9.9 : la télécommande plus cohérente.
+BORD DROIT : au bout à droite d'un écran, Droite ne descend plus dans le
+dock. Elle repart à gauche, à la même hauteur, comme une ligne de texte :
+sur la ligne de la colonne à cette hauteur, sinon sur le premier titre de la
+ligne. Au bout d'une rangée de titres, Droite passe toujours à la rangée
+suivante ; un dock placé à droite garde Droite. Dock masqué, le bord droit
+revient aussi à gauche.
+LISTES EN MODE SOURIS : au-dessus d'une liste (chaînes, grille des films et
+des séries, colonnes), le pointeur devient une capsule à deux flèches. Il
+garde sa hauteur : vers le haut ou le bas, le pouce fait défiler la liste
+sous lui, et la ligne désignée est sélectionnée ; vers la gauche ou la
+droite, il longe la ligne. Pour sortir, tirez au-delà du côté gauche ou
+droit ; par le haut ou le bas, seulement une fois la liste arrivée au bout.
+Un coup de pouce lance la liste ; un toucher ou un clic l'arrête.
+POINTEUR : Réglages > Télécommande > Pointeur offre six formes (Flèche,
+Main, Rond, Anneau, Viseur, Halo), six couleurs, six tailles (de Très petit
+à Géant), cinq vitesses et trois accélérations (Aucune, Normale, Forte),
+avec un aperçu. Les choix faits en 0.9.8 restent valables.
+MODE CLASSIQUE : en mode souris, le clic sur « Classique » dans Réglages >
+Télécommande rend la télécommande classique ; en 0.9.8, il ne faisait rien.
+Une bulle dit chaque changement de mode.
 
 NOUVEAUTÉS DE LA 0.9.8 : l'accueil en bas, le dock masquable.
 ACCUEIL : sa barre se tient en bas de l'écran, sur une seule rangée, comme

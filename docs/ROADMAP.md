@@ -1,5 +1,13 @@
 # Feuille de route FLUX IPTV
 
+## Intégré dans les sources 0.9.9 — build 50
+
+- **Au bout à droite, retour à gauche** (« quand on va au bout a droite dans une fentre on va changer au lieu d'allzr dans barre dock , onnreste normal comme lenreste on repart a gauche a mm hauteur », 27 novembre au soir) : sur Apple TV, Droite au bord droit d’un écran revient au contrôle le plus à gauche à la même hauteur — la colonne, sinon le premier titre de la ligne — au lieu de descendre dans le dock. Au bout d’une rangée de titres, Droite passe toujours à la suivante ; un dock à droite garde Droite. Dock masqué, le bord droit revient aussi à gauche. Le Mac garde le dock (voir `docs/VALIDATION-0.9.9.md`).
+- **Le pointeur de défilement** (« sur une liste on passe sur un pointeur defilement au survol […] on ressort par droite gauche de la zone, sinon c incontrollable ») : au-dessus d’une liste, le pointeur devient une capsule à deux flèches qui garde sa hauteur. Vers le haut et le bas, le pouce fait défiler la liste sous lui ; vers la gauche et la droite, il longe la ligne ; tiré au-delà d’un côté, il sort. Un coup de pouce lance la liste, un toucher l’arrête.
+- **Plus de choix pour le pointeur** (« ajoute plus de choix de pointeurs, de taille et de vitesse ») : six formes, six couleurs, six tailles, cinq vitesses et trois accélérations, avec un aperçu, dans Réglages › Télécommande › Pointeur.
+- **Classique de nouveau au pointeur** (« pour basculer de mode c ok standard vers souris mais pas le contraire ») : le clic du pointeur sur « Classique » ne faisait rien, les tuiles du mode n’étant pas connues du pointeur. Il rend désormais la télécommande classique, et une bulle dit chaque changement de mode.
+- **Au simulateur** (« tu feras tes test en simulateur xcode ») : la 0.9.9 est vérifiée au simulateur Apple TV et sur le Mac, pas sur les Apple TV du séjour.
+
 ## Intégré dans les sources 0.9.8 — build 49
 
 - **L’accueil sur une barre, en bas** (« finalement fais qu'une barre sur ecran accueil comme l'autre, extensible en bas , mais garde cette taille pour la page accueil, et plus haut au meme niveau qu'actuel tu affiche les titres, ça fera de la place », 27 novembre au soir) : la barre de l’accueil se tient au pied de l’écran, sur une seule rangée, à la grande taille de l’accueil ; les raccourcis qu’elle ne peut pas tenir vont dans « Autres ». Le nom de la destination sélectionnée reste où il se tenait en 0.9.7.

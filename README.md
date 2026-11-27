@@ -1,6 +1,8 @@
-# FLUX IPTV 0.9.8 — build 49 — Bureau Mac : dock, colonnes et panneaux de verre
+# FLUX IPTV 0.9.9 — build 50 — Bureau Mac : dock, colonnes et panneaux de verre
 
 Application native SwiftUI pour macOS, iOS et tvOS.
+
+**La 0.9.9 rend la télécommande de l’Apple TV plus cohérente.** Au bout à droite d’un écran, Droite ne descend plus dans le dock : elle repart à gauche, à la même hauteur, comme une ligne de texte — sur la colonne, sinon sur le premier titre de la ligne. En mode souris, le pointeur devient au-dessus d’une liste (chaînes, grille des films et des séries, colonnes) un pointeur de défilement : il garde sa hauteur, le pouce fait défiler la liste sous lui vers le haut et le bas, il longe la ligne vers la gauche et la droite, et il sort de la liste en tirant au-delà d’un côté ; un coup de pouce lance la liste, un toucher l’arrête. Le pointeur offre six formes, six couleurs, six tailles, cinq vitesses et trois accélérations (Réglages › Télécommande › Pointeur), avec un aperçu. Le clic du pointeur sur « Classique », dans les Réglages, rend de nouveau la télécommande classique : en 0.9.8, il ne faisait rien, et seul Lecture/Pause maintenue y revenait. Une bulle dit chaque changement de mode.
 
 **La 0.9.8 met la barre de l’accueil en bas, sur une seule rangée.** Comme sous les autres écrans, elle se tient au pied de la fenêtre, mais elle garde la grande taille de l’accueil ; ce qu’elle ne peut pas tenir va dans « Autres ». Le nom de ce qui est sélectionné reste à la hauteur où il se tenait. Un dossier qui s’ouvre a maintenant toute la place entre la barre et le haut de l’écran, sans atteindre le nom de l’application ni l’heure : en 0.9.7, ses titres, dessinés à la taille de l’accueil mais comptés à celle du dock des écrans, pouvaient monter jusque-là. **Le dock peut aussi se masquer sous les écrans** (Réglages › Dock › Emplacement) : chaque écran prend alors toute la fenêtre, Retour et Accueil passent en haut de la colonne, et l’accueil garde sa barre pour aller partout. Sur l’accueil, une destination sélectionnée — TV, Films, Séries… — montre le fond de son écran, même quand l’accueil a le sien : celui-ci reste derrière ce que l’on garde dans le dock. Sur Apple TV, l’aperçu d’une chaîne continue quand la sélection passe sur Regarder, Favoris ou le son, à côté de l’image : en 0.9.7, il s’arrêtait dès qu’elle quittait la ligne de la chaîne, et le bouton du son disparaissait avec lui. La 0.9.8 rétablit enfin la compilation pour iPhone et iPad, cassée en 0.9.7 par l’écran de la recherche.
 
@@ -246,7 +248,7 @@ L’archive contient les sources et l’installateur Mac, pas un binaire Apple p
 
 1. Sur Mac, quitter l’ancienne app et arrêter le lancement depuis Xcode.
 2. Décompresser, puis ouvrir **Installer Flux IPTV.command**. L’installateur compile sur ce Mac et vérifie le démarrage ; cette vérification ne remplace pas un essai de lecture.
-3. Vérifier **FLUX 0.9.8 · build 49** en bas de la colonne de Réglages.
+3. Vérifier **FLUX 0.9.9 · build 50** en bas de la colonne de Réglages.
 
 Prérequis de déploiement : macOS 14, iOS 17 ou tvOS 17. Installer Xcode complet pour compiler ; le verre natif demande la version 26 des systèmes, les versions antérieures reçoivent un matériau translucide. Sur iPhone/iPad ou Apple TV, ouvrir `FluxIPTV.xcodeproj`, choisir **FluxIPTViOS** ou **FluxIPTVTV**, puis renseigner l’équipe de signature pour un appareil physique.
 
@@ -260,7 +262,7 @@ Ouvrir **`FluxIPTV-AppleTV.xcodeproj`**, ou lancer **`Ouvrir Flux IPTV Apple TV.
 
 ## Validation
 
-Le périmètre vérifié pour cette version est dans [docs/VALIDATION-0.9.8.md](docs/VALIDATION-0.9.8.md), qui s’ajoute à ceux de la 0.9.7 dans [docs/VALIDATION-0.9.7.md](docs/VALIDATION-0.9.7.md), de la 0.9.6 dans [docs/VALIDATION-0.9.6.md](docs/VALIDATION-0.9.6.md), de la 0.9.5 dans [docs/VALIDATION-0.9.5.md](docs/VALIDATION-0.9.5.md), de la 0.9.4 dans [docs/VALIDATION-0.9.4.md](docs/VALIDATION-0.9.4.md), de la 0.9.3 dans [docs/VALIDATION-0.9.3.md](docs/VALIDATION-0.9.3.md), de la 0.9.2 dans [docs/VALIDATION-0.9.2.md](docs/VALIDATION-0.9.2.md), de la 0.9.1 dans [docs/VALIDATION-0.9.1.md](docs/VALIDATION-0.9.1.md) et de la 0.9.0 dans [docs/VALIDATION-0.9.0.md](docs/VALIDATION-0.9.0.md), avec ce qui ne l’a pas été. Les tests unitaires du cœur ne démontrent ni la compilation des frameworks Apple, ni la fluidité réelle, ni la lecture des flux du fournisseur. Les résultats des versions précédentes ne valident pas la nouvelle interface du Mac.
+Le périmètre vérifié pour cette version est dans [docs/VALIDATION-0.9.9.md](docs/VALIDATION-0.9.9.md), qui s’ajoute à ceux de la 0.9.8 dans [docs/VALIDATION-0.9.8.md](docs/VALIDATION-0.9.8.md), de la 0.9.7 dans [docs/VALIDATION-0.9.7.md](docs/VALIDATION-0.9.7.md), de la 0.9.6 dans [docs/VALIDATION-0.9.6.md](docs/VALIDATION-0.9.6.md), de la 0.9.5 dans [docs/VALIDATION-0.9.5.md](docs/VALIDATION-0.9.5.md), de la 0.9.4 dans [docs/VALIDATION-0.9.4.md](docs/VALIDATION-0.9.4.md), de la 0.9.3 dans [docs/VALIDATION-0.9.3.md](docs/VALIDATION-0.9.3.md), de la 0.9.2 dans [docs/VALIDATION-0.9.2.md](docs/VALIDATION-0.9.2.md), de la 0.9.1 dans [docs/VALIDATION-0.9.1.md](docs/VALIDATION-0.9.1.md) et de la 0.9.0 dans [docs/VALIDATION-0.9.0.md](docs/VALIDATION-0.9.0.md), avec ce qui ne l’a pas été. Les tests unitaires du cœur ne démontrent ni la compilation des frameworks Apple, ni la fluidité réelle, ni la lecture des flux du fournisseur. Les résultats des versions précédentes ne valident pas la nouvelle interface du Mac.
 
 ## Publication sur l’App Store
 

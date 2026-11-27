@@ -147,6 +147,8 @@ struct PlaybackSettingsView: View {
     @AppStorage(FluxPointerSpeed.storageKey) private var pointerSpeed: FluxPointerSpeed = .defaultValue
     @AppStorage(FluxPointerSize.storageKey) private var pointerSize: FluxPointerSize = .defaultValue
     @AppStorage(FluxPointerShape.storageKey) private var pointerShape: FluxPointerShape = .defaultValue
+    @AppStorage(FluxPointerAcceleration.storageKey) private var pointerAcceleration: FluxPointerAcceleration = .defaultValue
+    @AppStorage(FluxPointerColor.storageKey) private var pointerColor: FluxPointerColor = .defaultValue
     #endif
     #if os(tvOS)
     /// Page under the remote: walking the list shows each page at once.
@@ -1208,10 +1210,23 @@ struct PlaybackSettingsView: View {
                 Text("Hors de la lecture d’une vidéo, un appui long sur Lecture/Pause passe d’un mode à l’autre, où que vous soyez, et une bulle le confirme. Pendant une vidéo, la télécommande reste classique.")
                     .font(Desk.font(.caption)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
+            // "plus de choix de pointeurs, de taille et de vitesse" (David, 27/11).
             section("Pointeur", "Son allure en mode souris. Un appui sur un bord du pavé déplace toujours la sélection, comme une flèche.") {
-                DeskChoice(title: "Vitesse", options: FluxPointerSpeed.allCases.map { ($0, $0.title) }, selection: $pointerSpeed)
+                Text("Forme").font(Desk.font(.callout, .semibold)).foregroundStyle(.white.opacity(0.78))
+                DeskFlow(spacing: Desk.pt(10)) {
+                    ForEach(FluxPointerShape.allCases) { shape in pointerShapeTile(shape) }
+                }
+                Text("Couleur").font(Desk.font(.callout, .semibold)).foregroundStyle(.white.opacity(0.78))
+                DeskFlow(spacing: Desk.pt(10)) {
+                    ForEach(FluxPointerColor.allCases) { color in pointerColorSwatch(color) }
+                }
                 DeskChoice(title: "Taille", options: FluxPointerSize.allCases.map { ($0, $0.title) }, selection: $pointerSize)
-                DeskChoice(title: "Forme", options: FluxPointerShape.allCases.map { ($0, $0.title) }, selection: $pointerShape)
+                DeskChoice(title: "Vitesse", options: FluxPointerSpeed.allCases.map { ($0, $0.title) }, selection: $pointerSpeed)
+                DeskChoice(title: "Accélération", options: FluxPointerAcceleration.allCases.map { ($0, $0.title) },
+                           selection: $pointerAcceleration)
+                Text(Self.accelerationCaption(pointerAcceleration)).font(Desk.font(.caption)).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                pointerPreview
             }
             #endif
             section("Touche Retour", "Ce que fait Retour dans un écran de films, de séries ou de chaînes.") {
@@ -1224,6 +1239,7 @@ struct PlaybackSettingsView: View {
                     #if os(tvOS)
                     remoteMode = .defaultValue; remoteToggles = FluxRemoteMode.toggleDefault
                     pointerSpeed = .defaultValue; pointerSize = .defaultValue; pointerShape = .defaultValue
+                    pointerAcceleration = .defaultValue; pointerColor = .defaultValue
                     #endif
                 }
             }
@@ -1262,6 +1278,83 @@ struct PlaybackSettingsView: View {
         .buttonStyle(DeskFocusStyle(radius: Desk.pt(14)))
         .accessibilityLabel("Mode \(mode.title.lowercased())").accessibilityAddTraits(selected ? .isSelected : [])
         .accessibilityIdentifier("settings-remote-mode-\(mode.rawValue)")
+        // Without its place the pointer could not press it: from « Souris »,
+        // « Classique » could not be chosen (David, 27/11).
+        .deskTarget("remote-mode-\(mode.rawValue)") { remoteMode = mode }
+    }
+
+    private func pointerShapeTile(_ shape: FluxPointerShape) -> some View {
+        let selected = pointerShape == shape
+        let tile = RoundedRectangle(cornerRadius: Desk.pt(14), style: .continuous)
+        return Button { pointerShape = shape } label: {
+            VStack(spacing: Desk.pt(8)) {
+                FluxPointerGlyph(shape: shape, color: pointerColor, height: Desk.tv(40))
+                    .frame(width: Desk.pt(70), height: Desk.pt(64))
+                Text(shape.title).font(Desk.font(.callout, selected ? .semibold : .regular)).lineLimit(1)
+            }
+            .padding(.horizontal, Desk.pt(14)).padding(.vertical, Desk.pt(12))
+            .frame(minWidth: Desk.pt(112))
+            .background(.white.opacity(selected ? 0.14 : 0.05), in: tile)
+            .overlay(tile.strokeBorder(Color.cyan.opacity(selected ? 0.85 : 0), lineWidth: 2).allowsHitTesting(false))
+            .contentShape(tile)
+        }
+        .buttonStyle(DeskFocusStyle(radius: Desk.pt(14)))
+        .accessibilityLabel("Pointeur \(shape.title.lowercased())").accessibilityAddTraits(selected ? .isSelected : [])
+        .accessibilityIdentifier("settings-pointer-shape-\(shape.rawValue)")
+        .deskTarget("pointer-shape-\(shape.rawValue)") { pointerShape = shape }
+    }
+
+    private func pointerColorSwatch(_ color: FluxPointerColor) -> some View {
+        let selected = pointerColor == color
+        let tile = RoundedRectangle(cornerRadius: Desk.pt(14), style: .continuous)
+        return Button { pointerColor = color } label: {
+            VStack(spacing: Desk.pt(6)) {
+                Circle().fill(Color(uiColor: UIColor(pointer: color)))
+                    .overlay(Circle().strokeBorder(Color(uiColor: UIColor(pointerEdge: color)), lineWidth: 2))
+                    .frame(width: Desk.pt(36), height: Desk.pt(36))
+                    .padding(Desk.pt(4))
+                    .overlay(Circle().strokeBorder(Color.cyan.opacity(selected ? 0.95 : 0), lineWidth: 3))
+                Text(color.title).font(Desk.font(.caption, selected ? .semibold : .regular)).lineLimit(1)
+            }
+            .padding(.horizontal, Desk.pt(12)).padding(.vertical, Desk.pt(8))
+            .frame(minWidth: Desk.pt(84))
+            .background(.white.opacity(selected ? 0.12 : 0.04), in: tile)
+            .contentShape(tile)
+        }
+        .buttonStyle(DeskFocusStyle(radius: Desk.pt(14)))
+        .accessibilityLabel("Couleur \(color.title.lowercased())").accessibilityAddTraits(selected ? .isSelected : [])
+        .accessibilityIdentifier("settings-pointer-color-\(color.rawValue)")
+        .deskTarget("pointer-color-\(color.rawValue)") { pointerColor = color }
+    }
+
+    /// The pointer at its size on the screen, and as it rides a list.
+    private var pointerPreview: some View {
+        let panel = RoundedRectangle(cornerRadius: Desk.pt(16), style: .continuous)
+        return HStack(alignment: .center, spacing: Desk.pt(28)) {
+            VStack(spacing: Desk.pt(8)) {
+                FluxPointerGlyph(shape: pointerShape, color: pointerColor, height: Desk.tv(CGFloat(pointerSize.height)))
+                    .frame(minWidth: Desk.pt(60), minHeight: Desk.pt(60))
+                Text("Pointeur").font(Desk.font(.caption, .semibold)).foregroundStyle(.secondary)
+            }
+            VStack(spacing: Desk.pt(8)) {
+                FluxPointerGlyph(shape: pointerShape, color: pointerColor, height: Desk.tv(CGFloat(pointerSize.height)), riding: true)
+                    .frame(minWidth: Desk.pt(60), minHeight: Desk.pt(60))
+                Text("Sur une liste").font(Desk.font(.caption, .semibold)).foregroundStyle(.secondary)
+            }
+            Text("Sur une liste, le pointeur devient une flèche de défilement qui reste à sa hauteur : vers le haut ou le bas, le pouce fait défiler la liste sous lui, et ce qu’il désigne est sélectionné. Vers la gauche ou la droite, il longe la ligne ; tiré au-delà d’un bord, il sort de la liste. Un coup de pouce lance la liste, un toucher l’arrête.")
+                .font(Desk.font(.caption)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(Desk.pt(16)).frame(maxWidth: .infinity, alignment: .leading)
+        .background(.white.opacity(0.05), in: panel)
+        .accessibilityElement(children: .combine)
+    }
+
+    private static func accelerationCaption(_ acceleration: FluxPointerAcceleration) -> String {
+        switch acceleration {
+        case .none: "Le pointeur va aussi loin que le pouce, lent ou rapide."
+        case .gentle: "Comme un trackpad : plus fin quand le pouce va lentement, jusqu’à deux fois plus loin d’un geste vif."
+        case .strong: "Plus fin encore au ralenti, jusqu’à trois fois plus loin d’un geste vif : un coup de pouce traverse l’écran."
+        }
     }
     #endif
 

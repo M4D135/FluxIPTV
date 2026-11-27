@@ -99,6 +99,87 @@ final class RemoteChoicesTests: XCTestCase {
         XCTAssertLessThanOrEqual(FluxPointerMotion.acceleration(velocity: 100_000), 2)
     }
 
+    /// "plus de choix de pointeurs, de taille et de vitesse" (David, 27/11);
+    /// what was saved before keeps its name.
+    func testThePointerOffersMoreChoicesAndKeepsTheOldOnes() {
+        XCTAssertEqual(FluxPointerSpeed.allCases.count, 5)
+        XCTAssertEqual(FluxPointerSize.allCases.count, 6)
+        XCTAssertEqual(FluxPointerShape.allCases.count, 6)
+        XCTAssertEqual(FluxPointerColor.allCases.count, 6)
+        XCTAssertEqual(FluxPointerAcceleration.allCases.count, 3)
+        for kept in ["slow", "normal", "fast"] { XCTAssertNotNil(FluxPointerSpeed(rawValue: kept)) }
+        for kept in ["small", "normal", "large"] { XCTAssertNotNil(FluxPointerSize(rawValue: kept)) }
+        for kept in ["arrow", "dot"] { XCTAssertNotNil(FluxPointerShape(rawValue: kept)) }
+        let gains = FluxPointerSpeed.allCases.map(\.gain)
+        XCTAssertEqual(gains, gains.sorted(), "From the slowest to the fastest.")
+        let heights = FluxPointerSize.allCases.map(\.height)
+        XCTAssertEqual(heights, heights.sorted(), "From the smallest to the largest.")
+        XCTAssertEqual(Set(FluxPointerColor.allCases.map(\.title)).count, 6)
+        XCTAssertEqual(Set([FluxPointerSpeed.storageKey, FluxPointerSize.storageKey, FluxPointerShape.storageKey,
+                            FluxPointerColor.storageKey, FluxPointerAcceleration.storageKey]).count, 5)
+        // Without acceleration a flick goes as far as a slow move; strong, farther than gentle.
+        XCTAssertEqual(FluxPointerAcceleration.none.factor(velocity: 5000), 1)
+        XCTAssertGreaterThan(FluxPointerAcceleration.strong.factor(velocity: 1500), FluxPointerAcceleration.gentle.factor(velocity: 1500))
+        XCTAssertLessThan(FluxPointerAcceleration.strong.factor(velocity: 0), FluxPointerAcceleration.gentle.factor(velocity: 0))
+        XCTAssertLessThanOrEqual(FluxPointerAcceleration.strong.factor(velocity: 1e9), 3)
+        XCTAssertEqual(FluxPointerAcceleration.gentle.factor(velocity: .infinity), 1)
+        let plain = FluxPointerMotion(speed: .normal, acceleration: .none)
+        XCTAssertEqual(plain.move(from: .zero, dx: 10, dy: 0, velocity: 4000).x, 10)
+        XCTAssertEqual(FluxPointerMotion(speed: .veryFast, acceleration: .none).move(from: .zero, dx: 10, dy: 0, velocity: 0).x, 20)
+        XCTAssertTrue(FluxPointerShape.arrow.pointsWithTip)
+        XCTAssertFalse(FluxPointerShape.ring.pointsWithTip)
+    }
+
+    /// Over a list the pointer keeps its height and the list scrolls under
+    /// it; it leaves by a side, or past an end the list has reached.
+    func testOverAListThePointerScrollsItAndLeavesByItsSides() {
+        let list = CGRect(x: 100, y: 100, width: 600, height: 800)
+        let band = FluxPointerRail.band(list)
+        XCTAssertEqual(band.minY, 260)
+        XCTAssertEqual(band.maxY, 740)
+        // Mostly up and down: only scrolls; mostly across: only moves.
+        XCTAssertEqual(FluxPointerRail.split(dx: 3, dy: 40).across, 0)
+        XCTAssertEqual(FluxPointerRail.split(dx: 40, dy: 3).along, 0)
+        XCTAssertEqual(FluxPointerRail.split(dx: 30, dy: 30).across, 30)
+        XCTAssertEqual(FluxPointerRail.split(dx: .nan, dy: 3).along, 0)
+
+        var rail = FluxPointerRail()
+        // The list scrolled: the pointer stays where it is, at its height.
+        var step = rail.move(from: CGPoint(x: 300, y: 500), dx: 0, dy: 0, scrolled: true, list: list)
+        XCTAssertEqual(step.point, CGPoint(x: 300, y: 500))
+        XCTAssertFalse(step.leaves)
+        // Coming in at the top, it is brought down into the band.
+        step = rail.move(from: CGPoint(x: 300, y: 110), dx: 0, dy: 0, scrolled: true, list: list)
+        XCTAssertEqual(step.point.y, 260)
+        // Across, along the row, as far as the side.
+        step = rail.move(from: CGPoint(x: 300, y: 500), dx: -150, dy: 0, scrolled: false, list: list)
+        XCTAssertEqual(step.point.x, 150)
+        step = rail.move(from: step.point, dx: -80, dy: 0, scrolled: false, list: list)
+        XCTAssertEqual(step.point.x, 100, "At the side, the pointer waits.")
+        XCTAssertFalse(step.leaves)
+        XCTAssertEqual(rail.pullX, -30)
+        // Back from the pull, the pull is undone first.
+        step = rail.move(from: step.point, dx: 20, dy: 0, scrolled: false, list: list)
+        XCTAssertEqual(step.point.x, 100)
+        XCTAssertEqual(rail.pullX, -10)
+        // Pulled on past the side: out of the list, at its height.
+        step = rail.move(from: step.point, dx: -60, dy: 0, scrolled: false, list: list)
+        XCTAssertTrue(step.leaves)
+        XCTAssertEqual(step.point, CGPoint(x: 76, y: 500))
+        XCTAssertEqual(rail, FluxPointerRail(), "Out of the list, nothing is pulled.")
+        // The list has ended at the bottom: a pull takes the pointer out below.
+        step = rail.move(from: CGPoint(x: 300, y: 600), dx: 0, dy: 30, scrolled: false, list: list)
+        XCTAssertFalse(step.leaves)
+        step = rail.move(from: step.point, dx: 0, dy: 30, scrolled: false, list: list)
+        XCTAssertTrue(step.leaves)
+        XCTAssertEqual(step.point, CGPoint(x: 300, y: 924))
+        // A list that scrolls again stands no pull.
+        _ = rail.move(from: CGPoint(x: 300, y: 600), dx: 0, dy: -40, scrolled: false, list: list)
+        step = rail.move(from: CGPoint(x: 300, y: 600), dx: 0, dy: -40, scrolled: true, list: list)
+        XCTAssertFalse(step.leaves)
+        XCTAssertEqual(rail.pullY, -40)
+    }
+
     func testThePointerRestsOnTheSmallestControlUnderIt() {
         let panel = CGRect(x: 0, y: 0, width: 800, height: 600)
         let button = CGRect(x: 100, y: 100, width: 200, height: 80)

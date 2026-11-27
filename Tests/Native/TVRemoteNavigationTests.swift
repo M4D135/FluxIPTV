@@ -187,7 +187,8 @@ final class TVRemoteNavigationTests: XCTestCase {
     /// an edge goes somewhere, as a fresh key of a Mac does. From the column
     /// Left goes to Back; along the bar, past one end comes the other; Down
     /// from the bar leads to the search, and Up from the search to the icon
-    /// of the screen; Right past the actions of a channel goes there too.
+    /// of the screen; Right past the actions of a channel comes round to the
+    /// left of the screen, at the same height.
     @MainActor
     func testNoPressOfTheRemoteLeadsNowhere() {
         let app = launch("live")
@@ -217,12 +218,22 @@ final class TVRemoteNavigationTests: XCTestCase {
         retainScreenshot("edges-03-search-to-the-icon", in: app)
 
         // Up from the bar into the list, then right along the actions of
-        // the channel and past them.
+        // the channel and past them: "au lieu d'aller dans la barre dock, on
+        // repart à gauche à même hauteur" (David, 27/11).
         afterAPause(.up)
         assertCondition("hasFocus == false", on: television, in: app)
-        for _ in 0..<5 where !holdsFocus(television) { afterAPause(.right) }
-        assertFocus(television, in: app)
-        print("PASS: TV_REMOTE after a pause, Left from the column reached Back, the bar went round both ways, Down from the bar reached the search, Up from the search and Right past the actions reached the icon of the screen")
+        let watch = element("live-watch", in: app)
+        move(.right, to: watch, maximumPresses: 4, in: app)
+        let height = watch.frame.midY
+        let leftOf = NSPredicate(format: "value BEGINSWITH 'group-' OR value == 'countries' OR value BEGINSWITH 'live-category-' OR value BEGINSWITH 'live-preset-' OR value == 'live-manage-lists' OR value BEGINSWITH 'fixture-live-'")
+        for _ in 0..<5 where !leftOf.evaluate(with: logical) { afterAPause(.right) }
+        assertCondition(leftOf, on: logical, in: app)
+        XCTAssertFalse(holdsFocus(television), "Right past the right edge went down into the bar.")
+        let landed = app.descendants(matching: .any).matching(NSPredicate(format: "hasFocus == true")).firstMatch
+        XCTAssertLessThan(landed.frame.midX, watch.frame.minX, "Right past the right edge did not come round to the left.")
+        XCTAssertLessThan(abs(landed.frame.midY - height), app.frame.height * 0.2, "Right past the right edge left the height it was at.")
+        retainScreenshot("edges-04-right-comes-round", in: app)
+        print("PASS: TV_REMOTE after a pause, Left from the column reached Back, the bar went round both ways, Down from the bar reached the search, Up from the search reached the icon of the screen, and Right past the actions came round to the left at the same height")
     }
 
     /// The preview of a channel, a moment after the remote has left its row:
@@ -358,6 +369,64 @@ final class TVRemoteNavigationTests: XCTestCase {
         assertCondition(NSPredicate(format: "value BEGINSWITH 'suspended'"), on: state, in: app)
         retainScreenshot("pointer-03-clicked", in: app)
         print("PASS: TV_REMOTE the pointer gave the focus to the channels and the icons it crossed, and its click watched the channel under it")
+    }
+
+    /// "sur une liste on passe sur un pointeur défilement au survol [...] on
+    /// ressort par droite gauche de la zone" (David, 27/11): over the list of
+    /// the channels the pointer becomes a scroll pointer that keeps its
+    /// height while the list scrolls under it, and a pull to the left takes
+    /// it out; back on the list, a click watches the channel under it.
+    @MainActor
+    func testThePointerRidesTheListOfTheChannels() {
+        let app = launch("pointer-list")
+        defer { app.terminate() }
+        let state = element("flux-pointer-state", in: app)
+        let trace = pointerTrace(until: "end=", on: state)
+        XCTAssertTrue(trace.contains("rail"), "Over the list the pointer did not become a scroll pointer: \(trace)")
+        XCTAssertTrue(trace.contains("kept"), "The scroll pointer left its height: \(trace)")
+        XCTAssertTrue(trace.contains("scrolled"), "The list did not scroll under the pointer: \(trace)")
+        XCTAssertTrue(trace.contains("out"), "A pull to the left did not take the pointer out of the list: \(trace)")
+        let on = trace.first { $0.hasPrefix("on=") }.map { String($0.dropFirst(3)) } ?? ""
+        let now = trace.first { $0.hasPrefix("now=") }.map { String($0.dropFirst(4)) } ?? ""
+        XCTAssertTrue(on.hasPrefix("fixture-live-"), "The scroll pointer gave the remote to no channel: \(trace)")
+        XCTAssertTrue(now.hasPrefix("fixture-live-"), "After the scroll no channel has the remote: \(trace)")
+        XCTAssertNotEqual(on, now, "The channel under the pointer did not change as the list scrolled: \(trace)")
+        let end = (trace.last ?? "").replacingOccurrences(of: "end=", with: "")
+        XCTAssertTrue(end.hasPrefix("fixture-live-"), "Back on the list, no channel has the remote: \(trace)")
+        assertCondition(NSPredicate(format: "value CONTAINS ' rail'"), on: state, in: app)
+        retainScreenshot("pointer-list-01-scroll-pointer", in: app)
+        XCUIRemote.shared.press(.select)
+        assertCondition(NSPredicate(format: "value BEGINSWITH 'suspended'"), on: state, in: app)
+        print("PASS: TV_REMOTE over the list the pointer became a scroll pointer that kept its height while the list scrolled under it, a pull to the left took it out, and its click watched the channel under it")
+    }
+
+    /// "plus de choix de pointeurs" and "pour basculer de mode c'est ok
+    /// standard vers souris mais pas le contraire" (David, 27/11): in the
+    /// settings the pointer pushes the page down to the shapes and chooses
+    /// « Halo », then goes back up and presses « Classique », and the remote
+    /// is classic again, as a bubble says.
+    @MainActor
+    func testThePointerGoesBackToTheClassicRemoteFromTheSettings() {
+        let app = launch("settings-remote", environment: ["FLUX_UI_POINTER": "1"])
+        defer { app.terminate() }
+        let state = element("flux-pointer-state", in: app)
+        var trace = pointerTrace(until: "end=", on: state)
+        XCTAssertEqual(trace.last, "end=pointer-shape-halo", "The pointer did not reach « Halo », below the bottom of the page: \(trace)")
+        for id in ["settings-pointer-shape-hand", "settings-pointer-shape-crosshair", "settings-pointer-color-cyan"] {
+            XCTAssertTrue(element(id, in: app).exists, "The settings do not offer \(id).")
+        }
+        retainScreenshot("pointer-remote-01-shapes", in: app)
+        XCUIRemote.shared.press(.select)
+        let halo = element("settings-pointer-shape-halo", in: app)
+        assertCondition("selected == true", on: halo, in: app)
+        trace = pointerTrace(until: "end2=", on: state)
+        XCTAssertEqual(trace.last, "end2=remote-mode-classic", "The pointer does not rest on « Classique »: \(trace)")
+        retainScreenshot("pointer-remote-02-classic-key", in: app)
+        XCUIRemote.shared.press(.select)
+        assertCondition(NSPredicate(format: "value BEGINSWITH 'classic toasts:1'"), on: state, in: app)
+        XCTAssertTrue(appears(element("flux-pointer-mode", in: app), timeout: 3), "A bubble says the mode.")
+        retainScreenshot("pointer-remote-03-classic", in: app)
+        print("PASS: TV_REMOTE the pointer pushed the settings down to its shapes and chose « Halo », then pressed « Classique », and the remote was classic again, told by a bubble")
     }
 
     /// The pointer in the fiche of a film and in the panel of its lists,

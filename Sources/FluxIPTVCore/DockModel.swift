@@ -336,9 +336,10 @@ public enum FluxDockNavigation {
     /// Where a press leads from a control that has nothing beyond it in
     /// that direction, so that a remote finds no dead key. From the screen:
     /// Left goes to the Back key of the bar, and every other way to the
-    /// icon of the screen. Along the bar, past one end comes the other end;
-    /// away from the screen comes the top of the screen. Nil when the press
-    /// has somewhere to go already.
+    /// icon of the screen; on Apple TV, the screen first sends Right round
+    /// to its left (`DeskWrap`). Along the bar, past one end comes the other
+    /// end; away from the screen comes the top of the screen. Nil when the
+    /// press has somewhere to go already.
     public static func beyond(_ current: String?, action: RemoteAction, position: FluxDockPosition,
                               dockIDs: [String], preferredDockID: String?, backID: String?, topID: String?) -> String? {
         guard !dockIDs.isEmpty, [.up, .down, .left, .right].contains(action) else { return nil }
@@ -356,6 +357,38 @@ public enum FluxDockNavigation {
 
     private static func preferred(_ id: String?, in dockIDs: [String]) -> String? {
         id.flatMap { dockIDs.contains($0) ? $0 : nil } ?? dockIDs.first
+    }
+}
+
+/// Where Right past the right edge of a screen comes round to: the control
+/// furthest left at the height of the one it leaves, as a line of text goes
+/// on at the start of the line. "quand on va au bout à droite dans une
+/// fenêtre, au lieu d'aller dans la barre dock, on reste normal comme le
+/// reste, on repart à gauche à même hauteur" (David, 27/11).
+public enum DeskWrap {
+    /// How far above or below the middle of the control left a control may
+    /// stand and still be at its height, in points.
+    public static let tolerance = 24.0
+
+    /// `from`: the frame of the control left; `candidates`: the controls of
+    /// the screen, the bar left out. Among those to its left, the one
+    /// furthest left that crosses its height, the nearest in height first;
+    /// without one, the nearest in height, the furthest left first.
+    public static func leftmost(atHeightOf from: CGRect, among candidates: [(id: String, frame: CGRect)]) -> String? {
+        guard !from.isNull, !from.isEmpty else { return nil }
+        let line = Double(from.midY)
+        func distance(_ frame: CGRect) -> Double {
+            max(0, Double(frame.minY) - line, line - Double(frame.maxY))
+        }
+        let shown = candidates.filter { !$0.frame.isNull && !$0.frame.isEmpty && $0.frame.midX < from.midX }
+        let level = shown.filter { distance($0.frame) <= tolerance }
+        if let best = level.min(by: { a, b in
+            abs(a.frame.minX - b.frame.minX) > 0.5 ? a.frame.minX < b.frame.minX : distance(a.frame) < distance(b.frame)
+        }) { return best.id }
+        return shown.min(by: { a, b in
+            let da = distance(a.frame), db = distance(b.frame)
+            return abs(da - db) > 0.5 ? da < db : a.frame.minX < b.frame.minX
+        })?.id
     }
 }
 

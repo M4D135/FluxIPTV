@@ -160,6 +160,27 @@ final class DockModelTests: XCTestCase {
                                                preferredDockID: "tab-movie", backID: "desk-back", topID: "find"))
     }
 
+    /// "on repart à gauche à même hauteur" (David, 27/11): Right past the
+    /// right edge comes round to the control furthest left at its height.
+    func testRightComesRoundToTheLeftAtTheSameHeight() {
+        // The furthest left at the same height, among those to the left.
+        let from = CGRect(x: 1500, y: 400, width: 300, height: 100)
+        let places: [(id: String, frame: CGRect)] = [
+            ("column-1", CGRect(x: 40, y: 300, width: 300, height: 80)),
+            ("column-2", CGRect(x: 40, y: 400, width: 300, height: 80)),
+            ("list-2", CGRect(x: 400, y: 410, width: 500, height: 80)),
+            ("right-of", CGRect(x: 1850, y: 420, width: 60, height: 60)),
+            ("far-below", CGRect(x: 0, y: 900, width: 100, height: 80)),
+        ]
+        XCTAssertEqual(DeskWrap.leftmost(atHeightOf: from, among: places), "column-2")
+        // A row a little off the line still stands at its height.
+        XCTAssertEqual(DeskWrap.leftmost(atHeightOf: from.offsetBy(dx: 0, dy: -45), among: places), "column-2")
+        // Nothing at that height: the nearest in height.
+        XCTAssertEqual(DeskWrap.leftmost(atHeightOf: CGRect(x: 1500, y: 700, width: 300, height: 100), among: places), "far-below")
+        XCTAssertNil(DeskWrap.leftmost(atHeightOf: from, among: [("right-of", CGRect(x: 1850, y: 420, width: 60, height: 60))]))
+        XCTAssertNil(DeskWrap.leftmost(atHeightOf: .null, among: places))
+    }
+
     func testOnlyAPressAfterAPauseIsFresh() {
         let cadence = FluxPressCadence()
         XCTAssertTrue(cadence.press(at: 10))

@@ -60,6 +60,12 @@ import UIKit.UIGestureRecognizerSubclass
     /// A screen moved its own selection, which the pointer may rest on.
     func selectionMoved() { controller?.selectionMoved() }
 
+    /// Where the last control that took the focus stands, in the points of
+    /// the screen, in either mode. The strips at the edges are too thin to
+    /// count: a strip that takes the remote leaves here the control it came
+    /// from (`FluxScreen.crossEdge`).
+    var lastFocusFrame: CGRect?
+
     /// Whether a move command moves the selection of a screen that moves
     /// its own: with the pointer, a swipe moves the pointer only, and the
     /// arrows still move the selection.
@@ -176,7 +182,10 @@ import UIKit.UIGestureRecognizerSubclass
 
     struct Target {
         let id: String
+        /// What its list shows of it.
         var frame: CGRect
+        /// The whole of it, part of which a list may hide.
+        var full: CGRect
         /// The pointer whose screens hold the control.
         let layer: UUID
         /// Gives the focus to the control, through the focus state of its screen.
@@ -209,13 +218,16 @@ import UIKit.UIGestureRecognizerSubclass
         return FluxPointerTarget.pick(point, frames: list.map(\.frame), tolerance: tolerance).map { list[$0] }
     }
 
-    /// A page that the pointer scrolls by pushing its edges (`fluxPointerPage`).
+    /// A page that the pointer scrolls by pushing its edges (`fluxPointerPage`),
+    /// or a list that scrolls under it (`fluxPointerList`).
     struct Page {
         /// What shows of it, on the screen.
         let frame: CGRect
         let layer: UUID
         /// The scroll view that SwiftUI draws it in.
         weak var scroll: UIScrollView?
+        /// A list: over it the pointer becomes a scroll pointer.
+        var list = false
     }
 
     private var pages: [UUID: Page] = [:]
@@ -223,12 +235,25 @@ import UIKit.UIGestureRecognizerSubclass
     func setPage(_ token: UUID, _ page: Page) { pages[token] = page }
     func removePage(_ token: UUID) { pages[token] = nil }
 
-    func pages(in layer: UUID) -> [Page] { pages.values.filter { $0.layer == layer && $0.scroll != nil } }
+    func pages(in layer: UUID) -> [Page] { pages.values.filter { $0.layer == layer && $0.scroll != nil && !$0.list } }
 
     /// The page of `layer` that shows at `point`, the innermost.
     func page(at point: CGPoint, in layer: UUID) -> Page? {
         pages(in: layer).filter { $0.frame.contains(point) }
             .min { $0.frame.width * $0.frame.height < $1.frame.width * $1.frame.height }
+    }
+
+    /// The list of `layer` that shows at `point`, the innermost, and its token.
+    func list(at point: CGPoint, in layer: UUID) -> (token: UUID, list: Page)? {
+        pages.filter { $0.value.layer == layer && $0.value.list && $0.value.scroll != nil && $0.value.frame.contains(point) }
+            .min { $0.value.frame.width * $0.value.frame.height < $1.value.frame.width * $1.value.frame.height }
+            .map { ($0.key, $0.value) }
+    }
+
+    /// The list `token`, while it shows.
+    func list(_ token: UUID) -> Page? {
+        guard let page = pages[token], page.list, page.scroll != nil, !page.frame.isNull, !page.frame.isEmpty else { return nil }
+        return page
     }
 }
 
@@ -259,12 +284,20 @@ private struct FluxPointerTargetModifier: ViewModifier {
     final class Place {
         let token = UUID()
         var frame = CGRect.null
+        var full = CGRect.null
+    }
+
+    /// What shows of a control, and the whole of it.
+    struct Frames: Equatable {
+        var shown: CGRect
+        var full: CGRect
     }
 
     func body(content: Content) -> some View {
         content
-            .onGeometryChange(for: CGRect.self) { Self.shownFrame($0) } action: { frame in
-                place.frame = frame
+            .onGeometryChange(for: Frames.self) { Frames(shown: Self.shownFrame($0), full: $0.frame(in: .global)) } action: { frames in
+                place.frame = frames.shown
+                place.full = frames.full
                 record(enabled: enabled)
             }
             .onChange(of: enabled) { _, now in record(enabled: now) }
@@ -291,7 +324,8 @@ private struct FluxPointerTargetModifier: ViewModifier {
             FluxPointerTargets.shared.remove(place.token)
             return
         }
-        FluxPointerTargets.shared.set(place.token, .init(id: id, frame: frame, layer: layer, focus: focus, holds: holds))
+        FluxPointerTargets.shared.set(place.token, .init(id: id, frame: frame, full: place.full.isNull ? frame : place.full,
+                                                         layer: layer, focus: focus, holds: holds))
     }
 }
 
@@ -332,11 +366,23 @@ extension View {
     /// view: pushed against the top or the bottom of what shows of it, the
     /// pointer stays there and the page scrolls (`FluxPointerScroll`).
     func fluxPointerPage() -> some View {
-        modifier(FluxPointerPageModifier())
+        modifier(FluxPointerPageModifier(list: false))
+    }
+
+    /// The content of a list that scrolls down, inside its scroll view:
+    /// "sur une liste on passe sur un pointeur défilement au survol et on
+    /// change le fonctionnement au survol de la zone pour haut et bas, on
+    /// ressort par droite gauche de la zone" (David, 27/11). Over it the
+    /// pointer becomes a scroll pointer that stays put: up and down scroll
+    /// the list under it, and the row under it takes the remote; across, it
+    /// goes along the row, and a pull past a side takes it out.
+    func fluxPointerList() -> some View {
+        modifier(FluxPointerPageModifier(list: true))
     }
 }
 
 private struct FluxPointerPageModifier: ViewModifier {
+    let list: Bool
     @Environment(\.isEnabled) private var enabled
     @Environment(\.fluxPointerLayer) private var layer
     @State private var place = Place()
@@ -369,7 +415,7 @@ private struct FluxPointerPageModifier: ViewModifier {
             FluxPointerTargets.shared.removePage(place.token)
             return
         }
-        FluxPointerTargets.shared.setPage(place.token, .init(frame: place.frame, layer: layer, scroll: scroll))
+        FluxPointerTargets.shared.setPage(place.token, .init(frame: place.frame, layer: layer, scroll: scroll, list: list))
     }
 }
 
@@ -417,8 +463,12 @@ struct FluxPointerSettings: Equatable {
     var mode = FluxRemoteMode.defaultValue
     var toggles = FluxRemoteMode.toggleDefault
     var speed = FluxPointerSpeed.defaultValue
+    var acceleration = FluxPointerAcceleration.defaultValue
     var size = FluxPointerSize.defaultValue
     var shape = FluxPointerShape.defaultValue
+    var color = FluxPointerColor.defaultValue
+
+    var motion: FluxPointerMotion { FluxPointerMotion(speed: speed, acceleration: acceleration) }
 }
 
 /// The screens of a television, under the controller of the pointer.
@@ -426,8 +476,10 @@ struct FluxRemoteHost<Content: View>: View {
     @AppStorage(FluxRemoteMode.storageKey) private var mode = FluxRemoteMode.defaultValue.rawValue
     @AppStorage(FluxRemoteMode.toggleKey) private var toggles = FluxRemoteMode.toggleDefault
     @AppStorage(FluxPointerSpeed.storageKey) private var speed = FluxPointerSpeed.defaultValue.rawValue
+    @AppStorage(FluxPointerAcceleration.storageKey) private var acceleration = FluxPointerAcceleration.defaultValue.rawValue
     @AppStorage(FluxPointerSize.storageKey) private var size = FluxPointerSize.defaultValue.rawValue
     @AppStorage(FluxPointerShape.storageKey) private var shape = FluxPointerShape.defaultValue.rawValue
+    @AppStorage(FluxPointerColor.storageKey) private var color = FluxPointerColor.defaultValue.rawValue
     @Environment(\.scenePhase) private var phase
     private let content: () -> Content
 
@@ -436,8 +488,10 @@ struct FluxRemoteHost<Content: View>: View {
     private var settings: FluxPointerSettings {
         FluxPointerSettings(mode: FluxRemoteMode(rawValue: mode) ?? .defaultValue, toggles: toggles,
                             speed: FluxPointerSpeed(rawValue: speed) ?? .defaultValue,
+                            acceleration: FluxPointerAcceleration(rawValue: acceleration) ?? .defaultValue,
                             size: FluxPointerSize(rawValue: size) ?? .defaultValue,
-                            shape: FluxPointerShape(rawValue: shape) ?? .defaultValue)
+                            shape: FluxPointerShape(rawValue: shape) ?? .defaultValue,
+                            color: FluxPointerColor(rawValue: color) ?? .defaultValue)
     }
 
     var body: some View {
@@ -516,6 +570,10 @@ private struct FluxPointerHost<Content: View>: UIViewControllerRepresentable {
     /// A page the pointer pushed draws itself again before the pointer
     /// looks at what came under it.
     private var settle: Task<Void, Never>?
+    /// The list the pointer rides as a scroll pointer, and how far it is
+    /// pulled past a side of it.
+    private var rail: UUID?
+    private var railMotion = FluxPointerRail()
 
     private lazy var pan: UIPanGestureRecognizer = {
         let pan = UIPanGestureRecognizer(target: self, action: #selector(panned(_:)))
@@ -614,7 +672,8 @@ private struct FluxPointerHost<Content: View>: UIViewControllerRepresentable {
         // pointer, once, over whatever pointer is on top as it goes.
         let environment = ProcessInfo.processInfo.environment
         let scenario = environment["FLUX_UI_SCENARIO"] ?? ""
-        guard scenario == "pointer" || environment["FLUX_UI_POINTER"] == "1", !FluxPointerState.shared.swept else { return }
+        guard scenario == "pointer" || scenario == "pointer-list" || environment["FLUX_UI_POINTER"] == "1",
+              !FluxPointerState.shared.swept else { return }
         FluxPointerState.shared.swept = true
         Task { @MainActor in await FluxPointerController.sweep(scenario) }
         #endif
@@ -647,14 +706,35 @@ private struct FluxPointerHost<Content: View>: UIViewControllerRepresentable {
     func apply(_ next: FluxPointerSettings) {
         let previous = settings
         settings = next
-        cursor.style(shape: next.shape, height: Desk.tv(CGFloat(next.size.height)))
+        restyle()
         guard applied else { applied = true; refresh(); return }
         if previous.mode != next.mode {
-            if next.mode == .pointer { placeOnFocus() }
+            if next.mode == .pointer { placeOnFocus() } else { leaveRail() }
             refresh()
+            announce(next.mode)
         } else if previous.toggles != next.toggles {
             refresh()
         }
+    }
+
+    /// The pointer as the settings draw it, or the scroll pointer over a list.
+    private func restyle() {
+        cursor.style(shape: settings.shape, color: settings.color, height: Desk.tv(CGFloat(settings.size.height)), riding: rail != nil)
+        cursor.place(at: position)
+    }
+
+    /// A bubble says the new mode, however it came: Lecture/Pause held down,
+    /// or the settings, from which the mode « Souris » could not be left in
+    /// 0.9.8 ("pour basculer de mode c ok standard vers souris mais pas le
+    /// contraire", David, 27/11). The pointer on top speaks for all.
+    private func announce(_ mode: FluxRemoteMode) {
+        guard FluxPointerState.shared.controller.map({ $0 === self }) ?? true else { return }
+        toast.show(mode == .pointer ? "Mode souris" : "Mode classique", symbol: mode.symbol,
+                   hint: settings.toggles ? "Maintenez Lecture/Pause pour changer" : "Réglages › Télécommande pour changer")
+        #if FLUX_CATALOG_UI_TESTING
+        FluxPointerState.shared.toasts += 1
+        FluxPointerState.shared.report()
+        #endif
     }
 
     /// The recognizers and the pointer follow the mode and what covers the
@@ -662,6 +742,7 @@ private struct FluxPointerHost<Content: View>: UIViewControllerRepresentable {
     func refresh() {
         guard isViewLoaded else { return }
         let active = pointerActive
+        if !active { leaveRail() }
         pan.isEnabled = active
         arrows.isEnabled = active
         hold.isEnabled = settings.toggles && !FluxPointerState.shared.suspended
@@ -688,7 +769,17 @@ private struct FluxPointerHost<Content: View>: UIViewControllerRepresentable {
 
     override func didUpdateFocus(in context: UIFocusUpdateContext, with coordinator: UIFocusAnimationCoordinator) {
         super.didUpdateFocus(in: context, with: coordinator)
+        // Where the remote is, in either mode, for the edges of the screen.
+        if let next = context.nextFocusedItem, let frame = frame(of: next), frame.width > 12, frame.height > 12 {
+            FluxPointerState.shared.lastFocusFrame = frame
+        }
         guard pointerActive, let next = context.nextFocusedItem else { return }
+        // The arrows or a screen took the remote off the list the pointer
+        // rides: it is a pointer again.
+        if let token = rail, let frame = frame(of: next),
+           !(FluxPointerTargets.shared.list(token)?.frame.contains(CGPoint(x: frame.midX, y: frame.midY)) ?? false) {
+            leaveRail()
+        }
         if let requested, requested === next {
             self.requested = nil
             overNothing = false
@@ -700,8 +791,7 @@ private struct FluxPointerHost<Content: View>: UIViewControllerRepresentable {
         // once it has the focus a click on it no longer waits, whichever
         // screen gave it the focus.
         if frame.insetBy(dx: -24, dy: -24).contains(position) {
-            if let target = FluxPointerTargets.shared.target(at: position, tolerance: 14, in: layer),
-               target.holds == nil, FluxPointerTarget.same(frame, target.frame) {
+            if let target = pointedTarget(), target.holds == nil, FluxPointerTarget.same(frame, target.frame) {
                 overNothing = false
                 asking = nil
                 updateIdleClick()
@@ -771,7 +861,7 @@ private struct FluxPointerHost<Content: View>: UIViewControllerRepresentable {
         lastHover = now
         // The controls say where they stand (`fluxPointerTarget`), and their
         // screen gives them the focus.
-        if let target = FluxPointerTargets.shared.target(at: position, tolerance: 14, in: layer) {
+        if let target = pointedTarget() {
             found = true
             // Until the control has taken the focus, a click would press
             // the one that still has it: the click waits for it.
@@ -827,7 +917,7 @@ private struct FluxPointerHost<Content: View>: UIViewControllerRepresentable {
     /// pointer, whose click no longer waits. Nothing is asked here: the
     /// screen may have moved the focus itself.
     func focusMoved() {
-        guard pointerActive, let target = FluxPointerTargets.shared.target(at: position, tolerance: 14, in: layer) else { return }
+        guard pointerActive, let target = pointedTarget() else { return }
         overNothing = !holds(target)
         if !overNothing { asking = nil }
         updateIdleClick()
@@ -839,7 +929,7 @@ private struct FluxPointerHost<Content: View>: UIViewControllerRepresentable {
     func selectionMoved() {
         guard pointerActive else { return }
         let targets = FluxPointerTargets.shared
-        if let target = targets.target(at: position, tolerance: 14, in: layer), holds(target) {
+        if let target = pointedTarget(), holds(target) {
             overNothing = false
             asking = nil
             updateIdleClick()
@@ -876,6 +966,7 @@ private struct FluxPointerHost<Content: View>: UIViewControllerRepresentable {
         switch pan.state {
         case .began:
             lastTranslation = .zero
+            stopGlide()
             show()
             fallthrough
         case .changed:
@@ -885,8 +976,14 @@ private struct FluxPointerHost<Content: View>: UIViewControllerRepresentable {
             let velocity = pan.velocity(in: view)
             thumbMoved(dx: dx, dy: dy, velocity: Double((velocity.x * velocity.x + velocity.y * velocity.y).squareRoot()))
         case .ended, .cancelled, .failed:
+            // A flick up or down on a list glides it on.
+            let velocity = pan.velocity(in: view)
+            if pan.state == .ended, rail != nil, abs(velocity.y) >= abs(velocity.x) * CGFloat(FluxPointerRail.dominance) {
+                let flick = settings.motion.move(from: .zero, dx: 0, dy: Double(velocity.y), velocity: Double(abs(velocity.y)))
+                startGlide(Double(flick.y))
+            }
             // A page that has just scrolled looks under the pointer itself.
-            if settle == nil { hover(force: true) }
+            if settle == nil, glide == nil { hover(force: true) }
             show()
         default:
             break
@@ -895,10 +992,151 @@ private struct FluxPointerHost<Content: View>: UIViewControllerRepresentable {
 
     /// The thumb moved by `dx`, `dy`, at `velocity`.
     private func thumbMoved(dx: Double, dy: Double, velocity: Double) {
-        let wanted = FluxPointerMotion(speed: settings.speed).move(from: position, dx: dx, dy: dy, velocity: velocity)
+        let wanted = settings.motion.move(from: position, dx: dx, dy: dy, velocity: velocity)
+        if rail != nil, ride(dx: Double(wanted.x - position.x), dy: Double(wanted.y - position.y)) {
+            show()
+            return
+        }
+        // Over a list, the pointer becomes the scroll pointer.
+        if let found = FluxPointerTargets.shared.list(at: FluxPointerMotion.clamp(wanted, to: view.bounds), in: layer) {
+            enterRail(found.token, list: found.list.frame, at: wanted)
+            show()
+            return
+        }
         let pushed = push(to: wanted)
         move(to: pushed.point, animated: false)
         if pushed.scrolled { pageMoved() } else if settle == nil { hover() }
+        show()
+    }
+
+    // MARK: The scroll pointer
+
+    /// The pointer comes onto a list: it becomes the scroll pointer, in the
+    /// middle band of the list, and the row under it takes the remote.
+    private func enterRail(_ token: UUID, list: CGRect, at point: CGPoint) {
+        stopGlide()
+        rail = token
+        railMotion = FluxPointerRail()
+        restyle()
+        let band = FluxPointerRail.band(list)
+        move(to: CGPoint(x: min(list.maxX, max(list.minX, point.x)), y: min(band.maxY, max(band.minY, point.y))), animated: true)
+        hover(force: true)
+        #if FLUX_CATALOG_UI_TESTING
+        report()
+        #endif
+    }
+
+    /// The pointer leaves the list: a pointer again.
+    private func leaveRail() {
+        stopGlide()
+        guard rail != nil else { return }
+        rail = nil
+        railMotion = FluxPointerRail()
+        restyle()
+        #if FLUX_CATALOG_UI_TESTING
+        report()
+        #endif
+    }
+
+    /// The thumb over the list the pointer rides: up and down scroll the
+    /// list under the pointer, across moves along the row, and a pull past
+    /// a side takes the pointer out. False once the list no longer shows.
+    private func ride(dx: Double, dy: Double) -> Bool {
+        guard let token = rail, let list = FluxPointerTargets.shared.list(token), let scroll = list.scroll else {
+            leaveRail()
+            return false
+        }
+        stopGlide()
+        let way = FluxPointerRail.split(dx: dx, dy: dy)
+        let scrolled = scrollRail(scroll, by: way.along)
+        let step = railMotion.move(from: position, dx: way.across, dy: scrolled.rest, scrolled: scrolled.moved != 0,
+                                   list: list.frame)
+        if step.leaves {
+            leaveRail()
+            move(to: step.point, animated: true)
+            // Out onto another list, it rides that one.
+            if let next = FluxPointerTargets.shared.list(at: position, in: layer) {
+                enterRail(next.token, list: next.list.frame, at: position)
+            } else {
+                hover(force: true)
+            }
+            return true
+        }
+        move(to: step.point, animated: false)
+        if scrolled.moved != 0 { pageMoved() } else if settle == nil { hover() }
+        return true
+    }
+
+    /// Scrolls `scroll` by `way`, down when positive, as far as it goes.
+    /// What is left of the way counts only once the list had ended already:
+    /// a flick that reaches the end of the list stops there.
+    private func scrollRail(_ scroll: UIScrollView, by way: Double) -> (moved: Double, rest: Double) {
+        guard way != 0, way.isFinite else { return (0, 0) }
+        let inset = scroll.adjustedContentInset
+        let offset = Double(scroll.contentOffset.y)
+        let top = -Double(inset.top)
+        let bottom = max(top, Double(scroll.contentSize.height + inset.bottom - scroll.bounds.height))
+        let room = way > 0 ? bottom - offset : offset - top
+        guard room > 0.5 else { return (0, way) }
+        let moved = way > 0 ? min(way, room) : -min(-way, room)
+        scroll.setContentOffset(CGPoint(x: scroll.contentOffset.x, y: CGFloat(offset + moved)), animated: false)
+        return (moved, 0)
+    }
+
+    /// On the list the pointer rides, the control under it, or the nearest
+    /// that the list shows whole: a row cut by the top or the bottom of the
+    /// list is not the one the scroll pointer stands for.
+    private func railTarget() -> FluxPointerTargets.Target? {
+        guard let token = rail, let list = FluxPointerTargets.shared.list(token) else { return nil }
+        let whole = FluxPointerTargets.shared.targets(in: layer).filter { target in
+            list.frame.contains(CGPoint(x: target.frame.midX, y: target.frame.midY))
+                && target.full.width - target.frame.width <= 4 && target.full.height - target.frame.height <= 4
+        }
+        return FluxPointerTarget.pick(position, frames: whole.map(\.frame), tolerance: 60).map { whole[$0] }
+    }
+
+    /// What the pointer stands for: on a list, its row; elsewhere, the
+    /// control under it.
+    private func pointedTarget() -> FluxPointerTargets.Target? {
+        railTarget() ?? FluxPointerTargets.shared.target(at: position, tolerance: 14, in: layer)
+    }
+
+    // A flick up or down glides the list on, slower and slower, as a list of
+    // the system does; the thumb that touches the surface again stops it.
+    private var glide: CADisplayLink?
+    private var glideSpeed = 0.0
+    private var glideClock: CFTimeInterval = 0
+
+    private func startGlide(_ speed: Double) {
+        stopGlide()
+        guard rail != nil, speed.isFinite, abs(speed) > 500 else { return }
+        glideSpeed = speed
+        glideClock = CACurrentMediaTime()
+        let proxy = FluxDisplayLinkProxy()
+        proxy.owner = self
+        let link = CADisplayLink(target: proxy, selector: #selector(FluxDisplayLinkProxy.tick(_:)))
+        link.add(to: .main, forMode: .common)
+        glide = link
+    }
+
+    private func stopGlide() {
+        glide?.invalidate()
+        glide = nil
+        glideSpeed = 0
+    }
+
+    fileprivate func glided() {
+        guard let token = rail, let list = FluxPointerTargets.shared.list(token), let scroll = list.scroll else {
+            stopGlide()
+            return
+        }
+        let now = CACurrentMediaTime()
+        let elapsed = min(0.05, max(0, now - glideClock))
+        glideClock = now
+        let scrolled = scrollRail(scroll, by: glideSpeed * elapsed)
+        glideSpeed *= pow(0.995, elapsed * 1000)
+        if scrolled.moved != 0 { pageMoved() }
+        if abs(glideSpeed) < 60 || scrolled.moved == 0 { stopGlide() }
         show()
     }
 
@@ -936,16 +1174,10 @@ private struct FluxPointerHost<Content: View>: UIViewControllerRepresentable {
 
     @objc private func held(_ hold: UILongPressGestureRecognizer) {
         guard hold.state == .began else { return }
-        // Held, the key changes the mode only: its press is dropped.
+        // Held, the key changes the mode only: its press is dropped. The
+        // settings follow, and the pointer says the new mode (`announce`).
         FluxPointerState.shared.playPauseWasHeld()
-        let next = settings.mode.other
-        UserDefaults.standard.set(next.rawValue, forKey: FluxRemoteMode.storageKey)
-        toast.show(next == .pointer ? "Mode souris" : "Mode classique", symbol: next.symbol,
-                   hint: "Maintenez Lecture/Pause pour changer")
-        #if FLUX_CATALOG_UI_TESTING
-        FluxPointerState.shared.toasts += 1
-        FluxPointerState.shared.report()
-        #endif
+        UserDefaults.standard.set(settings.mode.other.rawValue, forKey: FluxRemoteMode.storageKey)
     }
 
     @objc private func playPauseWatched(_ watch: UILongPressGestureRecognizer) {
@@ -957,11 +1189,18 @@ private struct FluxPointerHost<Content: View>: UIViewControllerRepresentable {
     }
 
     @objc private func idleClicked(_ click: UILongPressGestureRecognizer) {
-        // Held back: the pointer rests on nothing.
+        // Held back: the pointer rests on nothing, or on a list that glides.
+        if click.state == .began { stopGlide() }
     }
 
     func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,
                            shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool { true }
+
+    /// The thumb touches the surface: a list that glides stops under it.
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
+        if gestureRecognizer === pan { stopGlide() }
+        return true
+    }
 
     // MARK: Drawing
 
@@ -1009,13 +1248,17 @@ private struct FluxPointerHost<Content: View>: UIViewControllerRepresentable {
     /// The thumb moves the pointer down a little, as far as the bottom of
     /// the page and then the page itself, unless the control `name` shows
     /// whole in the page: whether it does.
-    func benchPush(toward name: String) -> Bool {
+    func benchPush(toward name: String, down: Bool) -> Bool {
         guard pointerActive else { return false }
         let targets = FluxPointerTargets.shared
         guard let page = targets.page(at: position, in: layer) ?? targets.pages(in: layer).first else { return false }
-        if let target = benchTarget(name), target.frame.maxY < page.frame.maxY - CGFloat(FluxPointerScroll.margin) { return true }
-        if !page.frame.contains(position) { move(to: CGPoint(x: page.frame.midX, y: page.frame.maxY - 60), animated: false) }
-        thumbMoved(dx: 0, dy: 30, velocity: 0)
+        let margin = CGFloat(FluxPointerScroll.margin)
+        if let target = benchTarget(name),
+           down ? target.frame.maxY < page.frame.maxY - margin : target.frame.minY > page.frame.minY + margin { return true }
+        if !page.frame.contains(position) {
+            move(to: CGPoint(x: page.frame.midX, y: down ? page.frame.maxY - 60 : page.frame.minY + 60), animated: false)
+        }
+        thumbMoved(dx: 0, dy: down ? 30 : -30, velocity: 0)
         return false
     }
 
@@ -1072,8 +1315,67 @@ private struct FluxPointerHost<Content: View>: UIViewControllerRepresentable {
         let top = shared.controller ?? self
         let state = top.settings.mode == .classic ? "classic"
             : shared.suspended ? "suspended" : top.pointerActive ? "active" : "covered"
-        probe.accessibilityValue = "\(state) toasts:\(shared.toasts)"
+        probe.accessibilityValue = "\(state) toasts:\(shared.toasts)" + (top.rail == nil ? "" : " rail")
             + (shared.trace.isEmpty ? "" : " trace:" + shared.trace.joined(separator: ","))
+    }
+
+    /// The thumb moves by `dx`, `dy`, slowly, as a bench moves it.
+    func benchThumb(dx: Double, dy: Double) {
+        guard pointerActive else { return }
+        thumbMoved(dx: dx, dy: dy, velocity: 0)
+    }
+
+    /// "pointer-list": the pointer comes onto the list of the channels and
+    /// becomes the scroll pointer; the thumb down scrolls the list under it,
+    /// which keeps its height, and the channel under it takes the remote; a
+    /// pull to the left takes it out of the list.
+    private func sweepList(patience: Double) async {
+        func rest(_ seconds: Double) async { try? await Task.sleep(nanoseconds: UInt64(seconds * patience * 1_000_000_000)) }
+        let shared = FluxPointerState.shared
+        let targets = FluxPointerTargets.shared
+        func channel() -> FluxPointerTargets.Target? {
+            targets.targets(in: layer).filter { $0.id.hasPrefix("fixture-live-") && targets.list(at: CGPoint(x: $0.frame.midX, y: $0.frame.midY), in: layer) != nil }
+                .min { $0.frame.minY < $1.frame.minY }
+        }
+        var first: FluxPointerTargets.Target?
+        for _ in 0..<Int(60 * patience) {
+            first = channel()
+            if first != nil { break }
+            try? await Task.sleep(nanoseconds: 100_000_000)
+        }
+        guard let first, let list = targets.list(at: CGPoint(x: first.frame.midX, y: first.frame.midY), in: layer) else {
+            shared.trace.append("miss:list")
+            shared.trace.append(diagnosis())
+            shared.report()
+            return
+        }
+        // Over the list, the thumb makes the pointer its scroll pointer.
+        benchMove(to: CGPoint(x: list.list.frame.midX, y: list.list.frame.midY))
+        await rest(0.3)
+        benchThumb(dx: 2, dy: 0)
+        shared.trace.append(rail == list.token ? "rail" : rail == nil ? "free" : "other")
+        await rest(0.6)
+        let height = position.y
+        let before = shared.benchFocus ?? benchHeldID() ?? "none"
+        let offset = list.list.scroll?.contentOffset.y ?? 0
+        shared.trace.append("on=" + before)
+        // Down the list: the list scrolls, the pointer stays at its height.
+        for _ in 0..<24 { benchThumb(dx: 0, dy: 30); await rest(0.04) }
+        await rest(0.8)
+        let after = shared.benchFocus ?? benchHeldID() ?? "none"
+        let scrolled = (list.list.scroll?.contentOffset.y ?? 0) - offset
+        shared.trace.append(abs(position.y - height) < 1 ? "kept" : "moved:\(Int(position.y - height))")
+        shared.trace.append(scrolled > 100 ? "scrolled" : "still:\(Int(scrolled))")
+        shared.trace.append("now=" + after)
+        // Across and on, past the left side: out of the list.
+        for _ in 0..<16 where rail == list.token { benchThumb(dx: -60, dy: 0); await rest(0.05) }
+        shared.trace.append(rail == list.token ? "stuck" : "out")
+        await rest(0.4)
+        // Back onto the list, for the click of the flow on the channel there.
+        for _ in 0..<30 where rail != list.token { benchThumb(dx: 30, dy: 0); await rest(0.05) }
+        await rest(0.8)
+        shared.trace.append("end=" + (shared.benchFocus ?? benchHeldID() ?? "none"))
+        shared.report()
     }
 
     /// A step of a sweep: the pointer rests on each control of `via`, then
@@ -1082,6 +1384,9 @@ private struct FluxPointerHost<Content: View>: UIViewControllerRepresentable {
     private struct SweepStep {
         let via: [String]
         let rests: String
+        /// What the flow does first, as a click where the step before
+        /// rested: the step waits for it.
+        var after: (() -> Bool)? = nil
     }
 
     /// What the pointer crosses, screen by screen, with FLUX_UI_POINTER=1.
@@ -1112,6 +1417,13 @@ private struct FluxPointerHost<Content: View>: UIViewControllerRepresentable {
         // which the pointer must not reach, and its OK again.
         case "player-deep":
             return [SweepStep(via: ["desk-notice-ok", "fixture-live-58"], rests: "desk-notice-ok")]
+        // Télécommande: « Souris », then « Halo », below the bottom of the
+        // page, which the flow chooses; then « Classique », at its top,
+        // which the mouse could not choose in 0.9.8.
+        case "settings-remote":
+            let halo = { UserDefaults.standard.string(forKey: FluxPointerShape.storageKey) == FluxPointerShape.halo.rawValue }
+            return [SweepStep(via: ["remote-mode-pointer"], rests: below + "pointer-shape-halo"),
+                    SweepStep(via: [], rests: above + "remote-mode-classic", after: halo)]
         default:
             return []
         }
@@ -1131,7 +1443,16 @@ private struct FluxPointerHost<Content: View>: UIViewControllerRepresentable {
             await shared.controller?.sweepLive(patience: patience)
             return
         }
+        guard scenario != "pointer-list" else {
+            await shared.controller?.sweepList(patience: patience)
+            return
+        }
         for (number, step) in steps(for: scenario).enumerated() {
+            if let after = step.after {
+                let clock = ProcessInfo.processInfo
+                let end = clock.systemUptime + 60 * patience
+                while !after(), clock.systemUptime < end { try? await Task.sleep(nanoseconds: 100_000_000) }
+            }
             for (index, name) in step.via.enumerated() {
                 // The first control of a step shows once the flow has
                 // clicked, or opened what holds it.
@@ -1146,23 +1467,28 @@ private struct FluxPointerHost<Content: View>: UIViewControllerRepresentable {
     }
 
     /// Rests on the control `name`. Named `below:` + name, it lies below
-    /// the bottom of its page: the pointer pushes the page down to it first.
+    /// the bottom of its page: the pointer pushes the page down to it first;
+    /// named `above:` + name, above its top, and the pointer pushes it up.
     private static func reach(_ name: String, patience: Double, waiting seconds: Double) async -> String? {
-        guard name.hasPrefix(below) else { return await rest(on: name, patience: patience, waiting: seconds) }
-        let control = String(name.dropFirst(below.count))
-        await push(toward: control, patience: patience)
-        return await rest(on: control, patience: patience, waiting: seconds)
+        for (mark, down) in [(below, true), (above, false)] where name.hasPrefix(mark) {
+            let control = String(name.dropFirst(mark.count))
+            await push(toward: control, down: down, patience: patience)
+            return await rest(on: control, patience: patience, waiting: seconds)
+        }
+        return await rest(on: name, patience: patience, waiting: seconds)
     }
 
-    /// A step of a sweep toward a control below the bottom of its page.
+    /// A step of a sweep toward a control below the bottom of its page, or
+    /// above its top.
     private static let below = "below:"
+    private static let above = "above:"
 
-    /// The pointer pushes the page down until the control `name` shows.
-    private static func push(toward name: String, patience: Double) async {
+    /// The pointer pushes the page until the control `name` shows.
+    private static func push(toward name: String, down: Bool, patience: Double) async {
         let clock = ProcessInfo.processInfo
         let end = clock.systemUptime + 8 * patience
         while clock.systemUptime < end {
-            if let top = FluxPointerState.shared.controller, top.benchPush(toward: name) { return }
+            if let top = FluxPointerState.shared.controller, top.benchPush(toward: name, down: down) { return }
             try? await Task.sleep(nanoseconds: 40_000_000)
         }
     }
@@ -1268,67 +1594,294 @@ private final class FluxArrowWatch: UIGestureRecognizer {
     }
 }
 
-/// The pointer itself: an arrow or a round spot, white with a dark edge,
-/// that never takes a touch.
+/// Ticks of the screen for a list that glides, without the display link
+/// holding the pointer.
+private final class FluxDisplayLinkProxy: NSObject {
+    weak var owner: FluxPointerController?
+    @MainActor @objc func tick(_ link: CADisplayLink) { owner?.glided() }
+}
+
+/// The pointer itself, as its settings draw it, that never takes a touch.
+/// Every shape has its path for its shadow, and the hand its shadow drawn
+/// in its picture: Core Animation never looks for the outline of a shadow
+/// while the pointer moves.
 private final class FluxPointerCursor: UIView {
-    private let shapeLayer = CAShapeLayer()
-    private var shape = FluxPointerShape.arrow
-    private var height: CGFloat = 44
+    private let haloLayer = CAShapeLayer()
+    private let bodyLayer = CAShapeLayer()
+    private let marksLayer = CAShapeLayer()
+    private let pictureLayer = CALayer()
+    private var drawn: String?
+    /// The point that points, in the pointer's own points.
+    private var hotspot = CGPoint(x: 2, y: 2)
 
     override init(frame: CGRect) {
         super.init(frame: frame)
         isUserInteractionEnabled = false
         accessibilityIdentifier = "flux-pointer"
-        layer.addSublayer(shapeLayer)
-        shapeLayer.fillColor = UIColor.white.cgColor
-        shapeLayer.strokeColor = UIColor.black.withAlphaComponent(0.85).cgColor
-        shapeLayer.lineJoin = .round
+        for shape in [haloLayer, bodyLayer, marksLayer] {
+            shape.fillRule = .evenOdd
+            shape.lineJoin = .round
+            layer.addSublayer(shape)
+        }
+        layer.addSublayer(pictureLayer)
+        pictureLayer.contentsGravity = .resize
         layer.shadowColor = UIColor.black.cgColor
-        layer.shadowOpacity = 0.45
         layer.shadowRadius = 6
         layer.shadowOffset = CGSize(width: 0, height: 3)
-        style(shape: .arrow, height: 44)
+        style(shape: .arrow, color: .white, height: 44, riding: false)
     }
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
 
-    func style(shape: FluxPointerShape, height: CGFloat) {
-        guard shape != self.shape || height != self.height || shapeLayer.path == nil else { return }
-        self.shape = shape
-        self.height = height
-        let path = UIBezierPath()
-        switch shape {
-        case .arrow:
-            let h = height
-            bounds = CGRect(x: 0, y: 0, width: h * 0.66, height: h)
-            path.move(to: CGPoint(x: 2, y: 2))
-            path.addLine(to: CGPoint(x: 2, y: h * 0.80))
-            path.addLine(to: CGPoint(x: h * 0.22, y: h * 0.62))
-            path.addLine(to: CGPoint(x: h * 0.35, y: h * 0.94))
-            path.addLine(to: CGPoint(x: h * 0.47, y: h * 0.89))
-            path.addLine(to: CGPoint(x: h * 0.34, y: h * 0.58))
-            path.addLine(to: CGPoint(x: h * 0.60, y: h * 0.58))
-            path.close()
-            shapeLayer.fillColor = UIColor.white.cgColor
-            shapeLayer.lineWidth = max(1.5, h / 22)
-        case .dot:
-            let d = height * 0.6
-            bounds = CGRect(x: 0, y: 0, width: d, height: d)
-            path.append(UIBezierPath(ovalIn: CGRect(x: 2, y: 2, width: d - 4, height: d - 4)))
-            shapeLayer.fillColor = UIColor.white.withAlphaComponent(0.82).cgColor
-            shapeLayer.lineWidth = max(1.5, d / 14)
-        }
-        shapeLayer.frame = bounds
-        shapeLayer.path = path.cgPath
-        layer.shadowPath = path.cgPath
+    /// On a screen at last, the pointer is drawn again at the scale of the screen.
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        if window != nil { style(shape: chosen.shape, color: chosen.color, height: chosen.height, riding: chosen.riding) }
     }
 
-    /// The tip of the arrow, or the middle of the spot, on `point`.
-    func place(at point: CGPoint) {
-        switch shape {
-        case .arrow: center = CGPoint(x: point.x - 2 + bounds.width / 2, y: point.y - 2 + bounds.height / 2)
-        case .dot: center = point
+    private var chosen = (shape: FluxPointerShape.arrow, color: FluxPointerColor.white, height: CGFloat(44), riding: false)
+
+    func style(shape: FluxPointerShape, color: FluxPointerColor, height: CGFloat, riding: Bool) {
+        chosen = (shape, color, height, riding)
+        let key = "\(shape.rawValue)-\(color.rawValue)-\(height)-\(riding)-\(traitCollection.displayScale)"
+        guard key != drawn else { return }
+        drawn = key
+        let art = FluxPointerArt(shape: shape, height: height, riding: riding)
+        let fill = UIColor(pointer: color)
+        let edge = UIColor(pointerEdge: color)
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        bounds = CGRect(origin: .zero, size: art.size)
+        for sublayer in [haloLayer, bodyLayer, marksLayer, pictureLayer] as [CALayer] { sublayer.frame = bounds }
+        haloLayer.path = art.halo
+        haloLayer.fillColor = fill.withAlphaComponent(0.26).cgColor
+        haloLayer.shadowPath = art.halo
+        haloLayer.shadowColor = fill.cgColor
+        haloLayer.shadowOpacity = art.halo == nil ? 0 : 0.9
+        haloLayer.shadowRadius = height * 0.18
+        haloLayer.shadowOffset = .zero
+        bodyLayer.path = art.body
+        bodyLayer.fillColor = fill.withAlphaComponent(art.bodyAlpha).cgColor
+        bodyLayer.strokeColor = edge.cgColor
+        bodyLayer.lineWidth = art.edge
+        marksLayer.path = art.marks
+        marksLayer.fillColor = edge.cgColor
+        let scale = max(1, traitCollection.displayScale)
+        if let symbol = art.symbol, let picture = Self.picture(of: symbol, fill: fill, edge: edge, size: art.size, scale: scale) {
+            pictureLayer.contents = picture.image
+            hotspot = picture.tip
+            layer.shadowPath = nil
+            layer.shadowOpacity = 0
+        } else {
+            pictureLayer.contents = nil
+            hotspot = art.hotspot
+            layer.shadowPath = art.body
+            layer.shadowOpacity = 0.45
         }
+        CATransaction.commit()
+    }
+
+    /// The point that points, on `point`.
+    func place(at point: CGPoint) {
+        center = CGPoint(x: point.x - hotspot.x + bounds.width / 2, y: point.y - hotspot.y + bounds.height / 2)
+    }
+
+    /// The hand, drawn once with its edge and its shadow, and the tip of
+    /// its finger, found in the drawing: of its opaque points, the one
+    /// furthest up and left.
+    private static func picture(of symbol: String, fill: UIColor, edge: UIColor, size: CGSize,
+                                scale: CGFloat) -> (image: CGImage, tip: CGPoint)? {
+        let width = Int((size.width * scale).rounded(.up)), height = Int((size.height * scale).rounded(.up))
+        guard width > 0, height > 0,
+              let glyph = UIImage(systemName: symbol, withConfiguration: UIImage.SymbolConfiguration(pointSize: size.height * 0.7)),
+              let context = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: width * 4,
+                                      space: CGColorSpaceCreateDeviceRGB(),
+                                      bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
+        // UIKit draws from the top.
+        context.translateBy(x: 0, y: CGFloat(height))
+        context.scaleBy(x: scale, y: -scale)
+        UIGraphicsPushContext(context)
+        defer { UIGraphicsPopContext() }
+        let margin = FluxPointerArt.pictureMargin
+        let fit = min((size.width - 2 * margin) / glyph.size.width, (size.height - 2 * margin) / glyph.size.height)
+        let rect = CGRect(x: margin, y: margin, width: glyph.size.width * fit, height: glyph.size.height * fit)
+        let line = max(1.5, size.height / 26)
+        // The shadow goes down on the screen: up in the space of the bitmap.
+        context.setShadow(offset: CGSize(width: 0, height: -3 * scale), blur: 6 * scale,
+                          color: UIColor.black.withAlphaComponent(0.45).cgColor)
+        context.beginTransparencyLayer(auxiliaryInfo: nil)
+        let outline = glyph.withTintColor(edge, renderingMode: .alwaysOriginal)
+        for angle in stride(from: 0.0, to: 2 * Double.pi, by: Double.pi / 4) {
+            outline.draw(in: rect.offsetBy(dx: line * CGFloat(cos(angle)), dy: line * CGFloat(sin(angle))))
+        }
+        glyph.withTintColor(fill, renderingMode: .alwaysOriginal).draw(in: rect)
+        context.endTransparencyLayer()
+        guard let image = context.makeImage(), let data = context.data else { return nil }
+        let bytes = data.bindMemory(to: UInt8.self, capacity: width * height * 4)
+        var tip: (sum: Int, x: Int, y: Int)?
+        for y in 0..<height {
+            if let tip, y > tip.sum { break }
+            for x in 0..<width where bytes[(y * width + x) * 4 + 3] > 170 {
+                if tip == nil || x + y < tip!.sum { tip = (x + y, x, y) }
+                break
+            }
+        }
+        guard let tip else { return nil }
+        return (image, CGPoint(x: CGFloat(tip.x) / scale, y: CGFloat(tip.y) / scale))
+    }
+}
+
+extension UIColor {
+    /// The colour of the pointer.
+    convenience init(pointer color: FluxPointerColor) {
+        let rgb = color.components
+        self.init(red: rgb.red, green: rgb.green, blue: rgb.blue, alpha: 1)
+    }
+
+    /// The edge that sets the pointer off the picture.
+    convenience init(pointerEdge color: FluxPointerColor) {
+        self.init(white: color.isDark ? 1 : 0, alpha: color.isDark ? 0.9 : 0.85)
+    }
+}
+
+/// What the pointer draws at a height, in its own points: its shape, what is
+/// drawn over it in the colour of its edge, a light around it, and the point
+/// that points. The settings draw the same (`FluxPointerGlyph`).
+struct FluxPointerArt {
+    /// Around the picture of the hand, for its edge and its shadow.
+    static let pictureMargin: CGFloat = 9
+
+    var size: CGSize
+    var hotspot: CGPoint
+    var body: CGPath
+    var bodyAlpha: CGFloat = 1
+    var edge: CGFloat
+    var marks: CGPath?
+    var halo: CGPath?
+    /// A symbol drawn instead of a shape.
+    var symbol: String?
+
+    init(shape: FluxPointerShape, height: CGFloat, riding: Bool) {
+        let h = max(12, height)
+        edge = max(1.5, h / 22)
+        if riding {
+            // The scroll pointer: an upright capsule, its chevrons up and down.
+            let w = (h * 0.6).rounded(), t = (h * 1.12).rounded()
+            size = CGSize(width: w, height: t)
+            hotspot = CGPoint(x: w / 2, y: t / 2)
+            let capsule = CGRect(x: edge, y: edge, width: w - 2 * edge, height: t - 2 * edge)
+            body = CGPath(roundedRect: capsule, cornerWidth: capsule.width / 2, cornerHeight: capsule.width / 2, transform: nil)
+            let marks = CGMutablePath()
+            let mid = w / 2, wide = w * 0.44, tall = w * 0.24
+            marks.addLines(between: [CGPoint(x: mid, y: t * 0.15), CGPoint(x: mid + wide / 2, y: t * 0.15 + tall),
+                                     CGPoint(x: mid - wide / 2, y: t * 0.15 + tall)])
+            marks.closeSubpath()
+            marks.addLines(between: [CGPoint(x: mid, y: t * 0.85), CGPoint(x: mid - wide / 2, y: t * 0.85 - tall),
+                                     CGPoint(x: mid + wide / 2, y: t * 0.85 - tall)])
+            marks.closeSubpath()
+            let dot = w * 0.17
+            marks.addEllipse(in: CGRect(x: mid - dot / 2, y: t / 2 - dot / 2, width: dot, height: dot))
+            self.marks = marks
+            return
+        }
+        switch shape {
+        case .arrow:
+            size = CGSize(width: (h * 0.66).rounded(.up), height: h)
+            hotspot = CGPoint(x: 2, y: 2)
+            let path = CGMutablePath()
+            path.addLines(between: [CGPoint(x: 2, y: 2), CGPoint(x: 2, y: h * 0.80), CGPoint(x: h * 0.22, y: h * 0.62),
+                                    CGPoint(x: h * 0.35, y: h * 0.94), CGPoint(x: h * 0.47, y: h * 0.89),
+                                    CGPoint(x: h * 0.34, y: h * 0.58), CGPoint(x: h * 0.60, y: h * 0.58)])
+            path.closeSubpath()
+            body = path
+        case .hand:
+            let m = Self.pictureMargin
+            size = CGSize(width: (h * 0.84 + 2 * m).rounded(.up), height: (h + 2 * m).rounded(.up))
+            // Drawn, the tip of the finger is found in the picture; this is
+            // where it stands near enough, for the settings.
+            hotspot = CGPoint(x: m + h * 0.1, y: m + h * 0.04)
+            body = CGMutablePath()
+            symbol = "hand.point.up.left.fill"
+        case .dot:
+            let d = (h * 0.6).rounded()
+            size = CGSize(width: d, height: d)
+            hotspot = CGPoint(x: d / 2, y: d / 2)
+            edge = max(1.5, d / 14)
+            body = CGPath(ellipseIn: CGRect(x: edge, y: edge, width: d - 2 * edge, height: d - 2 * edge), transform: nil)
+            bodyAlpha = 0.82
+        case .ring:
+            let d = (h * 0.72).rounded()
+            size = CGSize(width: d, height: d)
+            hotspot = CGPoint(x: d / 2, y: d / 2)
+            let outer = d / 2 - edge, inner = outer * 0.58
+            let path = CGMutablePath()
+            path.addEllipse(in: CGRect(x: d / 2 - outer, y: d / 2 - outer, width: 2 * outer, height: 2 * outer))
+            path.addEllipse(in: CGRect(x: d / 2 - inner, y: d / 2 - inner, width: 2 * inner, height: 2 * inner))
+            body = path
+        case .crosshair:
+            let d = (h * 0.84).rounded()
+            size = CGSize(width: d, height: d)
+            hotspot = CGPoint(x: d / 2, y: d / 2)
+            let c = d / 2, outer = d / 2 - edge, ring = max(3, h * 0.075), tick = max(3, h * 0.075)
+            let path = CGMutablePath()
+            path.addEllipse(in: CGRect(x: c - outer, y: c - outer, width: 2 * outer, height: 2 * outer))
+            let inner = outer - ring
+            path.addEllipse(in: CGRect(x: c - inner, y: c - inner, width: 2 * inner, height: 2 * inner))
+            // Four ticks inside the ring, toward the middle, which they leave free.
+            let near = outer * 0.3, far = inner - 1.5
+            path.addRect(CGRect(x: c - tick / 2, y: c - far, width: tick, height: far - near))
+            path.addRect(CGRect(x: c - tick / 2, y: c + near, width: tick, height: far - near))
+            path.addRect(CGRect(x: c - far, y: c - tick / 2, width: far - near, height: tick))
+            path.addRect(CGRect(x: c + near, y: c - tick / 2, width: far - near, height: tick))
+            let dot = max(3, h * 0.08)
+            path.addEllipse(in: CGRect(x: c - dot / 2, y: c - dot / 2, width: dot, height: dot))
+            body = path
+        case .halo:
+            let d = (h * 0.95).rounded()
+            size = CGSize(width: d, height: d)
+            hotspot = CGPoint(x: d / 2, y: d / 2)
+            let core = max(8, d * 0.24)
+            body = CGPath(ellipseIn: CGRect(x: d / 2 - core / 2, y: d / 2 - core / 2, width: core, height: core), transform: nil)
+            halo = CGPath(ellipseIn: CGRect(x: d * 0.1, y: d * 0.1, width: d * 0.8, height: d * 0.8), transform: nil)
+        }
+    }
+}
+
+/// The pointer as the settings show it, drawn as the remote will draw it.
+struct FluxPointerGlyph: View {
+    let shape: FluxPointerShape
+    let color: FluxPointerColor
+    let height: CGFloat
+    var riding = false
+
+    var body: some View {
+        let art = FluxPointerArt(shape: shape, height: height, riding: riding)
+        let fill = Color(uiColor: UIColor(pointer: color))
+        let edge = Color(uiColor: UIColor(pointerEdge: color))
+        ZStack(alignment: .topLeading) {
+            if let halo = art.halo {
+                Path(halo).fill(fill.opacity(0.26)).shadow(color: fill.opacity(0.9), radius: height * 0.18)
+            }
+            if let symbol = art.symbol {
+                let m = FluxPointerArt.pictureMargin
+                Image(systemName: symbol)
+                    .resizable()
+                    .scaledToFit()
+                    .foregroundStyle(fill)
+                    .shadow(color: edge, radius: 0.8)
+                    .shadow(color: edge, radius: 0.8)
+                    .padding(m)
+            } else {
+                Path(art.body).fill(fill.opacity(art.bodyAlpha), style: FillStyle(eoFill: true))
+                Path(art.body).stroke(edge, style: StrokeStyle(lineWidth: art.edge, lineJoin: .round))
+            }
+            if let marks = art.marks {
+                Path(marks).fill(edge, style: FillStyle(eoFill: true))
+            }
+        }
+        .frame(width: art.size.width, height: art.size.height)
+        .shadow(color: .black.opacity(0.45), radius: 6, y: 3)
+        .accessibilityHidden(true)
     }
 }
 
@@ -1393,5 +1946,12 @@ private final class FluxPointerToast: UIVisualEffectView {
             UIView.animate(withDuration: 0.35) { self.alpha = 0 }
         }
     }
+}
+#endif
+
+#if !os(tvOS)
+extension View {
+    /// Only a television has a pointer that scrolls a list (`fluxPointerList`).
+    func fluxPointerList() -> some View { self }
 }
 #endif

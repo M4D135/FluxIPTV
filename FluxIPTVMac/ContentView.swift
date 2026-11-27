@@ -234,6 +234,9 @@ struct FluxScreen: View, Equatable {
     @State private var deskEdges = DeskEdges()
     /// Asks the settings to take the remote on the row of their page.
     @State private var settingsPagesRequest = 0
+    /// The pointer whose screens these are: through it the right edge finds
+    /// what stands furthest left at the same height (`wrapAround`).
+    @Environment(\.fluxPointerLayer) private var pointerLayer
     #endif
     @State private var settingsRequest = DeskSettingsRequest()
     @State private var deskPreviewWidth: CGFloat = 520
@@ -771,8 +774,8 @@ struct FluxScreen: View, Equatable {
     /// shown. That row may be far down a list that builds its rows as they
     /// come on screen: the column is brought to it, and it is asked again
     /// until it says it has the remote.
-    private func enterColumn() {
-        let id = deskScopeID
+    private func enterColumn(on wanted: String? = nil) {
+        let id = wanted ?? deskScopeID
         guard deskSidebarIDs.contains(id) else { return }
         columnEntryRequest = id
         focusID = id
@@ -801,8 +804,14 @@ struct FluxScreen: View, Equatable {
     /// compass of the zones, an open folder or the picture. Not with
     /// VoiceOver, which reads what has the focus.
     private var edgesActive: Bool {
-        !voiceOverEnabled && !deskCovered && !modalOpen && !zoneMode && dockFan == nil
-            && page != .player && (showsHome || dockVisible)
+        !voiceOverEnabled && !deskCovered && !modalOpen && !zoneMode && dockFan == nil && page != .player
+    }
+
+    /// The edges that lead somewhere: around the bar of the home screen, its
+    /// two ends; with the bar, every side; without it, the right side, which
+    /// comes round to the left of the screen.
+    private var edgeSides: [DeskEdges.Side] {
+        showsHome ? [.left, .right] : dockVisible ? DeskEdges.Side.allCases : [.right]
     }
 
     /// The remote reached a strip at an edge of the screen. It goes where a
@@ -830,12 +839,40 @@ struct FluxScreen: View, Equatable {
             target = FluxDockNavigation.beyond(nil, action: action, position: dockPosition, dockIDs: bar,
                                                preferredDockID: currentDockID, backID: barLeadIDs.first, topID: nil)
         }
+        // "au lieu d'aller dans la barre dock, on repart à gauche à même
+        // hauteur" (David, 27/11): Right past the right edge comes round to
+        // the left of the screen, unless the screen leads on itself, as the
+        // end of a row of titles to the next row; a bar on the right keeps it.
+        if action == .right, !showsHome, !(dockVisible && dockPosition == .trailing),
+           !(previous.map(bar.contains) ?? false), target.map({ $0 == previous || bar.contains($0) }) ?? true,
+           wrapAround() { return }
         guard let target, target != previous else {
             // Nowhere to go: the remote returns where it was.
             systemFocus = previous ?? currentDockID
             return
         }
         handEdge(to: target)
+    }
+
+    /// Gives the remote to the control furthest left at the height of the
+    /// one it left (`DeskWrap`): a row of the column, a title, a key of the
+    /// screen. Whether there was one.
+    private func wrapAround() -> Bool {
+        guard let from = FluxPointerState.shared.lastFocusFrame, let pointerLayer else { return false }
+        let bar = Set(barLeadIDs + dockPlan().ids)
+        let places = FluxPointerTargets.shared.targets(in: pointerLayer).filter {
+            !bar.contains($0.id) && !$0.id.hasPrefix(DockEntry.fanPrefix) && DeskEdges.Side(id: $0.id) == nil
+        }
+        guard let id = DeskWrap.leftmost(atHeightOf: from, among: places.map { ($0.id, $0.frame) }),
+              let place = places.first(where: { $0.id == id }) else { return false }
+        if page == .catalogue, deskSidebarIDs.contains(id) {
+            enterColumn(on: id)
+        } else if visibleSlice.item(id: id) != nil || focusRows.contains(where: { $0.contains(id) }) {
+            handEdge(to: id)
+        } else {
+            place.focus(false)
+        }
+        return true
     }
 
     /// Hands the remote to where a crossing leads.
@@ -2316,6 +2353,8 @@ struct FluxScreen: View, Equatable {
                 #endif
                 .padding(.vertical, Desk.tv(12))
             }
+            // The pointer rides the grid as a scroll pointer (`fluxPointerList`).
+            .fluxPointerList()
         }
         #if os(tvOS)
         // Keep the scroll container itself inside the TV safe area. Placing
@@ -4478,8 +4517,7 @@ extension FluxScreen {
             if edgesActive {
                 // The bar of the home screen goes round; above and below it
                 // there is nothing to reach.
-                DeskEdgeStrips(edges: deskEdges, sides: showsHome ? [.left, .right] : DeskEdges.Side.allCases,
-                               focus: nativeFocus)
+                DeskEdgeStrips(edges: deskEdges, sides: edgeSides, focus: nativeFocus)
             }
             #endif
             if page == .player, let request = playerSettings {
@@ -6378,7 +6416,7 @@ extension FluxScreen {
                         Text(groupSearch.isEmpty ? "Les catégories apparaîtront avec votre catalogue." : "Aucune catégorie correspondante.")
                             .font(Desk.font(.caption)).foregroundStyle(.secondary).padding(Desk.pt(12))
                     }
-                }.padding(.vertical, Desk.pt(3))
+                }.padding(.vertical, Desk.pt(3)).fluxPointerList()
             }
             .onChange(of: focusID) { _, id in
                 if let id, remoteNavigationActive, deskSidebarIDs.contains(id) { reader.scrollTo(id, anchor: .center) }
@@ -6444,7 +6482,7 @@ extension FluxScreen {
                     ForEach(facetEntries, id: \.code) { entry in
                         countryRow(code: entry.code, name: entry.name, count: entry.count)
                     }
-                }.padding(.vertical, Desk.pt(3))
+                }.padding(.vertical, Desk.pt(3)).fluxPointerList()
             }
             .onAppear { reader.scrollTo(library.countryCode.map { "country-\($0)" } ?? "country-all", anchor: .center) }
             .onChange(of: focusID) { _, id in
@@ -6533,7 +6571,7 @@ extension FluxScreen {
                             }
                         }
                     }
-                }.padding(.vertical, Desk.pt(3))
+                }.padding(.vertical, Desk.pt(3)).fluxPointerList()
             }
             .onChange(of: focusID) { _, id in
                 if let id, remoteNavigationActive, deskSidebarIDs.contains(id) { reader.scrollTo(id, anchor: .center) }
@@ -6569,7 +6607,7 @@ extension FluxScreen {
                                         identified: true) { clearSearch() }
                             .padding(.top, Desk.pt(10))
                     }
-                }.padding(.vertical, Desk.pt(3))
+                }.padding(.vertical, Desk.pt(3)).fluxPointerList()
             }
             .onChange(of: focusID) { _, id in
                 if let id, remoteNavigationActive, deskSidebarIDs.contains(id) { reader.scrollTo(id, anchor: .center) }
@@ -6980,7 +7018,7 @@ extension FluxScreen {
                     ScrollView {
                         LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: Desk.pt(10)), count: max(1, columns)), spacing: Desk.pt(8)) {
                             ForEach(displayedItems) { item in liveDeskChannel(item) }
-                        }.padding(Desk.pt(12))
+                        }.padding(Desk.pt(12)).fluxPointerList()
                     }
                 }
             }

@@ -125,7 +125,7 @@ private struct TVProbeReadout: View {
                 playback.simulateFixturePlayback()
             }
             // The click of the pointer watches the channel under it, as above.
-            if fixture.scenario == "pointer" { playback.simulateFixturePlayback() }
+            if fixture.scenario == "pointer" || fixture.scenario == "pointer-list" { playback.simulateFixturePlayback() }
             if fixture.showsPlayer, let item = fixture.selection {
                 // A media that plays, without any connection: the commands
                 // hide and the remote behaves as during a stream.
@@ -267,7 +267,7 @@ private struct TVProbeReadout: View {
         case "settings": return "settings-page-sources"
         case "settings-graphics": return "settings-page-graphics"
         case "settings-remote": return "settings-page-remote"
-        case "pointer": return "live-channel-fixture-live-0"
+        case "pointer", "pointer-list": return "live-channel-fixture-live-0"
         case "player-settings": return "settings-page-video"
         case "zapping": return "zap-channel-fixture-live-0"
         default: return "media-detail-play"
@@ -333,9 +333,10 @@ private struct TVProbeReadout: View {
     }
 
     /// Screens of the desk shown over the catalogue of the live scenario.
-    /// "pointer": the live catalogue under the pointer of the remote.
+    /// "pointer": the live catalogue under the pointer of the remote;
+    /// "pointer-list": the same, the pointer riding the list of the channels.
     static let deskScenarios = ["home", "settings", "settings-dock", "settings-graphics", "settings-remote", "zapping", "player-settings",
-                                "player", "player-flow", "player-deep", "player-banner", "player-banner-opening", "pointer"]
+                                "player", "player-flow", "player-deep", "player-banner", "player-banner-opening", "pointer", "pointer-list"]
     /// The bare picture just after a change of channel, under its banner.
     var showsBanner: Bool { scenario.hasPrefix("player-banner") }
     /// The commands of a film: its timeline, its languages.
@@ -678,12 +679,17 @@ private struct TVProbeReadout: View {
         // launch starts from the classic one, or from the pointer it asks
         // for: "pointer", or any screen with FLUX_UI_POINTER=1.
         UserDefaults.standard.removeObject(forKey: FluxRemoteMode.storageKey)
-        if ProcessInfo.processInfo.environment["FLUX_UI_SCENARIO"] == "pointer"
+        if ["pointer", "pointer-list"].contains(ProcessInfo.processInfo.environment["FLUX_UI_SCENARIO"] ?? "")
             || ProcessInfo.processInfo.environment["FLUX_UI_POINTER"] == "1" {
             UserDefaults.standard.set(FluxRemoteMode.pointer.rawValue, forKey: FluxRemoteMode.storageKey)
         }
-        // The theme of the dock is chosen in a flow of the studio: each
-        // launch starts from the one by default.
+        // The look of the pointer is chosen in a flow of the settings, and
+        // the theme of the dock in a flow of the studio: each launch starts
+        // from the ones by default.
+        for key in [FluxPointerShape.storageKey, FluxPointerColor.storageKey, FluxPointerSize.storageKey,
+                    FluxPointerSpeed.storageKey, FluxPointerAcceleration.storageKey] {
+            UserDefaults.standard.removeObject(forKey: key)
+        }
         UserDefaults.standard.removeObject(forKey: FluxDockTheme.storageKey)
         UserDefaults.standard.removeObject(forKey: FluxDockThemeChoices.storageKey)
         UserDefaults.standard.setVolatileDomain(folder.merging([
