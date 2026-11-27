@@ -10,8 +10,9 @@ import CoreGraphics
 // is a bitmap of sixteen pixels a side, enlarged without smoothing.
 
 extension FluxDockTheme {
-    /// Drawn by the skins below; the Flux themes keep their own drawing.
-    var skinned: Bool { family != .flux }
+    /// Drawn by the skins below; the Flux themes keep their own drawing,
+    /// and the drawn packs their pictures (DockPacks.swift).
+    var skinned: Bool { family != .flux && family != .illustrated }
 }
 
 /// A colour that the skins lighten, darken and mix.

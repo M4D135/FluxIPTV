@@ -1,4 +1,34 @@
-FLUX IPTV 0.9.3 — BUILD 41 — PROJET APPLE TV
+FLUX IPTV 0.9.4 — BUILD 42 — PROJET APPLE TV
+
+NOUVEAUTÉS DE LA 0.9.4 : la télécommande devient intelligente.
+MODE SOURIS : Réglages > Télécommande choisit Classique ou Souris. En mode
+Souris, un pointeur suit le pouce sur le pavé tactile ; ce qu'il survole
+prend la sélection, un clic appuie dessus. Un appui sur un bord du pavé
+déplace toujours la sélection comme une flèche. Pour passer d'un mode à
+l'autre sans ouvrir les Réglages : maintenir Lecture/Pause enfoncée ; une
+bulle dit le mode. Vitesse, taille et forme du pointeur se règlent dans la
+même page. Pendant la lecture, le pointeur s'efface.
+RETOUR : depuis une grille de films ou de séries, la liste des chaînes ou une
+page de réglages, Menu confie d'abord la sélection au bouton Retour de la
+barre, d'où le dock et l'accueil sont à une flèche. Menu une seconde fois
+revient à l'écran précédent. Réglages > Télécommande > Touche Retour garde
+« Quitter l'écran » si vous préférez l'ancien comportement.
+GRILLES : Droite au bout d'une rangée de jaquettes passe au début de la
+rangée suivante, de gauche à droite et de haut en bas.
+GRAPHISMES : une page à part, comme dans un jeu. Automatique suit l'Apple TV
+détectée : Fluide pour une Apple TV HD, Équilibré pour la première Apple TV
+4K, Qualité pour les suivantes. Si vous aviez coupé à la main le verre, les
+mouvements, les fonds ou l'aperçu en 0.9.3, vos réglages restent. Chaque
+réglage se change à part, dont le repère du panneau actif : un liseré autour
+de la partie de l'écran qui a la sélection, traversé d'un reflet quand on y
+entre, comme les widgets de l'Apple TV.
+DOCK : loupe plus forte, en cinq tailles, et icône sélectionnée en contour,
+en halo ou soulevée (Réglages > Dock > Loupe et sélection). Trois thèmes
+illustrés : Néon 90, Verre nocturne, Art déco.
+L'aperçu des chaînes démarre après une seconde.
+APPLE TV 3 : l'Apple TV de 3e génération n'installe aucune application. Seule
+la recopie d'écran AirPlay d'un Mac, d'un iPhone ou d'un iPad peut y montrer
+Flux IPTV.
 
 NOUVEAUTÉS DE LA 0.9.3 : Réglages > Interface > Studio d'apparence. Chaque
 écran (accueil, TV, Films, Séries, Recherche, Réglages) garde son fond et son
@@ -53,23 +83,23 @@ ce projet. Voir https://support.apple.com/fr-fr/102348.
 Les panneaux sont en verre sur tous les modèles, comme sur le Mac : le
 verre de tvOS 26 à partir de l'Apple TV 4K de 2e génération ; sur l'Apple TV
 HD et la première Apple TV 4K, un verre dessiné avec le flou du système.
-Réglages > Interface > Liquid Glass le coupe (surfaces sombres), et
-Réglages > Interface > Mouvements de la sélection coupe ce qui bouge quand
+Réglages > Graphismes > Liquid Glass le coupe (surfaces sombres), et
+Réglages > Graphismes > Mouvements de la sélection coupe ce qui bouge quand
 la sélection change, si cela saccade sur votre Apple TV. Le préréglage
 Fluide coupe les deux, avec les fonds et l'aperçu automatique.
 
-CHANGER DE ZONE : la touche Lecture/Pause de la télécommande fait le tour
-des zones de l'écran, dans le sens des aiguilles d'une montre. Depuis un
+CHANGER DE PARTIE : la touche Lecture/Pause de la télécommande fait le tour
+des parties de l'écran, dans le sens des aiguilles d'une montre. Depuis un
 titre, même au milieu d'une longue liste : un appui mène à la barre du
 bas, un deuxième à la colonne de gauche, un troisième à la recherche en
 haut, un quatrième au titre que l'on avait quitté. Sur l'écran TV, les
-boutons à droite de l'aperçu viennent juste avant la barre. La barre le
-rappelle au-dessus de l'heure : « Zone suivante ».
+boutons à droite de l'aperçu viennent juste avant la barre. Un petit plan
+de l'écran, à côté du dock, allume la partie qui a la sélection.
 
 AUCUNE TOUCHE MORTE : au bord de l'écran, une flèche mène quelque part.
 Gauche depuis la colonne mène au bouton Retour de la barre ; Haut depuis
-Retour revient où l'on était. Droite au bout d'une rangée et Haut depuis
-la recherche mènent à l'icône de l'écran dans le dock. La barre fait le
+Retour revient où l'on était. Droite au-delà des boutons d'une chaîne et
+Haut depuis la recherche mènent à l'icône de l'écran dans le dock. La barre fait le
 tour : Gauche sur Retour mène à la dernière icône, Droite sur la dernière
 revient à Retour. Bas depuis la barre remonte à la recherche. Une rafale
 d'appuis s'arrête au bord ; l'appui suivant, après une courte pause, le
@@ -88,7 +118,7 @@ et Réglages forment un grand dock au milieu de l'écran. C'est la même
 interface que sur Mac. Dans chaque section le dock se tient en bas au centre,
 Accueil à sa gauche, l'heure à sa droite ; il n'y a plus de barre en haut.
 Menu revient à l'écran précédent, comme le Précédent d'un navigateur, jusqu'à
-l'accueil. Chaque section s'ouvre avec la télécommande dans son contenu.
+l'accueil, après être passé par le bouton Retour de la barre. Chaque section s'ouvre avec la télécommande dans son contenu.
 Pour aller droit à l'accueil : la maison à gauche du dock, ou OK maintenu
 sur le bouton Retour du dock. (Le bouton Menu maintenu appartient à tvOS,
 qui affiche alors son propre accueil.)
@@ -139,8 +169,8 @@ dans les préfixes des catégories (FR, ES, UK, noms et drapeaux). Les
 catégories sans pays reconnu restent accessibles dans « Pays non identifié ».
 Pays, catégorie, recherche, favoris et dernière sélection sont mémorisés par
 source et par section.
-Rester sur la chaîne lance un aperçu muet après 3 s par défaut (1/3/5/10 s
-réglables dans Interface > Aperçu des chaînes TV). Valider ouvre la chaîne.
+Rester sur la chaîne lance un aperçu muet après 1 s par défaut (1/3/5/10 s
+réglables dans Graphismes > Aperçu des chaînes TV). Valider ouvre la chaîne.
 
 Une chaîne s'ouvre sur son image seule, sous un bandeau au pied de l'écran :
 numéro, logo, nom entier, catégorie, heure et rappel des touches. Le bandeau

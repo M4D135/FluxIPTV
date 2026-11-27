@@ -351,11 +351,15 @@ public enum FluxQualityPreset: String, CaseIterable, Identifiable, Sendable {
     }
     public var subtitle: String {
         switch self {
-        case .fluid: "Ni verre, ni mouvement, ni image de fond, ni aperçu automatique. Le plus léger, pour une Apple TV ancienne."
-        case .balanced: "Verre, fonds et aperçus, sans les mouvements de la sélection."
-        case .quality: "Tout : verre, mouvements, fonds et aperçus."
+        case .fluid: "Ni verre, ni mouvement, ni fond, ni aperçu : le plus léger, pour une Apple TV HD."
+        case .balanced: "Verre, fonds et aperçus, sans les mouvements de la sélection ni le reflet du panneau."
+        case .quality: "Tout : verre, mouvements, reflet du panneau, fonds et aperçus."
         }
     }
+    /// Whether the app chooses the preset by the machine it runs on. The
+    /// 0.9.4 starts so; picking a preset or changing one of its settings
+    /// stops it.
+    public static let automaticKey = "fluxiptv.quality.automatic.v1"
     public var symbol: String {
         switch self {
         case .fluid: "hare.fill"
@@ -367,9 +371,16 @@ public enum FluxQualityPreset: String, CaseIterable, Identifiable, Sendable {
     public var motion: Bool { self == .quality }
     public var backdrops: Bool { self != .fluid }
     public var livePreview: Bool { self != .fluid }
+    /// The part of the screen that holds the remote: a still edge costs
+    /// nothing; the glint that crosses it is a motion.
+    public var glint: FluxPanelGlint { self == .quality ? .glint : .edge }
 
     /// The preset that these settings are, if they are one.
-    public static func matching(glass: Bool, motion: Bool, backdrops: Bool, livePreview: Bool) -> FluxQualityPreset? {
-        allCases.first { $0.glass == glass && $0.motion == motion && $0.backdrops == backdrops && $0.livePreview == livePreview }
+    public static func matching(glass: Bool, motion: Bool, backdrops: Bool, livePreview: Bool,
+                                glint: FluxPanelGlint) -> FluxQualityPreset? {
+        allCases.first {
+            $0.glass == glass && $0.motion == motion && $0.backdrops == backdrops && $0.livePreview == livePreview
+                && $0.glint == glint
+        }
     }
 }

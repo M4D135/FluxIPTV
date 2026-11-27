@@ -6,6 +6,8 @@ build/
 *.xcuserstate
 *.xcuserdata/
 *.xcscmblueprint
+# Written by FLUX_APP_STORE=1 scripts/generate-xcodeproj.py, for the App Store.
+FluxIPTV-AppStore.xcodeproj/
 *.xccheckout
 *.ipa
 *.app/

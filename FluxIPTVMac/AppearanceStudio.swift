@@ -437,7 +437,7 @@ struct AppearanceStudio: View {
             }
         }
         .onExitCommand { back() }
-        .onPlayPauseCommand { fullScreen.toggle() }
+        .onPlayPauseCommand { FluxPointerState.shared.playPause { fullScreen.toggle() } }
         .accessibilityLabel("Studio d’apparence")
         .accessibilityIdentifier("studio-catcher")
         .accessibilityValue(cursor.key)
@@ -566,7 +566,7 @@ struct AppearanceStudio: View {
                 }
             }
             if shelf == .backdrops, stage == .off {
-                Label("Les fonds sont coupés dans Interface : les écrans ne les montrent pas.",
+                Label("Les fonds sont coupés dans Graphismes : les écrans ne les montrent pas.",
                       systemImage: "exclamationmark.triangle.fill")
                     .font(Desk.font(.callout, .medium)).foregroundStyle(.orange)
             }

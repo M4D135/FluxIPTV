@@ -96,6 +96,7 @@ struct SeriesSeasonShelf: View {
          .accessibilityIdentifier("season-sleeve-\(season.number)")
         #if os(tvOS)
          .focused(systemFocus, equals: id).focusEffectDisabled()
+         .fluxPointerTarget(id, systemFocus)
         #if FLUX_CATALOG_UI_TESTING
          .background(TVCatalogControlFrameProbe(identifier: "season-sleeve-\(season.number)").allowsHitTesting(false))
         #endif

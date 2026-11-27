@@ -35,7 +35,7 @@ final class LiveTVNavigationTests: XCTestCase {
     }
     func testTVPreviewDelayIsIndependentFromMovieTrailerPreferences() {
         XCTAssertEqual(LiveTVPreviewDelay.allCases.map(\.rawValue), [1, 3, 5, 10])
-        XCTAssertEqual(LiveTVPreviewDelay.defaultValue, .three)
+        XCTAssertEqual(LiveTVPreviewDelay.defaultValue, .one)
         XCTAssertNotEqual(LiveTVPreviewDelay.storageKey, TrailerPreviewDelay.storageKey)
         XCTAssertNotEqual(LiveTVPreviewDelay.automaticKey, TrailerPreviewDelay.automaticKey)
     }

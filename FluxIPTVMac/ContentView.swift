@@ -261,6 +261,10 @@ struct FluxScreen: View, Equatable {
     /// Zones of the screen, shown by Back for a keyboard or a remote.
     @State private var zoneMode = false
     @State private var zoneFocus: DeskZone = .content
+    /// The part of the screen that holds the remote, kept as the remote
+    /// moves: the panels read it, not the whole screen each time.
+    @State private var litPart: DeskZone?
+    @AppStorage(FluxPanelGlint.storageKey) private var panelGlint: FluxPanelGlint = .defaultValue
     /// Row of the navigation column that must receive the remote when the
     /// content of the column changes under it.
     @State private var sidebarFocusRequest: String?
@@ -276,9 +280,12 @@ struct FluxScreen: View, Equatable {
     /// says it has it.
     @State private var remoteHold: String?
     #endif
-    /// Back returns at once to the screen before (David, 26 November); the
-    /// zones of the screen first is a setting of the Mac.
-    @AppStorage(DeskZone.backKey) private var backShowsZones = false
+    /// What Back does inside a screen: by default it first hands the remote
+    /// to Back on the bar (David, 26/11 at night), then leaves the screen.
+    @AppStorage(DeskBackBehavior.storageKey) private var backBehaviorRaw = DeskBackBehavior.defaultValue.rawValue
+    private var backBehavior: DeskBackBehavior {
+        DeskBackBehavior(rawValue: backBehaviorRaw).flatMap { DeskBackBehavior.offered.contains($0) ? $0 : nil } ?? .defaultValue
+    }
     // Channel list over the picture, to change channel without leaving it.
     @State private var zapListVisible = false
     @State private var zapFocusID: String?
@@ -645,7 +652,7 @@ struct FluxScreen: View, Equatable {
             // The filter of the categories is the control nearest to the top
             // of the catalogue: it is reached from the column, not from a title.
             if focused, columnEntryRequest == nil, !pendingBrowseRestore, page == .catalogue, heldItem == nil, !modalOpen,
-               visibleSlice.item(id: focusID) != nil { enterColumn() }
+               !FluxPointerState.shared.active, visibleSlice.item(id: focusID) != nil { enterColumn() }
         }
         #endif
     }
@@ -681,7 +688,9 @@ struct FluxScreen: View, Equatable {
         // whatever stands at the height the remote came from.
         // Not while the catalogue hands the remote back to a title: the
         // system may then rest a moment on a control of the column.
+        // Not under the pointer: it presses what it rests on.
         if let id, columnEntryRequest == nil, !pendingBrowseRestore, page == .catalogue, heldItem == nil, !modalOpen,
+           !FluxPointerState.shared.active,
            deskSidebarIDs.contains(id), id != deskScopeID, visibleSlice.item(id: focusID) != nil {
             enterColumn()
             return
@@ -689,6 +698,7 @@ struct FluxScreen: View, Equatable {
         // And the catalogue is entered from the column on the title that
         // was left there, not on the one that faces the row of the column.
         if let id, columnEntryRequest == nil, !pendingBrowseRestore, page == .catalogue, heldItem == nil, !modalOpen,
+           !FluxPointerState.shared.active,
            let from = focusID, deskSidebarIDs.contains(from), visibleSlice.item(id: id) != nil,
            let kept = library.browseItemID ?? previewID, kept != id, visibleSlice.item(id: kept) != nil {
             library.browseItemID = kept
@@ -1009,7 +1019,8 @@ struct FluxScreen: View, Equatable {
             }
         }
         #endif
-        .onPlayPauseCommand { dispatch(.playPause) }
+        // Held down, the key changes the mode of the remote instead (`TVPointer`).
+        .onPlayPauseCommand { FluxPointerState.shared.playPause { dispatch(.playPause) } }
         #else
         .onKeyPress(keys: [.upArrow, .downArrow, .leftArrow, .rightArrow, .return, .escape, .space, "f", "o", .tab, "\u{19}"], phases: [.down, .repeat]) { press in
             #if os(macOS)
@@ -1554,10 +1565,12 @@ struct FluxScreen: View, Equatable {
         diagnosticSettings = diagnostic; showingEngines = true
         #endif
     }
-    private func leaveSettings() {
+    /// `atOnce`: a key of the settings that closes them, « Relancer le
+    /// flux », leaves without the step on the bar that Back takes first.
+    private func leaveSettings(atOnce: Bool = false) {
         guard page == .settings else { return }
         #if os(macOS) || os(tvOS)
-        deskBack()
+        if atOnce { deskLeaveScreen() } else { deskBack() }
         #else
         page = .catalogue
         focusID = currentDockID
@@ -2406,6 +2419,8 @@ struct FluxScreen: View, Equatable {
                 #if os(tvOS)
                 .onAppear { browseFocusTargetAppeared(item.id) }
                 .onDisappear { mountedBrowseFocusTargets.remove(item.id) }
+                // Right at the end of a row reads on to the next one.
+                .onMoveCommand { direction in if direction == .right { readOnFromRowEnd(item.id) } }
                 #endif
                 #if os(tvOS) && FLUX_CATALOG_UI_TESTING
                 .background(TVCatalogControlFrameProbe(identifier: "catalog-card-\(item.id)").allowsHitTesting(false))
@@ -4235,7 +4250,7 @@ struct ContentView: View {
 private extension View {
     @ViewBuilder func fluxFocus(_ binding: FocusState<String?>.Binding, id: String) -> some View {
         #if os(tvOS)
-        self.focused(binding, equals: id).focusEffectDisabled()
+        self.focused(binding, equals: id).focusEffectDisabled().fluxPointerTarget(id, binding)
         #else
         // Every focusable control draws its own highlight; the system ring
         // would add a rectangle around rounded cards and rows.
@@ -4377,6 +4392,13 @@ extension FluxScreen {
                     #endif
                     .transition(.opacity)
             }
+            // At the foot of the screen, in the middle, where the dock is not.
+            if dockVisible, !barFlanks, let map = deskMapModel {
+                DeskMiniMap(model: map).equatable()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+                    .padding(.bottom, FluxDockMetrics.edgeMargin)
+                    .allowsHitTesting(false)
+            }
             #if os(tvOS)
             if edgesActive {
                 // The bar of the home screen goes round; above and below it
@@ -4424,7 +4446,25 @@ extension FluxScreen {
         .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: dockFan)
         .animation(reduceMotion ? nil : .easeOut(duration: 0.16), value: zoneMode)
         .animation(reduceMotion ? nil : .easeOut(duration: 0.14), value: zoneFocus)
-        .onChange(of: page) { _, _ in zoneMode = false; dockFan = nil }
+        // From the first value: a part lit only at the first press would
+        // rebuild the bar for that press.
+        .onChange(of: focusID, initial: true) { _, id in
+            let part = deskZone(of: id)
+            if litPart != part { litPart = part }
+            #if os(tvOS)
+            FluxPointerTargets.shared.focusedID = id
+            #endif
+            #if os(tvOS) && FLUX_CATALOG_UI_TESTING
+            FluxPointerState.shared.benchFocus = id
+            #endif
+        }
+        .onChange(of: page) { _, shown in
+            zoneMode = false; dockFan = nil
+            #if os(tvOS)
+            // The picture takes the thumb itself: no pointer over it.
+            FluxPointerState.shared.suspended = shown == .player
+            #endif
+        }
         // The home screen shrinks toward the place its bar takes on the others.
         .animation(reduceMotion ? nil : .spring(response: 0.46, dampingFraction: 0.88), value: showsHome)
         .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: fichePresented)
@@ -4509,8 +4549,8 @@ extension FluxScreen {
         let fan: DockFan?
         let theme: VideoClubTheme
         let rich: Bool
-        /// The screen has zones that one key walks: the bar says which key.
-        let zones: Bool
+        /// The small plan of the screen beside the dock; nil without it.
+        let map: DeskMapModel?
         /// The screen in front, whose dock theme the bar takes.
         let space: FluxSpace
     }
@@ -4527,8 +4567,8 @@ extension FluxScreen {
                          keyboard: focusShown ? shownFocusID : nil,
                          zone: zoneMode && deskZoneEntry(.dock) != nil ? zoneFocus == .dock : nil,
                          flank: flank, dock: plan, fan: fan, theme: theme, rich: richGlass,
-                         zones: page == .catalogue && !library.sources.isEmpty, space: currentSpace)
-        return FluxStable(key) { deskBarBody(plan, fan: fan, flank: flank, zones: key.zones) }.equatable()
+                         map: deskMapModel, space: currentSpace)
+        return FluxStable(key) { deskBarBody(plan, fan: fan, flank: flank, map: key.map) }.equatable()
     }
     /// Width that each flank of the bar needs for Back with the name of
     /// the screen behind, Home, and the room where the icons grow; and
@@ -4538,7 +4578,7 @@ extension FluxScreen {
 
     /// Rebuilt only when what it shows changes: a move of the remote in
     /// the catalogue leaves the bar alone.
-    private func deskBarBody(_ plan: DockPlan, fan: DockFan?, flank: Int, zones: Bool) -> some View {
+    private func deskBarBody(_ plan: DockPlan, fan: DockFan?, flank: Int, map: DeskMapModel?) -> some View {
         FluxProbe.hit("bar")
         let metrics = FluxDockMetrics(.bottom)
         let plate = metrics.cell.height + metrics.platePadding * 2
@@ -4561,8 +4601,10 @@ extension FluxScreen {
                 #if os(tvOS)
                 .focusSection()
                 #endif
-            VStack(alignment: .trailing, spacing: Desk.pt(7)) {
-                if zones { zoneHint }
+            HStack(spacing: Desk.pt(10)) {
+                // Low, beside the dock: the plan of the screen and its key.
+                if let map { DeskMiniMap(model: map).equatable().padding(.leading, Desk.pt(18)) }
+                Spacer(minLength: 0)
                 TimelineView(.everyMinute) { context in
                     HStack(spacing: Desk.pt(10)) {
                         if flank == 0 {
@@ -4577,42 +4619,19 @@ extension FluxScreen {
                 }
                 .accessibilityHidden(true)
             }
-            .frame(maxWidth: .infinity, alignment: .trailing).frame(height: plate)
+            .frame(maxWidth: .infinity).frame(height: plate)
             .padding(.trailing, Desk.pt(24))
         }
         .padding(.bottom, FluxDockMetrics.edgeMargin)
     }
 
-    /// The key that walks the zones of the screen, said above the clock:
-    /// nothing else on the screen tells that the content, the bar, the
-    /// line of the search and the column are one press from each other.
-    /// The key is drawn as a key, then what it does: « Zones » alone said
-    /// nothing.
-    private var zoneHint: some View {
-        HStack(spacing: Desk.pt(6)) {
-            Group {
-                #if os(tvOS)
-                Image(systemName: "playpause.fill")
-                #else
-                Text("Tab").fontWeight(.heavy)
-                #endif
-            }
-            .padding(.horizontal, Desk.pt(6)).frame(minHeight: Desk.pt(20))
-            .overlay(RoundedRectangle(cornerRadius: Desk.pt(5), style: .continuous)
-                .strokeBorder(.white.opacity(0.55), lineWidth: 1))
-            Text("Zone suivante")
-        }
-        .font(Desk.font(.caption, .semibold)).foregroundStyle(.white.opacity(0.74))
-        .shadow(color: .black.opacity(0.6), radius: 3, y: 1)
-        .padding(.trailing, Desk.pt(8))
-        .accessibilityElement(children: .ignore)
-        #if os(tvOS)
-        .accessibilityLabel("Lecture/Pause : zone suivante")
-        #else
-        .accessibilityLabel("Tabulation : zone suivante")
-        .help("Tab fait le tour des zones dans le sens des aiguilles d’une montre : contenu, aperçu, barre, colonne, recherche. ⌘ + flèche va droit à la zone de ce côté.")
-        #endif
-        .accessibilityIdentifier("desk-zone-hint")
+    /// The plan of the screen, where its parts are more than one and the
+    /// plan of Back is not shown.
+    private var deskMapModel: DeskMapModel? {
+        guard page == .catalogue, !library.sources.isEmpty, !zoneMode else { return nil }
+        let parts = deskZones
+        guard parts.count > 1 else { return nil }
+        return DeskMapModel(parts: parts, active: focusShown ? litPart : nil, dock: dockPosition)
     }
 
     /// `fills`: on a television the remote goes to the nearest control, and
@@ -4693,7 +4712,7 @@ extension FluxScreen {
                              initialSourceEditor: settingsRequest.sourceEditor, remoteVisible: $showRemote,
                              navigationFootRoom: navigationFootRoom, backTitle: deskBackTitle,
                              goBack: barFlanks ? nil : { back() }, goHome: barFlanks ? nil : { showHome() },
-                             close: { leaveSettings() }, sourceSaved: { home() }, openStudio: { openStudio($0) },
+                             close: { leaveSettings(atOnce: true) }, sourceSaved: { home() }, openStudio: { openStudio($0) },
                              pagesRequest: settingsPagesValue)
             .environmentObject(library)
             #if os(macOS)
@@ -5199,11 +5218,13 @@ extension FluxScreen {
         deskHistory.visit(place)
     }
 
-    /// Back first closes what is open in the screen, then shows the screen
-    /// that came before this one, as the Back of a web browser does, down to
-    /// the home screen. On a television that is all it does: the remote
-    /// reaches every control with its arrows. With a keyboard, whose arrows
-    /// follow rows, it may first show the zones of the screen.
+    /// Back first closes what is open in the screen. Then, from inside the
+    /// screen, it hands the remote to Back on the bar, where the home screen
+    /// and the dock stand beside it: "touche retour sors de la grille film
+    /// séries etc vers contrôles bouton précédent" (David, 26/11). From the
+    /// bar it shows the screen that came before this one, as the Back of a
+    /// web browser does, down to the home screen. A setting keeps the Back
+    /// that leaves at once, and on a Mac the one that shows the plan.
     func deskBack() {
         if page == .catalogue {
             if sidebarCountries { closeCountries(); return }
@@ -5213,12 +5234,49 @@ extension FluxScreen {
             }
             #if os(macOS)
             if zoneMode { deskLeaveScreen(); return }
-            if backShowsZones, deskZones.count > 1, deskZone(of: focusID) != .dock {
-                openZones(); return
-            }
             #endif
         }
+        switch backBehavior {
+        case .bar:
+            if takeRemoteToBack() { return }
+        case .plan:
+            #if os(macOS)
+            if page == .catalogue, deskZones.count > 1, deskZone(of: focusID) != .dock { openZones(); return }
+            #endif
+        case .leave:
+            break
+        }
         deskLeaveScreen()
+    }
+
+    /// Hands the remote, or the keys, to Back from inside the screen, and
+    /// remembers where it was: the way back into the screen leads there.
+    /// False on the bar itself, or where no Back stands to take it.
+    private func takeRemoteToBack() -> Bool {
+        guard page == .catalogue || page == .settings, !library.sources.isEmpty, heldItem == nil else { return false }
+        let standing = barLeadIDs.contains(DeskZone.backID) || (page == .catalogue && deskHeaderIDs.contains(DeskZone.backID))
+        guard standing else { return false }
+        #if os(tvOS)
+        // What last held the remote; nil for a control with a focus of its
+        // own, the field of the search or a row of the settings.
+        let here = deskEdges.last
+        #else
+        let here = focusID
+        #endif
+        if let here, here == DeskZone.backID || here == DeskZone.homeID || deskZone(of: here) == .dock { return false }
+        // "sors de la grille film séries etc" (David, 26/11): in a catalogue,
+        // from its grid only; the column, the search and the preview are one
+        // press from the bar already, and Back leaves from them at once.
+        if page == .catalogue, deskZone(of: here) != .content { return false }
+        if let here { dockReturnFocus = here }
+        #if os(tvOS)
+        searchFocus = false; liveGroupSearchFocus = false
+        handEdge(to: DeskZone.backID)
+        #else
+        searchFocus = false
+        focusID = DeskZone.backID
+        #endif
+        return true
     }
 
     /// Closes the list of countries or languages, back on the button that
@@ -5462,7 +5520,18 @@ extension FluxScreen {
                 .padding(-outset)
                 .allowsHitTesting(false)
                 .transition(.opacity)
+        } else if partLit(zone) {
+            DeskPanelGlint(radius: radius + outset, accent: themeAccent, sweeps: panelGlint == .glint)
+                .padding(-outset)
+                .transition(.opacity)
         }
+    }
+
+    /// The part that holds the remote shows it by a discreet edge, outside
+    /// the plan of Back; the dock shows its own selection.
+    func partLit(_ zone: DeskZone) -> Bool {
+        panelGlint != .off && !zoneMode && focusShown && page == .catalogue && zone != .dock
+            && litPart == zone && deskZoneEntry(zone) != nil
     }
 
     /// The compass of the zones: where each arrow leads, and where Back returns.
@@ -5488,7 +5557,7 @@ extension FluxScreen {
         .allowsHitTesting(false)
         .transition(.opacity)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("Zones de l’écran. " + reachable.map { "\($0.1)" }.joined(separator: ", ") + ". Retour pour \(deskBackTarget).")
+        .accessibilityLabel("Parties de l’écran. " + reachable.map { "\($0.1)" }.joined(separator: ", ") + ". Retour pour \(deskBackTarget).")
     }
 
     func showHome() {
@@ -5685,6 +5754,22 @@ extension FluxScreen {
               visibleSlice.index(of: item.id) != nil else { return [] }
         return ["live-watch", "live-favorite"] + (livePreview.player == nil ? [] : ["live-preview-mute"])
     }
+
+    #if os(tvOS)
+    /// Right on the last title of a row: tvOS finds nothing that way and
+    /// keeps the remote where it is. The next row takes it at once, from left
+    /// to right and from top to bottom, as the keys of a Mac go
+    /// (`DeskNavigation`): "parcours gauche à droite, haut en bas" (David,
+    /// 26/11). After a pause the strip at the edge takes that press itself
+    /// and leads to the same title.
+    private func readOnFromRowEnd(_ id: String) {
+        guard page == .catalogue, heldItem == nil, !deskCovered, !modalOpen, !deskEdges.armed, columns > 1,
+              deskTrailingIDs.isEmpty, focusID == id, let index = visibleSlice.index(of: id), index % columns == columns - 1,
+              let target = deskContentMove(from: id, .right), target != id,
+              displayedItems.contains(where: { $0.id == target }) else { return }
+        handEdge(to: target)
+    }
+    #endif
 
     private func deskContentMove(from current: String?, _ action: RemoteAction) -> String? {
         switch page {
@@ -6532,7 +6617,7 @@ extension FluxScreen {
                              listInvalid: listNameInvalid, naming: listNameFocus,
                              keyboard: focusShown ? shownFocusID.flatMap { bandIDs.contains($0) ? $0 : nil } : nil,
                              zone: zoneMode && deskZoneEntry(.top) != nil ? zoneFocus == .top : nil,
-                             theme: theme, rich: richGlass)
+                             lit: partLit(.top), theme: theme, rich: richGlass)
         return FluxStable(key) { deskTopBandBody }.equatable()
     }
 
@@ -6561,6 +6646,8 @@ extension FluxScreen {
         /// Selected with the keyboard; a television shows its own focus.
         let keyboard: String?
         let zone: Bool?
+        /// The band holds the remote: its edge is lit.
+        let lit: Bool
         let theme: VideoClubTheme
         let rich: Bool
     }
@@ -6831,7 +6918,7 @@ extension FluxScreen {
             }
             Text(automaticLivePreview
                  ? "L’aperçu démarre après \(livePreviewDelay.title), sans le son. Un clic sur l’image ou sur la chaîne l’ouvre en plein écran."
-                 : "L’aperçu automatique est désactivé dans Réglages › Interface.")
+                 : "L’aperçu automatique est désactivé dans Réglages › Graphismes.")
                 .font(Desk.font(.caption)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
         }
         .padding(.horizontal, Desk.pt(4))

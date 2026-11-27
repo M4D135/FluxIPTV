@@ -171,10 +171,10 @@ final class SpaceAppearanceTests: XCTestCase {
     }
 
     func testThePresetsGoFromTheLightestToTheRichest() {
-        XCTAssertEqual(FluxQualityPreset.matching(glass: false, motion: false, backdrops: false, livePreview: false), .fluid)
-        XCTAssertEqual(FluxQualityPreset.matching(glass: true, motion: false, backdrops: true, livePreview: true), .balanced)
-        XCTAssertEqual(FluxQualityPreset.matching(glass: true, motion: true, backdrops: true, livePreview: true), .quality)
-        XCTAssertNil(FluxQualityPreset.matching(glass: false, motion: true, backdrops: true, livePreview: true))
+        XCTAssertEqual(FluxQualityPreset.matching(glass: false, motion: false, backdrops: false, livePreview: false, glint: .edge), .fluid)
+        XCTAssertEqual(FluxQualityPreset.matching(glass: true, motion: false, backdrops: true, livePreview: true, glint: .edge), .balanced)
+        XCTAssertEqual(FluxQualityPreset.matching(glass: true, motion: true, backdrops: true, livePreview: true, glint: .glint), .quality)
+        XCTAssertNil(FluxQualityPreset.matching(glass: false, motion: true, backdrops: true, livePreview: true, glint: .glint))
         // The settings of a new install are the richest preset.
         XCTAssertTrue(FluxQualityPreset.quality.glass && FluxQualityPreset.quality.motion && FluxQualityPreset.quality.backdrops)
     }

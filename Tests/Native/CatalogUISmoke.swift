@@ -306,6 +306,8 @@ private enum CatalogUIFailure: Error, CustomStringConvertible {
             Scenario(kind: .live, filename: "favorites.png", favorites: true),
             Scenario(kind: .live, filename: "settings-sources.png", settings: .sources),
             Scenario(kind: .live, filename: "settings-dock.png", settings: .dock),
+            Scenario(kind: .live, filename: "settings-graphics.png", settings: .graphics),
+            Scenario(kind: .live, filename: "settings-keyboard.png", settings: .remote),
             Scenario(kind: .live, filename: "player-live.png", player: "live"),
             Scenario(kind: .movie, filename: "player-film.png", player: "film"),
             Scenario(kind: .movie, filename: "player-languages.png", player: "tracks"),
@@ -318,17 +320,25 @@ private enum CatalogUIFailure: Error, CustomStringConvertible {
             // the dock under a list or to the controls above it, the arrows
             // walk the bar down to Back, and a second Back shows the home screen.
             Scenario(kind: .live, filename: "keys-dock.png", actions: [.back, .down],
-                     expectedFocus: FluxDockItem.live.focusID, defaults: [DeskZone.backKey: true]),
+                     expectedFocus: FluxDockItem.live.focusID, defaults: [DeskBackBehavior.storageKey: DeskBackBehavior.plan.rawValue]),
             Scenario(kind: .movie, filename: "keys-top.png", actions: [.back, .up, .right],
-                     expectedFocus: "reload", defaults: [DeskZone.backKey: true]),
+                     expectedFocus: "reload", defaults: [DeskBackBehavior.storageKey: DeskBackBehavior.plan.rawValue]),
             Scenario(kind: .movie, filename: "keys-bar.png", actions: [.back, .down, .left, .left],
-                     expectedFocus: DeskZone.backID, defaults: [DeskZone.backKey: true]),
+                     expectedFocus: DeskZone.backID, defaults: [DeskBackBehavior.storageKey: DeskBackBehavior.plan.rawValue]),
             Scenario(kind: .movie, filename: "keys-home.png", actions: [.back, .back],
-                     expectedFocus: FluxDockItem.movie.focusID, defaults: [DeskZone.backKey: true]),
-            // As the application starts: Back returns at once, here from
-            // the films to the home screen, on the section that was left.
+                     expectedFocus: FluxDockItem.movie.focusID, defaults: [DeskBackBehavior.storageKey: DeskBackBehavior.plan.rawValue]),
+            // As the application starts: Back first leaves the titles for the
+            // Back of the bar ("sors de la grille … vers contrôles bouton
+            // précédent", David, 26/11), and Back again shows the home screen,
+            // on the section that was left.
             Scenario(kind: .movie, filename: "keys-back.png", actions: [.back],
+                     expectedFocus: DeskZone.backID),
+            Scenario(kind: .movie, filename: "keys-back-twice.png", actions: [.back, .back],
                      expectedFocus: FluxDockItem.movie.focusID),
+            // Back that leaves at once, as up to the 0.9.3.
+            Scenario(kind: .movie, filename: "keys-back-leave.png", actions: [.back],
+                     expectedFocus: FluxDockItem.movie.focusID,
+                     defaults: [DeskBackBehavior.storageKey: DeskBackBehavior.leave.rawValue]),
             // The Home key of a remote, which a held Back stands for, shows
             // the home screen from wherever one is.
             Scenario(kind: .movie, filename: "keys-back-held.png", actions: [.home],
@@ -346,23 +356,26 @@ private enum CatalogUIFailure: Error, CustomStringConvertible {
                      expectedFocus: "cinema-controls", expectedPlaying: "fixture-live-1"),
             // The settings at the keyboard of a Mac, as at the remote: Up
             // from the dock enters the column on the page shown, Right
-            // enters the page on its first preset, and OK does what a click
-            // does — the display turns « Fluide », the decors go.
-            Scenario(kind: .movie, filename: "keys-settings.png", settings: .appearance,
-                     actions: [.up, .right, .select], expectedFocus: "preset-fluid",
+            // enters the page on its first tile, Automatique, Right again is
+            // Fluide, and OK does what a click does: the display turns
+            // « Fluide », the decors go, and Automatique lets go.
+            Scenario(kind: .movie, filename: "keys-settings.png", settings: .graphics,
+                     actions: [.up, .right, .right, .select], expectedFocus: "preset-fluid",
                      expectedDefaults: [FluxAppearance.glassKey: false, FluxAppearance.motionKey: false,
-                                        "fluxiptv.appearance.stage": ProceduralCinema.Style.off.rawValue]),
-            // Walking the column shows each page: two rows down is Vidéo,
-            // and Right lands on its first setting.
+                                        "fluxiptv.appearance.stage": ProceduralCinema.Style.off.rawValue,
+                                        FluxQualityPreset.automaticKey: false]),
+            // Walking the column shows each page: four rows down from
+            // Interface is Vidéo, past Graphismes, Dock and Clavier, and
+            // Right lands on its first setting.
             Scenario(kind: .movie, filename: "keys-settings-pages.png", settings: .appearance,
-                     actions: [.up, .down, .down, .right], expectedFocus: "choice-Saut avant / arrière-0"),
+                     actions: [.up, .down, .down, .down, .down, .right], expectedFocus: "choice-Saut avant / arrière-0"),
             // On the page of the dock the arrows go from tile to tile and
             // down into the themes, where OK gives the dock the one chosen.
             Scenario(kind: .movie, filename: "keys-settings-themes.png", settings: .dock,
                      actions: [.up, .right, .right, .down, .select], expectedFocus: "dock-theme-*"),
             // Past the last row of the column the keyboard returns to the dock.
             Scenario(kind: .movie, filename: "keys-settings-dock.png", settings: .appearance,
-                     actions: [.up] + Array(repeating: .down, count: 7), expectedFocus: FluxDockItem.settings.focusID),
+                     actions: [.up] + Array(repeating: .down, count: 9), expectedFocus: FluxDockItem.settings.focusID),
             // "ne pas laisser de fonctionnalité vide": keys a pause apart, each
             // a fresh press. The television starts in its column: Left goes
             // to Back, and Up from Back returns to the row that was left.

@@ -40,7 +40,12 @@ public enum DeskNavigation {
                 return column == 0 ? sidebarEntry ?? all[index].id : all[index - 1].id
             case .right:
                 let atEnd = column == width - 1 || index == all.count - 1
-                return atEnd ? trailingIDs.first ?? all[index].id : all[index + 1].id
+                if !atEnd { return all[index + 1].id }
+                if let first = trailingIDs.first { return first }
+                // Reading order: the end of a row of a grid leads to the start
+                // of the next one, as a line of a page does (David, 26/11). A
+                // list of one column keeps Right for the edge.
+                return width > 1 && index + 1 < all.count ? all[index + 1].id : all[index].id
             case .up:
                 if row > 0 { return all[index - width].id }
                 return rows.last.map { $0[min(column, $0.count - 1)] } ?? all[index].id

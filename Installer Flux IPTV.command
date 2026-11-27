@@ -68,7 +68,7 @@ if [[ -z "$IDENTITY" ]]; then
   IDENTITY="$(printf '%s\n' "$IDENTITIES" | awk '/"(Apple Development|Developer ID Application):/ {print $2; exit}')"
 fi
 IDENTITY="${IDENTITY:--}"
-printf '\nFLUX IPTV 0.9.3 — installation macOS\n\n'
+printf '\nFLUX IPTV 0.9.4 — installation macOS\n\n'
 if [[ "$IDENTITY" == '-' ]]; then
   printf 'Signature locale ad hoc : stable tant que cette application installée n’est pas remplacée.\nSi vous utilisez le Trousseau, une nouvelle compilation peut nécessiter une autorisation. Le stockage local privé optionnel évite cet accès.\n'
 else

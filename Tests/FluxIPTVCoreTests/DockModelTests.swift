@@ -221,13 +221,47 @@ final class DockModelTests: XCTestCase {
                                            preferredSidebarID: nil, preferredItemID: nil, toolbar: [["reload"]]), "all")
     }
 
-    func testPointerBrowsingStartsThePreviewSooner() {
-        XCTAssertEqual(LiveTVPreviewDelay.defaultValue, .three)
-        #if os(tvOS)
-        XCTAssertEqual(LiveTVPreviewDelay.platformDefault, .three)
-        #else
+    func testRightAtTheEndOfARowReadsOnToTheNextRow() {
+        let items = slice(5)
+        func move(_ from: String, _ action: RemoteAction, columns: Int = 2, trailing: [String] = []) -> String? {
+            DeskNavigation.move(from: from, action: action, items: items, columns: columns, sidebarIDs: ["all"],
+                                preferredSidebarID: nil, preferredItemID: nil, toolbar: [], trailingIDs: trailing)
+        }
+        XCTAssertEqual(move("item-1", .right), "item-2", "The end of a row leads to the start of the next one.")
+        XCTAssertEqual(move("item-3", .right), "item-4")
+        XCTAssertEqual(move("item-0", .right), "item-1")
+        XCTAssertEqual(move("item-4", .right), "item-4", "The last title stays: its edge leads to the icon.")
+        XCTAssertEqual(move("item-1", .right, trailing: ["watch"]), "watch", "Actions beyond the grid come first.")
+        XCTAssertEqual(move("item-1", .right, columns: 1), "item-1", "A list keeps Right for its edge.")
+        XCTAssertEqual(move("item-2", .left), "all", "Left at the start of a row still leads to the column.")
+    }
+
+    func testThePreviewOfATelevisionWaitsOneSecond() {
+        XCTAssertEqual(LiveTVPreviewDelay.defaultValue, .one)
         XCTAssertEqual(LiveTVPreviewDelay.platformDefault, .one)
-        #endif
+        // The three seconds the 0.9.3 saved on a television were its default.
+        let suite = "flux.preview.migration.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        defaults.set(3, forKey: LiveTVPreviewDelay.storageKey)
+        LiveTVPreviewDelay.migrate(defaults, television: true)
+        XCTAssertNil(defaults.object(forKey: LiveTVPreviewDelay.storageKey))
+        defaults.set(3, forKey: LiveTVPreviewDelay.storageKey)
+        LiveTVPreviewDelay.migrate(defaults, television: true)
+        XCTAssertEqual(defaults.integer(forKey: LiveTVPreviewDelay.storageKey), 3, "Chosen after the update, it stays.")
+        let mac = UserDefaults(suiteName: suite + ".mac")!
+        defer { mac.removePersistentDomain(forName: suite + ".mac") }
+        mac.set(3, forKey: LiveTVPreviewDelay.storageKey)
+        LiveTVPreviewDelay.migrate(mac, television: false)
+        XCTAssertEqual(mac.integer(forKey: LiveTVPreviewDelay.storageKey), 3, "A Mac already waited one second: three was chosen.")
+        let ten = UserDefaults(suiteName: suite + ".ten")!
+        defer { ten.removePersistentDomain(forName: suite + ".ten") }
+        ten.set(10, forKey: LiveTVPreviewDelay.storageKey)
+        LiveTVPreviewDelay.migrate(ten, television: true)
+        XCTAssertEqual(ten.integer(forKey: LiveTVPreviewDelay.storageKey), 10)
+    }
+
+    func testPointerBrowsingStartsThePreviewSooner() {
         XCTAssertEqual(FluxDockPosition.defaultValue, .bottom)
         XCTAssertEqual(FluxDockTheme.defaultValue, .glass)
         for position in FluxDockPosition.allCases {

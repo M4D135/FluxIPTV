@@ -17,13 +17,15 @@ struct PlaybackSettingsView: View {
         }
     }
     enum Page: String, CaseIterable, Identifiable {
-        case sources, appearance, dock, video, network, audio, library, diagnostic
+        case sources, appearance, graphics, dock, remote, video, network, audio, library, diagnostic
         var id: String { rawValue }
         var title: String {
             switch self {
             case .sources: "Sources"
             case .appearance: "Interface"
+            case .graphics: "Graphismes"
             case .dock: "Dock"
+            case .remote: Self.remoteTitle
             case .video: "Vidéo"
             case .network: "Réseau"
             case .audio: "Audio et sous-titres"
@@ -35,7 +37,9 @@ struct PlaybackSettingsView: View {
             switch self {
             case .sources: "square.stack"
             case .appearance: "sparkles.tv"
+            case .graphics: "gauge.with.dots.needle.67percent"
             case .dock: "dock.rectangle"
+            case .remote: Self.remoteIcon
             case .video: "play.rectangle"
             case .network: "wifi"
             case .audio: "speaker.wave.2"
@@ -46,8 +50,10 @@ struct PlaybackSettingsView: View {
         var subtitle: String {
             switch self {
             case .sources: "Vos abonnements et vos playlists."
-            case .appearance: "Fonds, couleurs, aperçu des chaînes et présentation."
-            case .dock: "Emplacement, thème, icônes et raccourcis."
+            case .appearance: "Studio, couleurs des écrans et présentation des fiches."
+            case .graphics: "Qualité selon l’appareil, comme dans un jeu, et chacun de ses réglages."
+            case .dock: "Emplacement, thème, loupe, icônes et raccourcis."
+            case .remote: Self.remoteSubtitle
             case .video: "Moteur de lecture et déplacements dans la vidéo."
             case .network: "Compromis entre zapping et stabilité."
             case .audio: "Pistes du média en cours et volume."
@@ -55,6 +61,15 @@ struct PlaybackSettingsView: View {
             case .diagnostic: "État du lecteur, sans adresse ni mot de passe."
             }
         }
+        #if os(tvOS)
+        private static let remoteTitle = "Télécommande"
+        private static let remoteIcon = "appletvremote.gen4"
+        private static let remoteSubtitle = "Mode classique ou souris, pointeur et touche Retour."
+        #else
+        private static let remoteTitle = "Clavier"
+        private static let remoteIcon = "keyboard"
+        private static let remoteSubtitle = "Ce que fait la touche Retour dans un écran."
+        #endif
     }
 
     @ObservedObject var playback: PlaybackController
@@ -108,7 +123,8 @@ struct PlaybackSettingsView: View {
     @State private var studio: StudioShelf?
     #endif
     @AppStorage(FluxDockItem.orderKey) private var dockOrder = ""
-    @AppStorage(FluxDockItem.magnifyKey) private var dockMagnifies = true
+    @AppStorage(FluxDockZoom.storageKey) private var dockZoom: FluxDockZoom = .defaultValue
+    @AppStorage(FluxDockSelectionLook.storageKey) private var dockLook: FluxDockSelectionLook = .defaultValue
     @AppStorage(DockShelf.recentsKey) private var dockRecents = true
     /// The section of the dock whose name is being changed, or that asks
     /// before it leaves with its shortcuts.
@@ -121,7 +137,16 @@ struct PlaybackSettingsView: View {
     @State private var creatingDockFolder = false
     @State private var newFolderName = ""
     @State private var newFolderInvalid = false
-    @AppStorage(DeskZone.backKey) private var backShowsZones = false
+    @AppStorage(DeskBackBehavior.storageKey) private var backBehavior: DeskBackBehavior = .defaultValue
+    @AppStorage(FluxQualityPreset.automaticKey) private var automaticQuality = true
+    @AppStorage(FluxPanelGlint.storageKey) private var panelGlint: FluxPanelGlint = .defaultValue
+    #if os(tvOS)
+    @AppStorage(FluxRemoteMode.storageKey) private var remoteMode: FluxRemoteMode = .defaultValue
+    @AppStorage(FluxRemoteMode.toggleKey) private var remoteToggles = FluxRemoteMode.toggleDefault
+    @AppStorage(FluxPointerSpeed.storageKey) private var pointerSpeed: FluxPointerSpeed = .defaultValue
+    @AppStorage(FluxPointerSize.storageKey) private var pointerSize: FluxPointerSize = .defaultValue
+    @AppStorage(FluxPointerShape.storageKey) private var pointerShape: FluxPointerShape = .defaultValue
+    #endif
     #if os(tvOS)
     /// Page under the remote: walking the list shows each page at once.
     @FocusState private var focusedPage: Page?
@@ -133,8 +158,33 @@ struct PlaybackSettingsView: View {
     @FocusState private var typing: String?
     #endif
 
-    /// Sources and the dock belong to the screen drawn in the window.
-    private var pages: [Page] { Page.allCases.filter { (inline && !overPlayback) || ($0 != .sources && $0 != .dock) } }
+    /// Sources and the dock belong to the screen drawn in the window; the
+    /// remote and the keyboard, to a screen they walk, which a phone is not.
+    private var pages: [Page] {
+        Page.allCases.filter { destination in
+            switch destination {
+            case .sources, .dock: inline && !overPlayback
+            case .remote: Self.walked && inline && !overPlayback
+            default: true
+            }
+        }
+    }
+    #if os(iOS)
+    private static let walked = false
+    private static let deviceSymbol = "iphone"
+    private static let resetKeysTitle = "Par défaut"
+    private static let glintCaption = "Le panneau actif s’éclaire d’un liseré discret ; avec le reflet, une lueur le traverse quand on y entre."
+    #elseif os(tvOS)
+    private static let walked = true
+    private static let deviceSymbol = "appletv.fill"
+    private static let resetKeysTitle = "Télécommande par défaut"
+    private static let glintCaption = "Le panneau qui a la télécommande s’éclaire d’un liseré discret ; avec le reflet, une lueur le traverse quand on y entre, comme sur un widget de l’Apple TV."
+    #else
+    private static let walked = true
+    private static let deviceSymbol = "desktopcomputer"
+    private static let resetKeysTitle = "Clavier par défaut"
+    private static let glintCaption = "Le panneau qui a le clavier s’éclaire d’un liseré discret ; avec le reflet, une lueur le traverse quand on y entre."
+    #endif
 
     private var versionLabel: String {
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? ""
@@ -407,8 +457,12 @@ struct PlaybackSettingsView: View {
                 sourcesSettings
             case .appearance:
                 appearanceSettings
+            case .graphics:
+                graphicsSettings
             case .dock:
                 dockSettings
+            case .remote:
+                remoteSettings
             case .video:
                 section("Lecture et décodage", "Choisissez le moteur, le décodage et les déplacements dans la vidéo.") {
                     #if os(macOS)
@@ -494,6 +548,16 @@ struct PlaybackSettingsView: View {
                     } else { Label("Mode normal", systemImage: "checkmark.circle") }
                     if playback.playingItem != nil { settingsKey("Réessayer le flux") { playback.retry(); close() } }
                     Text("Si l’app se ferme brutalement, conservez le rapport de crash macOS (.ips) pour identifier la cause exacte.").font(Desk.font(.caption)).foregroundStyle(.secondary)
+                }
+                section("Licences", "Les composants libres que contient l’application, et l’adresse de leur code.") {
+                    #if !os(macOS)
+                    licenceRow("VLCKit", "LGPL 2.1 · lecture des flux", "code.videolan.org/videolan/VLCKit")
+                    #endif
+                    #if os(tvOS) && !FLUX_APP_STORE
+                    licenceRow("YouTubeKit", "MIT · bandes-annonces sur l’Apple TV", "github.com/alexeichhorn/YouTubeKit")
+                    #endif
+                    Text("Le code de FLUX IPTV est public. VLCKit reste un framework séparé, que sa licence permet de remplacer. Les icônes, les fonds et les thèmes sont dessinés pour l’application.")
+                        .font(Desk.font(.caption)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 }
             }
         }
@@ -684,6 +748,13 @@ struct PlaybackSettingsView: View {
                     if !own.isEmpty { settingsKey("Le même thème sur tous les écrans") { spaceThemes = "" } }
                 }
             }
+            section("Loupe et sélection", "L’icône sous la télécommande, le clavier ou le pointeur grandit, et ses voisines un peu moins.") {
+                DeskChoice(title: "Agrandissement", options: FluxDockZoom.allCases.map { ($0, $0.title) }, selection: $dockZoom)
+                DeskChoice(title: "Icône sélectionnée", options: FluxDockSelectionLook.allCases.map { ($0, $0.title) },
+                           selection: $dockLook)
+                Text(lookCaption(dockLook)).font(Desk.font(.caption)).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
             section("Icônes", "Glissez une icône dans le dock pour la déplacer, ou utilisez les flèches.") {
                 let order = FluxDockItem.order(from: dockOrder)
                 ForEach(Array(order.enumerated()), id: \.element) { index, item in
@@ -701,9 +772,9 @@ struct PlaybackSettingsView: View {
                         }.disabled(index == order.count - 1).opacity(index == order.count - 1 ? 0.35 : 1)
                     }
                 }
-                DeskToggle(title: "Agrandir les icônes au survol", isOn: $dockMagnifies)
                 settingsKey("Dock par défaut") {
-                    dockPosition = .defaultValue; dockTheme = .defaultValue; spaceThemes = ""; dockOrder = ""; dockMagnifies = true
+                    dockPosition = .defaultValue; dockTheme = .defaultValue; spaceThemes = ""; dockOrder = ""
+                    dockZoom = .defaultValue; dockLook = .defaultValue
                 }
             }
             section("Raccourcis et dossiers", "Une chaîne, un film, une série, une saison ou un épisode se gardent dans le dock depuis « Favoris, listes et dock » : l’étoile d’un titre, ou un appui long sur lui. Une section s’y tient à part, entre deux séparateurs. Un dossier y est une seule icône, qui s’ouvre en éventail ; il peut en contenir d’autres, et porter l’icône de votre choix. Une liste de favoris y devient aussi un dossier, depuis son écran.") {
@@ -727,6 +798,14 @@ struct PlaybackSettingsView: View {
                     }
                 }
             }
+        }
+    }
+
+    private func lookCaption(_ look: FluxDockSelectionLook) -> String {
+        switch look {
+        case .ring: "Un contour blanc, comme la sélection de l’Apple TV."
+        case .halo: "Un halo de la couleur de l’icône, sans contour."
+        case .lift: "L’icône se soulève au-dessus de son ombre, sans contour."
         }
     }
 
@@ -944,14 +1023,18 @@ struct PlaybackSettingsView: View {
         return Button { dockTheme = choice } label: {
             VStack(alignment: .leading, spacing: Desk.pt(9)) {
                 HStack(spacing: Desk.pt(6)) {
-                    HStack(spacing: Desk.pt(choice.skinned ? 4 : 6)) {
+                    let plated = choice.skinned || choice.packName != nil
+                    HStack(spacing: Desk.pt(plated ? 4 : 6)) {
                         ForEach([FluxDockItem.live, .movie, .series], id: \.self) { item in
                             FluxDockSwatch(item: item, theme: choice)
                         }
                     }
-                    // A skin draws its plate as well as its icons.
-                    .padding(choice.skinned ? Desk.pt(5) : 0)
-                    .background { if choice.skinned { DockSkinPlate(theme: choice, radius: Desk.pt(10)) } }
+                    // A skin or a pack draws its plate as well as its icons.
+                    .padding(plated ? Desk.pt(5) : 0)
+                    .background {
+                        if let pack = choice.packName { DockPackPlate(pack: pack, radius: Desk.pt(10)) }
+                        else if choice.skinned { DockSkinPlate(theme: choice, radius: Desk.pt(10)) }
+                    }
                     Spacer(minLength: 0)
                     if selected { Image(systemName: "checkmark.circle.fill").foregroundStyle(.cyan) }
                 }
@@ -969,29 +1052,45 @@ struct PlaybackSettingsView: View {
         .deskTarget("dock-theme-\(choice.rawValue)") { dockTheme = choice }
     }
 
-    // MARK: Interface
+    // MARK: Graphismes
 
+    private var recommended: FluxQualityPreset { FluxGraphics.device.recommended }
     private var currentPreset: FluxQualityPreset? {
-        FluxQualityPreset.matching(glass: glass, motion: motion, backdrops: stage != .off, livePreview: automaticLivePreview)
+        FluxQualityPreset.matching(glass: glass, motion: motion, backdrops: stage != .off,
+                                   livePreview: automaticLivePreview, glint: panelGlint)
     }
+    /// « Automatique » holds while the settings are those of the preset it chose.
+    private var automaticShown: Bool { automaticQuality && currentPreset == recommended }
     private func apply(_ preset: FluxQualityPreset) {
-        glass = preset.glass; motion = preset.motion
-        stage = preset.backdrops ? .orbit : .off
-        automaticLivePreview = preset.livePreview
+        FluxGraphics.apply(preset)
+        automaticQuality = false
     }
-    private func presetTile(_ preset: FluxQualityPreset) -> some View {
-        let selected = currentPreset == preset
+    private func applyAutomatic() {
+        FluxGraphics.apply(recommended)
+        automaticQuality = true
+    }
+    /// A detail changed by hand leaves « Automatique ».
+    private func detail<Value>(_ binding: Binding<Value>) -> Binding<Value> {
+        Binding(get: { binding.wrappedValue }, set: { binding.wrappedValue = $0; automaticQuality = false })
+    }
+    private func qualityTile(id: String, symbol: String, title: String, subtitle: String, selected: Bool,
+                             badge: String? = nil, action: @escaping () -> Void) -> some View {
         let tile = RoundedRectangle(cornerRadius: Desk.pt(14), style: .continuous)
-        return Button { apply(preset) } label: {
+        return Button(action: action) {
             VStack(alignment: .leading, spacing: Desk.pt(8)) {
-                HStack {
-                    Image(systemName: preset.symbol).font(Desk.system(20, .semibold)).foregroundStyle(.cyan)
+                HStack(spacing: Desk.pt(6)) {
+                    Image(systemName: symbol).font(Desk.system(20, .semibold)).foregroundStyle(.cyan)
                     Spacer(minLength: 0)
+                    if let badge {
+                        Text(badge).font(Desk.system(10, .bold)).tracking(1.1).lineLimit(1)
+                            .padding(.horizontal, Desk.pt(7)).padding(.vertical, Desk.pt(3))
+                            .foregroundStyle(.cyan).background(Color.cyan.opacity(0.18), in: Capsule())
+                    }
                     if selected { Image(systemName: "checkmark.circle.fill").foregroundStyle(.cyan) }
                 }
-                Text(preset.title).font(Desk.font(.headline, .semibold)).lineLimit(1)
-                Text(preset.subtitle).font(Desk.font(.caption)).foregroundStyle(.secondary)
-                    .lineLimit(3, reservesSpace: true).fixedSize(horizontal: false, vertical: true)
+                Text(title).font(Desk.font(.headline, .semibold)).lineLimit(1)
+                Text(subtitle).font(Desk.font(.caption)).foregroundStyle(.secondary)
+                    .lineLimit(4, reservesSpace: true).fixedSize(horizontal: false, vertical: true)
             }
             .padding(Desk.pt(14)).frame(maxWidth: .infinity, alignment: .leading)
             .background(.white.opacity(selected ? 0.14 : 0.05), in: tile)
@@ -999,10 +1098,142 @@ struct PlaybackSettingsView: View {
             .contentShape(tile)
         }
         .buttonStyle(DeskFocusStyle(radius: Desk.pt(14)))
-        .accessibilityLabel("Préréglage \(preset.title)").accessibilityAddTraits(selected ? .isSelected : [])
-        .accessibilityIdentifier("settings-preset-\(preset.rawValue)")
-        .deskTarget("preset-\(preset.rawValue)") { apply(preset) }
+        .accessibilityLabel("Préréglage \(title)").accessibilityAddTraits(selected ? .isSelected : [])
+        .accessibilityIdentifier("settings-preset-\(id)")
+        .deskTarget("preset-\(id)", perform: action)
     }
+
+    /// "dans option choix qualité graphique comme dans un jeu" (David, 26/11).
+    private var graphicsSettings: some View {
+        VStack(alignment: .leading, spacing: Desk.pt(16)) {
+            section("Qualité graphique", "Comme dans un jeu : un préréglage règle d’un coup le verre, les mouvements, le repère du panneau actif, les fonds et l’aperçu des chaînes. Automatique suit l’appareil.") {
+                Label("Appareil détecté : \(FluxGraphics.device.title). Conseillé : \(recommended.title).", systemImage: Self.deviceSymbol)
+                    .font(Desk.font(.callout, .medium)).foregroundStyle(.white.opacity(0.86))
+                    .fixedSize(horizontal: false, vertical: true)
+                HStack(alignment: .top, spacing: Desk.pt(12)) {
+                    qualityTile(id: "automatic", symbol: "wand.and.stars", title: "Automatique",
+                                subtitle: "Suit l’appareil : \(recommended.title) sur celui-ci.",
+                                selected: automaticShown, action: applyAutomatic)
+                    ForEach(FluxQualityPreset.allCases) { preset in
+                        qualityTile(id: preset.rawValue, symbol: preset.symbol, title: preset.title, subtitle: preset.subtitle,
+                                    selected: !automaticShown && currentPreset == preset,
+                                    badge: preset == recommended ? "CONSEILLÉ" : nil) { apply(preset) }
+                    }
+                }
+                if !automaticShown && currentPreset == nil {
+                    Text("Personnalisé : les réglages plus bas ne suivent aucun préréglage.")
+                        .font(Desk.font(.caption)).foregroundStyle(.secondary)
+                }
+            }
+            section("Réglages détaillés", "Chacun se change à part ; en changer un quitte Automatique.") {
+                DeskToggle(title: "Liquid Glass", isOn: detail($glass))
+                #if os(tvOS)
+                Text(FluxAppearance.systemGlass
+                     ? "Le verre d’Apple sur les panneaux, comme sur un Mac, et le flou derrière une fiche. Coupé : des surfaces sombres, plus légères à afficher."
+                     : "Des panneaux de verre comme sur un Mac. tvOS réserve son propre verre aux Apple TV 4K de 2ᵉ génération et suivantes : sur celle-ci, il est dessiné avec le flou du système. Coupé : des surfaces sombres, plus légères à afficher.")
+                    .font(Desk.font(.caption)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                DeskToggle(title: "Mouvements de la sélection", isOn: detail($motion))
+                Text(FluxAppearance.systemGlass
+                     ? "Ce qui est sélectionné grandit et suit le pouce posé sur la télécommande ; les icônes du dock glissent. Coupés : la sélection s’affiche d’un coup."
+                     : "Ce qui est sélectionné grandit, et les icônes du dock glissent. Coupés si ces mouvements saccadent sur cette Apple TV : la sélection s’affiche alors d’un coup.")
+                    .font(Desk.font(.caption)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                #else
+                Text(FluxAppearance.nativeAvailable ? "Effet Apple natif disponible." : "Matériau translucide système sur cette version d’OS.")
+                    .font(Desk.font(.caption)).foregroundStyle(.secondary)
+                #endif
+                DeskChoice(title: "Repère du panneau actif", options: FluxPanelGlint.allCases.map { ($0, $0.title) },
+                           selection: detail($panelGlint))
+                Text(Self.glintCaption).font(Desk.font(.caption)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                DeskToggle(title: "Afficher les fonds", isOn: detail(Binding(get: { stage != .off }, set: { stage = $0 ? .orbit : .off })))
+                Text("Les images dessinées derrière les écrans, choisies dans le studio. Elles disparaissent pendant la lecture plein écran.")
+                    .font(Desk.font(.caption)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
+            section("Aperçu des chaînes TV", "La chaîne sélectionnée s’anime dans son écran après un délai.") {
+                DeskToggle(title: "Aperçu TV automatique", isOn: detail($automaticLivePreview))
+                DeskChoice(title: "Délai avant l’aperçu TV", options: LiveTVPreviewDelay.allCases.map { ($0, $0.title) },
+                           selection: $livePreviewDelay).disabled(!automaticLivePreview)
+                Text("Un seul aperçu à la fois, muet au départ. Le bouton Son active son audio ; Regarder ouvre la chaîne. Changer de chaîne, de catégorie ou d’espace arrête l’aperçu précédent.")
+                    .font(Desk.font(.caption)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                settingsKey("Graphismes par défaut") {
+                    applyAutomatic(); livePreviewDelay = LiveTVPreviewDelay.platformDefault
+                }
+            }
+        }
+    }
+
+    // MARK: Télécommande et clavier
+
+    private var remoteSettings: some View {
+        VStack(alignment: .leading, spacing: Desk.pt(16)) {
+            #if os(tvOS)
+            // "faut pouvoir choisir mode classique ou mode souris, soit dans
+            // option soit un système facile pour basculer, voire les deux" (David, 26/11).
+            section("Mode de la télécommande", "Classique : un glissement sur le pavé tactile va d’un élément au suivant. Souris : un pointeur suit le pouce, et un clic appuie sur ce qu’il survole.") {
+                HStack(alignment: .top, spacing: Desk.pt(12)) {
+                    ForEach(FluxRemoteMode.allCases) { mode in remoteModeTile(mode) }
+                }
+                DeskToggle(title: "Maintenir Lecture/Pause pour changer de mode", isOn: $remoteToggles)
+                Text("Hors de la lecture d’une vidéo, un appui long sur Lecture/Pause passe d’un mode à l’autre, où que vous soyez, et une bulle le confirme. Pendant une vidéo, la télécommande reste classique.")
+                    .font(Desk.font(.caption)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
+            section("Pointeur", "Son allure en mode souris. Un appui sur un bord du pavé déplace toujours la sélection, comme une flèche.") {
+                DeskChoice(title: "Vitesse", options: FluxPointerSpeed.allCases.map { ($0, $0.title) }, selection: $pointerSpeed)
+                DeskChoice(title: "Taille", options: FluxPointerSize.allCases.map { ($0, $0.title) }, selection: $pointerSize)
+                DeskChoice(title: "Forme", options: FluxPointerShape.allCases.map { ($0, $0.title) }, selection: $pointerShape)
+            }
+            #endif
+            section("Touche Retour", "Ce que fait Retour dans un écran de films, de séries ou de chaînes.") {
+                DeskChoice(title: "Retour dans un écran", options: DeskBackBehavior.offered.map { ($0, $0.title) },
+                           selection: $backBehavior)
+                Text(backCaption(backBehavior)).font(Desk.font(.caption)).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                settingsKey(Self.resetKeysTitle) {
+                    backBehavior = .defaultValue
+                    #if os(tvOS)
+                    remoteMode = .defaultValue; remoteToggles = FluxRemoteMode.toggleDefault
+                    pointerSpeed = .defaultValue; pointerSize = .defaultValue; pointerShape = .defaultValue
+                    #endif
+                }
+            }
+        }
+    }
+
+    private func backCaption(_ behavior: DeskBackBehavior) -> String {
+        switch behavior {
+        case .bar: "Depuis une grille ou une liste, Retour mène d’abord au bouton Retour de la barre du haut, d’où l’accueil et le dock sont à portée. Un second Retour quitte l’écran."
+        case .leave: "Retour revient tout de suite à l’écran précédent, comme avant la 0.9.4."
+        case .plan: "Retour encadre le haut, la colonne, le contenu, l’aperçu et le dock, et montre où mène chaque flèche : une flèche entre dans la partie voisine, OK referme, un second Retour quitte l’écran."
+        }
+    }
+
+    #if os(tvOS)
+    private func remoteModeTile(_ mode: FluxRemoteMode) -> some View {
+        let selected = remoteMode == mode
+        let tile = RoundedRectangle(cornerRadius: Desk.pt(14), style: .continuous)
+        return Button { remoteMode = mode } label: {
+            HStack(alignment: .top, spacing: Desk.pt(14)) {
+                Image(systemName: mode.symbol).font(Desk.system(26, .semibold)).foregroundStyle(.cyan)
+                    .frame(width: Desk.pt(40))
+                VStack(alignment: .leading, spacing: Desk.pt(4)) {
+                    Text(mode.title).font(Desk.font(.headline, .semibold))
+                    Text(mode.subtitle).font(Desk.font(.caption)).foregroundStyle(.secondary)
+                        .lineLimit(3, reservesSpace: true).fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 0)
+                if selected { Image(systemName: "checkmark.circle.fill").foregroundStyle(.cyan) }
+            }
+            .padding(Desk.pt(14)).frame(maxWidth: .infinity, alignment: .leading)
+            .background(.white.opacity(selected ? 0.14 : 0.05), in: tile)
+            .overlay(tile.strokeBorder(Color.cyan.opacity(selected ? 0.85 : 0), lineWidth: 2).allowsHitTesting(false))
+            .contentShape(tile)
+        }
+        .buttonStyle(DeskFocusStyle(radius: Desk.pt(14)))
+        .accessibilityLabel("Mode \(mode.title.lowercased())").accessibilityAddTraits(selected ? .isSelected : [])
+        .accessibilityIdentifier("settings-remote-mode-\(mode.rawValue)")
+    }
+    #endif
+
+    // MARK: Interface
 
     #if os(macOS) || os(tvOS)
     private func showStudio(_ shelf: StudioShelf) {
@@ -1039,37 +1270,17 @@ struct PlaybackSettingsView: View {
 
     private var appearanceSettings: some View {
         VStack(alignment: .leading, spacing: Desk.pt(16)) {
-            section("Qualité de l’affichage", "Chacun règle d’un coup le verre, les mouvements de la sélection, les fonds et l’aperçu des chaînes. Fluide convient aux Apple TV anciennes.") {
-                HStack(alignment: .top, spacing: Desk.pt(12)) {
-                    ForEach(FluxQualityPreset.allCases) { preset in presetTile(preset) }
-                }
-                if currentPreset == nil {
-                    Text("Personnalisé : les réglages plus bas ne suivent aucun des trois.")
-                        .font(Desk.font(.caption)).foregroundStyle(.secondary)
-                }
-            }
             #if os(macOS) || os(tvOS)
             section("Studio d’apparence", "Les fonds de chaque écran, seuls ou en diaporama, et le thème du dock, écran par écran. Tout s’essaie en plein écran avant d’être gardé.") {
                 HStack(spacing: Desk.pt(12)) {
                     studioTile(.backdrops, line: "\(FluxBackdropLibrary.art.count) fonds dessinés, diaporama")
-                    studioTile(.dock, line: "15 thèmes, d’aujourd’hui et rétro")
+                    studioTile(.dock, line: "\(FluxDockTheme.allCases.count) thèmes : d’aujourd’hui, rétro et dessinés")
                 }
             }
             #endif
-            section("Fonds et couleurs", "Films, séries et chaînes TV ont chacun leurs couleurs : celles des repères, et du fond uni quand un écran ne montre pas d’image.") {
-                DeskToggle(title: "Afficher les fonds", isOn: Binding(get: { stage != .off }, set: { stage = $0 ? .orbit : .off }))
-                Text("Les images dessinées derrière les écrans, choisies dans le studio. Elles disparaissent au lancement de la lecture plein écran.").font(Desk.font(.caption)).foregroundStyle(.secondary)
-            }
             environmentSection(.cinema, selection: $cinemaTheme)
             environmentSection(.videoClub, selection: $seriesTheme)
             environmentSection(.livingRoom, selection: $tvTheme)
-            section("Aperçu des chaînes TV", "La chaîne sélectionnée s’anime dans son écran après un délai.") {
-                DeskToggle(title: "Aperçu TV automatique", isOn: $automaticLivePreview)
-                DeskChoice(title: "Délai avant l’aperçu TV", options: LiveTVPreviewDelay.allCases.map { ($0, $0.title) },
-                           selection: $livePreviewDelay).disabled(!automaticLivePreview)
-                Text("Un seul aperçu à la fois, muet au départ. Le bouton Son active son audio ; Regarder ouvre la chaîne. Changer de chaîne, de catégorie ou d’espace arrête l’aperçu précédent.")
-                    .font(Desk.font(.caption)).foregroundStyle(.secondary)
-            }
             section("Présentation et commandes", "La fiche des films et séries présente la description, la boîte du titre, la lecture et les favoris.") {
                 ForEach(ClubInterfaceProfile.allCases) { concept in
                     Button { clubProfile = concept } label: {
@@ -1092,40 +1303,17 @@ struct PlaybackSettingsView: View {
                     #endif
                     .deskTarget("profile-\(concept.rawValue)") { clubProfile = concept }
                 }
-                #if os(tvOS)
-                DeskToggle(title: "Liquid Glass", isOn: $glass)
-                Text(FluxAppearance.systemGlass
-                     ? "Le verre d’Apple sur les panneaux, comme sur un Mac, et le flou derrière une fiche. Coupé : des surfaces sombres, plus légères à afficher."
-                     : "Des panneaux de verre comme sur un Mac. tvOS réserve son propre verre aux Apple TV 4K de 2ᵉ génération et suivantes : sur celle-ci, il est dessiné avec le flou du système. Coupé : des surfaces sombres, plus légères à afficher.")
-                    .font(Desk.font(.caption)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                DeskToggle(title: "Mouvements de la sélection", isOn: $motion)
-                Text(FluxAppearance.systemGlass
-                     ? "Ce qui est sélectionné grandit et suit le pouce posé sur la télécommande ; les icônes du dock glissent. Coupés : la sélection s’affiche d’un coup."
-                     : "Ce qui est sélectionné grandit, et les icônes du dock glissent. Coupés si ces mouvements saccadent sur cette Apple TV : la sélection s’affiche alors d’un coup.")
-                    .font(Desk.font(.caption)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                #else
-                DeskToggle(title: "Liquid Glass", isOn: $glass)
-                Text(FluxAppearance.nativeAvailable ? "Effet Apple natif disponible." : "Matériau translucide système sur cette version d’OS.").font(Desk.font(.caption)).foregroundStyle(.secondary)
-                #endif
                 DeskToggle(title: "Afficher les jaquettes", isOn: $artwork)
                 DeskChoice(title: "Taille des cartes", options: [("cinema", "Grand écran"), ("compact", "Compacte")], selection: $density)
                 #if !os(tvOS)
-                #if os(macOS)
-                if inline && !overPlayback {
-                    DeskToggle(title: "Retour affiche d’abord les zones de l’écran", isOn: $backShowsZones)
-                    Text("Au clavier ou à la télécommande, Retour encadre le haut, la colonne, le contenu, l’aperçu et le dock, et indique où mène chaque flèche : une flèche entre dans la zone voisine, OK referme, Retour une seconde fois revient à l’écran précédent. Désactivé, comme au départ, Retour revient tout de suite à l’écran précédent ; Tab passe toujours d’une zone à l’autre. Maintenu, Retour mène droit à l’accueil.")
-                        .font(Desk.font(.caption)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                }
-                #endif
                 if let remoteVisible { DeskToggle(title: "Afficher la télécommande virtuelle", isOn: remoteVisible) }
                 DeskChoice(title: "Télécommande virtuelle", options: [(RemoteAppearance.black, "Noire tactile"), (RemoteAppearance.silver, "Aluminium")],
                            selection: $remoteAppearance)
                 #endif
+                // The quality of the display has its own page: Graphismes.
                 settingsKey("Apparence par défaut") {
-                    glass = true; motion = true; artwork = true; density = "cinema"
-                    clubProfile = .neoVideoClub; stage = .orbit
+                    artwork = true; density = "cinema"; clubProfile = .neoVideoClub
                     cinemaTheme = .neo90; seriesTheme = .neo90; tvTheme = .neo90
-                    livePreviewDelay = LiveTVPreviewDelay.platformDefault; automaticLivePreview = true
                 }
             }
         }
@@ -1161,6 +1349,17 @@ struct PlaybackSettingsView: View {
         .accessibilityLabel(candidate.title + (selected ? ", sélectionné" : ""))
         .accessibilityAddTraits(selected ? .isSelected : [])
         .deskTarget("theme-\(place)-\(candidate.rawValue)") { selection.wrappedValue = candidate }
+    }
+
+    private func licenceRow(_ name: String, _ detail: String, _ source: String) -> some View {
+        VStack(alignment: .leading, spacing: Desk.pt(3)) {
+            HStack(spacing: Desk.pt(10)) {
+                Text(name).font(Desk.font(.body, .semibold))
+                Text(detail).font(Desk.font(.callout)).foregroundStyle(.secondary)
+            }
+            Text(source).font(Desk.font(.caption).monospaced()).foregroundStyle(.white.opacity(0.7))
+        }
+        .accessibilityElement(children: .combine)
     }
 
     private func choice(_ title: String, value: Binding<Int>, values: [Int], unit: String) -> some View {
@@ -1242,8 +1441,14 @@ private struct FluxDockSwatch: View {
             // A skin draws its own tile, as its dock does; pixels keep their
             // square on a side of 32.
             let side = Desk.pt(theme.pixelated ? 32 : 28)
-            DockSkinDestination(item: item, theme: theme, selected: false, focused: false, side: side, glyph: Desk.pt(13))
-                .frame(width: side, height: side)
+            Group {
+                if let pack = theme.packName {
+                    DockPackDestination(theme: theme, pack: pack, item: item, selected: false, focused: false, side: side)
+                } else {
+                    DockSkinDestination(item: item, theme: theme, selected: false, focused: false, side: side, glyph: Desk.pt(13))
+                }
+            }
+            .frame(width: side, height: side)
         }
     }
 }

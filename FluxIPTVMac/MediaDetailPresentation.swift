@@ -408,6 +408,9 @@ struct MediaDetailPresentation: View {
         .focusable()
         #endif
         .focused($nativeFocus, equals: id).focusEffectDisabled()
+        #if os(tvOS)
+        .fluxPointerTarget(id, $nativeFocus)
+        #endif
         .id(id)
         .accessibilityIdentifier("media-detail-episode-\(episode.id)")
         .accessibilityLabel("Épisode \(number), \(episode.name)")
@@ -443,6 +446,9 @@ struct MediaDetailPresentation: View {
             .focusable()
             #endif
             .focused($nativeFocus, equals: id).focusEffectDisabled()
+            #if os(tvOS)
+            .fluxPointerTarget(id, $nativeFocus)
+            #endif
             .id(id)
             .accessibilityIdentifier("media-detail-\(id)")
             #if os(tvOS) && FLUX_CATALOG_UI_TESTING
@@ -1186,7 +1192,11 @@ extension MediaDetailPresentation {
         #if os(macOS)
         .focusable()
         #endif
-        .focused($nativeFocus, equals: id).focusEffectDisabled().id(id)
+        .focused($nativeFocus, equals: id).focusEffectDisabled()
+        #if os(tvOS)
+        .fluxPointerTarget(id, $nativeFocus)
+        #endif
+        .id(id)
         .accessibilityIdentifier("media-detail-season-\(season.number)")
         .accessibilityLabel("\(seasonTitle(season)), \(season.episodes.count) épisodes")
         .accessibilityValue(selected ? "Sélectionnée" : "")
@@ -1302,6 +1312,9 @@ extension MediaDetailPresentation {
         .focusable()
         #endif
         .focused($nativeFocus, equals: id).focusEffectDisabled()
+        #if os(tvOS)
+        .fluxPointerTarget(id, $nativeFocus)
+        #endif
         .id(id)
         .zIndex(focused ? 1 : 0)
         .accessibilityIdentifier("media-detail-episode-\(episode.id)")

@@ -2,6 +2,7 @@
 """Regenerate the shared and Apple TV-only Xcode projects from the same sources."""
 from __future__ import annotations
 import hashlib
+import os
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -49,6 +50,15 @@ def bkey(p, file): return k(p, 'build ' + str(file.relative_to(ROOT)))
 
 def ref_list(ids): return ' '.join(uid(i) + ',' for i in ids)
 
+# The build sent to the App Store reads no YouTube stream itself, against
+# the terms of YouTube (rules 5.2.2 and 5.2.3): FLUX_APP_STORE=1 writes it
+# apart, in FluxIPTV-AppStore.xcodeproj. See docs/APP-STORE.md.
+APP_STORE = os.environ.get('FLUX_APP_STORE') == '1'
+
+def conditions(config):
+    names = (['DEBUG'] if config == 'Debug' else []) + (['FLUX_APP_STORE'] if APP_STORE else [])
+    return f'SWIFT_ACTIVE_COMPILATION_CONDITIONS = "{" ".join(names)}";' if names else ''
+
 def generate(platforms, project_name):
     objects = []
     compat = COMPAT if any(p['suffix'] in ('mac', 'tv') for p in platforms) else []
@@ -63,6 +73,9 @@ def generate(platforms, project_name):
         objects.append(f'\t\t{uid("meta " + name)} /* {name} */ = {{isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = {name}; sourceTree = "<group>"; }};')
     # The pictures drawn for the screens, chosen in the studio of the appearance.
     objects.append(item('backdrop-resources', 'PBXFileReference', 'lastKnownFileType = folder; path = Backdrops; sourceTree = "<group>"'))
+    objects.append(item('dockpack-resources', 'PBXFileReference', 'lastKnownFileType = folder; path = DockPacks; sourceTree = "<group>"'))
+    # What the applications and VLCKit read of the device, for the App Store.
+    objects.append(item('privacy-resource', 'PBXFileReference', 'lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"'))
     # The icons, drawn by scripts/make-icons.swift: one catalog for the Mac
     # and the iPhone, one for the layered icon and the Top Shelf of tvOS.
     catalogs = sorted({ASSETS[p['suffix']][0] for p in platforms})
@@ -71,11 +84,11 @@ def generate(platforms, project_name):
     objects.append(item('root', 'PBXGroup', f'children = ({uid("core-parent")}, {uid("mac-parent")}, {uid("products")},); sourceTree = "<group>"'))
     objects.append(item('core-parent', 'PBXGroup', f'children = ({uid("core")},); path = Sources; sourceTree = "<group>"'))
     objects.append(item('core', 'PBXGroup', 'children = (' + ' '.join(f'{fref(p)},' for p in CORE) + '); path = FluxIPTVCore; sourceTree = "<group>"'))
-    objects.append(item('mac-parent', 'PBXGroup', 'children = (' + ' '.join(f'{fref(p)},' for p in MAC) + ' ' + ref_list(['meta '+s for s in META] + ['backdrop-resources'] + catalogs + (['compat'] if compat else [])) + '); path = FluxIPTVMac; name = FluxIPTVShared; sourceTree = "<group>"'))
+    objects.append(item('mac-parent', 'PBXGroup', 'children = (' + ' '.join(f'{fref(p)},' for p in MAC) + ' ' + ref_list(['meta '+s for s in META] + ['backdrop-resources', 'dockpack-resources', 'privacy-resource'] + catalogs + (['compat'] if compat else [])) + '); path = FluxIPTVMac; name = FluxIPTVShared; sourceTree = "<group>"'))
     objects.append(item('products', 'PBXGroup', f'children = ({ref_list([k(p, "product") for p in platforms])}); name = Products; sourceTree = "<group>"'))
     objects.append(item('vlc-package', 'XCRemoteSwiftPackageReference', 'repositoryURL = "https://github.com/videolan/vlckit.git"; requirement = {kind = revision; revision = 7f98c70f9f0c11fbdf828220890bd6280361ae99; }'))
     package_keys = ['vlc-package']
-    if any(p['suffix'] == 'tv' for p in platforms):
+    if any(p['suffix'] == 'tv' for p in platforms) and not APP_STORE:
         objects.append(item('youtube-package', 'XCLocalSwiftPackageReference', 'relativePath = Vendor/YouTubeKit'))
         package_keys.append('youtube-package')
 
@@ -92,22 +105,24 @@ def generate(platforms, project_name):
             objects.append(item(k(p,'vlc-build'), 'PBXBuildFile', f'productRef = {u("vlc-product")}'))
         framework_keys = [k(p, 'vlc-build')] if use_vlc else []
         product_keys = [k(p, 'vlc-product')] if use_vlc else []
-        if p['suffix'] == 'tv':
+        if p['suffix'] == 'tv' and not APP_STORE:
             objects.append(item(k(p,'youtube-product'), 'XCSwiftPackageProductDependency', f'package = {uid("youtube-package")}; productName = YouTubeKit'))
             objects.append(item(k(p,'youtube-build'), 'PBXBuildFile', f'productRef = {u("youtube-product")}'))
             framework_keys.append(k(p, 'youtube-build'))
             product_keys.append(k(p, 'youtube-product'))
         objects.append(item(k(p,'frameworks-phase'), 'PBXFrameworksBuildPhase', f'buildActionMask = 2147483647; files = ({ref_list(framework_keys)}); runOnlyForDeploymentPostprocessing = 0'))
         objects.append(item(k(p,'backdrop-build'), 'PBXBuildFile', f'fileRef = {uid("backdrop-resources")}'))
+        objects.append(item(k(p,'dockpack-build'), 'PBXBuildFile', f'fileRef = {uid("dockpack-resources")}'))
+        objects.append(item(k(p,'privacy-build'), 'PBXBuildFile', f'fileRef = {uid("privacy-resource")}'))
         catalog, icon = ASSETS[p['suffix']]
         objects.append(item(k(p,'assets-build'), 'PBXBuildFile', f'fileRef = {uid(catalog)}'))
-        objects.append(item(k(p,'resources-phase'), 'PBXResourcesBuildPhase', f'buildActionMask = 2147483647; files = ({u("backdrop-build")}, {u("assets-build")},); runOnlyForDeploymentPostprocessing = 0'))
+        objects.append(item(k(p,'resources-phase'), 'PBXResourcesBuildPhase', f'buildActionMask = 2147483647; files = ({u("backdrop-build")}, {u("dockpack-build")}, {u("privacy-build")}, {u("assets-build")},); runOnlyForDeploymentPostprocessing = 0'))
         objects.append(item(k(p,'target'), 'PBXNativeTarget', f'buildConfigurationList = {u("target-configs")}; buildPhases = ({u("sources-phase")}, {u("frameworks-phase")}, {u("resources-phase")},); buildRules = (); dependencies = (); packageProductDependencies = ({ref_list(product_keys)}); name = {n}; productName = {n}; productReference = {u("product")}; productType = "com.apple.product-type.application"'))
         for config in ['Debug','Release']:
             settings = f"""
             ASSETCATALOG_COMPILER_APPICON_NAME = {icon};
             CODE_SIGN_STYLE = Automatic;
-            CURRENT_PROJECT_VERSION = 41;
+            CURRENT_PROJECT_VERSION = 42;
             GENERATE_INFOPLIST_FILE = NO;
             INFOPLIST_FILE = FluxIPTVMac/{p['plist']};
             SDKROOT = {p['sdk']};
@@ -116,13 +131,14 @@ def generate(platforms, project_name):
             {p['extra']}
             LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/{'../Frameworks' if p['suffix'] == 'mac' else 'Frameworks'}";
             {'ENABLE_DEBUG_DYLIB = NO;' if p['suffix'] == 'mac' else ''}
-            MARKETING_VERSION = 0.9.3;
+            MARKETING_VERSION = 0.9.4;
             PRODUCT_BUNDLE_IDENTIFIER = {p['bundle']};
             PRODUCT_NAME = "$(TARGET_NAME)";
             SWIFT_VERSION = 5.0;
             SWIFT_STRICT_CONCURRENCY = minimal;
             SUPPORTED_PLATFORMS = {p['supported']};
-            {'ONLY_ACTIVE_ARCH = YES; SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;' if config == 'Debug' else ''}
+            {'ONLY_ACTIVE_ARCH = YES;' if config == 'Debug' else ''}
+            {conditions(config)}
             """
             objects.append(item(k(p,f'target-{config}'), 'XCBuildConfiguration', f'buildSettings = {{{settings}}}; name = {config}'))
         objects.append(item(k(p,'target-configs'), 'XCConfigurationList', f'buildConfigurations = ({u("target-Debug")}, {u("target-Release")},); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release'))
@@ -157,5 +173,8 @@ def generate(platforms, project_name):
     print(f'Generated {output} ({len(MAC) + len(CORE)} shared Swift files, {len(platforms)} targets)')
 
 
-generate(PLATFORMS, 'FluxIPTV.xcodeproj')
-generate([p for p in PLATFORMS if p['suffix'] == 'tv'], 'FluxIPTV-AppleTV.xcodeproj')
+if APP_STORE:
+    generate(PLATFORMS, 'FluxIPTV-AppStore.xcodeproj')
+else:
+    generate(PLATFORMS, 'FluxIPTV.xcodeproj')
+    generate([p for p in PLATFORMS if p['suffix'] == 'tv'], 'FluxIPTV-AppleTV.xcodeproj')

@@ -124,6 +124,8 @@ private struct TVProbeReadout: View {
                 // The shortcut of a channel plays it: shown as playing, without a connection.
                 playback.simulateFixturePlayback()
             }
+            // The click of the pointer watches the channel under it, as above.
+            if fixture.scenario == "pointer" { playback.simulateFixturePlayback() }
             if fixture.showsPlayer, let item = fixture.selection {
                 // A media that plays, without any connection: the commands
                 // hide and the remote behaves as during a stream.
@@ -159,6 +161,9 @@ private struct TVProbeReadout: View {
 
     var body: some Scene {
         WindowGroup {
+            // As the application: the screens stand under the controller of
+            // the pointer of the remote.
+            FluxRemoteHost {
             ContentView(fixtureSelection: fixture.usesPersistedSelection ? nil : fixture.selection, fixtureSeasons: fixture.seasons,
                         fixtureOpenSeason: fixture.openSeason, fixtureEpisodeID: fixture.episodeID,
                         fixtureOpenItem: fixture.scenario == "movie",
@@ -208,6 +213,7 @@ private struct TVProbeReadout: View {
                         UserDefaults(suiteName: restoredDefaultsSuite)?.removePersistentDomain(forName: restoredDefaultsSuite)
                     }
                 }
+            }
         }
     }
 }
@@ -258,6 +264,9 @@ private struct TVProbeReadout: View {
         case "live-error": return "navigation-countries"
         // Réglages opens with the remote on the page it shows.
         case "settings": return "settings-page-sources"
+        case "settings-graphics": return "settings-page-graphics"
+        case "settings-remote": return "settings-page-remote"
+        case "pointer": return "live-channel-fixture-live-0"
         case "player-settings": return "settings-page-video"
         case "zapping": return "zap-channel-fixture-live-0"
         default: return "media-detail-play"
@@ -273,7 +282,7 @@ private struct TVProbeReadout: View {
         case "dock-home": return CGSize(width: 100, height: 100)
         // A title of the open folder: the size of an icon of the dock.
         case "dock-folder": return CGSize(width: 76, height: 48)
-        case "settings", "player-settings": return CGSize(width: 240, height: 48)
+        case "settings", "settings-graphics", "settings-remote", "player-settings": return CGSize(width: 240, height: 48)
         case "live-error": return CGSize(width: 150, height: 50)
         case "country-picker": return CGSize(width: 240, height: 54)
         case "movies", "movies-many", "movies-many-lean", "search-result", "seasons", "dock": return CGSize(width: 240, height: 350)
@@ -323,8 +332,9 @@ private struct TVProbeReadout: View {
     }
 
     /// Screens of the desk shown over the catalogue of the live scenario.
-    static let deskScenarios = ["home", "settings", "settings-dock", "zapping", "player-settings",
-                                "player", "player-flow", "player-deep", "player-banner", "player-banner-opening"]
+    /// "pointer": the live catalogue under the pointer of the remote.
+    static let deskScenarios = ["home", "settings", "settings-dock", "settings-graphics", "settings-remote", "zapping", "player-settings",
+                                "player", "player-flow", "player-deep", "player-banner", "player-banner-opening", "pointer"]
     /// The bare picture just after a change of channel, under its banner.
     var showsBanner: Bool { scenario.hasPrefix("player-banner") }
     /// The commands of a film: its timeline, its languages.
@@ -338,6 +348,8 @@ private struct TVProbeReadout: View {
         switch scenario {
         case "settings": return .sources
         case "settings-dock": return .dock
+        case "settings-graphics": return .graphics
+        case "settings-remote": return .remote
         default: return nil
         }
     }
@@ -656,6 +668,12 @@ private struct TVProbeReadout: View {
         // "dock-folder": the folder of the favourite films, open above the dock.
         if ProcessInfo.processInfo.environment["FLUX_UI_SCENARIO"] == "dock-folder" {
             folder["fluxiptv.fixture.dockFan"] = DockEntry.stack(listID: FavoritePresets.defaultID(for: .movie)).id
+        }
+        // The mode of the remote is saved by Play/Pause held down: each
+        // launch starts from the classic one, or from the pointer it asks for.
+        UserDefaults.standard.removeObject(forKey: FluxRemoteMode.storageKey)
+        if ProcessInfo.processInfo.environment["FLUX_UI_SCENARIO"] == "pointer" {
+            UserDefaults.standard.set(FluxRemoteMode.pointer.rawValue, forKey: FluxRemoteMode.storageKey)
         }
         UserDefaults.standard.setVolatileDomain(folder.merging([
             // Liquid Glass is what the application shows by default: the

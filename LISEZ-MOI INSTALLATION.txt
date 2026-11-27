@@ -1,4 +1,4 @@
-FLUX IPTV 0.9.3 — BUILD 41 — BUREAU MAC : DOCK, COLONNES ET VERRE - Installation sur votre Mac
+FLUX IPTV 0.9.4 — BUILD 42 — BUREAU MAC : DOCK, COLONNES ET VERRE - Installation sur votre Mac
 
 1. Quittez FLUX IPTV et arrêtez le projet s'il tourne dans Xcode.
 2. Décompressez l'archive et double-cliquez sur « Installer Flux IPTV.command ».
@@ -9,8 +9,8 @@ FLUX IPTV 0.9.3 — BUILD 41 — BUREAU MAC : DOCK, COLONNES ET VERRE - Installa
    L'installateur contrôle que le processus reste actif et restaure l'ancien
    bundle en cas d'échec du démarrage. Ce contrôle ne valide pas la lecture.
 4. Ensuite ouvrez uniquement FluxIPTV.app depuis le Finder ou le Dock.
-   Ne relancez pas l'installateur à chaque utilisation. Vérifiez « FLUX 0.9.3 ·
-   build 41 » en bas de la colonne de Réglages, et le studio dans Interface.
+   Ne relancez pas l'installateur à chaque utilisation. Vérifiez « FLUX 0.9.4 ·
+   build 42 » en bas de la colonne de Réglages, et la page Graphismes.
 
 Sur Mac, VLC intégré est désactivé. En cas de format incompatible, installez le
 lecteur VLC officiel et utilisez le bouton « Ouvrir dans VLC externe ».
@@ -35,6 +35,25 @@ La compilation est effectuée sur votre Mac. Cette archive ne contient pas un
 binaire macOS précompilé ; l'installateur n'a pas été exécuté sous macOS ici.
 
 Réglages > Sources > Modifier permet de choisir « Sur ce Mac, sans Trousseau ». Les identifiants sont alors dans un fichier privé non chiffré (permissions 600) ; le Trousseau demeure plus sûr. Les favoris sont conservés.
+
+NOUVEAUTÉS DE LA 0.9.4
+Réglages > Graphismes règle l'affichage comme dans un jeu : Automatique suit
+le Mac détecté (Qualité pour un Mac à puce Apple, Équilibré pour un Mac
+Intel), ou Fluide, Équilibré, Qualité, et chaque réglage à part, dont le
+repère du panneau actif : un liseré autour de la partie de l'écran qui a la
+sélection, traversé d'un reflet quand on y entre.
+Retour (Échap) sort d'abord d'une grille vers le bouton Retour de la barre,
+d'où le dock et l'accueil sont à une flèche ; un second Retour change
+d'écran. Réglages > Clavier garde aussi « Quitter l'écran » (comme en 0.9.3)
+et « Montrer le plan ».
+Droite au bout d'une rangée de jaquettes passe au début de la suivante.
+Un petit plan de l'écran, en bas, remplace « Zone suivante » : il allume la
+partie qui a la sélection, à côté de la touche Tab.
+Réglages > Dock > Loupe et sélection : cinq tailles d'agrandissement (plus
+grand qu'en 0.9.3 par défaut), et une icône sélectionnée en contour, en halo
+ou soulevée. Trois thèmes illustrés : Néon 90, Verre nocturne, Art déco.
+L'aperçu des chaînes démarre après une seconde.
+Préparation de l'App Store : voir docs/APP-STORE.md.
 
 NOUVEAUTÉS DE LA 0.9.3
 Réglages > Interface > Studio d'apparence : chaque écran (accueil, TV, Films,
@@ -93,8 +112,9 @@ enregistré dès qu'il est choisi ; ceux que le moteur lit à l'ouverture d'un
 flux proposent « Relancer le flux ».
 Au clavier ou à la télécommande : les flèches vont au contrôle voisin, OK
 valide, Retour revient en arrière comme le Précédent d'un navigateur, écran
-après écran jusqu'à l'accueil. Sur Mac, Retour montre d'abord la boussole des
-zones (haut, colonne, contenu, aperçu, dock) et Tab change de zone.
+après écran jusqu'à l'accueil, en passant d'abord par le bouton Retour de la
+barre. Sur Mac, Réglages > Clavier peut montrer à la place le plan de l'écran
+(haut, colonne, contenu, aperçu, dock), et Tab passe d'une partie à l'autre.
 L'Apple TV reprend la même interface : accueil, dock, colonnes, fiches en
 verre, favoris et listes d'un titre, lecture, zapping. Menu y est Retour, et
 chaque destination s'ouvre avec la télécommande dans son contenu.
@@ -127,12 +147,12 @@ Les animations de focus et de transition sont conservées.
 Sur Apple TV, catégories horizontales et grandes vignettes 16:9 ; la seule
 vignette sélectionnée contient l’aperçu. Le Liquid Glass s'active ou se
 désactive dans Réglages > Interface.
-Délai de l’aperçu TV : 1/3/5/10 s (1 s par défaut sur Mac, 3 s sur Apple TV).
+Délai de l’aperçu TV : 1/3/5/10 s (1 s par défaut partout depuis la 0.9.4).
 Réglages > Interface conserve les thèmes propres à chaque espace.
 
 La lecture principale garde ses commandes flottantes.
 
-Voir README.md, docs/VALIDATION-0.9.3.md, docs/VALIDATION-0.9.2.md, docs/VALIDATION-0.9.1.md et docs/VALIDATION-0.9.0.md pour les comportements et les limites.
+Voir README.md, docs/VALIDATION-0.9.4.md, docs/VALIDATION-0.9.3.md, docs/VALIDATION-0.9.2.md, docs/VALIDATION-0.9.1.md et docs/VALIDATION-0.9.0.md pour les comportements et les limites.
 
 APPLE TV : ouvrez FluxIPTV-AppleTV.xcodeproj (schéma FluxIPTVTV), puis
 choisissez la destination Apple TV. Voir LISEZ-MOI APPLE TV.txt.

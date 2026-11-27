@@ -418,6 +418,11 @@ import Foundation
         case .youtube(let video):
             #if os(macOS) || os(iOS)
             startYouTube(video, token: token)
+            #elseif os(tvOS) && FLUX_APP_STORE
+            // The build of the App Store reads no YouTube stream itself.
+            _ = video
+            failureMessage = "Les bandes-annonces YouTube ne se lisent pas sur l’Apple TV dans cette version."
+            phase = .failed
             #elseif os(tvOS)
             phase = .loading
             do {

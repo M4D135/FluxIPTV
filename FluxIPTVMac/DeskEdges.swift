@@ -65,6 +65,8 @@ import SwiftUI
         Task { @MainActor [weak self] in
             try? await Task.sleep(nanoseconds: UInt64((FluxPressCadence.pause + 0.05) * 1_000_000_000))
             guard let self, self.revision == mine else { return }
+            // Under the pointer an edge is only an edge.
+            guard !FluxPointerState.shared.active else { return }
             self.armed = true
         }
     }

@@ -1,4 +1,5 @@
-#if os(tvOS) || FLUX_NATIVE_YOUTUBE_TESTING
+// Not in the build sent to the App Store: see docs/APP-STORE.md.
+#if (os(tvOS) || FLUX_NATIVE_YOUTUBE_TESTING) && !FLUX_APP_STORE
 import Foundation
 import YouTubeKit
 

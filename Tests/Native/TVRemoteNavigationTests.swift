@@ -252,22 +252,85 @@ final class TVRemoteNavigationTests: XCTestCase {
         XCUIRemote.shared.press(.select)
         assertFocus(channel, logical: "fixture-live-0", in: app)
 
-        // Menu from inside the list goes back at once, to the films and to
-        // the title that was selected there.
+        // Menu from inside the list first gives the remote to Back in the
+        // bar, beside the home screen and the dock (David, 26/11); Menu
+        // again goes back, to the films and to the title selected there.
+        let back = element("desk-back", in: app)
+        XCUIRemote.shared.press(.menu)
+        assertFocus(back, logical: "desk-back", in: app)
+        XCTAssertTrue(channel.exists)
+        retainScreenshot("back-01b-the-bar", in: app)
         XCUIRemote.shared.press(.menu)
         assertFocus(film, logical: "fixture-movie-0", in: app)
         XCTAssertFalse(channel.exists)
         retainScreenshot("back-02-films", in: app)
-        // Menu again: the television that was opened first, not the home screen.
+        // Then the television that was opened first, not the home screen.
+        XCUIRemote.shared.press(.menu)
+        assertFocus(back, logical: "desk-back", in: app)
         XCUIRemote.shared.press(.menu)
         assertFocus(channel, logical: "fixture-live-0", in: app)
         XCTAssertFalse(home.exists)
         // Then the home screen, where the path started.
         XCUIRemote.shared.press(.menu)
+        assertFocus(back, logical: "desk-back", in: app)
+        XCUIRemote.shared.press(.menu)
         XCTAssertTrue(home.waitForExistence(timeout: 10))
         assertFocus(live, logical: "tab-live", in: app)
         retainScreenshot("back-03-home", in: app)
-        print("PASS: TV_REMOTE each destination opened in its content, and Menu retraced television, films, television and the home screen, one screen at a press")
+        print("PASS: TV_REMOTE each destination opened in its content; from a list, Menu gave the remote to Back in the bar, then retraced television, films, television and the home screen")
+    }
+
+    /// "faut pouvoir choisir mode classique ou mode souris, soit dans option
+    /// soit un système facile pour basculer, voire les deux" (David, 26/11):
+    /// Play/Pause held down goes to the mouse and back, and a bubble says so.
+    @MainActor
+    func testPlayPauseHeldSwitchesBetweenTheRemoteAndTheMouse() {
+        let app = launch("live")
+        defer { app.terminate() }
+        let state = element("flux-pointer-state", in: app)
+        let channel = element("live-channel-fixture-live-0", in: app)
+        assertFocus(channel, logical: "fixture-live-0", in: app)
+        assertCondition(NSPredicate(format: "value BEGINSWITH 'classic'"), on: state, in: app)
+        XCUIRemote.shared.press(.playPause, forDuration: 1.2)
+        assertCondition(NSPredicate(format: "value BEGINSWITH 'active toasts:1'"), on: state, in: app)
+        XCTAssertTrue(appears(element("flux-pointer-mode", in: app), timeout: 3), "A bubble says the mode.")
+        retainScreenshot("pointer-01-mouse", in: app)
+        // Held down, Play/Pause changed the mode only: the channel keeps the remote.
+        assertFocus(channel, logical: "fixture-live-0", in: app)
+        XCUIRemote.shared.press(.playPause, forDuration: 1.2)
+        assertCondition(NSPredicate(format: "value BEGINSWITH 'classic toasts:2'"), on: state, in: app)
+        // Classic again: the remote goes from one channel to the next.
+        XCUIRemote.shared.press(.down)
+        assertFocus(element("live-channel-fixture-live-1", in: app), logical: "fixture-live-1", in: app)
+        print("PASS: TV_REMOTE Play/Pause held down went to the mouse and back to the classic remote, each time told by a bubble")
+    }
+
+    /// The pointer gives the focus to what it rests on, the channels as the
+    /// icons of the dock; a click presses what it rests on. A bench has no
+    /// thumb: the app moves the pointer itself, over the content and the bar.
+    @MainActor
+    func testThePointerGivesTheFocusToWhatItCrossesAndClicksIt() {
+        let app = launch("pointer")
+        defer { app.terminate() }
+        let state = element("flux-pointer-state", in: app)
+        let swept = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value CONTAINS 'end='"), object: state)
+        XCTAssertEqual(XCTWaiter.wait(for: [swept], timeout: 90 * Self.patience), .completed, "The sweep of the pointer did not end.")
+        let value = seen(state)?.value as? String ?? ""
+        let trace = value.components(separatedBy: "trace:").last?.components(separatedBy: ",") ?? []
+        print("TV_REMOTE pointer: \(value)")
+        XCTAssertTrue(value.hasPrefix("active"), "The pointer is not the remote: \(value)")
+        XCTAssertTrue(trace.contains { $0.hasPrefix("fixture-live-") }, "The pointer gave the focus to no channel: \(trace)")
+        XCTAssertTrue(trace.contains { $0.hasPrefix("tab-") }, "The pointer gave the focus to no icon of the dock: \(trace)")
+        let end = (trace.last ?? "").replacingOccurrences(of: "end=", with: "")
+        XCTAssertTrue(end.hasPrefix("fixture-live-"), "The pointer does not rest on a channel: \(end)")
+        assertCondition(NSPredicate(format: "value == %@", end), on: element("flux-catalog-logical-focus", in: app), in: app)
+        retainScreenshot("pointer-02-on-a-channel", in: app)
+        // A click watches the channel under the pointer; the picture then
+        // takes the thumb, without a pointer over it.
+        XCUIRemote.shared.press(.select)
+        assertCondition(NSPredicate(format: "value BEGINSWITH 'suspended'"), on: state, in: app)
+        retainScreenshot("pointer-03-clicked", in: app)
+        print("PASS: TV_REMOTE the pointer gave the focus to the channels and the icons it crossed, and its click watched the channel under it")
     }
 
     @MainActor
@@ -750,7 +813,10 @@ final class TVRemoteNavigationTests: XCTestCase {
         assertFocus(films, logical: "tab-movie", in: app)
         // Two rows: the folder stands under the destinations, not beside them.
         XCTAssertGreaterThan(folder.frame.minY, films.frame.maxY, "What is kept has a row of its own.")
-        XCTAssertGreaterThan(films.frame.width, 150, "The icons keep their size.")
+        // Nine tenths of their size at least (138 points): on one row they
+        // would share the width. The frame is that of the icon at rest, the
+        // loupe draws inside it.
+        XCTAssertGreaterThan(films.frame.width, 120, "The icons keep their size.")
         retainScreenshot("home-rows-01-two-rows", in: app)
         XCUIRemote.shared.press(.down)
         let kept = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@ OR identifier BEGINSWITH %@",

@@ -49,12 +49,13 @@ public enum FluxDockTheme: String, CaseIterable, Identifiable, Sendable {
     case tactile, pebbles, frost
     case gel, hills
     case bevel, eightColor, fourColor, greenDesk, phosphor
+    case neon90, nightGlass, artDeco
     public static let storageKey = "fluxiptv.dock.theme.v1"
     public static let defaultValue: Self = .glass
     public var id: String { rawValue }
 
     public enum Family: String, CaseIterable, Identifiable, Sendable {
-        case flux, today, millennium, retro
+        case flux, today, millennium, retro, illustrated
         public var id: String { rawValue }
         public var title: String {
             switch self {
@@ -62,6 +63,7 @@ public enum FluxDockTheme: String, CaseIterable, Identifiable, Sendable {
             case .today: "Téléphones et bureaux d’aujourd’hui"
             case .millennium: "Années 2000"
             case .retro: "Rétro"
+            case .illustrated: "Illustrés"
             }
         }
         public var themes: [FluxDockTheme] { FluxDockTheme.allCases.filter { $0.family == self } }
@@ -72,6 +74,7 @@ public enum FluxDockTheme: String, CaseIterable, Identifiable, Sendable {
         case .tactile, .pebbles, .frost: .today
         case .gel, .hills: .millennium
         case .bevel, .eightColor, .fourColor, .greenDesk, .phosphor: .retro
+        case .neon90, .nightGlass, .artDeco: .illustrated
         }
     }
     /// Drawn in square pixels, as the screens of their years were.
@@ -94,6 +97,9 @@ public enum FluxDockTheme: String, CaseIterable, Identifiable, Sendable {
         case .fourColor: "Quatre couleurs"
         case .greenDesk: "Bureau vert"
         case .phosphor: "Phosphore"
+        case .neon90: "Néon 90"
+        case .nightGlass: "Verre nocturne"
+        case .artDeco: "Art déco"
         }
     }
     public var subtitle: String {
@@ -113,6 +119,9 @@ public enum FluxDockTheme: String, CaseIterable, Identifiable, Sendable {
         case .fourColor: "Bleu, blanc, noir et orange, pixels de 1987."
         case .greenDesk: "Noir et blanc sur fond vert, sélection inversée. 1985."
         case .phosphor: "Vert sur noir, gros pixels, vidéo inverse. 1977."
+        case .neon90: "Tuiles violettes, pictogrammes néon aux couleurs vives."
+        case .nightGlass: "Verre bleu nuit, pictogrammes pastel et reflets."
+        case .artDeco: "Cadres de cuivre aux angles ciselés, pictogrammes de métal."
         }
     }
 }

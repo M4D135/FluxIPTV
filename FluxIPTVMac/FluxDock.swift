@@ -291,7 +291,11 @@ struct FluxDock: View {
     }
     #endif
     @AppStorage(FluxDockItem.orderKey) private var storedOrder = ""
-    @AppStorage(FluxDockItem.magnifyKey) private var magnifies = true
+    /// "zoom plus les icônes du dock … donne le choix dans options plusieurs
+    /// tailles à la sélection, look etc" (David, 26/11).
+    @AppStorage(FluxDockZoom.storageKey) private var zoom: FluxDockZoom = .defaultValue
+    @AppStorage(FluxDockSelectionLook.storageKey) private var look: FluxDockSelectionLook = .defaultValue
+    private var magnifies: Bool { zoom != .none }
     @AppStorage(FluxAppearance.motionKey) private var motion = FluxAppearance.motionDefault
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// The icons slide and grow over several pictures, each of which lays
@@ -332,7 +336,8 @@ struct FluxDock: View {
     private var magnifier: FluxDockMagnifier {
         let extent = Double(vertical ? metrics.cell.height : metrics.cell.width)
         return FluxDockMagnifier(count: tiles.count, cell: extent, spacing: Double(metrics.spacing),
-                                 maximumScale: metrics.maximumScale, radius: (extent + Double(metrics.spacing)) * 2.2,
+                                 maximumScale: zoom.maximumScale(base: metrics.maximumScale),
+                                 radius: (extent + Double(metrics.spacing)) * 2.2,
                                  breaks: breaks, gap: Double(metrics.gap))
     }
     /// Icons grow away from the edge that holds the bar.
@@ -431,7 +436,7 @@ struct FluxDock: View {
                                   }
                               }
                       },
-                      cell: { tile in cell(tile) },
+                      cell: { tile, scale in cell(tile, scale: scale) },
                       above: { centers, scales in above(centers: centers, scales: scales, named: named) })
             .animation(still ? nil : .spring(response: 0.24, dampingFraction: 0.8), value: magnification)
             .animation(still ? nil : .spring(response: 0.3, dampingFraction: 0.82), value: fan?.anchorID)
@@ -504,7 +509,9 @@ struct FluxDock: View {
     }
     #endif
 
-    private func cell(_ tile: DockTile) -> some View {
+    /// `scale`: what the magnifier gives the icon, drawn here on a
+    /// television (`FluxDockStrip.cellsDrawTheirScale`).
+    private func cell(_ tile: DockTile, scale: Double) -> some View {
         let id = tile.id
         let focused = showsFocus && shownID == id
         let open = fan?.anchorID == id
@@ -513,10 +520,15 @@ struct FluxDock: View {
             activate(tile.entry)
         } label: {
             FluxDockCell(tile: tile, selected: tile.destination.map(selection.contains) ?? open, focused: focused,
-                         theme: theme, position: placement, metrics: metrics)
+                         theme: theme, position: placement, metrics: metrics, look: look)
                 #if os(tvOS)
                 // The magnifier already grows the icon: it only follows the thumb.
                 .fluxFocusLean(focused, grow: 1, angle: 8, shift: 5)
+                // What is drawn grows, not the button: tvOS finds the
+                // neighbours of an icon by the frames of the buttons, and the
+                // larger loupe of the 0.9.4 reached the rows of the screen
+                // above the bar and the row of the home screen above it.
+                .scaleEffect(scale, anchor: anchor)
                 .background(DeskFocusReport { now in
                     FluxFocusLedger.shared.report(id, focused: now)
                     heard(id, focused: now)
@@ -527,6 +539,7 @@ struct FluxDock: View {
         #if os(tvOS)
         // A button already takes the focus of the remote.
         .focused(systemFocus, equals: id).focusEffectDisabled()
+        .fluxPointerTarget(id, systemFocus)
         #else
         .focusable().focused(systemFocus, equals: id).focusEffectDisabled()
         #endif
@@ -684,7 +697,12 @@ struct FluxDock: View {
                 }
             }
         }
-        Toggle("Agrandir au survol", isOn: $magnifies)
+        Picker("Agrandissement", selection: $zoom) {
+            ForEach(FluxDockZoom.allCases) { choice in Text(choice.title).tag(choice) }
+        }
+        Picker("Icône sélectionnée", selection: $look) {
+            ForEach(FluxDockSelectionLook.allCases) { choice in Text(choice.title).tag(choice) }
+        }
         Divider()
         Button("Réglages du dock…", action: openSettings)
     }
@@ -913,6 +931,7 @@ private struct FluxDockFanView: View {
         .buttonStyle(FluxBareButtonStyle())
         #if os(tvOS)
         .focused(systemFocus, equals: id).focusEffectDisabled()
+        .fluxPointerTarget(id, systemFocus)
         #else
         .focusable().focused(systemFocus, equals: id).focusEffectDisabled()
         #endif
@@ -949,10 +968,21 @@ private struct FluxDockStrip<Plate: View, Cell: View, Above: View>: View, Animat
     let dragTranslation: Double
     let reduceMotion: Bool
     @ViewBuilder let plate: () -> Plate
-    @ViewBuilder let cell: (DockTile) -> Cell
+    /// A cell and the scale it draws itself at (`cellsDrawTheirScale`).
+    @ViewBuilder let cell: (DockTile, Double) -> Cell
     /// Drawn above the icons from where each one stands: its middle along
     /// the bar, in the coordinates of the plate, and its scale.
     @ViewBuilder let above: ([CGFloat], [Double]) -> Above
+
+    /// On a television a cell keeps the frame of an icon at rest and draws
+    /// the magnification inside it: the focus engine goes by those frames.
+    /// Under a pointer the whole cell grows, so that a click on any part of
+    /// a magnified icon reaches it.
+    #if os(tvOS)
+    static var cellsDrawTheirScale: Bool { true }
+    #else
+    static var cellsDrawTheirScale: Bool { false }
+    #endif
 
     var animatableData: Double {
         get { intensity }
@@ -987,9 +1017,10 @@ private struct FluxDockStrip<Plate: View, Cell: View, Above: View>: View, Animat
             ForEach(Array(tiles.enumerated()), id: \.element.id) { index, tile in
                 let lifted = tile.id == dragged
                 let shift = CGFloat(magnifier.start(index) + (lifted ? dragTranslation : layout.offsets[index]))
-                cell(tile)
+                let scale = lifted ? 1.1 : layout.scales[index]
+                cell(tile, Self.cellsDrawTheirScale ? scale : 1)
                     .frame(width: size.width, height: size.height)
-                    .scaleEffect(lifted ? 1.1 : layout.scales[index], anchor: anchor)
+                    .scaleEffect(Self.cellsDrawTheirScale ? 1 : scale, anchor: anchor)
                     .shadow(color: .black.opacity(lifted ? 0.45 : 0), radius: 10, y: 6)
                     .offset(x: pad + (vertical ? 0 : shift), y: pad + (vertical ? shift : 0))
                     .zIndex(lifted ? 10 : layout.scales[index])
@@ -1028,7 +1059,8 @@ struct FluxDockPlate: View {
         case .floating:
             Color.clear
         default:
-            DockSkinPlate(theme: theme, radius: radius)
+            if let pack = theme.packName { DockPackPlate(pack: pack, radius: radius) }
+            else { DockSkinPlate(theme: theme, radius: radius) }
         }
     }
 }
@@ -1117,13 +1149,16 @@ struct FluxDockCell: View {
     let theme: FluxDockTheme
     let position: FluxDockPosition
     var metrics = FluxDockMetrics(.bottom)
+    var look: FluxDockSelectionLook = .ring
+    /// The white ring of the selection, with the look « Contour ».
+    private var ringed: Bool { focused && look == .ring }
 
     private var tint: Color { tile.tint }
     private var tileShape: RoundedRectangle { RoundedRectangle(cornerRadius: metrics.tileRadius, style: .continuous) }
 
     var body: some View {
         VStack(spacing: metrics.labelSpacing) {
-            face
+            face.modifier(DockFocusLook(look: look, focused: focused, tint: tint, side: metrics.tile, position: position))
             if !metrics.compact {
                 if theme.skinned {
                     DockSkinLabel(text: tile.name, theme: theme, selected: selected, size: metrics.label,
@@ -1182,11 +1217,11 @@ struct FluxDockCell: View {
         case .title(let item, let kind, let badge, let progress):
             if theme.skinned {
                 FluxDockArt(item: item, kind: kind, badge: badge, progress: progress,
-                            side: metrics.tile, radius: DockSkin.radius(theme, side: metrics.tile), focused: focused)
+                            side: metrics.tile, radius: DockSkin.radius(theme, side: metrics.tile), focused: ringed)
                     .modifier(DockSkinArtLook(theme: theme, side: metrics.tile))
             } else {
                 FluxDockArt(item: item, kind: kind, badge: badge, progress: progress,
-                            side: metrics.tile, radius: metrics.tileRadius, focused: focused)
+                            side: metrics.tile, radius: metrics.tileRadius, focused: ringed)
             }
         case .folder(let covers, let count, let symbol):
             if theme.skinned { skinnedFolder(covers, count: count, symbol: symbol) } else { folder(covers, count: count, symbol: symbol) }
@@ -1197,7 +1232,7 @@ struct FluxDockCell: View {
     private func skinnedFolder(_ covers: [IPTVItem], count: Int, symbol: String) -> some View {
         let side = metrics.tile
         let radius = DockSkin.radius(theme, side: side)
-        return DockSkinFolder(theme: theme, selected: selected, focused: focused, side: side, glyph: metrics.glyph,
+        return DockSkinFolder(theme: theme, selected: selected, focused: ringed, side: side, glyph: metrics.glyph,
                               symbol: symbol, empty: covers.isEmpty) {
             let shown = Array(covers.prefix(3))
             ForEach(Array(shown.enumerated().reversed()), id: \.element.id) { index, item in
@@ -1244,7 +1279,7 @@ struct FluxDockCell: View {
             }
         }
         .frame(width: side, height: side)
-        .overlay(tileShape.strokeBorder(.white.opacity(focused ? 0.95 : 0), lineWidth: 2).allowsHitTesting(false))
+        .overlay(tileShape.strokeBorder(.white.opacity(ringed ? 0.95 : 0), lineWidth: 2).allowsHitTesting(false))
         .overlay(alignment: .topTrailing) {
             if count > 0 {
                 Text("\(count)").font(.system(size: max(9, side * 0.20), weight: .heavy)).monospacedDigit().lineLimit(1).fixedSize()
@@ -1270,28 +1305,32 @@ struct FluxDockCell: View {
                 .background(Color.black.opacity(0.55), in: tileShape)
                 .overlay(tileShape.strokeBorder(LinearGradient(colors: [.white.opacity(0.55), .white.opacity(0.05)],
                                                                startPoint: .top, endPoint: .bottom), lineWidth: 1).allowsHitTesting(false))
-                .overlay(tileShape.strokeBorder(.white.opacity(focused ? 0.95 : 0), lineWidth: 2).allowsHitTesting(false))
+                .overlay(tileShape.strokeBorder(.white.opacity(ringed ? 0.95 : 0), lineWidth: 2).allowsHitTesting(false))
                 .saturation(selected ? 1 : 0.82).brightness(selected ? 0.04 : -0.05)
                 .shadow(color: .black.opacity(0.35), radius: 5, y: 3)
         case .neon:
             glyph.foregroundStyle(tint)
                 .shadow(color: tint.opacity(selected ? 0.95 : 0.55), radius: selected ? 9 : 5)
                 .background(tint.opacity(selected ? 0.18 : 0), in: tileShape)
-                .overlay(tileShape.strokeBorder(focused ? Color.white : tint.opacity(selected ? 0.9 : 0.28),
-                                                lineWidth: focused ? 2 : 1.2).allowsHitTesting(false))
+                .overlay(tileShape.strokeBorder(ringed ? Color.white : tint.opacity(selected ? 0.9 : 0.28),
+                                                lineWidth: ringed ? 2 : 1.2).allowsHitTesting(false))
         case .floating:
             glyph.foregroundStyle(selected ? tint : .white.opacity(0.94))
                 .fluxNavigationGlass(selected: selected, tint: tint, radius: metrics.tileRadius)
-                .overlay(tileShape.strokeBorder(.white.opacity(focused ? 0.95 : 0), lineWidth: 2).allowsHitTesting(false))
+                .overlay(tileShape.strokeBorder(.white.opacity(ringed ? 0.95 : 0), lineWidth: 2).allowsHitTesting(false))
         case .glass, .smoked:
             glyph.foregroundStyle(.white.opacity(selected || metrics.hero ? 1 : 0.94))
                 .background { tintedTile }
-                .overlay(tileShape.strokeBorder(.white.opacity(focused ? 0.95 : 0), lineWidth: 2).allowsHitTesting(false))
+                .overlay(tileShape.strokeBorder(.white.opacity(ringed ? 0.95 : 0), lineWidth: 2).allowsHitTesting(false))
                 .shadow(color: tint.opacity(metrics.hero ? 0.30 : selected ? 0.38 : 0.16),
                         radius: metrics.hero ? 16 : 6, y: metrics.hero ? 8 : 3)
         default:
-            DockSkinDestination(item: item, theme: theme, selected: selected, focused: focused,
-                                side: metrics.tile, glyph: metrics.glyph)
+            if let pack = theme.packName {
+                DockPackDestination(theme: theme, pack: pack, item: item, selected: selected, focused: ringed, side: metrics.tile)
+            } else {
+                DockSkinDestination(item: item, theme: theme, selected: selected, focused: ringed,
+                                    side: metrics.tile, glyph: metrics.glyph)
+            }
         }
     }
 
@@ -1302,6 +1341,42 @@ struct FluxDockCell: View {
                                       startPoint: .top, endPoint: .bottom))
             .overlay(tileShape.strokeBorder(LinearGradient(colors: [.white.opacity(selected ? 0.66 : 0.46), tint.opacity(0.28)],
                                                            startPoint: .top, endPoint: .bottom), lineWidth: 1))
+    }
+}
+
+/// The selection of the dock besides its ring: a halo of the colour of the
+/// icon, or the icon lifted over its shadow, away from the edge of the bar.
+private struct DockFocusLook: ViewModifier {
+    let look: FluxDockSelectionLook
+    let focused: Bool
+    let tint: Color
+    let side: CGFloat
+    let position: FluxDockPosition
+
+    func body(content: Content) -> some View {
+        switch look {
+        case .ring:
+            content
+        case .halo:
+            content
+                .shadow(color: tint.opacity(focused ? 0.95 : 0), radius: focused ? side * 0.14 : 0)
+                .shadow(color: tint.opacity(focused ? 0.55 : 0), radius: focused ? side * 0.34 : 0)
+        case .lift:
+            let rise = focused ? side * 0.10 : 0
+            content
+                .shadow(color: .black.opacity(focused ? 0.6 : 0), radius: focused ? side * 0.12 : 0,
+                        x: lift.width * -rise * 0.9, y: lift.height * -rise * 0.9)
+                .offset(x: lift.width * rise, y: lift.height * rise)
+        }
+    }
+    /// Away from the edge that holds the bar.
+    private var lift: CGSize {
+        switch position {
+        case .bottom, .corner: CGSize(width: 0, height: -1)
+        case .top: CGSize(width: 0, height: 1)
+        case .leading: CGSize(width: 1, height: 0)
+        case .trailing: CGSize(width: -1, height: 0)
+        }
     }
 }
 
@@ -1393,7 +1468,7 @@ struct DeskColumnHeader: View {
     @ViewBuilder private func bound<V: View>(_ view: V, id: String) -> some View {
         if let systemFocus {
             #if os(tvOS)
-            view.focused(systemFocus, equals: id).focusEffectDisabled().id(id)
+            view.focused(systemFocus, equals: id).focusEffectDisabled().fluxPointerTarget(id, systemFocus).id(id)
             #else
             view.focusable().focused(systemFocus, equals: id).focusEffectDisabled().id(id)
             #endif
