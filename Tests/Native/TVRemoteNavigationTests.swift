@@ -153,7 +153,20 @@ final class TVRemoteNavigationTests: XCTestCase {
         assertCondition(NSPredicate(format: "value == %@", "group-all"), on: logical, in: app)
         XCUIRemote.shared.press(.right)
         assertFocus(fourth, logical: "fixture-live-3", in: app)
+        // The preview belongs to the channel the remote rests on, and stays
+        // with it beside its picture, on Regarder and on Favoris: "pourquoi
+        // l'apercu disparait si on va dans la zone" (David, 27/11). The
+        // channels of the bench have no stream: whatever state their preview
+        // is in, a stopped one belongs to no channel.
+        let preview = element("flux-live-preview-state", in: app)
+        assertCondition(NSPredicate(format: "value BEGINSWITH %@", "fixture-live-3 "), on: preview, in: app)
         XCUIRemote.shared.press(.right)
+        assertFocus(element("live-watch", in: app), in: app)
+        assertPreviewStays(preview, with: "fixture-live-3", on: "Regarder")
+        XCUIRemote.shared.press(.right)
+        assertFocus(element("navigation-live-favorite", in: app), in: app)
+        assertPreviewStays(preview, with: "fixture-live-3", on: "Favoris")
+        XCUIRemote.shared.press(.left)
         assertFocus(element("live-watch", in: app), in: app)
         retainScreenshot("zones-01-actions", in: app)
         // Down from the actions: the dock, whose keys the arrows then walk
@@ -210,6 +223,17 @@ final class TVRemoteNavigationTests: XCTestCase {
         for _ in 0..<5 where !holdsFocus(television) { afterAPause(.right) }
         assertFocus(television, in: app)
         print("PASS: TV_REMOTE after a pause, Left from the column reached Back, the bar went round both ways, Down from the bar reached the search, Up from the search and Right past the actions reached the icon of the screen")
+    }
+
+    /// The preview of a channel, a moment after the remote has left its row:
+    /// stopped, it would belong to no channel.
+    @MainActor
+    private func assertPreviewStays(_ preview: XCUIElement, with channel: String, on control: String,
+                                    file: StaticString = #filePath, line: UInt = #line) {
+        Thread.sleep(forTimeInterval: 1.5 * Self.patience)
+        let value = preview.value as? String ?? "nil"
+        XCTAssertTrue(value.hasPrefix(channel + " "), "On \(control) the preview left \(channel): \(value)",
+                      file: file, line: line)
     }
 
     /// A press after a pause: one that may cross an edge.
@@ -967,35 +991,101 @@ final class TVRemoteNavigationTests: XCTestCase {
         print("PASS: TV_REMOTE Lecture/Pause went round the zones of a page of sixty films as the hands of a clock: the bar, the column, the search, and back to the title that was left")
     }
 
-    /// As it fills, the bar of the home screen takes a second row instead
-    /// of making its icons smaller: the destinations above what the user
-    /// keeps. Down and Up go from one row to the other.
+    /// "finalement fais qu'une barre sur ecran accueil comme l'autre,
+    /// extensible en bas, mais garde cette taille pour la page accueil"
+    /// (David, 27/11): one bar at the foot of the home screen, at its size,
+    /// and what it cannot hold in Autres, whose folder opens above it
+    /// without reaching the name of the application and the time.
     @MainActor
-    func testTheHomeScreenTakesASecondRowAsItFills() {
+    func testTheHomeScreenKeepsOneBarAtItsFoot() {
         let app = launch("dock-home")
         defer { app.terminate() }
         let films = element("navigation-tab-movie", in: app)
         let folder = element("navigation-dock-stack-default-movie", in: app)
+        let more = element("navigation-dock-more", in: app)
         assertFocus(films, logical: "tab-movie", in: app)
-        // Two rows: the folder stands under the destinations, not beside them.
-        XCTAssertGreaterThan(folder.frame.minY, films.frame.maxY, "What is kept has a row of its own.")
-        // Nine tenths of their size at least (138 points): on one row they
-        // would share the width. The frame is that of the icon at rest, the
-        // loupe draws inside it.
-        XCTAssertGreaterThan(films.frame.width, 120, "The icons keep their size.")
-        retainScreenshot("home-rows-01-two-rows", in: app)
-        XCUIRemote.shared.press(.down)
-        let kept = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@ OR identifier BEGINSWITH %@",
-                                                    "navigation-dock-item-", "navigation-dock-re"))
-        assertOneHasFocus((0..<kept.count).map { kept.element(boundBy: $0) }, in: app)
-        // The large name above the bar says what it is: no bubble over the row above.
+        // One row: what is kept stands beside the destinations, Autres too.
+        // The films have the remote: the loupe draws them larger from the
+        // foot of their cell, and the frame XCTest reads grows with it
+        // (193 × 210 points for 124 × 135 at rest). A row is told by its foot.
+        XCTAssertTrue(appears(more), "What the bar cannot hold is in Autres.")
+        XCTAssertEqual(folder.frame.maxY, films.frame.maxY, accuracy: 6, "The bar stands on one row.")
+        XCTAssertEqual(more.frame.maxY, films.frame.maxY, accuracy: 6, "Autres stands in that row.")
+        // At the foot of the screen, nine tenths of their size at least: the
+        // list kept in the bar, away from the loupe, gives that size.
+        XCTAssertGreaterThan(folder.frame.minY, app.frame.height * 0.68, "The bar stands at the foot of the screen.")
+        XCTAssertGreaterThan(folder.frame.width, 120, "The icons keep their size.")
+        // "au survol, sur ecran accueil, pour film serie etc, on affiche
+        // l'ecran de fond" (David, 27/11): the films selected, the pictures
+        // of their screen stand behind, though the home screen keeps its own.
+        let backdrop = element("flux-home-backdrop", in: app)
+        assertCondition(NSPredicate(format: "value == %@", "movie"), on: backdrop, in: app)
+        retainScreenshot("home-bar-01-one-bar", in: app)
+        // Autres, selected: the large name says what it is, without a bubble,
+        // over the pictures of the home screen.
+        move(.right, to: more, maximumPresses: 12, in: app)
         XCTAssertFalse(element("flux-dock-bubble", in: app).exists, "The home screen names a title without a bubble.")
-        retainScreenshot("home-rows-02-second-row", in: app)
-        // To the right along the second row, down to its folder.
-        move(.right, to: folder, maximumPresses: 9, in: app)
-        XCUIRemote.shared.press(.up)
-        assertOneHasFocus(Self.dockKeys.map { element($0, in: app) }, in: app)
-        print("PASS: TV_REMOTE the bar of the home screen stood on two rows, and Down and Up went from one to the other")
+        assertCondition(NSPredicate(format: "value == %@", "home"), on: backdrop, in: app)
+        // Its folder opens above the bar, under the name of the application.
+        XCUIRemote.shared.press(.select)
+        let fan = element("dock-fan", in: app)
+        XCTAssertTrue(appears(fan), "Autres opens as a fan.")
+        XCTAssertGreaterThan(fan.frame.minY, 58, "The folder stays under the name of the application and the time.")
+        XCTAssertLessThan(fan.frame.maxY, more.frame.maxY, "The folder rises from the bar.")
+        retainScreenshot("home-bar-02-autres", in: app)
+        XCUIRemote.shared.press(.menu)
+        assertFocus(more, in: app)
+        // The bar goes on to the list kept in it.
+        move(.right, to: folder, maximumPresses: 6, in: app)
+        print("PASS: TV_REMOTE the bar of the home screen stood on one row at its foot, its surplus in Autres, whose folder opened under the name of the application")
+    }
+
+    /// "faudrait donner le choix d'afficher ou non la barre dock, si pas
+    /// affichée ça permet de simplifier interface et d'avoir en full screen
+    /// le reste" (David, 27/11). Without the dock a screen takes the whole
+    /// screen. Back and Home stand at the top of its column: Menu leads
+    /// there from the content, then to the home screen, which keeps its
+    /// bar to go anywhere. Lecture/Pause goes round the zones that remain.
+    @MainActor
+    func testWithoutTheDockAScreenTakesTheWholeScreen() {
+        let app = launch("home", environment: ["FLUX_UI_DOCK_HIDDEN": "1"])
+        defer { app.terminate() }
+        let home = element("desk-home-screen", in: app)
+        let live = element("navigation-tab-live", in: app)
+        let films = element("navigation-tab-movie", in: app)
+        let film = element("catalog-card-fixture-movie-0", in: app)
+        let back = element("desk-back", in: app)
+        let scope = app.buttons["Tous les films"].firstMatch
+        let search = app.textFields.matching(identifier: "desk-search").firstMatch
+        // The home screen keeps its bar: the films open from it.
+        assertFocus(live, logical: "tab-live", in: app)
+        XCUIRemote.shared.press(.right)
+        assertFocus(films, logical: "tab-movie", in: app)
+        XCUIRemote.shared.press(.select)
+        assertCondition("exists == false", on: home, in: app)
+        assertFocus(film, logical: "fixture-movie-0", in: app)
+        // Nothing of the bar under the films: neither its icons nor the plan of the screen.
+        XCTAssertFalse(films.exists, "The dock is hidden under the screens.")
+        XCTAssertFalse(element("desk-zone-hint", in: app).exists, "The plan of the screen leaves with the dock.")
+        retainScreenshot("no-dock-01-films", in: app)
+        // Lecture/Pause: the column, the search, and back to the film.
+        XCUIRemote.shared.press(.playPause)
+        assertFocus(scope, logical: "group-all", in: app)
+        XCUIRemote.shared.press(.playPause)
+        assertCondition("hasFocus == true", on: search, in: app)
+        XCUIRemote.shared.press(.playPause)
+        assertFocus(film, logical: "fixture-movie-0", in: app)
+        // Menu gives the remote to Back, at the top of the column.
+        XCUIRemote.shared.press(.menu)
+        assertFocus(back, logical: "desk-back", in: app)
+        XCTAssertLessThan(back.frame.midY, app.frame.height * 0.25, "Back stands at the top of the column.")
+        XCTAssertTrue(film.exists)
+        retainScreenshot("no-dock-02-back-at-the-top", in: app)
+        // Menu again: the home screen, on the films.
+        XCUIRemote.shared.press(.menu)
+        XCTAssertTrue(home.waitForExistence(timeout: 10))
+        assertFocus(films, logical: "tab-movie", in: app)
+        print("PASS: TV_REMOTE without the dock the films took the whole screen, Lecture/Pause went round the column and the search, Menu gave the remote to Back at the top of the column and then the home screen, which kept its bar")
     }
 
     /// A folder made in the dock is one icon of it, with the icon chosen

@@ -931,6 +931,10 @@ struct AppearanceStudio: View {
         case .done: return "Ce qui est gardé reste en place."
         case .scope(nil): return "Le choix des écrans qui ne gardent pas le leur."
         case .scope(let space?):
+            // Its own pictures stand behind what is kept in its bar only.
+            if space == .home, shelf == .backdrops, keepsOwn(space) {
+                return "Accueil garde son propre choix ; une destination sélectionnée montre le fond de son écran."
+            }
             return keepsOwn(space) ? "\(space.title) garde son propre choix." : "\(space.title) suit le choix de tous les écrans."
         case .follow: return scope.map { "\($0.title) reprend le choix de tous les écrans." }
         case .same: return "Chaque écran reprend le choix de tous les écrans."

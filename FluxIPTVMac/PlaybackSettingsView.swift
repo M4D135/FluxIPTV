@@ -117,6 +117,7 @@ struct PlaybackSettingsView: View {
     @AppStorage("fluxiptv.appearance.stage") private var stage: ProceduralCinema.Style = .orbit
     @AppStorage("fluxiptv.remoteAppearance") private var remoteAppearance: RemoteAppearance = .black
     @AppStorage(FluxDockPosition.storageKey) private var dockPosition: FluxDockPosition = .defaultValue
+    @AppStorage(FluxDockVisibility.storageKey) private var dockShown = FluxDockVisibility.defaultValue
     @AppStorage(FluxDockTheme.storageKey) private var dockTheme: FluxDockTheme = .defaultValue
     @AppStorage(FluxDockThemeChoices.storageKey) private var spaceThemes = ""
     #if os(tvOS)
@@ -746,15 +747,23 @@ struct PlaybackSettingsView: View {
 
     private var dockSettings: some View {
         VStack(alignment: .leading, spacing: Desk.pt(16)) {
-            section("Emplacement", "Sous la colonne de navigation, le dock est compact, n’y montre que ses destinations, et les autres colonnes descendent jusqu’au bord. En bas ou en haut, il garde une bande pour lui. À gauche et à droite, il devient une colonne. Sur l’accueil, il occupe le milieu de la fenêtre.") {
+            section("Emplacement", "Sous la colonne de navigation, le dock est compact, n’y montre que ses destinations, et les autres colonnes descendent jusqu’au bord. En bas ou en haut, il garde une bande pour lui. À gauche et à droite, il devient une colonne. Sur l’accueil, il se tient en bas, en grand.") {
+                DeskToggle(title: "Afficher le dock sur les écrans", isOn: $dockShown)
+                Text(dockShown
+                     ? "Masqué, il laisse toute la fenêtre aux écrans : Retour et Accueil passent en haut de leur colonne, et l’accueil garde son dock pour aller partout."
+                     : "Les écrans prennent toute la fenêtre ; Retour et Accueil sont en haut de leur colonne. L’accueil garde son dock pour aller partout.")
+                    .font(Desk.font(.caption)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 HStack(spacing: Desk.pt(12)) {
                     ForEach(FluxDockPosition.allCases) { choice in positionTile(choice) }
                 }
+                // Where a bar that is not shown would stand does not matter.
+                .disabled(!dockShown).opacity(dockShown ? 1 : 0.4)
             }
             section("Thème", "L’apparence de la plaque et des icônes, sur tous les écrans. Un écran peut garder le sien : le studio les essaie en plein écran, écran par écran.") {
                 ForEach(FluxDockTheme.Family.allCases) { family in
                     Text(family.title).font(Desk.font(.headline, .semibold)).foregroundStyle(.secondary)
-                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 170), spacing: Desk.pt(10))], spacing: Desk.pt(10)) {
+                    // Built at once: the keys reach a theme below the edge of the page.
+                    DeskGrid(minimum: 170, spacing: Desk.pt(10)) {
                         ForEach(family.themes) { choice in themeTile(choice) }
                     }
                 }
@@ -795,7 +804,8 @@ struct PlaybackSettingsView: View {
                     }
                 }
                 settingsKey("Dock par défaut") {
-                    dockPosition = .defaultValue; dockTheme = .defaultValue; spaceThemes = ""; dockOrder = ""
+                    dockPosition = .defaultValue; dockShown = FluxDockVisibility.defaultValue
+                    dockTheme = .defaultValue; spaceThemes = ""; dockOrder = ""
                     dockZoom = .defaultValue; dockLook = .defaultValue
                 }
             }
@@ -966,7 +976,7 @@ struct PlaybackSettingsView: View {
         .accessibilityElement(children: .contain).accessibilityIdentifier("settings-dock-section-\(part.isDefault ? "default" : part.name)")
         if pickingSymbol == part.id, part.isFolder {
             // The icons a folder may be given, and the pictures of its titles.
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: Desk.pt(54)), spacing: Desk.pt(8))], alignment: .leading, spacing: Desk.pt(8)) {
+            DeskGrid(minimum: Desk.pt(54), spacing: Desk.pt(8)) {
                 actionButton("Images de ses titres", icon: "rectangle.stack.fill", tint: part.symbol == nil ? .cyan : nil, iconOnly: true,
                              key: "symbol-\(part.id)-covers") {
                     library.setDockSymbol(part.id, nil); pickingSymbol = nil; returnKeys(to: "action-symbol-\(part.id)")
@@ -1343,7 +1353,7 @@ struct PlaybackSettingsView: View {
 
     private func environmentSection(_ environment: MediaEnvironment, selection: Binding<VideoClubTheme>) -> some View {
         section("Couleurs · " + environment.kind.frenchTitle, "Les repères de l’écran " + environment.kind.frenchTitle + " et son fond uni.") {
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 160), spacing: Desk.pt(10))], spacing: Desk.pt(10)) {
+            DeskGrid(minimum: 160, spacing: Desk.pt(10)) {
                 ForEach(VideoClubTheme.allCases, id: \.self) { candidate in themeButton(candidate, selection: selection, place: environment.title) }
             }
         }

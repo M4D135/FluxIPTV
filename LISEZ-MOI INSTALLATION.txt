@@ -1,4 +1,4 @@
-FLUX IPTV 0.9.7 — BUILD 48 — BUREAU MAC : DOCK, COLONNES ET VERRE - Installation sur votre Mac
+FLUX IPTV 0.9.8 — BUILD 49 — BUREAU MAC : DOCK, COLONNES ET VERRE - Installation sur votre Mac
 
 1. Quittez FLUX IPTV et arrêtez le projet s'il tourne dans Xcode.
 2. Décompressez l'archive et double-cliquez sur « Installer Flux IPTV.command ».
@@ -9,8 +9,8 @@ FLUX IPTV 0.9.7 — BUILD 48 — BUREAU MAC : DOCK, COLONNES ET VERRE - Installa
    L'installateur contrôle que le processus reste actif et restaure l'ancien
    bundle en cas d'échec du démarrage. Ce contrôle ne valide pas la lecture.
 4. Ensuite ouvrez uniquement FluxIPTV.app depuis le Finder ou le Dock.
-   Ne relancez pas l'installateur à chaque utilisation. Vérifiez « FLUX 0.9.7 ·
-   build 48 » en bas de la colonne de Réglages, et la page Graphismes.
+   Ne relancez pas l'installateur à chaque utilisation. Vérifiez « FLUX 0.9.8 ·
+   build 49 » en bas de la colonne de Réglages, et la page Graphismes.
 
 Sur Mac, VLC intégré est désactivé. En cas de format incompatible, installez le
 lecteur VLC officiel et utilisez le bouton « Ouvrir dans VLC externe ».
@@ -35,6 +35,17 @@ La compilation est effectuée sur votre Mac. Cette archive ne contient pas un
 binaire macOS précompilé ; l'installateur n'a pas été exécuté sous macOS ici.
 
 Réglages > Sources > Modifier permet de choisir « Sur ce Mac, sans Trousseau ». Les identifiants sont alors dans un fichier privé non chiffré (permissions 600) ; le Trousseau demeure plus sûr. Les favoris sont conservés.
+
+NOUVEAUTÉS DE LA 0.9.8
+Sur l'accueil, la barre se tient en bas de la fenêtre, sur une seule rangée,
+à la grande taille de l'accueil ; les raccourcis qu'elle ne peut pas tenir
+vont dans « Autres ». Le nom de la destination sélectionnée reste à sa
+hauteur, et un dossier qui s'ouvre n'atteint plus le haut de la fenêtre.
+Réglages > Dock > Emplacement > « Afficher le dock sur les écrans » : masqué,
+le dock laisse toute la fenêtre aux écrans, Retour et Accueil passent en
+haut de la colonne, et l'accueil garde sa barre. « Dock par défaut » le
+remontre. Sur l'accueil, une destination sélectionnée montre le fond de son
+écran, même si l'accueil a le sien.
 
 NOUVEAUTÉS DE LA 0.9.7
 La barre du bas n'affiche plus l'heure. Le plan de l'écran, qui allume la
@@ -174,7 +185,7 @@ Réglages > Interface conserve les thèmes propres à chaque espace.
 
 La lecture principale garde ses commandes flottantes.
 
-Voir README.md, docs/VALIDATION-0.9.7.md, docs/VALIDATION-0.9.6.md, docs/VALIDATION-0.9.5.md, docs/VALIDATION-0.9.4.md, docs/VALIDATION-0.9.3.md, docs/VALIDATION-0.9.2.md, docs/VALIDATION-0.9.1.md et docs/VALIDATION-0.9.0.md pour les comportements et les limites.
+Voir README.md, docs/VALIDATION-0.9.8.md, docs/VALIDATION-0.9.7.md, docs/VALIDATION-0.9.6.md, docs/VALIDATION-0.9.5.md, docs/VALIDATION-0.9.4.md, docs/VALIDATION-0.9.3.md, docs/VALIDATION-0.9.2.md, docs/VALIDATION-0.9.1.md et docs/VALIDATION-0.9.0.md pour les comportements et les limites.
 
 APPLE TV : ouvrez FluxIPTV-AppleTV.xcodeproj (schéma FluxIPTVTV), puis
 choisissez la destination Apple TV. Voir LISEZ-MOI APPLE TV.txt.

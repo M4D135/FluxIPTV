@@ -174,6 +174,8 @@ struct FluxScreen: View, Equatable {
     @State private var mountedBrowseFocusTargets: Set<String> = []
     @State private var browserHasEnteredFocus = false
     #endif
+    /// The room of the home screen: an open folder of its bar is measured in it.
+    @State private var homeSize: CGSize = .zero
     @State private var resumeSlice = CatalogSlice()
     @State private var caseDetailTask: Task<Void, Never>?
     @State private var caseTransitionTask: Task<Void, Never>?
@@ -212,6 +214,8 @@ struct FluxScreen: View, Equatable {
     @StateObject private var remoteInput = RemoteInputBridge()
     // Desk layout: dock, navigation column and panels drawn inside the window.
     @AppStorage(FluxDockPosition.storageKey) private var dockPosition: FluxDockPosition = .defaultValue
+    /// The bar under the screens; the home screen always shows its own.
+    @AppStorage(FluxDockVisibility.storageKey) private var dockShown = FluxDockVisibility.defaultValue
     /// The loupe of the dock: the name above the home bar clears its largest icon.
     @AppStorage(FluxDockZoom.storageKey) private var dockZoom: FluxDockZoom = .defaultValue
     @AppStorage(FluxDockItem.orderKey) private var dockOrder = ""
@@ -447,11 +451,19 @@ struct FluxScreen: View, Equatable {
         let browsing = page == .catalogue && library.contentKind == .live && heldItem == nil && entranceItem == nil
             && !modalOpen && scenePhase == .active
         #if os(tvOS)
-        return browsing && focusID == previewItem?.id && !searchFocus
+        // The remote previews the channel it rests on, and the preview goes on
+        // in the zone of its picture: Regarder, Favoris and the sound belong to
+        // it. "pourquoi l'apercu disparait si on va dans la zone" (David, 27/11).
+        let resting = focusID == previewItem?.id || focusID.map(Self.livePreviewActionIDs.contains) == true
+        return browsing && resting && !searchFocus
         #else
         return browsing
         #endif
     }
+    #if os(tvOS)
+    /// The buttons beside the picture of a channel.
+    private static let livePreviewActionIDs: Set<String> = ["live-watch", "live-favorite", "live-preview-mute"]
+    #endif
     private var livePreviewKey: String {
         "\(livePreviewAllowed)|\(previewItem?.id ?? "")|\(automaticLivePreview)|\(livePreviewDelay.rawValue)|\(library.selectedSourceID?.uuidString ?? "")"
     }
@@ -972,6 +984,7 @@ struct FluxScreen: View, Equatable {
         }
         .onChange(of: showRemote) { _, _ in updateColumns(geometry.size.width) }
         .onChange(of: dockPosition) { _, _ in updateColumns(geometry.size.width) }
+        .onChange(of: dockShown) { _, _ in updateColumns(geometry.size.width) }
         .onChange(of: density) { _, _ in updateColumns(geometry.size.width) }
         .onChange(of: clubProfile) { _, _ in updateColumns(geometry.size.width) }
         #if !os(tvOS)
@@ -1291,7 +1304,7 @@ struct FluxScreen: View, Equatable {
     #if os(tvOS)
     /// The dock is on screen, at the foot of a section or in the middle of
     /// the home screen: one of its icons can be asked to take the remote.
-    private var dockVisibleForRemote: Bool { page != .player && !cinema && entranceItem == nil }
+    private var dockVisibleForRemote: Bool { page != .player && !cinema && entranceItem == nil && (showsHome || dockShown) }
     #endif
     private func setPreview(_ item: IPTVItem) {
         // A value written again would rebuild the screen for nothing.
@@ -3571,7 +3584,7 @@ struct FluxScreen: View, Equatable {
             } else {
                 // The search, shown in another kind, keeps the remote on the
                 // row of its column that chose it when it finds nothing there.
-                let empty = library.searchScreen ? "search-kind-\(kind.rawValue)" : "tab-\(kind.rawValue)"
+                let empty = emptyCatalogFocus
                 #if os(tvOS)
                 // Nothing is remembered here: the remote starts on the first
                 // title, in the content, rather than on a control beside it.
@@ -3586,8 +3599,9 @@ struct FluxScreen: View, Equatable {
             }
             browseRestoreTask = nil
             #if os(tvOS)
-            if target.hasPrefix("tab-") || target.hasPrefix("search-kind-") {
-                // An empty section: its key of the dock is always on screen.
+            if target.hasPrefix("tab-") || target.hasPrefix("search-kind-") || target == DeskZone.backID {
+                // An empty section: its key of the dock, or Back without
+                // the dock, is always on screen.
                 pendingBrowseFocus = nil
                 pendingBrowseRestore = false
                 focusID = target
@@ -3668,7 +3682,12 @@ struct FluxScreen: View, Equatable {
     /// on the icon of the bar would have left the search. The handoff is
     /// acknowledged on this same control.
     private var emptyCatalogFocus: String {
-        library.searchScreen ? Self.searchKindID(library.contentKind) : "tab-\(library.contentKind.rawValue)"
+        #if os(macOS) || os(tvOS)
+        // The screen of the search is the desk's: iPhone and iPad have none.
+        if library.searchScreen { return Self.searchKindID(library.contentKind) }
+        #endif
+        // Without the bar, Back at the top of the column.
+        return dockShown ? "tab-\(library.contentKind.rawValue)" : DeskZone.backID
     }
     private func resolveCatalogFocus() {
         guard let request = pendingCatalogFocus else { return }
@@ -4356,7 +4375,7 @@ extension FluxScreen {
                           kind: library.contentKind)
     }
     private var dockVisible: Bool {
-        page != .player && !cinema && entranceItem == nil && !showsHome
+        page != .player && !cinema && entranceItem == nil && !showsHome && dockShown
     }
     /// A fiche, the lists of a title or a message stand above the screen. A
     /// pointer cannot reach what is under them; on a television nothing under
@@ -4585,8 +4604,8 @@ extension FluxScreen {
     /// At the bottom the bar is the Dock of a Mac, in the middle of the
     /// window. Back and Home stand on its left, and the plan of the screen
     /// in the right corner: nothing of its strip is lost, and the columns
-    /// need no header for them.
-    var barFlanks: Bool { dockPosition == .bottom }
+    /// need no header for them. Without the bar they go to the header.
+    var barFlanks: Bool { dockPosition == .bottom && dockShown }
     /// Controls of the bar that stand before its destinations.
     var barLeadIDs: [String] {
         guard barFlanks, dockVisible else { return [] }
@@ -4902,12 +4921,13 @@ extension FluxScreen {
                                             lists: library.presets.lists.map(\.id), recentCount: dockRecents ? 3 : 0, resume: resume)
         let room = dockLength(position)
         if hero {
-            // The home screen gives the bar up to three rows instead of
-            // making its icons smaller: only the shortcuts that their own
-            // row cannot hold go into the folder of the others.
-            let surplus = arrangement.shortcutCount - heroRowLimit
-            if arrangement.entries.count > heroRowLimit, surplus > 0 {
-                arrangement = arrangement.fitted(to: arrangement.entries.count - surplus, sparingRecents: true)
+            // One bar, as under the other screens, at the size of the home
+            // screen: what it cannot hold goes into the folder of the
+            // others, the shortcuts first, then the recents.
+            let limit = max(heroRowLimit, destinations.count + 1)
+            if arrangement.entries.count > limit {
+                let spared = arrangement.fitted(to: limit, sparingRecents: true)
+                arrangement = spared.entries.count > limit ? arrangement.fitted(to: limit) : spared
             }
         } else {
             let capacity = FluxDockMetrics.capacity(position, room: room, breaks: arrangement.breaks.count)
@@ -4931,11 +4951,10 @@ extension FluxScreen {
                         stacks: stacks, progress: progress, catalogue: library.browsingRevision, ready: library.browsingCatalogReady)
     }
 
-    /// What one row of the bar of the home screen holds.
+    /// What the bar of the home screen holds at nine tenths of its size.
     private var heroRowLimit: Int { FluxDockMetrics.heroRowCapacity(width: deskWidth > 0 ? deskWidth : 1920 * Desk.scale) }
-    /// The bar of the home screen: one row while it holds on one, then two,
-    /// then three.
-    func heroRows(_ plan: DockPlan) -> [DockArrangement] { plan.arrangement.rows(limit: heroRowLimit) }
+    /// The bar of the home screen: one row, whose surplus is in Autres.
+    func heroRows(_ plan: DockPlan) -> [DockArrangement] { [plan.arrangement] }
 
     /// The titles of a list, in the order of their names: a list keeps
     /// them in none.
@@ -5000,13 +5019,29 @@ extension FluxScreen {
         return max(3, min(8, Int((browserHeight - FluxDockMetrics.thickness(.bottom) - Desk.pt(120)) / row) - 1))
     }
 
+    /// The same above the bar of the home screen, whose titles are as large
+    /// as its icons: from the plate up to the name of the application and
+    /// the time, which a folder must not reach.
+    private func homeFanRoom(_ plan: DockPlan) -> Int {
+        let size = homeSize.height > 0 ? homeSize : CGSize(width: deskWidth > 0 ? deskWidth : 1920 * Desk.scale, height: browserHeight)
+        let layout = homeLayout(plan, size: size)
+        let metrics = layout.metrics
+        // The fan stands a little into the plate, as above any bar.
+        let bottom = layout.plateTop + metrics.platePadding - metrics.label * 0.9
+        let top = Self.homeBarHeight + Desk.pt(16)
+        let side = metrics.tile * 0.9, gap = metrics.label * 0.42
+        let slots = Int((bottom - top + gap) / (side + gap))
+        return max(2, min(8, slots - 1))
+    }
+
     /// The folder that is open above the bar, with its titles.
     func dockFanModel(_ plan: DockPlan) -> DockFan? {
         guard let id = dockFan, let entry = plan.arrangement.entry(id: id) else { return nil }
+        let fanRoom = showsHome ? homeFanRoom(plan) : dockFanRoom
         switch entry {
         case .stack(let listID):
             guard let list = library.presets.list(id: listID) else { return nil }
-            let rows = dockListItems(listID, limit: dockFanRoom).map { DockFanRow(shortcut: DockShortcut(item: $0), item: $0) }
+            let rows = dockListItems(listID, limit: fanRoom).map { DockFanRow(shortcut: DockShortcut(item: $0), item: $0) }
             return DockFan(anchorID: id, title: list.name, rows: rows, more: max(0, list.itemIDs.count - rows.count), listTitle: nil)
         case .folder(let top):
             let shelf = library.dockShelf, source = library.selectedSourceID
@@ -5022,8 +5057,8 @@ extension FluxScreen {
             all += content.shortcuts.map { DockFanRow(shortcut: $0, item: dockItem($0)) }
             // Inside another folder, or past its first titles, the first
             // row leads back; a long folder shows its titles a fan at a time.
-            let paged = shown.id != top || all.count > dockFanRoom
-            let room = max(2, dockFanRoom - (paged ? 1 : 0))
+            let paged = shown.id != top || all.count > fanRoom
+            let room = max(2, fanRoom - (paged ? 1 : 0))
             let page = min(dockFanPage, max(0, (all.count - 1) / room))
             let slice = Array(all.dropFirst(page * room).prefix(room))
             let rest = max(0, all.count - page * room - slice.count)
@@ -5036,7 +5071,7 @@ extension FluxScreen {
                            lastSymbol: rest > 0 ? "chevron.up.circle.fill" : "slider.horizontal.3")
         case .more:
             let hidden = plan.arrangement.hidden.compactMap(\.shortcut)
-            let rows = hidden.prefix(dockFanRoom).map { DockFanRow(shortcut: $0, item: dockItem($0)) }
+            let rows = hidden.prefix(fanRoom).map { DockFanRow(shortcut: $0, item: dockItem($0)) }
             let rest = max(0, hidden.count - rows.count)
             // Its last row opens the titles in Favoris, as the last row of
             // a list kept in the dock opens that list.
@@ -5655,9 +5690,13 @@ extension FluxScreen {
         // section itself opens on its whole catalogue.
         if leavingFavorites { library.selectedPresetID = nil; library.favoriteDockSectionID = nil }
         #if !os(tvOS)
-        focusID = currentDockID
+        focusID = screenKeysEntry
         #endif
     }
+
+    /// Where the keys of a Mac stand when a screen opens: on its icon in the
+    /// dock, or, without the dock, on Back at the top of its column.
+    private var screenKeysEntry: String { dockShown ? currentDockID : DeskZone.backID }
 
     func openSettings(_ destination: PlaybackSettingsView.Page? = nil, editing: PlaybackSettingsView.SourceEditor? = nil) {
         cancelEntrance()
@@ -5668,7 +5707,8 @@ extension FluxScreen {
         settingsRequest = DeskSettingsRequest(page: destination, sourceEditor: editing)
         page = .settings
         // The control that held the keyboard focus leaves with its screen.
-        focusID = FluxDockItem.settings.focusID
+        // Without the dock the keys enter the page, as from the remote.
+        focusID = dockShown ? FluxDockItem.settings.focusID : nil
         #if !os(tvOS)
         // On a television the settings take the remote on their own pages.
         systemFocus = focusID
@@ -5676,7 +5716,7 @@ extension FluxScreen {
         #if os(macOS)
         // Opened from the keyboard, they take it too, on the page shown.
         settingsKeys.leave()
-        settingsKeys.entering = remoteNavigationActive
+        settingsKeys.entering = remoteNavigationActive || !dockShown
         if remoteNavigationActive { focusID = nil }
         #endif
         recordPlace()
@@ -5699,7 +5739,7 @@ extension FluxScreen {
         // The remote goes to the first title of the list, as in a section.
         restoreBrowsingContext()
         #else
-        focusID = currentDockID
+        focusID = screenKeysEntry
         systemFocus = focusID
         #endif
         recordPlace()
@@ -5919,14 +5959,15 @@ extension FluxScreen {
 
     func updateDeskColumns(_ usable: CGFloat) {
         liveSidebarVisible = true
-        let dock = dockPosition.isVertical ? FluxDockMetrics.thickness(dockPosition) : 0
+        // Without the bar a screen takes the whole window.
+        let dock = dockShown && dockPosition.isVertical ? FluxDockMetrics.thickness(dockPosition) : 0
         deskWidth = usable - dock
         let content = usable - dock - Desk.pt(48) - liveSidebarWidth - Desk.pt(18)
         if library.contentKind == .live {
             // One list of channels; the picture takes the width that remains,
             // as long as its panel keeps the height for what is written below.
             let list = min(Desk.pt(460), max(Desk.pt(330), content * 0.34))
-            let strip = dockPosition.isVertical || dockPosition == .corner ? 0 : FluxDockMetrics.thickness(dockPosition)
+            let strip = !dockShown || dockPosition.isVertical || dockPosition == .corner ? 0 : FluxDockMetrics.thickness(dockPosition)
             let byHeight = (browserHeight - Desk.pt(52) - Desk.pt(310) - strip) * 16 / 9 + Desk.pt(28)
             deskPreviewWidth = max(Desk.pt(380), min(content - list - Desk.pt(18), byHeight))
             columns = 1
@@ -6032,9 +6073,19 @@ extension FluxScreen {
         if showsHome { return (homeKeepsItsOwn ? [.home] : []) + kinds + [.search, .settings] }
         return kinds.contains(currentSpace) ? kinds : kinds + [currentSpace]
     }
+    /// A destination under the pointer, or holding the remote or the keys.
+    private var homePointsAtDestination: Bool {
+        guard let id = homeHover ?? focusID else { return false }
+        return FluxDockItem(focusID: id) != nil
+    }
+    /// "au survol, sur ecran accueil, pour film serie etc, on affiche
+    /// l'ecran de fond" (David, 27/11): a destination selected on the home
+    /// screen shows the pictures of its screen, even when the home screen
+    /// keeps its own. Those stay behind what is kept in the bar and its
+    /// folders.
     private var shownSpace: FluxSpace {
         guard showsHome else { return currentSpace }
-        return homeKeepsItsOwn ? .home : homeSpace
+        return homeKeepsItsOwn && !homePointsAtDestination ? .home : homeSpace
     }
     /// What a screen holds: its colours, and the pictures of the home
     /// screen, which has none of its own.
@@ -6098,47 +6149,54 @@ extension FluxScreen {
         }
     }
 
+    /// Where the home screen draws its bar and the name above it.
+    struct HomeLayout {
+        let scale: CGFloat
+        let metrics: FluxDockMetrics
+        /// From the top of the screen: where the name ends, where the plate begins.
+        let nameBottom: CGFloat
+        let plateTop: CGFloat
+    }
+    /// "finalement fais qu'une barre sur ecran accueil comme l'autre,
+    /// extensible en bas, mais garde cette taille pour la page accueil, et
+    /// plus haut au meme niveau qu'actuel tu affiche les titres, ça fera de
+    /// la place" (David, 27/11). One bar at the foot of the screen, as under
+    /// the other screens, at the size of the home screen. The name stays
+    /// where it stood above the bar in the middle of the 0.9.7, and the
+    /// folders open in the room between them.
+    func homeLayout(_ plan: DockPlan, size: CGSize) -> HomeLayout {
+        let row = plan.arrangement
+        // At the scale of one, how much higher the name stands above the loupe.
+        let share = max(0.01, Desk.scale)
+        let rise = FluxDockMetrics(hero: share).heroNameRise(zoom: dockZoom) / share
+        let scale = FluxDockMetrics.heroScale(count: row.entries.count, breaks: row.breaks.count,
+                                              width: size.width, height: size.height, rise: rise)
+        let metrics = FluxDockMetrics(hero: scale)
+        // The bar keeps above its plate the room where its icons grow.
+        let growth = metrics.growth
+        let plate = metrics.cell.height + metrics.platePadding * 2
+        // The top of that bar in the middle of the 0.9.7, half its rise lower,
+        // and at the foot of the screen now; a short window keeps the name
+        // right above the bar.
+        let middle = (size.height - growth - plate) / 2 + (metrics.heroNameRise(zoom: dockZoom) - growth) / 2
+        let foot = size.height - FluxDockMetrics.edgeMargin - plate - growth
+        return HomeLayout(scale: scale, metrics: metrics, nameBottom: min(middle, foot) + metrics.heroNameBottom(zoom: dockZoom),
+                          plateTop: foot + growth)
+    }
+    /// Height of the name of the application and of the time, at the top.
+    static var homeBarHeight: CGFloat { Desk.pt(58) }
+
     var deskHome: some View {
         GeometryReader { geometry in
             let plan = dockPlan(hero: true)
-            // As it fills, the bar takes a second row, then a third: its
-            // icons keep their size instead of sharing one row.
-            let rows = heroRows(plan)
-            let longest = rows.max { $0.entries.count < $1.entries.count } ?? plan.arrangement
-            let crowded = rows.count > 1
-            // At the scale of one, how much higher the name stands above the loupe.
-            let share = max(0.01, Desk.scale)
-            let rise = FluxDockMetrics(hero: share, crowded: crowded).heroNameRise(zoom: dockZoom) / share
-            let scale = FluxDockMetrics.heroScale(count: longest.entries.count, breaks: longest.breaks.count,
-                                                  width: geometry.size.width, height: geometry.size.height,
-                                                  rows: rows.count, rise: rise)
+            let layout = homeLayout(plan, size: geometry.size)
+            let scale = layout.scale
             let headline = homeHeadline(plan)
-            let metrics = FluxDockMetrics(hero: scale, crowded: crowded)
-            // Transparent room that the bar keeps above its plate for the
-            // icons that grow under the pointer.
-            let growth = metrics.growth
-            // The name ends above the largest icon; the bar goes down half
-            // as much, and the whole stays in the middle of the screen.
-            let nameBottom = metrics.heroNameBottom(zoom: dockZoom)
-            let nameRise = metrics.heroNameRise(zoom: dockZoom)
             let fan = dockFanModel(plan)
             ZStack {
                 if dockFan != nil { dockFanVeil }
-                // The plate of the bar is in the middle of the window; the
-                // name of what is pointed at stands above it. Each row
-                // keeps above it the room where its icons grow: the rows
-                // are brought closer, and a lower one is drawn over the
-                // one above it.
-                VStack(spacing: rows.count > 1 ? -growth * 0.62 : 0) {
-                    ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
-                        dockItself(DockPlan(arrangement: row, shrink: 1, stacks: plan.stacks, progress: plan.progress,
-                                            catalogue: plan.catalogue, ready: plan.ready),
-                                   fan: fan, hero: scale, crowded: rows.count > 1)
-                            #if os(tvOS)
-                            .focusSection()
-                            #endif
-                    }
-                }
+                // The name of what is selected, where it stood.
+                Color.clear
                     .overlay(alignment: .top) {
                         ZStack {
                             VStack(spacing: 8 * scale) {
@@ -6157,13 +6215,29 @@ extension FluxScreen {
                         // An open folder rises where the name stands.
                         .opacity(dockFan == nil ? 1 : 0)
                         .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: headline.id)
-                        .alignmentGuide(.top) { $0[.bottom] - nameBottom }
-                        .allowsHitTesting(false)
+                        .alignmentGuide(.top) { $0[.bottom] - layout.nameBottom }
                     }
-                    .offset(y: (nameRise - growth) / 2)
+                    .allowsHitTesting(false)
+                // The bar, at the foot of the screen.
+                dockItself(plan, fan: fan, hero: scale)
+                    #if os(tvOS)
+                    .focusSection()
+                    #endif
+                    .padding(.bottom, FluxDockMetrics.edgeMargin)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
                 homeBar.frame(maxHeight: .infinity, alignment: .top)
+                #if os(tvOS) && FLUX_CATALOG_UI_TESTING
+                // The screen whose pictures stand behind, for a flow.
+                Color.clear.frame(width: 1, height: 1).allowsHitTesting(false)
+                    .accessibilityElement().accessibilityLabel("Fond montré")
+                    .accessibilityIdentifier("flux-home-backdrop")
+                    .accessibilityValue(shownSpace.rawValue)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                #endif
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .onAppear { homeSize = geometry.size }
+            .onChange(of: geometry.size) { _, size in homeSize = size }
         }
         .onChange(of: homeItem) { _, item in
             if let kind = item.mediaKind { homeKind = kind }
@@ -6194,7 +6268,7 @@ extension FluxScreen {
                 .padding(.horizontal, Desk.pt(16)).frame(height: Desk.pt(38)).fluxGlass(radius: Desk.pt(19))
             }
         }
-        .padding(.horizontal, Desk.pt(24)).padding(.top, Desk.pt(14)).frame(height: Desk.pt(58), alignment: .top)
+        .padding(.horizontal, Desk.pt(24)).padding(.top, Desk.pt(14)).frame(height: Self.homeBarHeight, alignment: .top)
     }
 }
 #endif
@@ -7040,6 +7114,18 @@ extension FluxScreen {
             }
             Spacer(minLength: 0)
         }
+        #if os(tvOS) && FLUX_CATALOG_UI_TESTING
+        // The channel the preview belongs to and its state, for a flow: the
+        // picture itself is hidden from accessibility.
+        .overlay(alignment: .topLeading) {
+            LiveTVPreviewObserver(preview: livePreview) { preview in
+                Color.clear.frame(width: 1, height: 1).allowsHitTesting(false)
+                    .accessibilityElement().accessibilityLabel("État de l’aperçu")
+                    .accessibilityIdentifier("flux-live-preview-state")
+                    .accessibilityValue("\(preview.previewedItemID ?? "none") \(String(describing: preview.phase))")
+            }
+        }
+        #endif
         .padding(Desk.pt(14))
         .frame(maxHeight: .infinity, alignment: .top)
         .overlay { zoneFrame(.actions, radius: Desk.pt(27)) }

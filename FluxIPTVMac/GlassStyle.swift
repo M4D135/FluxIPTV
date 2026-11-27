@@ -609,6 +609,53 @@ struct DeskFlow: Layout {
     }
 }
 
+/// As many columns as the width holds, like an adaptive `LazyVGrid`, but
+/// every view is built at once. The keys of the Mac and the remote reach
+/// only a view that is built, and a lazy grid builds nothing below the edge
+/// of a page: on the page of the dock, Down from its places jumped over
+/// every theme to the key under them (0.9.8, once the switch that shows
+/// the dock had pushed the themes below that edge).
+struct DeskGrid: Layout {
+    var minimum: CGFloat
+    var spacing: CGFloat = 8
+
+    private func rows(_ subviews: Subviews, width: CGFloat?) -> (columns: Int, cell: CGFloat, heights: [CGFloat]) {
+        let finite = width.flatMap { $0.isFinite ? $0 : nil }
+        let columns = finite.map { max(1, Int(($0 + spacing) / (minimum + spacing))) } ?? max(1, subviews.count)
+        let cell = finite.map { max(0, ($0 - spacing * CGFloat(columns - 1)) / CGFloat(columns)) } ?? minimum
+        var heights: [CGFloat] = []
+        var start = 0
+        while start < subviews.count {
+            let end = min(start + columns, subviews.count)
+            heights.append((start..<end).map { subviews[$0].sizeThatFits(ProposedViewSize(width: cell, height: nil)).height }.max() ?? 0)
+            start = end
+        }
+        return (columns, cell, heights)
+    }
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let grid = rows(subviews, width: proposal.width)
+        let width = proposal.width.flatMap { $0.isFinite ? $0 : nil }
+            ?? CGFloat(grid.columns) * grid.cell + spacing * CGFloat(grid.columns - 1)
+        return CGSize(width: width, height: grid.heights.reduce(0, +) + spacing * CGFloat(max(0, grid.heights.count - 1)))
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let grid = rows(subviews, width: bounds.width)
+        var y = bounds.minY
+        for (row, height) in grid.heights.enumerated() {
+            for column in 0..<grid.columns {
+                let index = row * grid.columns + column
+                guard index < subviews.count else { break }
+                // In the middle of its row, from the leading edge of its column.
+                subviews[index].place(at: CGPoint(x: bounds.minX + CGFloat(column) * (grid.cell + spacing), y: y + height / 2),
+                                      anchor: .leading, proposal: ProposedViewSize(width: grid.cell, height: nil))
+            }
+            y += height + spacing
+        }
+    }
+}
+
 /// Static scene with broad color fields so the system glass has visible depth.
 struct FluxBackdrop: View {
     var theme: VideoClubTheme = .neo90

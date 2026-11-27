@@ -279,7 +279,7 @@ private struct TVProbeReadout: View {
         // A channel is a row of the list, not a tile.
         case "live", "live-many", "live-many-light", "live-fr", "live-es", "live-restored", "zapping": return CGSize(width: 300, height: 60)
         case "home": return CGSize(width: 150, height: 150)
-        // A bar that holds twice as much keeps icons larger than those of the dock.
+        // Its one full bar keeps icons larger than those of the dock.
         case "dock-home": return CGSize(width: 100, height: 100)
         // A title of the open folder: the size of an icon of the dock.
         case "dock-folder": return CGSize(width: 76, height: 48)
@@ -669,6 +669,10 @@ private struct TVProbeReadout: View {
         // "dock-folder": the folder of the favourite films, open above the dock.
         if ProcessInfo.processInfo.environment["FLUX_UI_SCENARIO"] == "dock-folder" {
             folder["fluxiptv.fixture.dockFan"] = DockEntry.stack(listID: FavoritePresets.defaultID(for: .movie)).id
+        }
+        // FLUX_UI_DOCK_HIDDEN=1: the dock hidden under the screens.
+        if ProcessInfo.processInfo.environment["FLUX_UI_DOCK_HIDDEN"] == "1" {
+            folder[FluxDockVisibility.storageKey] = false
         }
         // The mode of the remote is saved by Play/Pause held down: each
         // launch starts from the classic one, or from the pointer it asks

@@ -1,5 +1,13 @@
 # Feuille de route FLUX IPTV
 
+## Intégré dans les sources 0.9.8 — build 49
+
+- **L’accueil sur une barre, en bas** (« finalement fais qu'une barre sur ecran accueil comme l'autre, extensible en bas , mais garde cette taille pour la page accueil, et plus haut au meme niveau qu'actuel tu affiche les titres, ça fera de la place », 27 novembre au soir) : la barre de l’accueil se tient au pied de l’écran, sur une seule rangée, à la grande taille de l’accueil ; les raccourcis qu’elle ne peut pas tenir vont dans « Autres ». Le nom de la destination sélectionnée reste où il se tenait en 0.9.7.
+- **Des éventails qui ne touchent plus rien** (« descend un peu la barre que les eventails n'entrent pas en collision avec les titres ») : un dossier ouvert sur l’accueil est compté à la taille de l’accueil et tient entre la barre et le haut de l’écran, sous le nom de l’application et l’heure.
+- **Le dock masquable** (« faut donner le choix d'afficher ou non la barre dans les options ») : Réglages › Dock › Emplacement › « Afficher le dock sur les écrans ». Masqué, il laisse tout l’écran aux écrans ; Retour et Accueil passent en haut de la colonne, et l’accueil garde sa barre.
+- **Le fond de l’écran survolé** (« au survol, sur ecran accueil , pour film serie etc, on affiche l'ecran de fond ») : sur l’accueil, une destination sélectionnée montre le fond de son écran, même quand l’accueil a le sien ; celui-ci reste derrière ce que l’on garde dans le dock.
+- **L’aperçu gardé dans sa zone** (« pourquoi l'apercu disparait si on va dans la zone ») : sur Apple TV, l’aperçu d’une chaîne continue quand la sélection passe sur Regarder, Favoris ou le son, à côté de l’image. En 0.9.7, il s’arrêtait dès qu’elle quittait la ligne de la chaîne, et le bouton du son partait avec lui.
+
 ## Intégré dans les sources 0.9.7 — build 48
 
 - **Plus d’heure dans la barre du bas** (« vire l’heure on s’en fout », 27 novembre) : le plan de l’écran prend sa place dans le coin bas droite, aussi grand que l’était l’heure (« l’indicateur de zone fais le plus gros et bien dans le coin bas droite »). L’heure reste sur l’accueil et pendant la lecture.

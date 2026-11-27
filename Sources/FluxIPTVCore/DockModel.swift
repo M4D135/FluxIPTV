@@ -41,6 +41,15 @@ public enum FluxDockPosition: String, CaseIterable, Identifiable, Sendable {
     }
 }
 
+/// Whether the bar stands under the screens: "faut donner le choix
+/// d'afficher ou non la barre dans les options" (David, 27/11). Without it a
+/// screen takes the whole window, with Back and Home at the top of its
+/// column; the home screen keeps its bar, which is all that it shows.
+public enum FluxDockVisibility {
+    public static let storageKey = "fluxiptv.dock.shown.v1"
+    public static let defaultValue = true
+}
+
 /// The look of the plate and of its icons. Those of other systems and other
 /// years are drawn for the app, after the manner of their time: no icon, no
 /// name and no mark of a system is borrowed.

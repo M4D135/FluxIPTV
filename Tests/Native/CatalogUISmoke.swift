@@ -335,6 +335,14 @@ private enum CatalogUIFailure: Error, CustomStringConvertible {
                      expectedFocus: DeskZone.backID),
             Scenario(kind: .movie, filename: "keys-back-twice.png", actions: [.back, .back],
                      expectedFocus: FluxDockItem.movie.focusID),
+            // Without the dock ("faut donner le choix d'afficher ou non la
+            // barre dans les options", David, 27/11), Back stands at the top
+            // of the column: Back leaves the titles for it, and Back again
+            // shows the home screen, which keeps its bar.
+            Scenario(kind: .movie, filename: "keys-no-dock-back.png", actions: [.back],
+                     expectedFocus: DeskZone.backID, defaults: [FluxDockVisibility.storageKey: false]),
+            Scenario(kind: .movie, filename: "keys-no-dock-home.png", actions: [.back, .back],
+                     expectedFocus: FluxDockItem.movie.focusID, defaults: [FluxDockVisibility.storageKey: false]),
             // Back that leaves at once, as up to the 0.9.3.
             Scenario(kind: .movie, filename: "keys-back-leave.png", actions: [.back],
                      expectedFocus: FluxDockItem.movie.focusID,
@@ -369,10 +377,11 @@ private enum CatalogUIFailure: Error, CustomStringConvertible {
             // Right lands on its first setting.
             Scenario(kind: .movie, filename: "keys-settings-pages.png", settings: .appearance,
                      actions: [.up, .down, .down, .down, .down, .right], expectedFocus: "choice-Saut avant / arrière-0"),
-            // On the page of the dock the arrows go from tile to tile and
-            // down into the themes, where OK gives the dock the one chosen.
+            // On the page of the dock the arrows go from the switch that shows
+            // the dock down to its places, from tile to tile, and down into
+            // the themes, where OK gives the dock the one chosen.
             Scenario(kind: .movie, filename: "keys-settings-themes.png", settings: .dock,
-                     actions: [.up, .right, .right, .down, .select], expectedFocus: "dock-theme-*"),
+                     actions: [.up, .right, .down, .right, .down, .select], expectedFocus: "dock-theme-*"),
             // Past the last row of the column the keyboard returns to the dock.
             Scenario(kind: .movie, filename: "keys-settings-dock.png", settings: .appearance,
                      actions: [.up] + Array(repeating: .down, count: 9), expectedFocus: FluxDockItem.settings.focusID),
@@ -435,6 +444,19 @@ private enum CatalogUIFailure: Error, CustomStringConvertible {
         // stands in large above the bar, with no bubble over it.
         scenarios.append(Scenario(kind: .live, filename: "home-dock-title.png", home: true, dock: "light",
                                   defaults: ["fluxiptv.fixture.dockPointer": 7]))
+        // One bar at the foot of the home screen: a list kept in it opens
+        // above it, and what it cannot hold opens from Autres, under the
+        // name of the application and the time.
+        scenarios.append(Scenario(kind: .live, filename: "home-fan.png", home: true, dock: "light",
+                                  defaults: ["fluxiptv.fixture.dockFan": folder]))
+        scenarios.append(Scenario(kind: .live, filename: "home-more.png", home: true, dock: "many",
+                                  defaults: ["fluxiptv.fixture.dockFan": DockEntry.moreID]))
+        // Without the dock a screen takes the whole window, Back and Home at
+        // the top of its column.
+        scenarios.append(Scenario(kind: .movie, filename: "dock-hidden.png", dock: "light",
+                                  defaults: [FluxDockVisibility.storageKey: false]))
+        scenarios.append(Scenario(kind: .live, filename: "dock-hidden-live.png",
+                                  defaults: [FluxDockVisibility.storageKey: false], gallery: true))
         // On another edge the dock keeps the same things, and its folder
         // opens away from that edge.
         for position in [FluxDockPosition.top, .leading, .trailing] {
