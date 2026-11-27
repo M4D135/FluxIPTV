@@ -26,6 +26,24 @@ Les vérifications ont été faites le 27 novembre 2026 :
 
 Le premier lancement des parcours du pointeur s’est arrêté à leur compilation : un attribut en double dans le fichier des parcours. Une fois corrigé, quatre parcours sur cinq passaient. Sur la page Graphismes, l’interrupteur visé était tout entier sous le bord de la page, et le pointeur ne savait pas faire défiler une page : il ne pouvait pas l’atteindre. La poussée de page vient de là. Le parcours rejoué seul, puis tout le banc, passent.
 
+## GitHub Actions sur le commit livré (`e5e24fb`)
+
+Le commit a été poussé sur `main` et sur `work/three-rooms-0.9.0`, ce qui a lancé deux exécutions.
+
+| Travail | `main` (45952185579) | branche (45952183842) |
+|---|---|---|
+| tvOS Simulator, tvOS 26.5 : 33 écrans et 25 parcours à la télécommande | Échec : 33 écrans, 24 parcours sur 25 | Réussi |
+| tvOS ARM64 Release | Réussi | Réussi |
+| iOS Simulator | Réussi | Réussi |
+| macOS : compilation et bancs | Réussi, toutes étapes | Échec : les captures ont dépassé leurs dix minutes |
+| Tests du cœur sous Linux | Réussi : 202 tests | Réussi |
+
+Aucun échec ne vient de l’application :
+- **Le Mac de la branche** était encore en train de capturer quand l’étape a atteint sa limite de dix minutes. Sur les exécutions précédentes, elle prenait de huit minutes et demie à neuf minutes et demie. La 0.9.6 lui en accorde vingt.
+- **Sur `main`**, un parcours en mode classique s’est arrêté au début (`testPlayPauseWalksTheZonesOfALongPage`). Après quatre appuis sur Bas d’affilée, la sélection n’est pas arrivée sur le film du milieu de la page. Le même parcours passe sur la branche, au même commit, et sur le banc local. Depuis la 0.9.6, il appuie un à un, jusqu’à ce que le film ait la sélection.
+
+Les parcours ont pris 38 minutes sur `main` et 43 sur la branche, compilation de leur cible comprise.
+
 ## Ce qui a changé dans le pointeur
 
 En 0.9.4, le pointeur savait qu’un contrôle avait la sélection quand l’écran principal le lui disait. Une fiche, un panneau et les Réglages tiennent leur propre sélection, que l’écran principal ignore : le pointeur croyait la sélection ailleurs, et retenait le clic. Désormais, il compare la place du contrôle sélectionné avec celle du contrôle qu’il survole. Les tests du cœur vérifient cette comparaison :

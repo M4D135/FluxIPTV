@@ -937,8 +937,11 @@ final class TVRemoteNavigationTests: XCTestCase {
         assertFocus(element("catalog-card-fixture-movie-1", in: app), logical: "fixture-movie-1", in: app)
         XCTAssertTrue(element("desk-zone-hint", in: app).exists, "The bar says which key walks the zones.")
         // Four rows down: the bar is eight rows further, the search four rows back.
-        for _ in 0..<4 { XCUIRemote.shared.press(.down) }
+        // Pressed one after the other, until the title has the remote: four
+        // presses in a row once left it short of it on a hosted machine
+        // (e5e24fb on main), never here nor on the branch.
         let middle = element("catalog-card-fixture-movie-21", in: app)
+        move(.down, to: middle, maximumPresses: 6, in: app)
         assertFocus(middle, logical: "fixture-movie-21", in: app)
         retainScreenshot("zones-01-middle-of-a-long-page", in: app)
 

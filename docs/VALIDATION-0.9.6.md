@@ -18,8 +18,11 @@ Les vérifications ont été faites le 27 novembre 2026 :
 | Banc Apple TV (`scripts/test-tvos-catalog-ui.sh`), simulateur Apple TV 1080p sous tvOS 27.2 | 33 écrans : focus natif sur le contrôle attendu, captures non vides. 27 parcours XCUIRemote sur 27, dont les deux nouveaux du pointeur, en 17 min 36 s. Le parcours du studio joue désormais une flèche en mode souris. |
 | Compilation macOS, iOS Simulator, tvOS Simulator et tvOS ARM64 Release (`scripts/build-platforms.sh`) | Quatre « BUILD SUCCEEDED », aucun avertissement du code. Les quatre applications portent 0.9.6 (44). |
 | Variante App Store pour tvOS : vérification de types avec `FLUX_APP_STORE`, sans YouTubeKit | Aucune erreur. |
+| Banc Mac avec la galerie (`FLUX_CATALOG_UI_BACKGROUND=1 FLUX_CATALOG_UI_GALLERY=1 scripts/test-catalog-ui.sh`) | 88 captures hors écran, galerie comprise, et 27 parcours de touches sur 27, dont les deux du mode galerie, en sept minutes. La fin « PARTIAL » est attendue en local : les scénarios du champ de recherche demandent la fenêtre au premier plan et restent à la CI. La galerie n’avait pas été rejouée pour la 0.9.5. |
 
 Au premier lancement des deux nouveaux parcours, aucun ne passait. Celui des réglages attendait la sélection sur Vidéo, alors que le pointeur l’avait déjà menée sur Réseau : le parcours attend désormais l’ouverture des réglages, puis lit le chemin du pointeur. Celui des messages a montré le défaut des flèches. Une fois le pointeur corrigé, les sept parcours du pointeur passent, puis tout le banc.
+
+La CI de la 0.9.5 (`e5e24fb`) a échoué deux fois sans faute de l’application ; le détail est dans [VALIDATION-0.9.5.md](VALIDATION-0.9.5.md). La 0.9.6 accorde vingt minutes aux captures du Mac. Le parcours des zones d’une longue page appuie désormais sur Bas un à un, jusqu’à ce que le film du milieu ait la sélection.
 
 ## Le défaut
 
