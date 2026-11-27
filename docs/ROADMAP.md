@@ -1,5 +1,11 @@
 # Feuille de route FLUX IPTV
 
+## Intégré dans les sources 0.9.7 — build 46
+
+- **Plus d’heure dans la barre du bas** (« vire l’heure on s’en fout », 27 novembre) : le plan de l’écran prend sa place dans le coin bas droite, aussi grand que l’était l’heure (« l’indicateur de zone fais le plus gros et bien dans le coin bas droite »). L’heure reste sur l’accueil et pendant la lecture.
+- **Le nom au-dessus de la loupe** (« labels plus haut (favoris...) sur ecran accueil, sinon collision avec icone », 27 novembre) : sur l’accueil, le nom de la destination sélectionnée et sa ligne finissent au-dessus de l’icône que la loupe agrandit, quelle que soit la loupe ; la barre descend de la moitié de cette montée.
+- **Sur une vraie Apple TV** : les 27 parcours de la télécommande passent sur une Apple TV 4K en tvOS 26.6.1 (voir `docs/VALIDATION-0.9.6.md`).
+
 ## Intégré dans les sources 0.9.6 — build 44
 
 - **Les flèches en mode souris** : en 0.9.4 et 0.9.5, une flèche ne déplaçait plus la sélection quand le pointeur était la télécommande. Le pointeur apprend désormais qu’une flèche est enfoncée au moment de l’appui, avant que tvOS décide du déplacement. Le défaut a été trouvé par le parcours qui pointe un message.

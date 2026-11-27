@@ -1,4 +1,12 @@
-FLUX IPTV 0.9.6 — BUILD 44 — PROJET APPLE TV
+FLUX IPTV 0.9.7 — BUILD 46 — PROJET APPLE TV
+
+NOUVEAUTÉS DE LA 0.9.7 : le plan de l'écran à la place de l'heure.
+La barre du bas n'affiche plus l'heure. Le plan de l'écran, qui allume la
+partie qui a la sélection à côté de la touche Lecture/Pause, prend sa place
+dans le coin bas droite, plus grand. L'heure reste sur l'accueil et pendant
+la lecture.
+Sur l'accueil, le nom de la destination sélectionnée et sa ligne se tiennent
+au-dessus de l'icône que la loupe agrandit : ils ne la touchent plus.
 
 NOUVEAUTÉS DE LA 0.9.6 : les flèches en mode souris.
 En 0.9.4 et 0.9.5, une flèche de la télécommande ne déplaçait plus la
@@ -115,8 +123,8 @@ des parties de l'écran, dans le sens des aiguilles d'une montre. Depuis un
 titre, même au milieu d'une longue liste : un appui mène à la barre du
 bas, un deuxième à la colonne de gauche, un troisième à la recherche en
 haut, un quatrième au titre que l'on avait quitté. Sur l'écran TV, les
-boutons à droite de l'aperçu viennent juste avant la barre. Un petit plan
-de l'écran, à côté du dock, allume la partie qui a la sélection.
+boutons à droite de l'aperçu viennent juste avant la barre. Le plan de
+l'écran, dans le coin bas droite, allume la partie qui a la sélection.
 
 AUCUNE TOUCHE MORTE : au bord de l'écran, une flèche mène quelque part.
 Gauche depuis la colonne mène au bouton Retour de la barre ; Haut depuis
@@ -138,7 +146,8 @@ NAVIGATION
 L'application s'ouvre sur un accueil : TV, Films, Séries, Recherche, Favoris
 et Réglages forment un grand dock au milieu de l'écran. C'est la même
 interface que sur Mac. Dans chaque section le dock se tient en bas au centre,
-Accueil à sa gauche, l'heure à sa droite ; il n'y a plus de barre en haut.
+Accueil à sa gauche, le plan de l'écran dans le coin à sa droite ; il n'y a
+plus de barre en haut.
 Menu revient à l'écran précédent, comme le Précédent d'un navigateur, jusqu'à
 l'accueil, après être passé par le bouton Retour de la barre. Chaque section s'ouvre avec la télécommande dans son contenu.
 Pour aller droit à l'accueil : la maison à gauche du dock, ou OK maintenu

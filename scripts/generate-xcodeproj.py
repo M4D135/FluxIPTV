@@ -122,7 +122,7 @@ def generate(platforms, project_name):
             settings = f"""
             ASSETCATALOG_COMPILER_APPICON_NAME = {icon};
             CODE_SIGN_STYLE = Automatic;
-            CURRENT_PROJECT_VERSION = 45;
+            CURRENT_PROJECT_VERSION = 46;
             GENERATE_INFOPLIST_FILE = NO;
             INFOPLIST_FILE = FluxIPTVMac/{p['plist']};
             SDKROOT = {p['sdk']};

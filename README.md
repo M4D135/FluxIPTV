@@ -1,6 +1,8 @@
-# FLUX IPTV 0.9.6 — build 44 — Bureau Mac : dock, colonnes et panneaux de verre
+# FLUX IPTV 0.9.7 — build 46 — Bureau Mac : dock, colonnes et panneaux de verre
 
 Application native SwiftUI pour macOS, iOS et tvOS.
+
+**La 0.9.7 retire l’heure de la barre du bas.** Le plan de l’écran, qui allume la partie qui a la sélection à côté de la touche qui passe à la suivante, prend sa place dans le coin bas droite, aussi grand que l’était l’heure. L’heure reste sur l’accueil et pendant la lecture. Sur l’accueil, le nom de la destination sélectionnée et sa ligne se tiennent désormais au-dessus de l’icône que la loupe agrandit, quelle que soit la loupe : ils ne la touchent plus. Les 27 parcours de la télécommande passent aussi sur une vraie Apple TV 4K, en tvOS 26.6.1.
 
 **La 0.9.6 rend les flèches au mode souris.** En 0.9.4 et en 0.9.5, une flèche de la télécommande ne déplaçait plus la sélection en mode souris. Le pointeur apprenait trop tard qu’une flèche était enfoncée : tvOS avait déjà refusé le déplacement, comme pour un glissement. Il l’apprend désormais au moment de l’appui ; la sélection avance, et le pointeur la suit. Un nouveau parcours du banc, qui pointe un message, a montré le défaut ; un autre pointe les réglages pendant la lecture.
 
@@ -44,7 +46,7 @@ Au clavier du Mac comme à la télécommande, Retour passe par la barre avant de
 
 ### Dock
 
-Hors de l’accueil, le dock se tient en bas de l’écran, au centre, comme le Dock de macOS, avec les mêmes icônes et le même thème que sur l’accueil. Rien de sa bande n’est perdu : Retour et Accueil sont à sa gauche, la date et l’heure à sa droite, et les colonnes s’arrêtent nettement au-dessus de lui. Les icônes grossissent sous le pointeur comme dans le Dock du système : celle qui est survolée vient en avant, ses voisines suivent, et le point sous le pointeur ne bouge pas. Sous la télécommande et le clavier, l’icône sélectionnée grossit de même. Un trait marque la destination affichée.
+Hors de l’accueil, le dock se tient en bas de l’écran, au centre, comme le Dock de macOS, avec les mêmes icônes et le même thème que sur l’accueil. Rien de sa bande n’est perdu : Retour et Accueil sont à sa gauche, le plan de l’écran dans le coin à sa droite, et les colonnes s’arrêtent nettement au-dessus de lui. Les icônes grossissent sous le pointeur comme dans le Dock du système : celle qui est survolée vient en avant, ses voisines suivent, et le point sous le pointeur ne bouge pas. Sous la télécommande et le clavier, l’icône sélectionnée grossit de même. Un trait marque la destination affichée.
 
 - **Emplacement** : en bas au centre (par défaut), sous la colonne de navigation, en haut, ou en colonne à gauche ou à droite. Sous la colonne, le dock est compact et les autres colonnes descendent jusqu’au bord ; Retour et Accueil passent alors en tête de colonne.
 - **Loupe et sélection** : l’agrandissement de l’icône sélectionnée — Aucune, Légère (celle de la 0.9.3), Normale (par défaut), Forte ou Maximale — et son allure : **Contour** blanc comme le focus de tvOS, **Halo** de sa couleur, ou **Soulevé** au-dessus de son ombre.
@@ -72,7 +74,7 @@ Après ses six destinations, le dock tient ce que l’on y range, chaque partie 
 
 Le nom complet de l’icône pointée s’affiche au-dessus d’elle. Un appui long sur un raccourci — un clic secondaire sur Mac — rouvre ses listes pour le retirer ou le déplacer ; sur Mac on le fait aussi glisser dans sa section. Réglages › Dock renomme et supprime les sections.
 
-Les icônes ne rapetissent jamais au point de ne plus se lire depuis un canapé : un dock bien rempli les réduit d’un cinquième au plus, cède la date puis le nom de l’écran précédent, retire d’abord les titres récents, et range enfin les raccourcis en trop dans un dossier **Autres**, à la suite des raccourcis. Rien de ce que l’on a gardé n’est perdu. Sous la colonne de navigation, le dock compact ne montre que ses destinations. **L’accueil montre tout sans rapetisser ses icônes** : sa barre prend une deuxième rangée — les destinations au-dessus de ce que l’on garde —, puis une troisième pour ce qui est en cours et les dossiers. L’icône sélectionnée y grandit avec ses voisines, comme sous le pointeur, au clavier comme à la télécommande.
+Les icônes ne rapetissent jamais au point de ne plus se lire depuis un canapé : un dock bien rempli les réduit d’un cinquième au plus, cède le nom de l’écran précédent, retire d’abord les titres récents, et range enfin les raccourcis en trop dans un dossier **Autres**, à la suite des raccourcis. Rien de ce que l’on a gardé n’est perdu. Sous la colonne de navigation, le dock compact ne montre que ses destinations. **L’accueil montre tout sans rapetisser ses icônes** : sa barre prend une deuxième rangée — les destinations au-dessus de ce que l’on garde —, puis une troisième pour ce qui est en cours et les dossiers. L’icône sélectionnée y grandit avec ses voisines, comme sous le pointeur, au clavier comme à la télécommande.
 
 Le dock ne retient que des identifiants du catalogue et des noms, comme les favoris : jamais une adresse de flux.
 
@@ -238,7 +240,7 @@ L’archive contient les sources et l’installateur Mac, pas un binaire Apple p
 
 1. Sur Mac, quitter l’ancienne app et arrêter le lancement depuis Xcode.
 2. Décompresser, puis ouvrir **Installer Flux IPTV.command**. L’installateur compile sur ce Mac et vérifie le démarrage ; cette vérification ne remplace pas un essai de lecture.
-3. Vérifier **FLUX 0.9.6 · build 44** en bas de la colonne de Réglages.
+3. Vérifier **FLUX 0.9.7 · build 46** en bas de la colonne de Réglages.
 
 Prérequis de déploiement : macOS 14, iOS 17 ou tvOS 17. Installer Xcode complet pour compiler ; le verre natif demande la version 26 des systèmes, les versions antérieures reçoivent un matériau translucide. Sur iPhone/iPad ou Apple TV, ouvrir `FluxIPTV.xcodeproj`, choisir **FluxIPTViOS** ou **FluxIPTVTV**, puis renseigner l’équipe de signature pour un appareil physique.
 
@@ -252,7 +254,7 @@ Ouvrir **`FluxIPTV-AppleTV.xcodeproj`**, ou lancer **`Ouvrir Flux IPTV Apple TV.
 
 ## Validation
 
-Le périmètre vérifié pour cette version est dans [docs/VALIDATION-0.9.6.md](docs/VALIDATION-0.9.6.md), qui s’ajoute à ceux de la 0.9.5 dans [docs/VALIDATION-0.9.5.md](docs/VALIDATION-0.9.5.md), de la 0.9.4 dans [docs/VALIDATION-0.9.4.md](docs/VALIDATION-0.9.4.md), de la 0.9.3 dans [docs/VALIDATION-0.9.3.md](docs/VALIDATION-0.9.3.md), de la 0.9.2 dans [docs/VALIDATION-0.9.2.md](docs/VALIDATION-0.9.2.md), de la 0.9.1 dans [docs/VALIDATION-0.9.1.md](docs/VALIDATION-0.9.1.md) et de la 0.9.0 dans [docs/VALIDATION-0.9.0.md](docs/VALIDATION-0.9.0.md), avec ce qui ne l’a pas été. Les tests unitaires du cœur ne démontrent ni la compilation des frameworks Apple, ni la fluidité réelle, ni la lecture des flux du fournisseur. Les résultats des versions précédentes ne valident pas la nouvelle interface du Mac.
+Le périmètre vérifié pour cette version est dans [docs/VALIDATION-0.9.7.md](docs/VALIDATION-0.9.7.md), qui s’ajoute à ceux de la 0.9.6 dans [docs/VALIDATION-0.9.6.md](docs/VALIDATION-0.9.6.md), de la 0.9.5 dans [docs/VALIDATION-0.9.5.md](docs/VALIDATION-0.9.5.md), de la 0.9.4 dans [docs/VALIDATION-0.9.4.md](docs/VALIDATION-0.9.4.md), de la 0.9.3 dans [docs/VALIDATION-0.9.3.md](docs/VALIDATION-0.9.3.md), de la 0.9.2 dans [docs/VALIDATION-0.9.2.md](docs/VALIDATION-0.9.2.md), de la 0.9.1 dans [docs/VALIDATION-0.9.1.md](docs/VALIDATION-0.9.1.md) et de la 0.9.0 dans [docs/VALIDATION-0.9.0.md](docs/VALIDATION-0.9.0.md), avec ce qui ne l’a pas été. Les tests unitaires du cœur ne démontrent ni la compilation des frameworks Apple, ni la fluidité réelle, ni la lecture des flux du fournisseur. Les résultats des versions précédentes ne valident pas la nouvelle interface du Mac.
 
 ## Publication sur l’App Store
 

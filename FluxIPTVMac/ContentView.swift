@@ -212,6 +212,8 @@ struct FluxScreen: View, Equatable {
     @StateObject private var remoteInput = RemoteInputBridge()
     // Desk layout: dock, navigation column and panels drawn inside the window.
     @AppStorage(FluxDockPosition.storageKey) private var dockPosition: FluxDockPosition = .defaultValue
+    /// The loupe of the dock: the name above the home bar clears its largest icon.
+    @AppStorage(FluxDockZoom.storageKey) private var dockZoom: FluxDockZoom = .defaultValue
     @AppStorage(FluxDockItem.orderKey) private var dockOrder = ""
     /// The pictures behind each screen, `FluxBackdropChoices`.
     @AppStorage(FluxBackdropChoices.storageKey) private var backdropChoices = ""
@@ -6033,12 +6035,22 @@ extension FluxScreen {
             // icons keep their size instead of sharing one row.
             let rows = heroRows(plan)
             let longest = rows.max { $0.entries.count < $1.entries.count } ?? plan.arrangement
+            let crowded = rows.count > 1
+            // At the scale of one, how much higher the name stands above the loupe.
+            let share = max(0.01, Desk.scale)
+            let rise = FluxDockMetrics(hero: share, crowded: crowded).heroNameRise(zoom: dockZoom) / share
             let scale = FluxDockMetrics.heroScale(count: longest.entries.count, breaks: longest.breaks.count,
-                                                  width: geometry.size.width, height: geometry.size.height, rows: rows.count)
+                                                  width: geometry.size.width, height: geometry.size.height,
+                                                  rows: rows.count, rise: rise)
             let headline = homeHeadline(plan)
+            let metrics = FluxDockMetrics(hero: scale, crowded: crowded)
             // Transparent room that the bar keeps above its plate for the
             // icons that grow under the pointer.
-            let growth = FluxDockMetrics(hero: scale).growth
+            let growth = metrics.growth
+            // The name ends above the largest icon; the bar goes down half
+            // as much, and the whole stays in the middle of the screen.
+            let nameBottom = metrics.heroNameBottom(zoom: dockZoom)
+            let nameRise = metrics.heroNameRise(zoom: dockZoom)
             let fan = dockFanModel(plan)
             ZStack {
                 if dockFan != nil { dockFanVeil }
@@ -6075,10 +6087,10 @@ extension FluxScreen {
                         // An open folder rises where the name stands.
                         .opacity(dockFan == nil ? 1 : 0)
                         .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: headline.id)
-                        .alignmentGuide(.top) { $0[.bottom] - growth + 18 * scale }
+                        .alignmentGuide(.top) { $0[.bottom] - nameBottom }
                         .allowsHitTesting(false)
                     }
-                    .offset(y: -growth / 2)
+                    .offset(y: (nameRise - growth) / 2)
                 homeBar.frame(maxHeight: .infinity, alignment: .top)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)

@@ -188,7 +188,7 @@
 		4D8F54E7CBAF670D9F6C230D /* target-Debug */ = {isa = XCBuildConfiguration; buildSettings = {
             ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
             CODE_SIGN_STYLE = Automatic;
-            CURRENT_PROJECT_VERSION = 45;
+            CURRENT_PROJECT_VERSION = 46;
             GENERATE_INFOPLIST_FILE = NO;
             INFOPLIST_FILE = FluxIPTVMac/Info.plist;
             SDKROOT = macosx;
@@ -209,7 +209,7 @@
 		1A6EFC2CD0AF63DD14BE0438 /* target-Release */ = {isa = XCBuildConfiguration; buildSettings = {
             ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
             CODE_SIGN_STYLE = Automatic;
-            CURRENT_PROJECT_VERSION = 45;
+            CURRENT_PROJECT_VERSION = 46;
             GENERATE_INFOPLIST_FILE = NO;
             INFOPLIST_FILE = FluxIPTVMac/Info.plist;
             SDKROOT = macosx;
@@ -318,7 +318,7 @@
 		F0901AEB62460547CC98F589 /* target-Debug-ios */ = {isa = XCBuildConfiguration; buildSettings = {
             ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
             CODE_SIGN_STYLE = Automatic;
-            CURRENT_PROJECT_VERSION = 45;
+            CURRENT_PROJECT_VERSION = 46;
             GENERATE_INFOPLIST_FILE = NO;
             INFOPLIST_FILE = FluxIPTVMac/Info-iOS.plist;
             SDKROOT = iphoneos;
@@ -339,7 +339,7 @@
 		AACDA0C13952657CE02C1821 /* target-Release-ios */ = {isa = XCBuildConfiguration; buildSettings = {
             ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
             CODE_SIGN_STYLE = Automatic;
-            CURRENT_PROJECT_VERSION = 45;
+            CURRENT_PROJECT_VERSION = 46;
             GENERATE_INFOPLIST_FILE = NO;
             INFOPLIST_FILE = FluxIPTVMac/Info-iOS.plist;
             SDKROOT = iphoneos;
@@ -451,7 +451,7 @@
 		19F77E6636126856E997D07E /* target-Debug-tv */ = {isa = XCBuildConfiguration; buildSettings = {
             ASSETCATALOG_COMPILER_APPICON_NAME = "App Icon & Top Shelf Image";
             CODE_SIGN_STYLE = Automatic;
-            CURRENT_PROJECT_VERSION = 45;
+            CURRENT_PROJECT_VERSION = 46;
             GENERATE_INFOPLIST_FILE = NO;
             INFOPLIST_FILE = FluxIPTVMac/Info-tvOS.plist;
             SDKROOT = appletvos;
@@ -472,7 +472,7 @@
 		6685DDB375A03C1CB9440E00 /* target-Release-tv */ = {isa = XCBuildConfiguration; buildSettings = {
             ASSETCATALOG_COMPILER_APPICON_NAME = "App Icon & Top Shelf Image";
             CODE_SIGN_STYLE = Automatic;
-            CURRENT_PROJECT_VERSION = 45;
+            CURRENT_PROJECT_VERSION = 46;
             GENERATE_INFOPLIST_FILE = NO;
             INFOPLIST_FILE = FluxIPTVMac/Info-tvOS.plist;
             SDKROOT = appletvos;

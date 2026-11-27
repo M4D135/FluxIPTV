@@ -95,6 +95,25 @@ struct FluxDockMetrics: Equatable {
     var growth: CGFloat { unit.map { 62 * $0 } ?? (compact ? 18 : 40) * k }
     static var edgeMargin: CGFloat { Desk.tv(10) }
 
+    /// Where the name above the bar of the home screen ends, from the top
+    /// of its first row. "labels plus haut (favoris...) sur ecran accueil,
+    /// sinon collision avec icone" (David, 27/11): the loupe grows the
+    /// whole cell from its bottom edge, name included, and the selected
+    /// icon rose above the end of the name. The name now ends clear of it,
+    /// with room for the lean under the thumb, and never lower than before.
+    func heroNameBottom(zoom: FluxDockZoom) -> CGFloat {
+        guard let unit else { return 0 }
+        let tileTop = tileCenter - tile / 2
+        let reached = growth + platePadding + cell.height
+            - (cell.height - tileTop) * CGFloat(zoom.maximumScale(base: maximumScale))
+        return min(growth - 18 * unit, reached - 14 * unit)
+    }
+    /// How much higher than in the 0.9.6 that name stands.
+    func heroNameRise(zoom: FluxDockZoom) -> CGFloat {
+        guard let unit else { return 0 }
+        return growth - 18 * unit - heroNameBottom(zoom: zoom)
+    }
+
     /// Width or height that the screen must leave free on the bar's edge.
     static func thickness(_ position: FluxDockPosition) -> CGFloat {
         let metrics = FluxDockMetrics(position)
@@ -123,13 +142,15 @@ struct FluxDockMetrics: Equatable {
     }
     /// Scale of the bar of the home screen for these icons in this room,
     /// worked out in the points of a television.
-    /// `count` and `breaks` are those of its longest row.
-    static func heroScale(count: Int, breaks: Int, width: CGFloat, height: CGFloat, rows: Int = 1) -> CGFloat {
+    /// `count` and `breaks` are those of its longest row; `rise`, how much
+    /// higher the name stands above a large loupe, at the scale of one.
+    static func heroScale(count: Int, breaks: Int, width: CGFloat, height: CGFloat, rows: Int = 1,
+                          rise: CGFloat = 0) -> CGFloat {
         // The length of the bar at the scale of one, in those points.
         let natural = CGFloat(count) * 138 + CGFloat(max(0, count - 1)) * 10 + CGFloat(breaks) * 22 + 40
         let share = max(0.01, Desk.scale)
         // What the name above the bar and one row take, then each row more.
-        let tall = 620 + CGFloat(max(0, rows - 1)) * 222
+        let tall = 620 + rise + CGFloat(max(0, rows - 1)) * 222
         // 128: the room where the icons grow, on both sides of the plate.
         let fitted = min((width / share - 96) / (natural + 128), (height / share - 120) / tall)
         return share * min(1.2, max(0.6, fitted))
