@@ -193,6 +193,22 @@ final class PlaybackController: ObservableObject {
         subtitleTracks = subtitleTracks.map { PlaybackTrack(id: $0.id, title: $0.title, selected: $0.id == id) }
     }
     var showsFixture: Bool { fixtureTracks }
+    /// FLUX_UI_TICK=1: a film the fixture shows goes on as a stream would,
+    /// its position told every 0.4 second, as the engines tell it.
+    private var fixtureTicker: Task<Void, Never>?
+    func tickFixture() {
+        fixtureTicker?.cancel()
+        fixtureTicker = Task { @MainActor [weak self] in
+            var seconds = 2_530.0
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 400_000_000)
+                guard let self else { return }
+                guard self.isPlaying, self.playingItem?.kind != .live else { continue }
+                seconds += 0.4
+                self.updateTime(current: seconds, total: 7_080)
+            }
+        }
+    }
     /// What is asked to play is shown as playing, without a connection,
     /// for a scenario that starts outside the player.
     func simulateFixturePlayback() { fixtureTracks = true }

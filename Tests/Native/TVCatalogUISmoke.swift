@@ -137,6 +137,8 @@ private struct TVProbeReadout: View {
                                          subtitles: [PlaybackTrack(id: "s1", title: "Français", selected: false),
                                                      PlaybackTrack(id: "s2", title: "Français (malentendants)", selected: false),
                                                      PlaybackTrack(id: "s3", title: "Anglais", selected: false)])
+                    // FLUX_UI_TICK=1: the film goes on, as a stream tells it.
+                    if ProcessInfo.processInfo.environment["FLUX_UI_TICK"] == "1" { playback.tickFixture() }
                 } else {
                     // "player-banner-opening": the channel has just changed
                     // and its stream is still opening.

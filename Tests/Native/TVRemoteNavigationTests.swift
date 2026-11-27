@@ -1670,6 +1670,93 @@ final class TVRemoteNavigationTests: XCTestCase {
         retainScreenshot("rebuild-01-down-a-large-list", in: app)
     }
 
+    // MARK: What the remote costs
+
+    /// "rendre l'app la plus légère possible pour toutes les Apple TV"
+    /// (David, 27/11). With FLUX_UI_MEASURE=1 (TEST_RUNNER_FLUX_UI_MEASURE=1
+    /// through the bench), these flows measure what the application spends —
+    /// its processor time, its memory, and the parts of the screen it draws
+    /// again — on catalogues of the size of a real subscription. They compare
+    /// a change with what came before; they judge nothing, and a delivery
+    /// skips them.
+    private static let measures = ProcessInfo.processInfo.environment["FLUX_UI_MEASURE"] == "1"
+
+    @MainActor
+    private func measureCost(_ name: String, _ scenario: String, environment: [String: String] = [:],
+                             settle: TimeInterval = 3, _ walk: @escaping () -> Void) throws {
+        try XCTSkipUnless(Self.measures, "FLUX_UI_MEASURE=1 measures what the application spends.")
+        let app = launch(scenario, environment: environment.merging(["FLUX_UI_PROBE": "1"]) { $1 })
+        defer { app.terminate() }
+        Thread.sleep(forTimeInterval: settle)
+        let before = probeCounts(in: app)
+        let options = XCTMeasureOptions()
+        options.iterationCount = 3
+        measure(metrics: [XCTCPUMetric(application: app), XCTMemoryMetric(application: app), XCTClockMetric()],
+                options: options) { walk() }
+        let after = probeCounts(in: app)
+        let drawn = after.keys.sorted().map { "\($0)=\(after[$0, default: 0] - before[$0, default: 0])" }
+        print("TV_MEASURE \(name): redrawn over the three passes: \(drawn.joined(separator: " "))")
+    }
+
+    @MainActor
+    private func probeCounts(in app: XCUIApplication) -> [String: Int] {
+        // The readout refreshes five times a second.
+        Thread.sleep(forTimeInterval: 0.7)
+        let text = element("flux-probe", in: app).value as? String ?? ""
+        var result: [String: Int] = [:]
+        for pair in text.split(separator: " ") {
+            let parts = pair.split(separator: "=")
+            if parts.count == 2, let count = Int(parts[1]) { result[String(parts[0])] = count }
+        }
+        return result
+    }
+
+    /// The home screen left alone for ten seconds.
+    @MainActor
+    func testMeasureTheHomeScreenAtRest() throws {
+        try measureCost("home at rest", "home") { Thread.sleep(forTimeInterval: 10) }
+    }
+
+    /// The television left alone for ten seconds, on a list of 24 665 channels.
+    @MainActor
+    func testMeasureTheTelevisionAtRest() throws {
+        try measureCost("television at rest", "live-many") { Thread.sleep(forTimeInterval: 10) }
+    }
+
+    /// Down and up a list of 24 665 channels, twenty presses each way.
+    @MainActor
+    func testMeasureTheRemoteDownALongList() throws {
+        try measureCost("down a long list", "live-many") {
+            for _ in 0..<20 { XCUIRemote.shared.press(.down) }
+            for _ in 0..<20 { XCUIRemote.shared.press(.up) }
+        }
+    }
+
+    /// Down and up a page of 58 093 films, ten rows each way.
+    @MainActor
+    func testMeasureTheRemoteThroughALargeCatalogue() throws {
+        try measureCost("through a large catalogue", "movies-many") {
+            for _ in 0..<10 { XCUIRemote.shared.press(.down) }
+            for _ in 0..<10 { XCUIRemote.shared.press(.up) }
+        }
+    }
+
+    /// A film playing, its commands shown, for ten seconds.
+    @MainActor
+    func testMeasureAFilmPlaying() throws {
+        try measureCost("a film playing", "player-film", environment: ["FLUX_UI_TICK": "1"]) {
+            Thread.sleep(forTimeInterval: 10)
+        }
+    }
+
+    /// The pointer on the television, left alone for ten seconds.
+    @MainActor
+    func testMeasureThePointerAtRest() throws {
+        try measureCost("pointer at rest", "live-many", environment: ["FLUX_UI_POINTER": "1"]) {
+            Thread.sleep(forTimeInterval: 10)
+        }
+    }
+
     @MainActor
     private func assertOneHasFocus(_ controls: [XCUIElement], in app: XCUIApplication,
                                    file: StaticString = #filePath, line: UInt = #line) {
