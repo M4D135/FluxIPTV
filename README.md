@@ -1,6 +1,8 @@
-# FLUX IPTV 0.9.4 — build 42 — Bureau Mac : dock, colonnes et panneaux de verre
+# FLUX IPTV 0.9.5 — build 43 — Bureau Mac : dock, colonnes et panneaux de verre
 
 Application native SwiftUI pour macOS, iOS et tvOS.
+
+**La 0.9.5 étend le mode souris à toute l’Apple TV.** Le pointeur sélectionne maintenant les Réglages : la colonne, dont la page suit le pointeur, et chaque touche du contenu. Poussé contre le bas d’une page plus longue que l’écran, il s’y arrête et la page défile. Il sélectionne aussi le panneau « Favoris, listes et dock », les messages, les réglages pendant la lecture et Audio et sous-titres, au-dessus de l’image. Le studio d’apparence a son propre pointeur : le curseur se pose où il s’arrête, et un clic choisit. Un glissement n’y déplace plus le curseur ; les flèches le déplacent toujours, et le pointeur les suit. Dans une fiche, un clic appuie de nouveau sur la commande survolée : en 0.9.4, il y restait sans effet. Seul le formulaire d’une source garde la télécommande classique ; le pointeur s’y efface.
 
 **La 0.9.4 rend la télécommande intelligente.** Sur Apple TV, un **mode souris** fait suivre au pouce un pointeur sur le pavé tactile, et un clic appuie sur ce qu’il survole. On le choisit dans Réglages › Télécommande, ou l’on passe d’un mode à l’autre en maintenant **Lecture/Pause**. Dans une grille de films ou de séries, **Droite** au bout d’une rangée passe à la suivante, comme on lit une page. **Retour** sort d’abord du contenu vers le bouton Retour de la barre, d’où le dock et l’accueil sont à une flèche ; un second Retour change d’écran. Une page **Graphismes** règle l’affichage comme dans un jeu : **Automatique** choisit selon l’appareil détecté, chaque réglage reste à part. La partie de l’écran qui tient la télécommande se signale par un liseré, traversé d’un reflet quand on y entre, et un petit plan de l’écran remplace « Zone suivante ». La loupe du dock grossit davantage, sur cinq tailles, et l’icône sélectionnée prend un contour, un halo ou se soulève. Trois thèmes illustrés rejoignent le dock : Néon 90, Verre nocturne et Art déco. L’aperçu des chaînes démarre après une seconde, Apple TV comprise. L’application est préparée pour l’App Store ([docs/APP-STORE.md](docs/APP-STORE.md)). Une Apple TV de 3ᵉ génération n’installe aucune application : seule la recopie d’écran AirPlay d’un Mac, d’un iPhone ou d’un iPad peut y montrer Flux IPTV.
 
@@ -141,11 +143,11 @@ L’Apple TV reprend le bureau du Mac : accueil, dock en bas au centre, colonne 
 Réglages › **Télécommande** choisit le mode de la télécommande. On passe aussi de l’un à l’autre en maintenant **Lecture/Pause** ; une bulle dit le mode choisi.
 
 - **Classique** : un glissement sur le pavé tactile va d’un élément au suivant, comme jusqu’ici.
-- **Souris** : un pointeur suit le pouce sur le pavé. Ce qu’il survole prend la sélection — une jaquette, une chaîne, une icône du dock — et un clic appuie dessus. Un appui sur un bord du pavé déplace toujours la sélection, comme une flèche. Pendant la lecture le pointeur s’efface, et l’image garde ses touches.
+- **Souris** : un pointeur suit le pouce sur le pavé. Ce qu’il survole prend la sélection — une jaquette, une chaîne, une icône du dock — et un clic appuie dessus. Un appui sur un bord du pavé déplace toujours la sélection, comme une flèche. Pendant la lecture le pointeur s’efface, et l’image garde ses touches ; il revient au-dessus d’elle avec les réglages ou Audio et sous-titres.
 
 Le pointeur a trois vitesses, trois tailles et deux formes, flèche ou rond. Le passage par Lecture/Pause maintenue se coupe dans la même page. Un appui court de Lecture/Pause agit quand la touche remonte, pour qu’un appui maintenu ne fasse que changer de mode.
 
-En 0.9.4, le pointeur sélectionne le catalogue, la colonne, la barre, le dock, les fiches et les saisons. Dans les Réglages et les panneaux à part (source, « Favoris, listes et dock », réglages pendant la lecture), on se déplace avec les flèches ; là, un clic ne fait rien tant que la sélection n’a pas rejoint le pointeur.
+Depuis la 0.9.5, le pointeur sélectionne le catalogue, la colonne, la barre, le dock, les fiches et les saisons, les Réglages, « Favoris, listes et dock », les messages, les réglages pendant la lecture et Audio et sous-titres. Dans la colonne des Réglages, la page suit le pointeur, comme elle suit les flèches. Une page des Réglages plus longue que l’écran défile sous le pointeur : poussé contre son bas ou son haut, il s’y arrête et la page avance du reste du geste. Au bout de la page, il continue vers la barre ; Retour y mène plus vite. Ailleurs, une liste défile comme en 0.9.4 : la ligne que le pointeur atteint au bord prend la sélection, et la liste la montre. Le studio d’apparence couvre l’écran avec son propre pointeur : le curseur se pose où il s’arrête, un clic choisit, un glissement ne déplace que le pointeur, et les flèches déplacent le curseur, que le pointeur suit. Le formulaire d’une source garde la télécommande classique : le pointeur s’y efface. Un clic sur ce qui n’est pas une commande ne fait rien.
 
 ### Fluidité à la télécommande
 
@@ -234,7 +236,7 @@ L’archive contient les sources et l’installateur Mac, pas un binaire Apple p
 
 1. Sur Mac, quitter l’ancienne app et arrêter le lancement depuis Xcode.
 2. Décompresser, puis ouvrir **Installer Flux IPTV.command**. L’installateur compile sur ce Mac et vérifie le démarrage ; cette vérification ne remplace pas un essai de lecture.
-3. Vérifier **FLUX 0.9.4 · build 42** en bas de la colonne de Réglages.
+3. Vérifier **FLUX 0.9.5 · build 43** en bas de la colonne de Réglages.
 
 Prérequis de déploiement : macOS 14, iOS 17 ou tvOS 17. Installer Xcode complet pour compiler ; le verre natif demande la version 26 des systèmes, les versions antérieures reçoivent un matériau translucide. Sur iPhone/iPad ou Apple TV, ouvrir `FluxIPTV.xcodeproj`, choisir **FluxIPTViOS** ou **FluxIPTVTV**, puis renseigner l’équipe de signature pour un appareil physique.
 
@@ -248,7 +250,7 @@ Ouvrir **`FluxIPTV-AppleTV.xcodeproj`**, ou lancer **`Ouvrir Flux IPTV Apple TV.
 
 ## Validation
 
-Le périmètre vérifié pour cette version est dans [docs/VALIDATION-0.9.4.md](docs/VALIDATION-0.9.4.md), qui s’ajoute à ceux de la 0.9.3 dans [docs/VALIDATION-0.9.3.md](docs/VALIDATION-0.9.3.md), de la 0.9.2 dans [docs/VALIDATION-0.9.2.md](docs/VALIDATION-0.9.2.md), de la 0.9.1 dans [docs/VALIDATION-0.9.1.md](docs/VALIDATION-0.9.1.md) et de la 0.9.0 dans [docs/VALIDATION-0.9.0.md](docs/VALIDATION-0.9.0.md), avec ce qui ne l’a pas été. Les tests unitaires du cœur ne démontrent ni la compilation des frameworks Apple, ni la fluidité réelle, ni la lecture des flux du fournisseur. Les résultats des versions précédentes ne valident pas la nouvelle interface du Mac.
+Le périmètre vérifié pour cette version est dans [docs/VALIDATION-0.9.5.md](docs/VALIDATION-0.9.5.md), qui s’ajoute à ceux de la 0.9.4 dans [docs/VALIDATION-0.9.4.md](docs/VALIDATION-0.9.4.md), de la 0.9.3 dans [docs/VALIDATION-0.9.3.md](docs/VALIDATION-0.9.3.md), de la 0.9.2 dans [docs/VALIDATION-0.9.2.md](docs/VALIDATION-0.9.2.md), de la 0.9.1 dans [docs/VALIDATION-0.9.1.md](docs/VALIDATION-0.9.1.md) et de la 0.9.0 dans [docs/VALIDATION-0.9.0.md](docs/VALIDATION-0.9.0.md), avec ce qui ne l’a pas été. Les tests unitaires du cœur ne démontrent ni la compilation des frameworks Apple, ni la fluidité réelle, ni la lecture des flux du fournisseur. Les résultats des versions précédentes ne valident pas la nouvelle interface du Mac.
 
 ## Publication sur l’App Store
 

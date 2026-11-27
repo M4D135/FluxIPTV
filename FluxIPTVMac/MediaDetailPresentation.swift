@@ -197,7 +197,8 @@ struct MediaDetailPresentation: View {
             // A control is being handed the remote: where the system rests
             // meanwhile is not a move of the user.
             if let claiming, value != claiming { return }
-            if let selected = columnSelection(entering: value, from: old) {
+            // The pointer enters a column on the row it rests on.
+            if !FluxPointerState.shared.isPointing(at: value), let selected = columnSelection(entering: value, from: old) {
                 // The remote enters a column on what is selected there, not on
                 // the row that happens to be the nearest.
                 nativeFocus = selected

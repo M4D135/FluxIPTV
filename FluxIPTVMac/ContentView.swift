@@ -4460,11 +4460,14 @@ extension FluxScreen {
         }
         .onChange(of: page) { _, shown in
             zoneMode = false; dockFan = nil
-            #if os(tvOS)
-            // The picture takes the thumb itself: no pointer over it.
-            FluxPointerState.shared.suspended = shown == .player
-            #endif
         }
+        #if os(tvOS)
+        // The picture takes the thumb itself: no pointer over it, unless a
+        // panel stands over it, the settings or the languages.
+        .onChange(of: page == .player && !playerPanelOpen, initial: true) { _, picture in
+            FluxPointerState.shared.suspended = picture
+        }
+        #endif
         // The home screen shrinks toward the place its bar takes on the others.
         .animation(reduceMotion ? nil : .spring(response: 0.46, dampingFraction: 0.88), value: showsHome)
         .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: fichePresented)
@@ -4753,6 +4756,7 @@ extension FluxScreen {
                     // What a message covers is only put out of reach: the
                     // focus stays there until the message asks for it.
                     .focused($noticeFocus)
+                    .fluxPointerTarget("desk-notice-ok", $noticeFocus)
                     .onAppear { Task { @MainActor in await Task.yield(); noticeFocus = true } }
                     #endif
                     .accessibilityIdentifier("desk-notice-ok")

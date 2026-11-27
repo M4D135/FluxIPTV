@@ -1,4 +1,21 @@
-FLUX IPTV 0.9.4 — BUILD 42 — PROJET APPLE TV
+FLUX IPTV 0.9.5 — BUILD 43 — PROJET APPLE TV
+
+NOUVEAUTÉS DE LA 0.9.5 : le mode souris partout.
+RÉGLAGES : le pointeur sélectionne la colonne des pages, dont la page suit le
+pointeur, et chaque touche du contenu ; un clic appuie dessus. Poussé contre
+le bas ou le haut d'une page plus longue que l'écran, il s'y arrête et la
+page défile. Au bout de la page, il continue vers la barre ; Menu y mène
+plus vite.
+PANNEAUX : « Favoris, listes et dock », les messages, les réglages pendant la
+lecture et Audio et sous-titres se pointent aussi. Au-dessus de l'image, le
+pointeur revient dès qu'un de ces panneaux s'ouvre.
+STUDIO D'APPARENCE : il a son propre pointeur. Le curseur se pose où le
+pointeur s'arrête, un clic choisit ; un glissement ne déplace que le
+pointeur, les flèches déplacent le curseur et le pointeur les suit.
+FICHES : un clic appuie de nouveau sur la commande survolée ; en 0.9.4 il y
+restait sans effet.
+Le formulaire d'une source garde la télécommande classique : le pointeur
+s'y efface.
 
 NOUVEAUTÉS DE LA 0.9.4 : la télécommande devient intelligente.
 MODE SOURIS : Réglages > Télécommande choisit Classique ou Souris. En mode

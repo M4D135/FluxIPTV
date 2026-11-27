@@ -108,4 +108,58 @@ final class RemoteChoicesTests: XCTestCase {
         XCTAssertEqual(FluxPointerTarget.pick(CGPoint(x: 806, y: 120), frames: [panel, button], tolerance: 12), 0)
         XCTAssertNil(FluxPointerTarget.pick(CGPoint(x: 900, y: 120), frames: [.null, .zero], tolerance: 12))
     }
+
+    func testTheFocusedControlIsKnownByWhereItStands() {
+        let row = CGRect(x: 100, y: 100, width: 600, height: 60)
+        // Focused, a row grows a little: still the same row.
+        XCTAssertTrue(FluxPointerTarget.same(row.insetBy(dx: -15, dy: -3), row))
+        // A list shows only the top of the row; it has the focus whole.
+        XCTAssertTrue(FluxPointerTarget.same(row, CGRect(x: 100, y: 100, width: 600, height: 26)))
+        // The row below, the panel around, a button inside: not the row.
+        XCTAssertFalse(FluxPointerTarget.same(row.offsetBy(dx: 0, dy: 66), row))
+        XCTAssertFalse(FluxPointerTarget.same(CGRect(x: 0, y: 0, width: 1200, height: 800), row))
+        XCTAssertFalse(FluxPointerTarget.same(CGRect(x: 110, y: 110, width: 80, height: 40), row))
+        XCTAssertFalse(FluxPointerTarget.same(.null, row))
+    }
+
+    /// "pointeur aussi dans les Réglages" (David, 27/11): a page of the
+    /// settings goes on below the screen, and the pointer pushes it.
+    func testThePointerPushesAPageThatGoesOnBeyondItsEdge() {
+        let page = CGRect(x: 0, y: 100, width: 800, height: 400)
+        let bottom = 500 - FluxPointerScroll.margin, top = 100 + FluxPointerScroll.margin
+        // Pushed down past the bottom: it stays at the edge, the page scrolls by the rest.
+        var push = FluxPointerScroll.push(from: CGPoint(x: 300, y: 450), to: CGPoint(x: 320, y: 530), page: page, above: 0, below: 1000)
+        XCTAssertEqual(push.point, CGPoint(x: 320, y: bottom))
+        XCTAssertEqual(push.scroll, 530 - bottom)
+        // Pushed again from the edge: the whole way goes to the page.
+        push = FluxPointerScroll.push(from: CGPoint(x: 300, y: bottom), to: CGPoint(x: 300, y: bottom + 20), page: page, above: 40, below: 1000)
+        XCTAssertEqual(push.point.y, bottom)
+        XCTAssertEqual(push.scroll, 20)
+        // The end of the page comes: the pointer goes on with what is left.
+        push = FluxPointerScroll.push(from: CGPoint(x: 300, y: bottom), to: CGPoint(x: 300, y: bottom + 20), page: page, above: 40, below: 5)
+        XCTAssertEqual(push.point.y, bottom + 15)
+        XCTAssertEqual(push.scroll, 5)
+        // At the end, out of the page, toward the bar below.
+        push = FluxPointerScroll.push(from: CGPoint(x: 300, y: bottom), to: CGPoint(x: 300, y: 560), page: page, above: 40, below: 0)
+        XCTAssertEqual(push.point.y, 560)
+        XCTAssertEqual(push.scroll, 0)
+        // Up against the top: the page goes back up.
+        push = FluxPointerScroll.push(from: CGPoint(x: 300, y: 130), to: CGPoint(x: 300, y: 80), page: page, above: 40, below: 0)
+        XCTAssertEqual(push.point.y, top)
+        XCTAssertEqual(push.scroll, -(top - 80))
+        // Inside the page, away from its edges: only the pointer moves.
+        push = FluxPointerScroll.push(from: CGPoint(x: 300, y: 300), to: CGPoint(x: 300, y: 350), page: page, above: 40, below: 1000)
+        XCTAssertEqual(push.point.y, 350)
+        XCTAssertEqual(push.scroll, 0)
+        // From the bar below, the pointer enters the page freely.
+        push = FluxPointerScroll.push(from: CGPoint(x: 300, y: 560), to: CGPoint(x: 300, y: 480), page: page, above: 40, below: 1000)
+        XCTAssertEqual(push.point.y, 480)
+        XCTAssertEqual(push.scroll, 0)
+        // The way of the thumb, kept on the screen or not.
+        let motion = FluxPointerMotion(speed: .normal)
+        let screen = CGRect(x: 0, y: 0, width: 1920, height: 1080)
+        let far = motion.move(from: CGPoint(x: 960, y: 1070), dx: 0, dy: 400, velocity: 0)
+        XCTAssertGreaterThan(far.y, 1080)
+        XCTAssertEqual(motion.step(from: CGPoint(x: 960, y: 1070), dx: 0, dy: 400, velocity: 0, in: screen), FluxPointerMotion.clamp(far, to: screen))
+    }
 }

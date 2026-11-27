@@ -431,7 +431,7 @@ private extension View {
     /// highlight, without the ring of the system.
     @ViewBuilder func playerFocus(_ binding: FocusState<String?>.Binding, id: String) -> some View {
         #if os(tvOS)
-        self.focused(binding, equals: id).focusEffectDisabled()
+        self.focused(binding, equals: id).focusEffectDisabled().fluxPointerTarget(id, binding)
         #else
         self.focusable().focused(binding, equals: id).focusEffectDisabled()
         #endif

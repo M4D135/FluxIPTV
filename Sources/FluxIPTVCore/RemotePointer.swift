@@ -125,9 +125,15 @@ public struct FluxPointerMotion: Equatable, Sendable {
     /// Plain numbers, not a `CGVector`: the tests of the core run on Linux,
     /// where Foundation has points and rectangles but no vectors.
     public func step(from position: CGPoint, dx: Double, dy: Double, velocity: Double, in bounds: CGRect) -> CGPoint {
-        guard dx.isFinite, dy.isFinite else { return Self.clamp(position, to: bounds) }
+        Self.clamp(move(from: position, dx: dx, dy: dy, velocity: velocity), to: bounds)
+    }
+
+    /// The same way, not yet kept on the screen: a page that the pointer
+    /// pushes takes what goes beyond its edge (`FluxPointerScroll`).
+    public func move(from position: CGPoint, dx: Double, dy: Double, velocity: Double) -> CGPoint {
+        guard dx.isFinite, dy.isFinite else { return position }
         let gain = speed.gain * Self.acceleration(velocity: velocity)
-        return Self.clamp(CGPoint(x: Double(position.x) + dx * gain, y: Double(position.y) + dy * gain), to: bounds)
+        return CGPoint(x: Double(position.x) + dx * gain, y: Double(position.y) + dy * gain)
     }
 
     public static func clamp(_ point: CGPoint, to bounds: CGRect) -> CGPoint {
@@ -157,5 +163,49 @@ public enum FluxPointerTarget {
             if distance <= tolerance, nearest == nil || distance < nearest!.distance { nearest = (index, distance) }
         }
         return nearest?.index
+    }
+
+    /// Whether the control that has the focus, drawn at `focused`, is the
+    /// one the pointer rests on, at `target`. The system draws a focused
+    /// control a little larger, and a list may show only part of a row; a
+    /// panel that holds the control is not the control.
+    public static func same(_ focused: CGRect, _ target: CGRect) -> Bool {
+        guard !focused.isNull, !target.isNull, !focused.isEmpty, !target.isEmpty else { return false }
+        let shared = focused.intersection(target)
+        guard !shared.isNull, !shared.isEmpty else { return false }
+        let area = Double(shared.width * shared.height)
+        return area >= 0.6 * Double(target.width * target.height)
+            && area >= 0.4 * Double(focused.width * focused.height)
+    }
+}
+
+/// A page longer than the screen, as a page of the settings. Pushed against
+/// the top or the bottom of what shows of it, the pointer stays at that edge
+/// and the page scrolls by the rest of the way; once the page ends, the
+/// pointer goes on, out of it. Coming from outside, it enters freely.
+public enum FluxPointerScroll {
+    /// How far inside the edge the pointer stays while it pushes the page.
+    public static let margin = 8.0
+
+    /// `position`: where the pointer is; `wanted`: where the thumb takes it;
+    /// `page`: what shows of the page; `above`, `below`: how far the page
+    /// can still scroll up and down. Returns where the pointer goes, and how
+    /// far the page scrolls, down when positive.
+    public static func push(from position: CGPoint, to wanted: CGPoint, page: CGRect,
+                            above: Double, below: Double) -> (point: CGPoint, scroll: Double) {
+        guard !page.isNull, !page.isEmpty, page.contains(position) else { return (wanted, 0) }
+        let from = Double(position.y), to = Double(wanted.y)
+        let bottom = Double(page.maxY) - margin, top = Double(page.minY) + margin
+        if to > from, to > bottom, below > 0 {
+            let stop = max(from, bottom)
+            let scroll = min(to - stop, below)
+            return (CGPoint(x: Double(wanted.x), y: stop + (to - stop - scroll)), scroll)
+        }
+        if to < from, to < top, above > 0 {
+            let stop = min(from, top)
+            let scroll = min(stop - to, above)
+            return (CGPoint(x: Double(wanted.x), y: stop - (stop - to - scroll)), -scroll)
+        }
+        return (wanted, 0)
     }
 }

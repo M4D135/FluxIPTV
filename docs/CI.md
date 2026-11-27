@@ -1,4 +1,4 @@
-# GitHub Actions — FLUX IPTV 0.9.4 — build 42
+# GitHub Actions — FLUX IPTV 0.9.5 — build 43
 
 Le workflow [Swift / Apple platforms](https://github.com/M4D135/FluxIPTV/actions/workflows/ci.yml) vérifie le commit indiqué en tête de chaque exécution. Il fonctionne sur `main`, sur les branches `work/three-rooms-*`, sur les pull requests et par lancement manuel.
 

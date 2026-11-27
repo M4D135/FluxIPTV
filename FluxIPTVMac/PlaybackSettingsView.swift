@@ -233,7 +233,8 @@ struct PlaybackSettingsView: View {
             guard let new else { return }
             // Coming back from the content, the remote lands on the page in
             // use, not on the nearest row: that row would replace the page.
-            if old == nil, new != page { focusedPage = page; return }
+            // The pointer lands where it rests.
+            if old == nil, new != page, !FluxPointerState.shared.isPointing(at: Self.pointerID(new)) { focusedPage = page; return }
             if new != page { page = new; sourceEditor = nil; removingSource = nil }
         }
         .onChange(of: pagesRequest) { _, _ in focusedPage = page }
@@ -244,8 +245,11 @@ struct PlaybackSettingsView: View {
                 .environmentObject(library)
         }
         // Closed, the studio gives the remote back to the key that opened it.
+        // It covers the whole screen with a pointer of its own.
         .fullScreenCover(item: $studio) { shelf in
-            AppearanceStudio(shelf: shelf, kind: library.contentKind) { studio = nil }
+            FluxRemoteHost {
+                AppearanceStudio(shelf: shelf, kind: library.contentKind) { studio = nil }
+            }
         }
         #endif
         .confirmationDialog("Effacer les positions de reprise ?",
@@ -308,6 +312,7 @@ struct PlaybackSettingsView: View {
                                 .buttonStyle(DeskFocusStyle(radius: Desk.pt(13)))
                                 #if os(tvOS)
                                 .focused($focusedPage, equals: destination)
+                                .fluxPointerTarget(destination, id: Self.pointerID(destination), $focusedPage)
                                 #endif
                                 .accessibilityIdentifier("settings-page-\(destination.rawValue)")
                                 #if os(tvOS) && FLUX_CATALOG_UI_TESTING
@@ -343,10 +348,12 @@ struct PlaybackSettingsView: View {
                     .padding(.horizontal, Desk.pt(26)).padding(.top, Desk.pt(22)).padding(.bottom, Desk.pt(14))
                     ScrollViewReader { proxy in
                         ScrollView {
-                            settingsContent
-                                .frame(maxWidth: Desk.pt(960), alignment: .leading)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(.horizontal, Desk.pt(26)).padding(.bottom, Desk.pt(24))
+                            pointerScope {
+                                settingsContent
+                                    .frame(maxWidth: Desk.pt(960), alignment: .leading)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding(.horizontal, Desk.pt(26)).padding(.bottom, Desk.pt(24))
+                            }
                         }
                         #if os(macOS)
                         // The control that the keyboard reaches comes into view.
@@ -448,6 +455,21 @@ struct PlaybackSettingsView: View {
         return Group {
             if inline { card.modifier(SettingsCard()) } else { card.fluxFrosted(radius: Desk.pt(20)) }
         }
+    }
+
+    #if os(tvOS)
+    /// The name the pointer of the remote knows a row of the column by.
+    static func pointerID(_ destination: Page) -> String { "settings-page-" + destination.rawValue }
+    #endif
+
+    /// The content of a page, whose controls the pointer of a television
+    /// reaches by their names, and which it scrolls by pushing its edges.
+    @ViewBuilder private func pointerScope<V: View>(@ViewBuilder _ content: () -> V) -> some View {
+        #if os(tvOS)
+        DeskPointerScope { content() }.fluxPointerPage()
+        #else
+        content()
+        #endif
     }
 
     private var settingsContent: some View {

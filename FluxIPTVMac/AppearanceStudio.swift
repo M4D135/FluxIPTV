@@ -366,6 +366,10 @@ struct AppearanceStudio: View {
             place(start)
             Task { @MainActor in await Task.yield(); catcher = true }
         }
+        #if os(tvOS)
+        // The pointer rests on the cursor, or goes along with the arrows.
+        .onChange(of: cursor) { _, _ in FluxPointerState.shared.selectionMoved() }
+        #endif
         .task(id: cursor) {
             // A picture is tried once the cursor rests on it.
             if case .picture = cursor {} else if case .ordered = cursor {} else { resting = cursor; return }
@@ -428,6 +432,8 @@ struct AppearanceStudio: View {
         .focusEffectDisabled()
         .focused($catcher)
         .onMoveCommand { direction in
+            // With the pointer, a swipe moves the pointer only.
+            guard FluxPointerState.shared.movesSelection else { return }
             switch direction {
             case .up: move(0, -1)
             case .down: move(0, 1)
@@ -696,10 +702,19 @@ struct AppearanceStudio: View {
                 row = line; columns[line] = index
                 activate(item)
             }
+            #elseif os(tvOS)
+            // The pointer of the remote puts the cursor on what it rests on,
+            // a click chooses it; a tab waits for the click, as on a Mac.
+            .fluxPointerTarget("studio-" + item.key, select: {
+                guard !fullScreen else { return }
+                pointerDriven = true
+                row = line; columns[line] = items(line).firstIndex(of: item) ?? index
+            }, isSelected: { item == cursor && !fullScreen })
             #endif
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(heading(item))
             .accessibilityIdentifier("studio-" + item.key)
+            .accessibilityValue(isChosen(item) ? "Choisi" : "")
             .accessibilityAddTraits(item == cursor ? .isSelected : [])
     }
 
@@ -854,6 +869,7 @@ struct AppearanceStudio: View {
         case .interval(let value): plan.interval == value
         case .order(let value): plan.order == value
         case .transition(let value): plan.transition == value
+        case .theme(let value): keptTheme == value
         default: false
         }
     }

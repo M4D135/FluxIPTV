@@ -188,7 +188,7 @@
 		4D8F54E7CBAF670D9F6C230D /* target-Debug */ = {isa = XCBuildConfiguration; buildSettings = {
             ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
             CODE_SIGN_STYLE = Automatic;
-            CURRENT_PROJECT_VERSION = 42;
+            CURRENT_PROJECT_VERSION = 43;
             GENERATE_INFOPLIST_FILE = NO;
             INFOPLIST_FILE = FluxIPTVMac/Info.plist;
             SDKROOT = macosx;
@@ -197,7 +197,7 @@
             CODE_SIGN_ENTITLEMENTS = FluxIPTVMac/FluxIPTV.entitlements; ENABLE_APP_SANDBOX = YES; SWIFT_OBJC_BRIDGING_HEADER = FluxIPTVMac/Compatibility/LegacyKeychainInteraction.h;
             LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
             ENABLE_DEBUG_DYLIB = NO;
-            MARKETING_VERSION = 0.9.4;
+            MARKETING_VERSION = 0.9.5;
             PRODUCT_BUNDLE_IDENTIFIER = com.m4d135.FluxIPTV;
             PRODUCT_NAME = "$(TARGET_NAME)";
             SWIFT_VERSION = 5.0;
@@ -209,7 +209,7 @@
 		1A6EFC2CD0AF63DD14BE0438 /* target-Release */ = {isa = XCBuildConfiguration; buildSettings = {
             ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
             CODE_SIGN_STYLE = Automatic;
-            CURRENT_PROJECT_VERSION = 42;
+            CURRENT_PROJECT_VERSION = 43;
             GENERATE_INFOPLIST_FILE = NO;
             INFOPLIST_FILE = FluxIPTVMac/Info.plist;
             SDKROOT = macosx;
@@ -218,7 +218,7 @@
             CODE_SIGN_ENTITLEMENTS = FluxIPTVMac/FluxIPTV.entitlements; ENABLE_APP_SANDBOX = YES; SWIFT_OBJC_BRIDGING_HEADER = FluxIPTVMac/Compatibility/LegacyKeychainInteraction.h;
             LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
             ENABLE_DEBUG_DYLIB = NO;
-            MARKETING_VERSION = 0.9.4;
+            MARKETING_VERSION = 0.9.5;
             PRODUCT_BUNDLE_IDENTIFIER = com.m4d135.FluxIPTV;
             PRODUCT_NAME = "$(TARGET_NAME)";
             SWIFT_VERSION = 5.0;
@@ -318,7 +318,7 @@
 		F0901AEB62460547CC98F589 /* target-Debug-ios */ = {isa = XCBuildConfiguration; buildSettings = {
             ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
             CODE_SIGN_STYLE = Automatic;
-            CURRENT_PROJECT_VERSION = 42;
+            CURRENT_PROJECT_VERSION = 43;
             GENERATE_INFOPLIST_FILE = NO;
             INFOPLIST_FILE = FluxIPTVMac/Info-iOS.plist;
             SDKROOT = iphoneos;
@@ -327,7 +327,7 @@
             SUPPORTS_MACCATALYST = NO;
             LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
 
-            MARKETING_VERSION = 0.9.4;
+            MARKETING_VERSION = 0.9.5;
             PRODUCT_BUNDLE_IDENTIFIER = com.m4d135.FluxIPTV.ios;
             PRODUCT_NAME = "$(TARGET_NAME)";
             SWIFT_VERSION = 5.0;
@@ -339,7 +339,7 @@
 		AACDA0C13952657CE02C1821 /* target-Release-ios */ = {isa = XCBuildConfiguration; buildSettings = {
             ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
             CODE_SIGN_STYLE = Automatic;
-            CURRENT_PROJECT_VERSION = 42;
+            CURRENT_PROJECT_VERSION = 43;
             GENERATE_INFOPLIST_FILE = NO;
             INFOPLIST_FILE = FluxIPTVMac/Info-iOS.plist;
             SDKROOT = iphoneos;
@@ -348,7 +348,7 @@
             SUPPORTS_MACCATALYST = NO;
             LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
 
-            MARKETING_VERSION = 0.9.4;
+            MARKETING_VERSION = 0.9.5;
             PRODUCT_BUNDLE_IDENTIFIER = com.m4d135.FluxIPTV.ios;
             PRODUCT_NAME = "$(TARGET_NAME)";
             SWIFT_VERSION = 5.0;
@@ -451,7 +451,7 @@
 		19F77E6636126856E997D07E /* target-Debug-tv */ = {isa = XCBuildConfiguration; buildSettings = {
             ASSETCATALOG_COMPILER_APPICON_NAME = "App Icon & Top Shelf Image";
             CODE_SIGN_STYLE = Automatic;
-            CURRENT_PROJECT_VERSION = 42;
+            CURRENT_PROJECT_VERSION = 43;
             GENERATE_INFOPLIST_FILE = NO;
             INFOPLIST_FILE = FluxIPTVMac/Info-tvOS.plist;
             SDKROOT = appletvos;
@@ -460,7 +460,7 @@
             SWIFT_OBJC_BRIDGING_HEADER = FluxIPTVMac/Compatibility/LegacyKeychainInteraction.h;
             LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
 
-            MARKETING_VERSION = 0.9.4;
+            MARKETING_VERSION = 0.9.5;
             PRODUCT_BUNDLE_IDENTIFIER = com.m4d135.FluxIPTV.tv;
             PRODUCT_NAME = "$(TARGET_NAME)";
             SWIFT_VERSION = 5.0;
@@ -472,7 +472,7 @@
 		6685DDB375A03C1CB9440E00 /* target-Release-tv */ = {isa = XCBuildConfiguration; buildSettings = {
             ASSETCATALOG_COMPILER_APPICON_NAME = "App Icon & Top Shelf Image";
             CODE_SIGN_STYLE = Automatic;
-            CURRENT_PROJECT_VERSION = 42;
+            CURRENT_PROJECT_VERSION = 43;
             GENERATE_INFOPLIST_FILE = NO;
             INFOPLIST_FILE = FluxIPTVMac/Info-tvOS.plist;
             SDKROOT = appletvos;
@@ -481,7 +481,7 @@
             SWIFT_OBJC_BRIDGING_HEADER = FluxIPTVMac/Compatibility/LegacyKeychainInteraction.h;
             LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
 
-            MARKETING_VERSION = 0.9.4;
+            MARKETING_VERSION = 0.9.5;
             PRODUCT_BUNDLE_IDENTIFIER = com.m4d135.FluxIPTV.tv;
             PRODUCT_NAME = "$(TARGET_NAME)";
             SWIFT_VERSION = 5.0;

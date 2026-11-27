@@ -249,6 +249,9 @@ private struct DeskTarget: ViewModifier {
     /// A control that cannot be used is passed over, as on a television.
     @Environment(\.isEnabled) private var isEnabled
     #endif
+    #if os(tvOS)
+    @Environment(\.deskPointerFocus) private var pointerFocus
+    #endif
 
     func body(content: Content) -> some View {
         #if os(macOS)
@@ -265,11 +268,47 @@ private struct DeskTarget: ViewModifier {
         } else {
             content
         }
+        #elseif os(tvOS)
+        // The pointer of the remote hands the focus to the control through
+        // the focus state of the settings.
+        if let pointerFocus {
+            content.focused(pointerFocus, equals: id).fluxPointerTarget(id, pointerFocus)
+        } else {
+            content
+        }
         #else
         content
         #endif
     }
 }
+
+#if os(tvOS)
+private struct DeskPointerFocusKey: EnvironmentKey {
+    static var defaultValue: FocusState<String?>.Binding? { nil }
+}
+
+extension EnvironmentValues {
+    /// The focus state that the controls of the settings take the focus
+    /// from, for the pointer of the remote.
+    var deskPointerFocus: FocusState<String?>.Binding? {
+        get { self[DeskPointerFocusKey.self] }
+        set { self[DeskPointerFocusKey.self] = newValue }
+    }
+}
+
+/// The controls of the settings under the pointer of the remote: the
+/// pointer gives each one the focus as the remote reaches it, by name.
+struct DeskPointerScope<Content: View>: View {
+    @FocusState private var focus: String?
+    private let content: Content
+
+    init(@ViewBuilder content: () -> Content) { self.content = content() }
+
+    var body: some View {
+        content.environment(\.deskPointerFocus, $focus)
+    }
+}
+#endif
 
 extension View {
     /// A control of the settings that the keyboard of a Mac reaches: OK on it

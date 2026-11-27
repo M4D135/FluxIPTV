@@ -27,10 +27,57 @@ import UIKit
     }
     /// Whether the pointer is the remote now.
     var active: Bool { controller?.pointerActive ?? false }
-    weak var controller: FluxPointerController?
+
+    /// The controllers of the pointer on screen, the last one above the
+    /// others: a panel that covers the whole screen brings its own, as the
+    /// studio does.
+    private var controllers: [WeakController] = []
+    private struct WeakController { weak var value: FluxPointerController? }
+    /// The pointer of the panel on top, or of the screens.
+    var controller: FluxPointerController? { controllers.last { $0.value != nil }?.value }
+
+    fileprivate func enter(_ controller: FluxPointerController) {
+        controllers.removeAll { $0.value == nil || $0.value === controller }
+        controllers.append(WeakController(value: controller))
+    }
+
+    fileprivate func leave(_ controller: FluxPointerController) {
+        controllers.removeAll { $0.value == nil || $0.value === controller }
+    }
+
+    /// The control the pointer is handing the focus to, and when. A screen
+    /// that sends the remote entering a column to the row chosen there
+    /// leaves it where the pointer rests.
+    fileprivate var pointing: (id: String, at: TimeInterval)?
+
+    /// Whether the pointer has just asked the focus for the control `id`.
+    func isPointing(at id: String) -> Bool {
+        guard let pointing else { return false }
+        return pointing.id == id && ProcessInfo.processInfo.systemUptime - pointing.at < 0.6
+    }
+
+    /// A screen moved its own selection, which the pointer may rest on.
+    func selectionMoved() { controller?.selectionMoved() }
+
+    /// Whether a move command moves the selection of a screen that moves
+    /// its own: with the pointer, a swipe moves the pointer only, and the
+    /// arrows still move the selection.
+    var movesSelection: Bool { controller?.movesSelection ?? true }
+
     #if FLUX_CATALOG_UI_TESTING
     /// What the screen says holds the remote, for a bench.
     var benchFocus: String?
+    /// What a bench reads: the bubbles shown, the controls a sweep crossed.
+    fileprivate var toasts = 0
+    fileprivate var trace: [String] = []
+    /// Requests of the focus the pointer made.
+    fileprivate var asked = 0
+    fileprivate var swept = false
+
+    /// Every pointer on screen says the same: a bench finds whichever.
+    fileprivate func report() {
+        for entry in controllers { entry.value?.report() }
+    }
     #endif
 
     // MARK: Lecture/Pause, pressed or held
@@ -129,8 +176,13 @@ import UIKit
     struct Target {
         let id: String
         var frame: CGRect
+        /// The pointer whose screens hold the control.
+        let layer: UUID
         /// Gives the focus to the control, through the focus state of its screen.
         let focus: (_ again: Bool) -> Void
+        /// For a place that is no control: whether its screen has selected
+        /// it. A control says nothing: it has the focus or not.
+        let holds: (() -> Bool)?
     }
 
     /// By control on screen: two controls may share an identifier, as the
@@ -147,19 +199,59 @@ import UIKit
     func set(_ token: UUID, _ target: Target) { targets[token] = target }
     func remove(_ token: UUID) { targets[token] = nil }
 
-    /// The control under `point`, chosen as `FluxPointerTarget.pick` does.
-    func target(at point: CGPoint, tolerance: Double) -> Target? {
-        let list = Array(targets.values)
+    /// The controls of one pointer's screens.
+    func targets(in layer: UUID) -> [Target] { targets.values.filter { $0.layer == layer } }
+
+    /// The control of `layer` under `point`, chosen as `FluxPointerTarget.pick` does.
+    func target(at point: CGPoint, tolerance: Double, in layer: UUID) -> Target? {
+        let list = targets(in: layer)
         return FluxPointerTarget.pick(point, frames: list.map(\.frame), tolerance: tolerance).map { list[$0] }
+    }
+
+    /// A page that the pointer scrolls by pushing its edges (`fluxPointerPage`).
+    struct Page {
+        /// What shows of it, on the screen.
+        let frame: CGRect
+        let layer: UUID
+        /// The scroll view that SwiftUI draws it in.
+        weak var scroll: UIScrollView?
+    }
+
+    private var pages: [UUID: Page] = [:]
+
+    func setPage(_ token: UUID, _ page: Page) { pages[token] = page }
+    func removePage(_ token: UUID) { pages[token] = nil }
+
+    func pages(in layer: UUID) -> [Page] { pages.values.filter { $0.layer == layer && $0.scroll != nil } }
+
+    /// The page of `layer` that shows at `point`, the innermost.
+    func page(at point: CGPoint, in layer: UUID) -> Page? {
+        pages(in: layer).filter { $0.frame.contains(point) }
+            .min { $0.frame.width * $0.frame.height < $1.frame.width * $1.frame.height }
     }
 }
 
-private struct FluxPointerTargetModifier<Value: Hashable>: ViewModifier {
-    let value: Value
-    let binding: FocusState<Value?>.Binding
+private struct FluxPointerLayerKey: EnvironmentKey {
+    static var defaultValue: UUID? { nil }
+}
+
+extension EnvironmentValues {
+    /// The pointer whose screens these are: a panel that covers the whole
+    /// screen has its own, and the pointer of the screens under it leaves
+    /// its controls alone.
+    var fluxPointerLayer: UUID? {
+        get { self[FluxPointerLayerKey.self] }
+        set { self[FluxPointerLayerKey.self] = newValue }
+    }
+}
+
+private struct FluxPointerTargetModifier: ViewModifier {
     let id: String
+    let focus: (_ again: Bool) -> Void
+    let holds: (() -> Bool)?
     /// What stands under a panel is disabled: the pointer leaves it alone.
     @Environment(\.isEnabled) private var enabled
+    @Environment(\.fluxPointerLayer) private var layer
     /// Its token, and its last frame, which redraw nothing as they change.
     @State private var place = Place()
 
@@ -170,7 +262,7 @@ private struct FluxPointerTargetModifier<Value: Hashable>: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frame in
+            .onGeometryChange(for: CGRect.self) { Self.shownFrame($0) } action: { frame in
                 place.frame = frame
                 record(enabled: enabled)
             }
@@ -178,19 +270,27 @@ private struct FluxPointerTargetModifier<Value: Hashable>: ViewModifier {
             .onDisappear { FluxPointerTargets.shared.remove(place.token) }
     }
 
+    /// The part of the control that its list shows: a row scrolled out of
+    /// its list keeps a frame, under the bar or the column, where the
+    /// pointer must not find it.
+    fileprivate static func shownFrame(_ proxy: GeometryProxy) -> CGRect {
+        let global = proxy.frame(in: .global)
+        // A rail that scrolls sideways inside a list that scrolls down: both
+        // cut the control.
+        var local = CGRect(origin: .zero, size: proxy.size)
+        for axis in [Axis.horizontal, .vertical] {
+            if let shown = proxy.bounds(of: .scrollView(axis: axis)) { local = local.intersection(shown) }
+        }
+        return local.isNull || local.isEmpty ? .null : local.offsetBy(dx: global.minX, dy: global.minY)
+    }
+
     private func record(enabled: Bool) {
         let frame = place.frame
-        guard enabled, !frame.isNull, frame.width > 12, frame.height > 12 else {
+        guard enabled, let layer, !frame.isNull, frame.width > 12, frame.height > 12 else {
             FluxPointerTargets.shared.remove(place.token)
             return
         }
-        let binding = binding, value = value
-        FluxPointerTargets.shared.set(place.token, .init(id: id, frame: frame) { again in
-            // A request the system declined keeps its value: asked again,
-            // it is cleared first.
-            if again { binding.wrappedValue = nil }
-            binding.wrappedValue = value
-        })
+        FluxPointerTargets.shared.set(place.token, .init(id: id, frame: frame, layer: layer, focus: focus, holds: holds))
     }
 }
 
@@ -199,7 +299,115 @@ extension View {
     /// focus. After `.focused(binding, equals: id)`, never between a button
     /// and it.
     func fluxPointerTarget(_ id: String, _ binding: FocusState<String?>.Binding) -> some View {
-        modifier(FluxPointerTargetModifier(value: id, binding: binding, id: id))
+        fluxPointerTarget(id, id: id, binding)
+    }
+
+    /// The same, for a focus state of another kind: `id` names the control.
+    func fluxPointerTarget<Value: Hashable>(_ value: Value, id: String, _ binding: FocusState<Value?>.Binding) -> some View {
+        modifier(FluxPointerTargetModifier(id: id, focus: { again in
+            // A request the system declined keeps its value: asked again,
+            // it is cleared first.
+            if again { binding.wrappedValue = nil }
+            binding.wrappedValue = value
+        }, holds: nil))
+    }
+
+    /// The same, for the one control of a focus state that is on or off.
+    func fluxPointerTarget(_ id: String, _ binding: FocusState<Bool>.Binding) -> some View {
+        modifier(FluxPointerTargetModifier(id: id, focus: { again in
+            if again { binding.wrappedValue = false }
+            binding.wrappedValue = true
+        }, holds: nil))
+    }
+
+    /// A place that is no control, in a screen that moves its own
+    /// selection: the pointer selects it as the arrows would, and a click
+    /// presses what is selected.
+    func fluxPointerTarget(_ id: String, select: @escaping () -> Void, isSelected: @escaping () -> Bool) -> some View {
+        modifier(FluxPointerTargetModifier(id: id, focus: { _ in select() }, holds: isSelected))
+    }
+
+    /// The content of a page longer than the screen, inside its scroll
+    /// view: pushed against the top or the bottom of what shows of it, the
+    /// pointer stays there and the page scrolls (`FluxPointerScroll`).
+    func fluxPointerPage() -> some View {
+        modifier(FluxPointerPageModifier())
+    }
+}
+
+private struct FluxPointerPageModifier: ViewModifier {
+    @Environment(\.isEnabled) private var enabled
+    @Environment(\.fluxPointerLayer) private var layer
+    @State private var place = Place()
+
+    final class Place {
+        let token = UUID()
+        var frame = CGRect.null
+        weak var scroll: UIScrollView?
+    }
+
+    func body(content: Content) -> some View {
+        content
+            .background {
+                FluxScrollFinder { scroll in
+                    place.scroll = scroll
+                    record(enabled: enabled)
+                }
+                .allowsHitTesting(false)
+            }
+            .onGeometryChange(for: CGRect.self) { FluxPointerTargetModifier.shownFrame($0) } action: { frame in
+                place.frame = frame
+                record(enabled: enabled)
+            }
+            .onChange(of: enabled) { _, now in record(enabled: now) }
+            .onDisappear { FluxPointerTargets.shared.removePage(place.token) }
+    }
+
+    private func record(enabled: Bool) {
+        guard enabled, let layer, let scroll = place.scroll, !place.frame.isNull, !place.frame.isEmpty else {
+            FluxPointerTargets.shared.removePage(place.token)
+            return
+        }
+        FluxPointerTargets.shared.setPage(place.token, .init(frame: place.frame, layer: layer, scroll: scroll))
+    }
+}
+
+/// The scroll view that SwiftUI draws a page in, found from inside the page.
+private struct FluxScrollFinder: UIViewRepresentable {
+    let found: (UIScrollView) -> Void
+
+    func makeUIView(context: Context) -> Probe {
+        let probe = Probe()
+        probe.found = found
+        return probe
+    }
+
+    func updateUIView(_ probe: Probe, context: Context) {
+        probe.found = found
+    }
+
+    final class Probe: UIView {
+        var found: ((UIScrollView) -> Void)?
+
+        override init(frame: CGRect) {
+            super.init(frame: frame)
+            isUserInteractionEnabled = false
+        }
+
+        @available(*, unavailable) required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
+
+        override func didMoveToWindow() {
+            super.didMoveToWindow()
+            guard window != nil else { return }
+            var view = superview
+            while let current = view {
+                if let scroll = current as? UIScrollView {
+                    found?(scroll)
+                    return
+                }
+                view = current.superview
+            }
+        }
     }
 }
 
@@ -247,8 +455,11 @@ final class FluxPhaseRelay: ObservableObject {
 
 private struct FluxPhaseRoot<Content: View>: View {
     @ObservedObject var relay: FluxPhaseRelay
+    let layer: UUID
     let content: Content
-    var body: some View { content.environment(\.scenePhase, relay.phase) }
+    var body: some View {
+        content.environment(\.scenePhase, relay.phase).environment(\.fluxPointerLayer, layer)
+    }
 }
 
 private struct FluxPointerHost<Content: View>: UIViewControllerRepresentable {
@@ -258,8 +469,10 @@ private struct FluxPointerHost<Content: View>: UIViewControllerRepresentable {
 
     func makeUIViewController(context: Context) -> FluxPointerController {
         let relay = FluxPhaseRelay(phase)
+        let layer = UUID()
         // The screens are given once: their state lives in the controller.
-        let controller = FluxPointerController(root: AnyView(FluxPhaseRoot(relay: relay, content: content())), relay: relay)
+        let controller = FluxPointerController(root: AnyView(FluxPhaseRoot(relay: relay, layer: layer, content: content())),
+                                               relay: relay, layer: layer)
         controller.apply(settings)
         return controller
     }
@@ -272,6 +485,8 @@ private struct FluxPointerHost<Content: View>: UIViewControllerRepresentable {
 
 @MainActor final class FluxPointerController: UIViewController, UIGestureRecognizerDelegate {
     let relay: FluxPhaseRelay
+    /// What its screens' controls name as their pointer.
+    let layer: UUID
     private let screens: UIHostingController<AnyView>
     private let cursor = FluxPointerCursor()
     private let toast = FluxPointerToast()
@@ -294,6 +509,9 @@ private struct FluxPointerHost<Content: View>: UIViewControllerRepresentable {
     /// screens can be found. Until then a click is never held back.
     private var found = false
     private var overNothing = false
+    /// A page the pointer pushed draws itself again before the pointer
+    /// looks at what came under it.
+    private var settle: Task<Void, Never>?
 
     private lazy var pan: UIPanGestureRecognizer = {
         let pan = UIPanGestureRecognizer(target: self, action: #selector(panned(_:)))
@@ -343,8 +561,9 @@ private struct FluxPointerHost<Content: View>: UIViewControllerRepresentable {
         return click
     }()
 
-    init(root: AnyView, relay: FluxPhaseRelay) {
+    init(root: AnyView, relay: FluxPhaseRelay, layer: UUID) {
         self.relay = relay
+        self.layer = layer
         screens = UIHostingController(rootView: root)
         super.init(nibName: nil, bundle: nil)
     }
@@ -364,7 +583,7 @@ private struct FluxPointerHost<Content: View>: UIViewControllerRepresentable {
         view.addSubview(cursor)
         view.addSubview(toast)
         for recognizer in [pan, hold, playPauseWatch, arrows, idleClick] as [UIGestureRecognizer] { view.addGestureRecognizer(recognizer) }
-        FluxPointerState.shared.controller = self
+        FluxPointerState.shared.enter(self)
         #if FLUX_CATALOG_UI_TESTING
         probe.frame = CGRect(x: 0, y: 0, width: 1, height: 1)
         probe.isAccessibilityElement = true
@@ -375,14 +594,30 @@ private struct FluxPointerHost<Content: View>: UIViewControllerRepresentable {
         refresh()
     }
 
-    #if FLUX_CATALOG_UI_TESTING
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
-        guard ProcessInfo.processInfo.environment["FLUX_UI_SCENARIO"] == "pointer", !swept else { return }
-        swept = true
-        Task { @MainActor [weak self] in await self?.sweep() }
+        // Back above the others, or above for the first time: a panel that
+        // covered the screens has closed, or this one has just opened.
+        FluxPointerState.shared.enter(self)
+        refresh()
+        #if FLUX_CATALOG_UI_TESTING
+        // "pointer", or any screen with FLUX_UI_POINTER=1: a sweep of the
+        // pointer, once, over whatever pointer is on top as it goes.
+        let environment = ProcessInfo.processInfo.environment
+        let scenario = environment["FLUX_UI_SCENARIO"] ?? ""
+        guard scenario == "pointer" || environment["FLUX_UI_POINTER"] == "1", !FluxPointerState.shared.swept else { return }
+        FluxPointerState.shared.swept = true
+        Task { @MainActor in await FluxPointerController.sweep(scenario) }
+        #endif
     }
-    #endif
+
+    override func viewDidDisappear(_ animated: Bool) {
+        super.viewDidDisappear(animated)
+        // Covered by a panel of its own, or closed: the pointer above, if
+        // any, is the remote.
+        FluxPointerState.shared.leave(self)
+        hide(animated: false)
+    }
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
@@ -452,8 +687,18 @@ private struct FluxPointerHost<Content: View>: UIViewControllerRepresentable {
             return
         }
         guard let frame = frame(of: next) else { return }
-        // The control the pointer rests on: it stays under the thumb.
-        if frame.insetBy(dx: -24, dy: -24).contains(position) { return }
+        // The control the pointer rests on: it stays under the thumb, and
+        // once it has the focus a click on it no longer waits, whichever
+        // screen gave it the focus.
+        if frame.insetBy(dx: -24, dy: -24).contains(position) {
+            if let target = FluxPointerTargets.shared.target(at: position, tolerance: 14, in: layer),
+               target.holds == nil, FluxPointerTarget.same(frame, target.frame) {
+                overNothing = false
+                asking = nil
+                updateIdleClick()
+            }
+            return
+        }
         // Another hand moved the remote, the arrows, Play/Pause, a screen
         // that opened: the pointer goes along, onto what has the focus.
         move(to: CGPoint(x: frame.midX, y: frame.midY), animated: true)
@@ -517,25 +762,32 @@ private struct FluxPointerHost<Content: View>: UIViewControllerRepresentable {
         lastHover = now
         // The controls say where they stand (`fluxPointerTarget`), and their
         // screen gives them the focus.
-        let targets = FluxPointerTargets.shared
-        if let target = targets.target(at: position, tolerance: 14) {
+        if let target = FluxPointerTargets.shared.target(at: position, tolerance: 14, in: layer) {
             found = true
             // Until the control has taken the focus, a click would press
             // the one that still has it: the click waits for it.
-            overNothing = targets.focusedID != target.id
+            overNothing = !holds(target)
             updateIdleClick()
             guard overNothing else { asking = nil; return }
             // Asked again after a moment: the first request was declined.
             if let asking, asking.id == target.id {
                 guard now - asking.at > 0.3 else { return }
                 self.asking = (target.id, now)
+                FluxPointerState.shared.pointing = (target.id, ProcessInfo.processInfo.systemUptime)
                 target.focus(true)
             } else {
                 asking = (target.id, now)
+                FluxPointerState.shared.pointing = (target.id, ProcessInfo.processInfo.systemUptime)
                 target.focus(false)
             }
+            // A screen that moves its own selection has moved it already.
+            if target.holds?() == true {
+                overNothing = false
+                asking = nil
+                updateIdleClick()
+            }
             #if FLUX_CATALOG_UI_TESTING
-            asked += 1
+            FluxPointerState.shared.asked += 1
             #endif
             return
         }
@@ -566,10 +818,43 @@ private struct FluxPointerHost<Content: View>: UIViewControllerRepresentable {
     /// pointer, whose click no longer waits. Nothing is asked here: the
     /// screen may have moved the focus itself.
     func focusMoved() {
-        guard pointerActive, let target = FluxPointerTargets.shared.target(at: position, tolerance: 14) else { return }
-        overNothing = FluxPointerTargets.shared.focusedID != target.id
+        guard pointerActive, let target = FluxPointerTargets.shared.target(at: position, tolerance: 14, in: layer) else { return }
+        overNothing = !holds(target)
         if !overNothing { asking = nil }
         updateIdleClick()
+    }
+
+    /// A screen that moves its own selection moved it. Under the pointer,
+    /// the click presses it; moved by the arrows, the pointer goes along,
+    /// as it goes along with the focus.
+    func selectionMoved() {
+        guard pointerActive else { return }
+        let targets = FluxPointerTargets.shared
+        if let target = targets.target(at: position, tolerance: 14, in: layer), holds(target) {
+            overNothing = false
+            asking = nil
+            updateIdleClick()
+            return
+        }
+        guard let selected = targets.targets(in: layer).first(where: { $0.holds?() == true }) else { return }
+        move(to: CGPoint(x: selected.frame.midX, y: selected.frame.midY), animated: true)
+        overNothing = false
+        asking = nil
+        updateIdleClick()
+    }
+
+    /// A swipe moves the pointer only; the arrows still move a selection.
+    var movesSelection: Bool { !pointerActive || ProcessInfo.processInfo.systemUptime < arrowsUntil }
+
+    /// Whether `target` has the focus: its screen says so, or the control
+    /// that has the focus stands where it stands. The screens with a focus
+    /// of their own — a fiche, a panel, the settings — say nothing to the
+    /// window, whose focus state then names none of them.
+    private func holds(_ target: FluxPointerTargets.Target) -> Bool {
+        if let holds = target.holds { return holds() }
+        if FluxPointerTargets.shared.focusedID == target.id { return true }
+        guard let item = UIFocusSystem.focusSystem(for: view)?.focusedItem, let frame = frame(of: item) else { return false }
+        return FluxPointerTarget.same(frame, target.frame)
     }
 
     private func updateIdleClick() {
@@ -589,16 +874,54 @@ private struct FluxPointerHost<Content: View>: UIViewControllerRepresentable {
             let dx = Double(translation.x - lastTranslation.x), dy = Double(translation.y - lastTranslation.y)
             lastTranslation = translation
             let velocity = pan.velocity(in: view)
-            let speed = Double((velocity.x * velocity.x + velocity.y * velocity.y).squareRoot())
-            move(to: FluxPointerMotion(speed: settings.speed).step(from: position, dx: dx, dy: dy, velocity: speed, in: view.bounds),
-                 animated: false)
-            hover()
-            show()
+            thumbMoved(dx: dx, dy: dy, velocity: Double((velocity.x * velocity.x + velocity.y * velocity.y).squareRoot()))
         case .ended, .cancelled, .failed:
-            hover(force: true)
+            // A page that has just scrolled looks under the pointer itself.
+            if settle == nil { hover(force: true) }
             show()
         default:
             break
+        }
+    }
+
+    /// The thumb moved by `dx`, `dy`, at `velocity`.
+    private func thumbMoved(dx: Double, dy: Double, velocity: Double) {
+        let wanted = FluxPointerMotion(speed: settings.speed).move(from: position, dx: dx, dy: dy, velocity: velocity)
+        let pushed = push(to: wanted)
+        move(to: pushed.point, animated: false)
+        if pushed.scrolled { pageMoved() } else if settle == nil { hover() }
+        show()
+    }
+
+    /// The thumb takes the pointer to `wanted`: against the edge of a page
+    /// that goes on beyond it, the page scrolls by the rest of the way.
+    private func push(to wanted: CGPoint) -> (point: CGPoint, scrolled: Bool) {
+        let margin = CGFloat(FluxPointerScroll.margin)
+        guard let page = FluxPointerTargets.shared.page(at: position, in: layer), let scroll = page.scroll,
+              wanted.y > page.frame.maxY - margin || wanted.y < page.frame.minY + margin else { return (wanted, false) }
+        let inset = scroll.adjustedContentInset
+        let offset = scroll.contentOffset.y
+        let above = Double(offset + inset.top)
+        let below = Double(scroll.contentSize.height + inset.bottom - scroll.bounds.height - offset)
+        let push = FluxPointerScroll.push(from: position, to: wanted, page: page.frame, above: max(0, above), below: max(0, below))
+        guard push.scroll != 0 else { return (push.point, false) }
+        scroll.setContentOffset(CGPoint(x: scroll.contentOffset.x, y: offset + CGFloat(push.scroll)), animated: false)
+        return (push.point, true)
+    }
+
+    /// The page moved under the pointer: what it rested on went with it,
+    /// and a click waits until the pointer has looked again, once the page
+    /// has drawn itself where it now stands.
+    private func pageMoved() {
+        overNothing = true
+        asking = nil
+        updateIdleClick()
+        settle?.cancel()
+        settle = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 80_000_000)
+            guard !Task.isCancelled, let self else { return }
+            self.settle = nil
+            if self.pointerActive { self.hover(force: true) }
         }
     }
 
@@ -611,8 +934,8 @@ private struct FluxPointerHost<Content: View>: UIViewControllerRepresentable {
         toast.show(next == .pointer ? "Mode souris" : "Mode classique", symbol: next.symbol,
                    hint: "Maintenez Lecture/Pause pour changer")
         #if FLUX_CATALOG_UI_TESTING
-        toasts += 1
-        report()
+        FluxPointerState.shared.toasts += 1
+        FluxPointerState.shared.report()
         #endif
     }
 
@@ -685,12 +1008,42 @@ private struct FluxPointerHost<Content: View>: UIViewControllerRepresentable {
         hover(force: true)
     }
 
+    /// The thumb moves the pointer down a little, as far as the bottom of
+    /// the page and then the page itself, unless the control `name` shows
+    /// whole in the page: whether it does.
+    func benchPush(toward name: String) -> Bool {
+        guard pointerActive else { return false }
+        let targets = FluxPointerTargets.shared
+        guard let page = targets.page(at: position, in: layer) ?? targets.pages(in: layer).first else { return false }
+        if let target = benchTarget(name), target.frame.maxY < page.frame.maxY - CGFloat(FluxPointerScroll.margin) { return true }
+        if !page.frame.contains(position) { move(to: CGPoint(x: page.frame.midX, y: page.frame.maxY - 60), animated: false) }
+        thumbMoved(dx: 0, dy: 30, velocity: 0)
+        return false
+    }
+
     private let probe = UIView()
-    private var swept = false
-    private var trace: [String] = []
-    private var toasts = 0
-    /// Requests of the focus the pointer made.
-    private var asked = 0
+
+    /// What holds the remote, as the pointer sees it: the place its screen
+    /// selected, or the control of its screens that has the focus.
+    func benchHeldID() -> String? {
+        let list = FluxPointerTargets.shared.targets(in: layer)
+        if let selected = list.first(where: { $0.holds?() == true }) { return selected.id }
+        guard let item = UIFocusSystem.focusSystem(for: view)?.focusedItem, let frame = frame(of: item) else { return nil }
+        return list.filter { $0.holds == nil && FluxPointerTarget.same(frame, $0.frame) }
+            .min { $0.frame.width * $0.frame.height < $1.frame.width * $1.frame.height }?.id
+    }
+
+    /// The control `name` of these screens, on screen: a name that ends
+    /// with `*` stands for the first one, as it is read, whose name begins so.
+    func benchTarget(_ name: String) -> FluxPointerTargets.Target? {
+        FluxPointerTargets.shared.targets(in: layer)
+            .filter { Self.benchMatches($0.id, name) && view.bounds.contains(CGPoint(x: $0.frame.midX, y: $0.frame.midY)) }
+            .min { abs($0.frame.minY - $1.frame.minY) > 2 ? $0.frame.minY < $1.frame.minY : $0.frame.minX < $1.frame.minX }
+    }
+
+    static func benchMatches(_ id: String, _ name: String) -> Bool {
+        name.hasSuffix("*") ? id.hasPrefix(String(name.dropLast())) : id == name
+    }
 
     /// What the search of the controls sees, for a sweep that crosses none.
     private func diagnosis() -> String {
@@ -710,55 +1063,159 @@ private struct FluxPointerHost<Content: View>: UIViewControllerRepresentable {
             chain.append(name(current) + (current.focusItemContainer == nil ? "" : "+"))
             environment = current.parentFocusEnvironment
         }
-        return "diag:targets=\(FluxPointerTargets.shared.count);root=\(name(root));top=\(top);all=\(all);focused=\(name(focused));env=\(chain.joined(separator: ">"))"
+        let mine = FluxPointerTargets.shared.targets(in: layer).count
+        return "diag:targets=\(mine)/\(FluxPointerTargets.shared.count);root=\(name(root));top=\(top);all=\(all);focused=\(name(focused));env=\(chain.joined(separator: ">"))"
     }
 
-    /// The mode and what covers the screens; then what a sweep crossed.
-    private func report() {
-        let state = settings.mode == .classic ? "classic"
-            : FluxPointerState.shared.suspended ? "suspended" : pointerActive ? "active" : "covered"
-        probe.accessibilityValue = "\(state) toasts:\(toasts)" + (trace.isEmpty ? "" : " trace:" + trace.joined(separator: ","))
+    /// The mode and what covers the screens, as the pointer on top says;
+    /// then what a sweep crossed.
+    fileprivate func report() {
+        let shared = FluxPointerState.shared
+        let top = shared.controller ?? self
+        let state = top.settings.mode == .classic ? "classic"
+            : shared.suspended ? "suspended" : top.pointerActive ? "active" : "covered"
+        probe.accessibilityValue = "\(state) toasts:\(shared.toasts)"
+            + (shared.trace.isEmpty ? "" : " trace:" + shared.trace.joined(separator: ","))
     }
 
-    /// "pointer": the pointer crosses the content, then the bar, as a thumb
-    /// would; each control it rests on must take the focus. It ends on the
-    /// first title it crossed, for the click of the flow.
-    private func sweep() async {
+    /// A step of a sweep: the pointer rests on each control of `via`, then
+    /// on `rests`, where it stays for the click of the flow. A step waits
+    /// for its first control to show: the click of the step before opens it.
+    private struct SweepStep {
+        let via: [String]
+        let rests: String
+    }
+
+    /// What the pointer crosses, screen by screen, with FLUX_UI_POINTER=1.
+    private static func steps(for scenario: String) -> [SweepStep] {
+        switch scenario {
+        // The fiche of a film, then the panel of its lists, which the click
+        // on « favorite » opens.
+        case "movie":
+            return [SweepStep(via: ["play"], rests: "favorite"),
+                    SweepStep(via: ["create"], rests: "list-0")]
+        // Graphismes: a preset; a switch below the bottom of the page, which
+        // the pointer pushes; the column, which shows Interface; the key of
+        // the studio there, then in the studio a screen and a theme.
+        case "settings-graphics":
+            // A theme other than the one kept, so that the click changes it.
+            let theme = FluxDockTheme.Family.allCases.flatMap(\.themes).first { $0 != FluxDockTheme.defaultValue } ?? .defaultValue
+            return [SweepStep(via: ["preset-*", below + "toggle-*", "settings-page-appearance"], rests: "studio-dock"),
+                    SweepStep(via: ["studio-scope-live"], rests: "studio-theme-" + theme.rawValue)]
+        // The languages over the picture: an audio, then a subtitle.
+        case "player-tracks":
+            return [SweepStep(via: ["track-audio-a2"], rests: "track-sub-s1")]
+        default:
+            return []
+        }
+    }
+
+    /// The sweep of a bench, on the pointer on top as it goes: a panel that
+    /// covers the screen brings its own.
+    static func sweep(_ scenario: String) async {
         // A hosted machine answers several times more slowly; the flows say
         // how much (FLUX_UI_PATIENCE), and each rest of the pointer is as
         // much longer.
         let patience = min(10, max(1, Double(ProcessInfo.processInfo.environment["FLUX_UI_PATIENCE"] ?? "") ?? 1))
         func rest(_ seconds: Double) async { try? await Task.sleep(nanoseconds: UInt64(seconds * patience * 1_000_000_000)) }
         await rest(4)
+        let shared = FluxPointerState.shared
+        guard scenario != "pointer" else {
+            await shared.controller?.sweepLive(patience: patience)
+            return
+        }
+        for (number, step) in steps(for: scenario).enumerated() {
+            for (index, name) in step.via.enumerated() {
+                // A control below the bottom of its page: the pointer pushes
+                // the page down to it first.
+                let control = name.hasPrefix(below) ? String(name.dropFirst(below.count)) : name
+                if control != name { await Self.push(toward: control, patience: patience) }
+                // The first control of a step after the first shows once the
+                // flow has clicked.
+                let held = await Self.rest(on: control, patience: patience, waiting: number > 0 && index == 0 ? 60 : 6)
+                shared.trace.append(held ?? "miss:" + name)
+                shared.report()
+            }
+            let held = await Self.rest(on: step.rests, patience: patience, waiting: step.via.isEmpty && number > 0 ? 60 : 6)
+            shared.trace.append((number == 0 ? "end" : "end\(number + 1)") + "=" + (held ?? "miss:" + step.rests))
+            shared.report()
+        }
+    }
+
+    /// A step of a sweep toward a control below the bottom of its page.
+    private static let below = "below:"
+
+    /// The pointer pushes the page down until the control `name` shows.
+    private static func push(toward name: String, patience: Double) async {
+        let clock = ProcessInfo.processInfo
+        let end = clock.systemUptime + 8 * patience
+        while clock.systemUptime < end {
+            if let top = FluxPointerState.shared.controller, top.benchPush(toward: name) { return }
+            try? await Task.sleep(nanoseconds: 40_000_000)
+        }
+    }
+
+    /// Moves the pointer onto the control `name` of the pointer on top, once
+    /// it shows, and waits for it to hold the remote: what holds it then.
+    private static func rest(on name: String, patience: Double, waiting seconds: Double) async -> String? {
+        let clock = ProcessInfo.processInfo
+        let shown = clock.systemUptime + seconds * patience
+        var found: (controller: FluxPointerController, target: FluxPointerTargets.Target)?
+        while found == nil, clock.systemUptime < shown {
+            if let top = FluxPointerState.shared.controller, top.pointerActive, let target = top.benchTarget(name) {
+                found = (top, target)
+            } else {
+                try? await Task.sleep(nanoseconds: 100_000_000)
+            }
+        }
+        guard let controller = found?.controller, let target = found?.target else { return nil }
+        // What has just opened settles first.
+        try? await Task.sleep(nanoseconds: UInt64(0.4 * patience * 1_000_000_000))
+        let frame = controller.benchTarget(name)?.frame ?? target.frame
+        controller.benchMove(to: CGPoint(x: frame.midX, y: frame.midY))
+        let held = clock.systemUptime + 3 * patience
+        while clock.systemUptime < held, !(controller.benchHeldID().map { benchMatches($0, name) } ?? false) {
+            try? await Task.sleep(nanoseconds: 100_000_000)
+        }
+        try? await Task.sleep(nanoseconds: UInt64(0.3 * patience * 1_000_000_000))
+        return controller.benchHeldID()
+    }
+
+    /// "pointer": the pointer crosses the content, then the bar, as a thumb
+    /// would; each control it rests on must take the focus. It ends on the
+    /// first title it crossed, for the click of the flow.
+    private func sweepLive(patience: Double) async {
+        func rest(_ seconds: Double) async { try? await Task.sleep(nanoseconds: UInt64(seconds * patience * 1_000_000_000)) }
+        let shared = FluxPointerState.shared
         let bounds = view.bounds
         let rows = [bounds.height * 0.42, bounds.height * 0.55, bounds.maxY - 150, bounds.maxY - 125, bounds.maxY - 100]
         var title: CGPoint?
         // What held the remote at launch is no control crossed: only what
         // changes from now on counts.
-        var last = FluxPointerState.shared.benchFocus
+        var last = shared.benchFocus
         for y in rows {
             for step in 0...10 {
                 let point = CGPoint(x: bounds.width * (0.2 + 0.06 * CGFloat(step)), y: y)
                 benchMove(to: point)
                 await rest(0.3)
-                guard let id = FluxPointerState.shared.benchFocus, id != last else { continue }
+                guard let id = shared.benchFocus, id != last else { continue }
                 last = id
-                trace.append(id)
+                shared.trace.append(id)
                 if title == nil, id.hasPrefix("fixture-") { title = point }
             }
         }
-        if !trace.contains(where: { $0.hasPrefix("fixture-") }) { trace.append(diagnosis()) }
-        trace.append("hover=asked:\(asked)")
+        if !shared.trace.contains(where: { $0.hasPrefix("fixture-") }) { shared.trace.append(diagnosis()) }
+        shared.trace.append("hover=asked:\(shared.asked)")
         if let title {
             benchMove(to: title)
             // Back over the title, until the focus has followed.
-            for _ in 0..<Int(30 * patience) where !(FluxPointerState.shared.benchFocus ?? "").hasPrefix("fixture-") {
+            for _ in 0..<Int(30 * patience) where !(shared.benchFocus ?? "").hasPrefix("fixture-") {
                 try? await Task.sleep(nanoseconds: 100_000_000)
             }
             await rest(0.3)
         }
-        trace.append("end=" + (FluxPointerState.shared.benchFocus ?? "none"))
-        report()
+        shared.trace.append("end=" + (shared.benchFocus ?? "none"))
+        shared.report()
     }
     #endif
 }

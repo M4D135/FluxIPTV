@@ -71,6 +71,8 @@ Le commit suivant corrige les deux :
 
 Ce commit ne change rien à l’application sur Mac, iPhone ni Apple TV. Le dossier `FluxIPTV-0.9.4` livré reste valable.
 
+La CI de ce correctif (`647d5ae`, exécutions 45931740570 sur `main` et 45931740915 sur la branche) est verte : les six travaux passent des deux côtés. Les tests du cœur passent sous Linux : 200 tests, aucun échec.
+
 ## Ce que les bancs vérifient de nouveau
 
 - **Retour depuis une liste.** Le parcours « Menu retrace les écrans » passe maintenant par la barre : depuis la liste des chaînes, puis depuis les films, Menu donne d’abord la télécommande au bouton Retour de la barre, et seulement le Menu suivant change d’écran, jusqu’à l’accueil.

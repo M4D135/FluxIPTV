@@ -670,11 +670,17 @@ private struct TVProbeReadout: View {
             folder["fluxiptv.fixture.dockFan"] = DockEntry.stack(listID: FavoritePresets.defaultID(for: .movie)).id
         }
         // The mode of the remote is saved by Play/Pause held down: each
-        // launch starts from the classic one, or from the pointer it asks for.
+        // launch starts from the classic one, or from the pointer it asks
+        // for: "pointer", or any screen with FLUX_UI_POINTER=1.
         UserDefaults.standard.removeObject(forKey: FluxRemoteMode.storageKey)
-        if ProcessInfo.processInfo.environment["FLUX_UI_SCENARIO"] == "pointer" {
+        if ProcessInfo.processInfo.environment["FLUX_UI_SCENARIO"] == "pointer"
+            || ProcessInfo.processInfo.environment["FLUX_UI_POINTER"] == "1" {
             UserDefaults.standard.set(FluxRemoteMode.pointer.rawValue, forKey: FluxRemoteMode.storageKey)
         }
+        // The theme of the dock is chosen in a flow of the studio: each
+        // launch starts from the one by default.
+        UserDefaults.standard.removeObject(forKey: FluxDockTheme.storageKey)
+        UserDefaults.standard.removeObject(forKey: FluxDockThemeChoices.storageKey)
         UserDefaults.standard.setVolatileDomain(folder.merging([
             // Liquid Glass is what the application shows by default: the
             // captures and the focus checks run on it.

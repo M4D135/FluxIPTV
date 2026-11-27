@@ -333,6 +333,83 @@ final class TVRemoteNavigationTests: XCTestCase {
         print("PASS: TV_REMOTE the pointer gave the focus to the channels and the icons it crossed, and its click watched the channel under it")
     }
 
+    /// The pointer in the fiche of a film and in the panel of its lists,
+    /// whose controls take the focus from the fiche and the panel, not from
+    /// the screen: the click presses what the pointer rests on, at once.
+    @MainActor
+    func testThePointerClicksTheFicheAndThePanelOfItsLists() {
+        let app = launch("movie", environment: ["FLUX_UI_POINTER": "1"])
+        defer { app.terminate() }
+        let state = element("flux-pointer-state", in: app)
+        var trace = pointerTrace(until: "end=", on: state)
+        XCTAssertTrue(trace.contains("play"), "The pointer did not give the focus to Lecture: \(trace)")
+        XCTAssertEqual(trace.last, "end=favorite", "The pointer does not rest on the key of the lists: \(trace)")
+        retainScreenshot("pointer-fiche-01-lists-key", in: app)
+        XCUIRemote.shared.press(.select)
+        let list = element("favorite-list-0", in: app)
+        XCTAssertTrue(appears(list, timeout: 10), "The click did not open the lists of the film.")
+        trace = pointerTrace(until: "end2=", on: state)
+        XCTAssertTrue(trace.contains("create"), "The pointer did not give the focus to the row of a new list: \(trace)")
+        XCTAssertEqual(trace.last, "end2=list-0", "The pointer does not rest on the first list: \(trace)")
+        let before = seen(list)?.value as? String ?? ""
+        XCUIRemote.shared.press(.select)
+        assertCondition(NSPredicate(format: "value != %@", before), on: list, in: app)
+        retainScreenshot("pointer-fiche-02-list-chosen", in: app)
+        print("PASS: TV_REMOTE the pointer pressed the key of the lists in the fiche, then chose a list in the panel, each at the first click")
+    }
+
+    /// "pointeur aussi dans les Réglages" (David, 27/11): the content of a
+    /// page, the column, which shows the page the pointer rests on, and the
+    /// studio, which covers the screen with a pointer of its own.
+    @MainActor
+    func testThePointerWalksTheSettingsAndTheStudio() {
+        let app = launch("settings-graphics", environment: ["FLUX_UI_POINTER": "1"])
+        defer { app.terminate() }
+        let state = element("flux-pointer-state", in: app)
+        var trace = pointerTrace(until: "end=", on: state)
+        XCTAssertTrue(trace.contains { $0.hasPrefix("preset-") }, "The pointer did not give the focus to a preset: \(trace)")
+        XCTAssertTrue(trace.contains { $0.hasPrefix("toggle-") }, "The pointer did not give the focus to a switch: \(trace)")
+        XCTAssertTrue(trace.contains("settings-page-appearance"), "The pointer did not enter the column on Interface: \(trace)")
+        XCTAssertEqual(trace.last, "end=studio-dock", "The pointer does not rest on the key of the studio: \(trace)")
+        XCTAssertEqual(seen(element("settings-page-appearance", in: app))?.value as? String, "Sélectionné",
+                       "The column does not show the page the pointer rested on.")
+        retainScreenshot("pointer-settings-01-studio-key", in: app)
+        XCUIRemote.shared.press(.select)
+        XCTAssertTrue(appears(element("appearance-studio", in: app), timeout: 10), "The click did not open the studio.")
+        trace = pointerTrace(until: "end2=", on: state)
+        XCTAssertTrue(trace.contains("studio-scope-live"), "The pointer did not move the cursor of the studio: \(trace)")
+        let theme = (trace.last ?? "").replacingOccurrences(of: "end2=", with: "")
+        XCTAssertTrue(theme.hasPrefix("studio-theme-"), "The pointer does not rest on a theme: \(trace)")
+        XCTAssertNotEqual(seen(element(theme, in: app))?.value as? String, "Choisi", "The theme was chosen before the click.")
+        retainScreenshot("pointer-settings-02-studio-theme", in: app)
+        XCUIRemote.shared.press(.select)
+        assertCondition(NSPredicate(format: "value == 'Choisi'"), on: element(theme, in: app), in: app)
+        // Menu closes the studio: the settings have the pointer again.
+        XCUIRemote.shared.press(.menu)
+        assertCondition("exists == false", on: element("appearance-studio", in: app), in: app)
+        assertCondition(NSPredicate(format: "value BEGINSWITH 'active'"), on: state, in: app)
+        retainScreenshot("pointer-settings-03-back", in: app)
+        print("PASS: TV_REMOTE the pointer walked a page of the settings and its column, opened the studio, chose a theme there and came back")
+    }
+
+    /// Over the picture the thumb is the picture's; a panel over it, the
+    /// languages, gives it back to the pointer.
+    @MainActor
+    func testThePointerChoosesTheLanguagesOverThePicture() {
+        let app = launch("player-tracks", environment: ["FLUX_UI_POINTER": "1"])
+        defer { app.terminate() }
+        let state = element("flux-pointer-state", in: app)
+        let trace = pointerTrace(until: "end=", on: state)
+        XCTAssertTrue(trace.contains("track-audio-a2"), "The pointer did not give the focus to an audio: \(trace)")
+        XCTAssertEqual(trace.last, "end=track-sub-s1", "The pointer does not rest on a subtitle: \(trace)")
+        let subtitle = element("track-sub-s1", in: app)
+        XCTAssertNotEqual(seen(subtitle)?.value as? String, "Sélectionnée")
+        retainScreenshot("pointer-tracks-01-subtitle", in: app)
+        XCUIRemote.shared.press(.select)
+        assertCondition(NSPredicate(format: "value == 'Sélectionnée'"), on: subtitle, in: app)
+        print("PASS: TV_REMOTE the pointer took over from the picture under the languages, and its click chose the subtitle under it")
+    }
+
     @MainActor
     func testFilmFicheHoldsTheRemoteAndGivesItBack() {
         let app = launch("movies")
@@ -1296,6 +1373,19 @@ final class TVRemoteNavigationTests: XCTestCase {
     }()
     /// Longer than the commands of the player stay.
     private static var pastTheCommands: UInt32 { UInt32((5 * patience + 2).rounded(.up)) }
+
+    /// What a sweep of the pointer crossed, once it has reached `mark`: a
+    /// bench has no thumb, the app moves the pointer itself.
+    @MainActor
+    private func pointerTrace(until mark: String, on state: XCUIElement,
+                              file: StaticString = #filePath, line: UInt = #line) -> [String] {
+        let reached = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value CONTAINS %@", mark), object: state)
+        let waited = XCTWaiter.wait(for: [reached], timeout: 120 * Self.patience)
+        let value = seen(state)?.value as? String ?? ""
+        print("TV_REMOTE pointer: \(value)")
+        XCTAssertEqual(waited, .completed, "The sweep of the pointer did not reach \(mark): \(value)", file: file, line: line)
+        return value.components(separatedBy: "trace:").last?.components(separatedBy: ",") ?? []
+    }
 
     @MainActor
     private func launch(_ scenario: String, environment: [String: String] = [:]) -> XCUIApplication {

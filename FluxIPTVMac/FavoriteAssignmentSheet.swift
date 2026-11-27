@@ -290,6 +290,7 @@ struct FavoriteAssignmentSheet: View {
             TextField(prompt, text: text,
                       prompt: Text(prompt).foregroundStyle(focused.wrappedValue ? Color.black.opacity(0.55) : Color.white.opacity(0.55)))
                 .textFieldStyle(.plain).font(Desk.font(.body)).focused(focused)
+                .fluxPointerTarget(identifier, focused)
             #else
             TextField(prompt, text: text, prompt: Text(prompt).foregroundStyle(Color.white.opacity(0.55)))
                 .textFieldStyle(.plain).font(Desk.font(.body)).focused(focused)
@@ -521,7 +522,7 @@ private struct PanelFocus: ViewModifier {
 
     func body(content: Content) -> some View {
         #if os(tvOS)
-        content.focused(focus, equals: id).focusEffectDisabled()
+        content.focused(focus, equals: id).focusEffectDisabled().fluxPointerTarget(id, focus)
         #else
         content.focusable().focused(focus, equals: id).focusEffectDisabled()
         #endif
