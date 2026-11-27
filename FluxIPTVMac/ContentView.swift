@@ -4527,8 +4527,9 @@ extension FluxScreen {
     }
 
     /// At the bottom the bar is the Dock of a Mac, in the middle of the
-    /// window. Back and Home stand on its left and the clock on its right:
-    /// nothing of its strip is lost, and the columns need no header for them.
+    /// window. Back and Home stand on its left, and the plan of the screen
+    /// in the right corner: nothing of its strip is lost, and the columns
+    /// need no header for them.
     var barFlanks: Bool { dockPosition == .bottom }
     /// Controls of the bar that stand before its destinations.
     var barLeadIDs: [String] {
@@ -4545,8 +4546,8 @@ extension FluxScreen {
         let keyboard: String?
         /// The zones of the screen are shown, and whether the dock is the one chosen.
         let zone: Bool?
-        /// Room that the dock leaves to its flanks: 0 the date and the
-        /// name of the screen behind, 1 no date, 2 neither.
+        /// Room that the dock leaves to its flanks: 1 Back keeps the name
+        /// of the screen behind, 2 Back and Home alone.
         let flank: Int
         let dock: DockPlan
         let fan: DockFan?
@@ -4564,8 +4565,7 @@ extension FluxScreen {
         let fan = dockFanModel(plan)
         let plate = FluxDockMetrics(.bottom, shrink: plan.shrink)
             .length(count: plan.arrangement.entries.count, breaks: plan.arrangement.breaks.count, vertical: false)
-        let flank = plate <= deskWidth - 2 * Desk.pt(Self.barFlank + 42) && deskWidth >= Desk.pt(1240) ? 0
-            : plate <= deskWidth - 2 * Desk.pt(Self.barFlank) ? 1 : 2
+        let flank = plate <= deskWidth - 2 * Desk.pt(Self.barFlank) ? 1 : 2
         let key = BarKey(backTarget: deskBackTarget, home: deskBackPlace != nil, selection: dockSelection,
                          keyboard: focusShown ? shownFocusID : nil,
                          zone: zoneMode && deskZoneEntry(.dock) != nil ? zoneFocus == .dock : nil,
@@ -4604,23 +4604,11 @@ extension FluxScreen {
                 #if os(tvOS)
                 .focusSection()
                 #endif
-            HStack(spacing: Desk.pt(10)) {
-                // Low, beside the dock: the plan of the screen and its key.
-                if let map { DeskMiniMap(model: map).equatable().padding(.leading, Desk.pt(18)) }
+            // In the right corner, where the clock was: the plan of the
+            // screen and the key that goes to its next part.
+            HStack(spacing: 0) {
                 Spacer(minLength: 0)
-                TimelineView(.everyMinute) { context in
-                    HStack(spacing: Desk.pt(10)) {
-                        if flank == 0 {
-                            Text(context.date.formatted(.dateTime.weekday(.wide).day().month(.wide)))
-                                .font(Desk.font(.callout, .medium)).foregroundStyle(.white.opacity(0.72))
-                        }
-                        Text(context.date.formatted(.dateTime.hour().minute()))
-                            .font(Desk.font(.callout, .bold).monospacedDigit())
-                    }
-                    .padding(.horizontal, Desk.pt(15)).frame(height: Desk.pt(40))
-                    .fluxGlass(radius: Desk.pt(20))
-                }
-                .accessibilityHidden(true)
+                if let map { DeskMiniMap(model: map).equatable() }
             }
             .frame(maxWidth: .infinity).frame(height: plate)
             .padding(.trailing, Desk.pt(24))
@@ -4823,7 +4811,7 @@ extension FluxScreen {
         // Before the window is measured nothing is known to be too long.
         guard deskWidth > 0, browserHeight > 0 else { return .greatestFiniteMagnitude }
         switch position {
-        // Between Back and the clock, which keep the same width on each side.
+        // Between Back and the plan of the screen, which keep the same width on each side.
         case .bottom: return max(0, deskWidth - 2 * Desk.pt(Self.barFlankBare))
         case .top, .corner: return max(0, deskWidth - Desk.pt(48) - 2 * FluxDockMetrics(position).growth)
         case .leading, .trailing: return max(0, browserHeight - Desk.pt(56) - 2 * FluxDockMetrics(position).growth)

@@ -8,7 +8,11 @@ import SwiftUI
 // fous-le ailleurs et fais-le plus discret, genre bas milieu et plus petit"
 // (David, 26/11). The part of the screen that holds the remote shows a thin
 // edge, crossed once by a glint as it is entered; at the foot of the screen
-// a small plan lights the same part, beside the key that goes to the next.
+// a plan lights the same part, beside the key that goes to the next.
+// "vire l'heure on s'en fout" ; "l'indicateur de zone fais le plus gros et
+// bien dans le coin bas droite du coup qui remplacera l'heure" (David, 27/11):
+// beside a dock at the bottom, the plan stands in the corner where the clock
+// was, as large as the clock was.
 
 /// What the small plan of the screen shows.
 struct DeskMapModel: Equatable {
@@ -24,17 +28,16 @@ struct DeskMapModel: Equatable {
 struct DeskMiniMap: View, Equatable {
     let model: DeskMapModel
 
-    private static let width: CGFloat = 30
-    private static let height: CGFloat = 17
+    private static let width: CGFloat = 54
+    private static let height: CGFloat = 30
 
     var body: some View {
-        HStack(spacing: Desk.pt(6)) {
+        HStack(spacing: Desk.pt(10)) {
             plan
             key
         }
-        .padding(.horizontal, Desk.pt(7)).padding(.vertical, Desk.pt(4))
-        .background(.black.opacity(0.30), in: Capsule())
-        .opacity(0.8)
+        .padding(.horizontal, Desk.pt(14)).frame(height: Desk.pt(44))
+        .fluxGlass(radius: Desk.pt(22))
         .accessibilityElement(children: .ignore)
         #if os(tvOS)
         .accessibilityLabel("Lecture/Pause : partie suivante de l’écran")
@@ -54,21 +57,21 @@ struct DeskMiniMap: View, Equatable {
             Text("⇥").fontWeight(.heavy)
             #endif
         }
-        .font(.system(size: Desk.pt(10), weight: .bold))
-        .foregroundStyle(.white.opacity(0.8))
-        .padding(.horizontal, Desk.pt(4)).frame(minHeight: Desk.pt(15))
-        .overlay(RoundedRectangle(cornerRadius: Desk.pt(4), style: .continuous)
-            .strokeBorder(.white.opacity(0.45), lineWidth: 1))
+        .font(.system(size: Desk.pt(17), weight: .bold))
+        .foregroundStyle(.white.opacity(0.85))
+        .padding(.horizontal, Desk.pt(7)).frame(minHeight: Desk.pt(27))
+        .overlay(RoundedRectangle(cornerRadius: Desk.pt(7), style: .continuous)
+            .strokeBorder(.white.opacity(0.5), lineWidth: 1.5))
     }
 
     private var plan: some View {
         let w = Desk.pt(Self.width), h = Desk.pt(Self.height)
         return ZStack(alignment: .topLeading) {
-            RoundedRectangle(cornerRadius: Desk.pt(3), style: .continuous)
-                .strokeBorder(.white.opacity(0.42), lineWidth: 1)
+            RoundedRectangle(cornerRadius: Desk.pt(5), style: .continuous)
+                .strokeBorder(.white.opacity(0.45), lineWidth: 1.5)
             ForEach(model.parts, id: \.self) { part in
                 let frame = Self.frame(part, dock: model.dock, in: CGSize(width: w, height: h))
-                RoundedRectangle(cornerRadius: 1.5, style: .continuous)
+                RoundedRectangle(cornerRadius: Desk.pt(2.5), style: .continuous)
                     .fill(.white.opacity(part == model.active ? 0.95 : 0.24))
                     .frame(width: frame.width, height: frame.height)
                     .offset(x: frame.minX, y: frame.minY)
@@ -79,8 +82,10 @@ struct DeskMiniMap: View, Equatable {
     }
 
     /// Where each part stands on a screen of `size`, the bar on its edge.
+    /// Margins and the bar grow with the plan, first drawn 30 points wide.
     static func frame(_ part: DeskZone, dock: FluxDockPosition, in size: CGSize) -> CGRect {
-        let inset: CGFloat = 2.5, gap: CGFloat = 1.5, bar: CGFloat = 3
+        let scale = max(1, size.width / 30)
+        let inset = 2.5 * scale, gap = 1.5 * scale, bar = 3 * scale
         var area = CGRect(origin: .zero, size: size).insetBy(dx: inset, dy: inset)
         var barRect: CGRect
         switch dock {
@@ -99,7 +104,7 @@ struct DeskMiniMap: View, Equatable {
         }
         // Under the column, the bar is as wide as the column.
         if dock == .corner { barRect = CGRect(x: area.minX, y: barRect.minY, width: area.width * 0.22, height: bar) }
-        let top = CGRect(x: area.minX, y: area.minY, width: area.width, height: 2.5)
+        let top = CGRect(x: area.minX, y: area.minY, width: area.width, height: 2.5 * scale)
         let below = CGRect(x: area.minX, y: top.maxY + gap, width: area.width, height: area.maxY - top.maxY - gap)
         let column = CGRect(x: below.minX, y: below.minY, width: below.width * 0.22, height: below.height)
         let rest = CGRect(x: column.maxX + gap, y: below.minY, width: below.maxX - column.maxX - gap, height: below.height)

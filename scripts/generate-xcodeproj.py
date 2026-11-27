@@ -122,7 +122,7 @@ def generate(platforms, project_name):
             settings = f"""
             ASSETCATALOG_COMPILER_APPICON_NAME = {icon};
             CODE_SIGN_STYLE = Automatic;
-            CURRENT_PROJECT_VERSION = 44;
+            CURRENT_PROJECT_VERSION = 45;
             GENERATE_INFOPLIST_FILE = NO;
             INFOPLIST_FILE = FluxIPTVMac/{p['plist']};
             SDKROOT = {p['sdk']};
@@ -131,7 +131,7 @@ def generate(platforms, project_name):
             {p['extra']}
             LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/{'../Frameworks' if p['suffix'] == 'mac' else 'Frameworks'}";
             {'ENABLE_DEBUG_DYLIB = NO;' if p['suffix'] == 'mac' else ''}
-            MARKETING_VERSION = 0.9.6;
+            MARKETING_VERSION = 0.9.7;
             PRODUCT_BUNDLE_IDENTIFIER = {p['bundle']};
             PRODUCT_NAME = "$(TARGET_NAME)";
             SWIFT_VERSION = 5.0;
