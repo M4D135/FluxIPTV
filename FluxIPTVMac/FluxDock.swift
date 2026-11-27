@@ -430,8 +430,11 @@ struct FluxDock: View {
     }
     /// The icon whose whole name is shown above it, as the Dock of a Mac
     /// names what the pointer rests on. A destination has its name under it.
+    /// The home screen names it in large above its bar: a bubble there sat
+    /// on that name, or on the row above ("collision les titres trop bas",
+    /// David, 27/11).
     private var namedID: String? {
-        guard fan == nil, dragged == nil else { return nil }
+        guard fan == nil, dragged == nil, !metrics.hero else { return nil }
         #if os(tvOS)
         let id = showsFocus ? shownID : nil
         #else
@@ -595,6 +598,7 @@ struct FluxDock: View {
         if let named, let index = tiles.firstIndex(where: { $0.id == named }), centers.indices.contains(index) {
             let rise = (vertical ? size.width : size.height) * CGFloat(scales[index] - 1) + metrics.label * 1.1
             FluxDockBubble(text: tiles[index].full, metrics: metrics)
+                .accessibilityIdentifier("flux-dock-bubble")
                 .fixedSize()
                 .modifier(FluxDockAnchored(placement: placement, along: centers[index], rise: rise, metrics: metrics, centred: true))
                 .allowsHitTesting(false)

@@ -159,8 +159,9 @@ final class SpaceAppearanceTests: XCTestCase {
         choices.set(FluxBackdropPlan(mode: .pictures, pictures: ["art:reglages-3"], interval: .seconds15, order: .shuffled, transition: .cut), for: .home)
         let stored = choices.stored
         XCTAssertEqual(FluxBackdropChoices(stored: stored), choices)
-        XCTAssertEqual(FluxBackdropChoices(stored: ""), FluxBackdropChoices())
-        XCTAssertEqual(FluxBackdropChoices(stored: "{broken"), FluxBackdropChoices())
+        // Nothing saved, or nothing readable: the pictures of a new install.
+        XCTAssertEqual(FluxBackdropChoices(stored: ""), .defaults)
+        XCTAssertEqual(FluxBackdropChoices(stored: "{broken"), .defaults)
         // A plan saved before the transitions existed takes the fade.
         let older = #"{"all":{"mode":"plain"},"own":{"home":{"mode":"pictures","pictures":["room:cinema-zen"],"interval":300}}}"#
         let read = FluxBackdropChoices(stored: older)
@@ -168,6 +169,31 @@ final class SpaceAppearanceTests: XCTestCase {
         XCTAssertEqual(read.plan(for: .home).interval, .minutes5)
         XCTAssertEqual(read.plan(for: .home).transition, .fade)
         XCTAssertEqual(read.plan(for: .home).order, .listed)
+    }
+
+    /// "garde mes preset d'images de fond pour le par defaut" (David, 27/11):
+    /// a new install shows the pictures chosen on his Apple TV.
+    func testANewInstallShowsThePicturesChosenOnTheAppleTV() {
+        let defaults = FluxBackdropChoices.defaults
+        XCTAssertEqual(defaults.all, .automatic)
+        let chosen: [FluxSpace: String] = [.home: "recherche-2", .live: "tv-1", .movie: "films-1",
+                                           .series: "series-2", .search: "recherche-1", .settings: "reglages-3"]
+        for space in FluxSpace.allCases {
+            let plan = defaults.plan(for: space)
+            XCTAssertTrue(defaults.keepsOwn(space), "\(space)")
+            XCTAssertEqual(plan.mode, .pictures, "\(space)")
+            // Each one is a picture the app holds.
+            XCTAssertEqual(plan.shown, [.art(chosen[space] ?? "")], "\(space)")
+        }
+        // What is saved from them comes back the same.
+        XCTAssertEqual(FluxBackdropChoices(stored: defaults.stored), defaults)
+    }
+
+    /// The choices themselves, as the Apple TV of the living room saved them
+    /// on 27/11 and as they were read from it: the defaults are these.
+    func testTheDefaultsAreWhatTheAppleTVSaved() {
+        let saved = #"{"all":{"interval":60,"mode":"automatic","order":"listed","pictures":[],"transition":"fade"},"own":{"home":{"interval":60,"mode":"pictures","order":"listed","pictures":["art:recherche-2"],"transition":"fade"},"live":{"interval":60,"mode":"pictures","order":"listed","pictures":["art:tv-1"],"transition":"fade"},"movie":{"interval":60,"mode":"pictures","order":"listed","pictures":["art:films-1"],"transition":"fade"},"search":{"interval":60,"mode":"pictures","order":"listed","pictures":["art:recherche-1"],"transition":"fade"},"series":{"interval":60,"mode":"pictures","order":"listed","pictures":["art:series-2"],"transition":"fade"},"settings":{"interval":60,"mode":"pictures","order":"listed","pictures":["art:reglages-3"],"transition":"fade"}}}"#
+        XCTAssertEqual(FluxBackdropChoices(stored: saved), .defaults)
     }
 
     func testThePresetsGoFromTheLightestToTheRichest() {

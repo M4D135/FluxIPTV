@@ -1,9 +1,13 @@
 # Feuille de route FLUX IPTV
 
-## Intégré dans les sources 0.9.7 — build 46
+## Intégré dans les sources 0.9.7 — build 48
 
 - **Plus d’heure dans la barre du bas** (« vire l’heure on s’en fout », 27 novembre) : le plan de l’écran prend sa place dans le coin bas droite, aussi grand que l’était l’heure (« l’indicateur de zone fais le plus gros et bien dans le coin bas droite »). L’heure reste sur l’accueil et pendant la lecture.
 - **Le nom au-dessus de la loupe** (« labels plus haut (favoris...) sur ecran accueil, sinon collision avec icone », 27 novembre) : sur l’accueil, le nom de la destination sélectionnée et sa ligne finissent au-dessus de l’icône que la loupe agrandit, quelle que soit la loupe ; la barre descend de la moitié de cette montée.
+- **Plus de bulle sur l’accueil** (« collision les titres trop bas », photo du 27 novembre au soir) : un titre gardé dans la barre de l’accueil portait, une fois sélectionné, une bulle à son nom au-dessus de son icône ; elle recouvrait le grand nom, ou la rangée du dessus. L’accueil n’en montre plus : son grand nom dit déjà ce qui est sélectionné. Sous un écran, la barre garde la bulle.
+- **La recherche, un écran à part** (« recherche n’a pas son menu dedié », 27 novembre) : la touche Recherche du dock ouvre son écran, avec son fond et sa colonne — où chercher, avec ce que la recherche y trouve, les six dernières recherches, Effacer. Retour revient à l’écran d’où l’on était parti ; rien de trouvé laisse la télécommande dans la colonne.
+- **Plus de recherche gardée par section** (« pour serie y'a un souci, j'ai le fond de recherche », 27 novembre) : une recherche restée dans les Séries y revenait à chaque visite, avec le fond de Recherche. Sur Mac et Apple TV, une section s’ouvre désormais sans recherche, même celle qu’une version précédente avait gardée ; sur iPhone et iPad, rien ne change.
+- **Les fonds du séjour par défaut** (« prend les fond que j'ai config pour les reglages par defaut », 27 novembre) : une nouvelle installation prend, écran par écran, les fonds choisis sur l’Apple TV du séjour ; un fond déjà choisi ne change pas.
 - **Sur une vraie Apple TV** : les 27 parcours de la télécommande passent sur une Apple TV 4K en tvOS 26.6.1 (voir `docs/VALIDATION-0.9.6.md`).
 
 ## Intégré dans les sources 0.9.6 — build 44

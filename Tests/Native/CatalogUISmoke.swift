@@ -431,6 +431,10 @@ private enum CatalogUIFailure: Error, CustomStringConvertible {
         scenarios.append(Scenario(kind: .movie, filename: "dock-overflow.png", dock: "many",
                                   defaults: ["fluxiptv.fixture.dockFan": DockEntry.moreID], gallery: true))
         scenarios.append(Scenario(kind: .live, filename: "home-dock.png", home: true, dock: "full"))
+        // A title kept in the bar of the home screen, pointed at: its name
+        // stands in large above the bar, with no bubble over it.
+        scenarios.append(Scenario(kind: .live, filename: "home-dock-title.png", home: true, dock: "light",
+                                  defaults: ["fluxiptv.fixture.dockPointer": 7]))
         // On another edge the dock keeps the same things, and its folder
         // opens away from that edge.
         for position in [FluxDockPosition.top, .leading, .trailing] {
@@ -683,7 +687,8 @@ private enum CatalogUIFailure: Error, CustomStringConvertible {
     @MainActor private static func verifySearchSubmission(source: IPTVSource, items: [IPTVItem], playback: PlaybackController) async throws {
         let scenarios: [(query: String, expected: String?, replacement: String?)] = [
             ("dunes", "fixture-movie-1", nil),
-            ("no-matching-flux-title", "tab-movie", nil),
+            // Nothing found: the remote stays in the column of the search.
+            ("no-matching-flux-title", "search-kind-movie", nil),
             ("dunes", nil, "port")
         ]
         for scenario in scenarios {

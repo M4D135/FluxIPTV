@@ -1,4 +1,4 @@
-FLUX IPTV 0.9.7 — BUILD 46 — BUREAU MAC : DOCK, COLONNES ET VERRE - Installation sur votre Mac
+FLUX IPTV 0.9.7 — BUILD 48 — BUREAU MAC : DOCK, COLONNES ET VERRE - Installation sur votre Mac
 
 1. Quittez FLUX IPTV et arrêtez le projet s'il tourne dans Xcode.
 2. Décompressez l'archive et double-cliquez sur « Installer Flux IPTV.command ».
@@ -10,7 +10,7 @@ FLUX IPTV 0.9.7 — BUILD 46 — BUREAU MAC : DOCK, COLONNES ET VERRE - Installa
    bundle en cas d'échec du démarrage. Ce contrôle ne valide pas la lecture.
 4. Ensuite ouvrez uniquement FluxIPTV.app depuis le Finder ou le Dock.
    Ne relancez pas l'installateur à chaque utilisation. Vérifiez « FLUX 0.9.7 ·
-   build 46 » en bas de la colonne de Réglages, et la page Graphismes.
+   build 48 » en bas de la colonne de Réglages, et la page Graphismes.
 
 Sur Mac, VLC intégré est désactivé. En cas de format incompatible, installez le
 lecteur VLC officiel et utilisez le bouton « Ouvrir dans VLC externe ».
@@ -42,6 +42,13 @@ partie qui a la sélection à côté de la touche Tab, prend sa place dans le
 coin bas droite, plus grand. L'heure reste sur l'accueil et pendant la
 lecture. Sur l'accueil, le nom de la destination sélectionnée et sa ligne se
 tiennent au-dessus de l'icône que la loupe agrandit : ils ne la touchent plus.
+Un titre gardé dans la barre n'y porte plus de bulle à son nom.
+La recherche a son propre écran, avec son fond : la colonne dit où chercher
+(Chaînes, Films, Séries, avec ce que la recherche y trouve), garde les six
+dernières recherches et l'efface ; Retour revient à l'écran d'où l'on était
+parti. Une section ne garde plus de recherche. Sur une nouvelle
+installation, chaque écran prend le fond choisi sur l'Apple TV du séjour ;
+un fond déjà choisi ne change pas.
 
 NOUVEAUTÉS DE LA 0.9.6
 Rien ne change sur le Mac : la 0.9.6 rend les flèches au mode souris de

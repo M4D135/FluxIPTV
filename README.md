@@ -1,8 +1,10 @@
-# FLUX IPTV 0.9.7 — build 46 — Bureau Mac : dock, colonnes et panneaux de verre
+# FLUX IPTV 0.9.7 — build 48 — Bureau Mac : dock, colonnes et panneaux de verre
 
 Application native SwiftUI pour macOS, iOS et tvOS.
 
-**La 0.9.7 retire l’heure de la barre du bas.** Le plan de l’écran, qui allume la partie qui a la sélection à côté de la touche qui passe à la suivante, prend sa place dans le coin bas droite, aussi grand que l’était l’heure. L’heure reste sur l’accueil et pendant la lecture. Sur l’accueil, le nom de la destination sélectionnée et sa ligne se tiennent désormais au-dessus de l’icône que la loupe agrandit, quelle que soit la loupe : ils ne la touchent plus. Les 27 parcours de la télécommande passent aussi sur une vraie Apple TV 4K, en tvOS 26.6.1.
+**La 0.9.7 retire l’heure de la barre du bas.** Le plan de l’écran, qui allume la partie qui a la sélection à côté de la touche qui passe à la suivante, prend sa place dans le coin bas droite, aussi grand que l’était l’heure. L’heure reste sur l’accueil et pendant la lecture. Sur l’accueil, le nom de la destination sélectionnée et sa ligne se tiennent désormais au-dessus de l’icône que la loupe agrandit, quelle que soit la loupe : ils ne la touchent plus. Un titre gardé dans la barre n’y porte plus de bulle à son nom : elle recouvrait le grand nom, qui le dit déjà. Les 27 parcours de la télécommande passent aussi sur une vraie Apple TV 4K, en tvOS 26.6.1.
+
+**La recherche devient un écran à part, sur Mac et sur Apple TV.** La touche Recherche du dock ouvre son propre écran, avec son fond : le champ prend la télécommande, et la colonne dit où chercher — Chaînes, Films, Séries, avec ce que la recherche trouve dans chacun —, garde les six dernières recherches et l’efface. Une recherche qui ne trouve rien laisse la télécommande dans cette colonne. Retour revient à l’écran d’où l’on était parti, tel qu’il était. Une section ne garde plus de recherche : en 0.9.6, une recherche restée dans les Séries y revenait à chaque visite, avec le fond de Recherche et une liste filtrée. Sur une nouvelle installation, chaque écran prend le fond choisi sur l’Apple TV du séjour : Archives infinies pour l’accueil, Salon néon 90 pour la TV, Grande salle pour les Films, Coin binge-watching pour les Séries, Observatoire pour la Recherche et Studio aux boutons pour les Réglages. Un fond déjà choisi ne change pas.
 
 **La 0.9.6 rend les flèches au mode souris.** En 0.9.4 et en 0.9.5, une flèche de la télécommande ne déplaçait plus la sélection en mode souris. Le pointeur apprenait trop tard qu’une flèche était enfoncée : tvOS avait déjà refusé le déplacement, comme pour un glissement. Il l’apprend désormais au moment de l’appui ; la sélection avance, et le pointeur la suit. Un nouveau parcours du banc, qui pointe un message, a montré le défaut ; un autre pointe les réglages pendant la lecture.
 
@@ -240,7 +242,7 @@ L’archive contient les sources et l’installateur Mac, pas un binaire Apple p
 
 1. Sur Mac, quitter l’ancienne app et arrêter le lancement depuis Xcode.
 2. Décompresser, puis ouvrir **Installer Flux IPTV.command**. L’installateur compile sur ce Mac et vérifie le démarrage ; cette vérification ne remplace pas un essai de lecture.
-3. Vérifier **FLUX 0.9.7 · build 46** en bas de la colonne de Réglages.
+3. Vérifier **FLUX 0.9.7 · build 48** en bas de la colonne de Réglages.
 
 Prérequis de déploiement : macOS 14, iOS 17 ou tvOS 17. Installer Xcode complet pour compiler ; le verre natif demande la version 26 des systèmes, les versions antérieures reçoivent un matériau translucide. Sur iPhone/iPad ou Apple TV, ouvrir `FluxIPTV.xcodeproj`, choisir **FluxIPTViOS** ou **FluxIPTVTV**, puis renseigner l’équipe de signature pour un appareil physique.
 

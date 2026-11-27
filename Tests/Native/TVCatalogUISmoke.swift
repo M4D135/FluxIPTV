@@ -243,7 +243,8 @@ private struct TVProbeReadout: View {
         // folder of the dock open on its first title.
         case "dock-home": return "navigation-tab-movie"
         case "dock-folder": return DockEntry.fanPrefix + "fixture-movie-0"
-        case "search-empty": return "navigation-tab-movie"
+        // Nothing found: the row of the column where the search looked.
+        case "search-empty": return "search-kind-movie"
         case "search-result": return "catalog-card-fixture-movie-0"
         case "welcome": return "welcome-load-source"
         case "add-source": return "source-server"
@@ -286,7 +287,7 @@ private struct TVProbeReadout: View {
         case "live-error": return CGSize(width: 150, height: 50)
         case "country-picker": return CGSize(width: 240, height: 54)
         case "movies", "movies-many", "movies-many-lean", "search-result", "seasons", "dock": return CGSize(width: 240, height: 350)
-        case "search-empty": return CGSize(width: 90, height: 90)
+        case "search-empty": return CGSize(width: 240, height: 48)
         case "welcome": return CGSize(width: 300, height: 72)
         case "add-source": return CGSize(width: 500, height: 50)
         case "lists", "dock-lists": return CGSize(width: 400, height: 48)
@@ -306,7 +307,7 @@ private struct TVProbeReadout: View {
 
     var expectedSearchFocus: String? {
         switch scenario {
-        case "search-empty": return "tab-movie"
+        case "search-empty": return "search-kind-movie"
         case "search-result": return "fixture-movie-0"
         default: return nil
         }
@@ -359,7 +360,7 @@ private struct TVProbeReadout: View {
     var usesPersistedSelection: Bool { restoresBrowsing || scenario == "live-fr" || scenario == "live-es" }
 
     var expectedCountryResults: [String] {
-        if restoresBrowsing { return ["fixture-country-fr-1"] }
+        // The restored group is a part of these: no query narrows them.
         switch countryCode {
         case "FR": return ["fixture-country-fr-0", "fixture-country-fr-1", "fixture-country-fr-2"]
         case "ES": return ["fixture-country-es-0", "fixture-country-es-1"]
@@ -712,7 +713,9 @@ private struct TVProbeReadout: View {
             throw TVCatalogUIFailure.assertion("The restoration fixture needs its expected country and channel.")
         }
         let expectedGroup: String? = fixture.restoresBrowsing ? "[FR] Cinéma" : nil
-        let expectedSearch = fixture.restoresBrowsing ? "Grand écran" : ""
+        // What 0.9.6 kept with a section, and 0.9.7 no longer shows: the
+        // series of David showed the pictures of the search because of it.
+        let oldSearch = fixture.restoresBrowsing ? "Grand écran" : ""
         let expectedGroupSearch = fixture.restoresBrowsing ? "Cin" : ""
         let suiteName = "\(bundleID).RestoredUI.\(UUID().uuidString)"
         guard let storedDefaults = UserDefaults(suiteName: suiteName) else {
@@ -723,17 +726,22 @@ private struct TVProbeReadout: View {
                                        browsingDefaults: storedDefaults)
             original.countryCode = countryCode
             original.group = expectedGroup
-            original.search = expectedSearch
             original.groupSearch = expectedGroupSearch
             original.browseItemID = selectedID
             original.flushBrowsingPreferences()
             guard let data = storedDefaults.data(forKey: CatalogBrowsingPreferences.storageKey), !data.isEmpty else {
                 throw TVCatalogUIFailure.assertion("UI restoration has no persisted browsing state to read.")
             }
-            let saved = CatalogBrowsingPreferences.decoded(data).state(for: fixture.source.id, kind: .live)
-            try require(saved.countryCode == countryCode && saved.group == expectedGroup && saved.search == expectedSearch &&
+            var preferences = CatalogBrowsingPreferences.decoded(data)
+            var saved = preferences.state(for: fixture.source.id, kind: .live)
+            try require(saved.countryCode == countryCode && saved.group == expectedGroup && saved.search.isEmpty &&
                         saved.groupSearch == expectedGroupSearch && saved.browseItemID == selectedID,
                         "The initial library did not persist the exact UI restoration fixture.")
+            if !oldSearch.isEmpty {
+                saved.search = oldSearch
+                preferences.remember(saved, sourceID: fixture.source.id, kind: .live)
+                storedDefaults.set(try JSONEncoder().encode(preferences), forKey: CatalogBrowsingPreferences.storageKey)
+            }
             guard let reopenedDefaults = UserDefaults(suiteName: suiteName) else {
                 throw TVCatalogUIFailure.assertion("Cannot reopen the isolated UI restoration suite.")
             }
@@ -945,10 +953,11 @@ private struct TVProbeReadout: View {
         let resultsMatch = !library.isFiltering && resultIDs == fixture.expectedCountryResults
         let countriesMatch = counts == expectedCounts
         let expectedGroup: String? = fixture.restoresBrowsing ? "[FR] Cinéma" : nil
-        let expectedSearch = fixture.restoresBrowsing ? "Grand écran" : ""
         let expectedGroupSearch = fixture.restoresBrowsing ? "Cin" : ""
+        // A section keeps no query, even one an older version saved with it.
         let restorationMatches = !fixture.usesPersistedSelection ||
-            (library.group == expectedGroup && library.search == expectedSearch && library.groupSearch == expectedGroupSearch &&
+            (library.group == expectedGroup && library.search.isEmpty && !library.searchScreen &&
+             library.groupSearch == expectedGroupSearch &&
              library.browseItemID == fixture.selection?.id && library.catalogPage == 0)
         return (countryMatches && resultsMatch && countriesMatch && restorationMatches, [
             "countryFilterTested": true,
@@ -975,7 +984,10 @@ private struct TVProbeReadout: View {
     }
 
     /// Exercise storage and restoration through the real library in a second,
-    /// isolated fixture. The on-screen country picker remains untouched.
+    /// isolated fixture. The on-screen country picker remains untouched. A
+    /// section keeps its country, its group, the search among its groups and
+    /// its title. A query is a screen of its own, over the whole kind: it
+    /// leaves the section as it found it, and no section keeps it.
     private static func verifyBrowsingPersistence(fixture: TVCatalogFixture) async throws -> [String: Any] {
         let suiteName = "\(bundleID).BrowsingPersistence.\(UUID().uuidString)"
         guard let defaults = UserDefaults(suiteName: suiteName) else {
@@ -986,27 +998,38 @@ private struct TVProbeReadout: View {
                                    browsingDefaults: defaults)
         original.countryCode = "FR"
         original.group = "[FR] Cinéma"
-        original.search = "Grand écran"
         original.groupSearch = "Cin"
-        try await awaitFilter(original, stage: "initial country/category/search selection")
+        try await awaitFilter(original, stage: "initial country/category selection")
         original.browseItemID = "fixture-country-fr-1"
 
+        let french = ["fixture-country-fr-0", "fixture-country-fr-1", "fixture-country-fr-2"]
         func requireRestored(_ candidate: IPTVLibrary, stage: String) throws {
             try require(candidate.contentKind == .live && candidate.countryCode == "FR" &&
-                        candidate.group == "[FR] Cinéma" && candidate.search == "Grand écran" &&
+                        candidate.group == "[FR] Cinéma" && candidate.search.isEmpty && !candidate.searchScreen &&
                         candidate.groupSearch == "Cin" && candidate.browseItemID == "fixture-country-fr-1" &&
                         candidate.catalogPage == 0 && !candidate.isFiltering,
                         "Browsing preferences were not restored after \(stage).")
-            try require(candidate.catalogResults.all.items.map(\.id) == ["fixture-country-fr-1"],
+            try require(candidate.catalogResults.all.items.map(\.id) == french,
                         "The restored filters produced the wrong channels after \(stage).")
         }
         try requireRestored(original, stage: "initial selection")
+
+        // A query opens the screen of the search, over all the channels: the
+        // country of the section does not narrow it, and stays the section's.
+        original.search = "UK"
+        try await awaitFilter(original, stage: "search over the television")
+        try require(original.searchScreen && original.countryCode == "FR" &&
+                    original.catalogResults.all.items.map(\.id) == ["fixture-country-gb-0", "fixture-country-gb-1"],
+                    "The search did not look through the whole television.")
+        // Leaving it gives the section back as it was, without the query.
+        original.leaveSearchScreen()
+        try await awaitFilter(original, stage: "leaving the search")
+        try requireRestored(original, stage: "leaving the search")
+
         original.contentKind = .movie
         try await awaitFilter(original, stage: "switch to Films")
         try require(original.countryCode == nil && original.group == nil && original.search.isEmpty,
                     "TV filters leaked into a previously unused Films context.")
-        original.search = "choix de film"
-        try await awaitFilter(original, stage: "separate Films search")
         original.contentKind = .live
         try await awaitFilter(original, stage: "return from Films")
         try requireRestored(original, stage: "return from Films")
@@ -1026,8 +1049,8 @@ private struct TVProbeReadout: View {
         try requireRestored(reopened, stage: "catalogue refresh")
         reopened.contentKind = .movie
         try await awaitFilter(reopened, stage: "restored Films context")
-        try require(reopened.search == "choix de film" && reopened.countryCode == nil,
-                    "The separate Films search was not preserved across recreation and refresh.")
+        try require(reopened.search.isEmpty && reopened.countryCode == nil && !reopened.searchScreen,
+                    "The Films context did not open without a query across recreation and refresh.")
         reopened.flushBrowsingPreferences()
         return [
             "browsingPersistenceTested": true,
@@ -1036,7 +1059,8 @@ private struct TVProbeReadout: View {
             "browsingRecreationPassed": true,
             "browsingRefreshPassed": true,
             "browsingMediaContextsIndependent": true,
-            "browsingPersistenceMethod": "Separate IPTVLibrary instances share one disposable UserDefaults suite; TV country/category/search/category-search/item survive Films round-trip, persisted preferences recreation and the production catalogue-install path. No account or real source is read."
+            "browsingSearchScreenPassed": true,
+            "browsingPersistenceMethod": "Separate IPTVLibrary instances share one disposable UserDefaults suite; TV country/category/category-search/item survive a search over all the channels, a Films round-trip, persisted preferences recreation and the production catalogue-install path, and no section keeps a query. No account or real source is read."
         ]
     }
 

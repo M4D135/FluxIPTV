@@ -310,12 +310,12 @@ if sys.argv[2].startswith("search-"):
         print("The production search submit/filter/activation assertions did not pass.", file=sys.stderr)
         sys.exit(1)
     expected_control, expected_focus, expected_results = (
-        ("navigation-tab-movie", "tab-movie", []) if sys.argv[2] == "search-empty"
+        ("search-kind-movie", "search-kind-movie", []) if sys.argv[2] == "search-empty"
         else ("catalog-card-fixture-movie-0", "fixture-movie-0", ["fixture-movie-0"]))
     if (report.get("expectedInitialControlIdentifier") != expected_control
             or report.get("searchExpectedFocusID") != expected_focus
             or report.get("searchResultIDs") != expected_results):
-        print("The search scenario did not target its expected movie tab/result.", file=sys.stderr)
+        print("The search scenario did not target its expected column row/result.", file=sys.stderr)
         sys.exit(1)
 if sys.argv[2] in ("live-fr", "live-es", "country-picker", "live-restored"):
     required = ("countryFilterTested", "countrySelectionMatches", "countryFilteringSettled",
@@ -324,16 +324,16 @@ if sys.argv[2] in ("live-fr", "live-es", "country-picker", "live-restored"):
     if any(report.get(key) is not True for key in required):
         print("The production country filter, inventory or visible focus assertions did not pass.", file=sys.stderr)
         sys.exit(1)
-    if sys.argv[2] == "live-restored":
-        expected_code, expected_ids = "FR", ["fixture-country-fr-1"]
-    elif sys.argv[2] == "live-es":
+    if sys.argv[2] == "live-es":
         expected_code, expected_ids = "ES", ["fixture-country-es-0", "fixture-country-es-1"]
     else:
         expected_code, expected_ids = "FR", ["fixture-country-fr-0", "fixture-country-fr-1", "fixture-country-fr-2"]
-    expected_control = "live-country-option-FR" if sys.argv[2] == "country-picker" else "live-channel-" + expected_ids[0]
+    # The restored channel stands in its group, a part of the country.
+    expected_first = "fixture-country-fr-1" if sys.argv[2] == "live-restored" else expected_ids[0]
+    expected_control = "live-country-option-FR" if sys.argv[2] == "country-picker" else "live-channel-" + expected_first
     if (report.get("countryCode") != expected_code
             or report.get("countryResultIDs") != expected_ids
-            or report.get("selectedItemID") != expected_ids[0]
+            or report.get("selectedItemID") != expected_first
             or report.get("expectedInitialControlIdentifier") != expected_control
             or report.get("countryAvailableCounts") != {"FR": 3, "ES": 2, "GB": 2, "unclassified": 2}
             or report.get("countryPickerRequested") is not (sys.argv[2] == "country-picker")):
@@ -344,16 +344,17 @@ if sys.argv[2] == "live-restored":
             or report.get("browsingUIRestorationMatches") is not True
             or report.get("browsingUISelectionSeeded") is not False
             or report.get("browsingRestoredGroup") != "[FR] Cinéma"
-            or report.get("browsingRestoredSearch") != "Grand écran"
+            or report.get("browsingRestoredSearch") != ""
             or report.get("browsingRestoredGroupSearch") != "Cin"
             or report.get("browsingRestoredItemID") != "fixture-country-fr-1"):
-        print("The actual UI did not restore persisted filters and native focus without a seeded selection.", file=sys.stderr)
+        print("The actual UI did not restore persisted filters and native focus without a seeded selection, or showed the query an older version saved.", file=sys.stderr)
         sys.exit(1)
 if sys.argv[2] == "country-picker":
     required = ("browsingPersistenceTested", "browsingSectionRoundTripPassed", "browsingStoredDataObserved",
-                "browsingRecreationPassed", "browsingRefreshPassed", "browsingMediaContextsIndependent")
+                "browsingRecreationPassed", "browsingRefreshPassed", "browsingMediaContextsIndependent",
+                "browsingSearchScreenPassed")
     if any(report.get(key) is not True for key in required):
-        print("Browsing filters did not survive section changes, preferences recreation and catalogue refresh.", file=sys.stderr)
+        print("Browsing filters did not survive the search, section changes, preferences recreation and catalogue refresh.", file=sys.stderr)
         sys.exit(1)
 PY
   then scenario_failed=1; fi
@@ -442,7 +443,7 @@ if python3 "$repo_root/scripts/add-tvos-remote-test-target.py" \
     if [[ -n "$selected_flows" ]]; then
       printf 'PASS: the selected remote flows: %s\n' "$selected_flows"
     else
-      echo 'PASS: XCUIRemote country selection in the column, every zone by the arrows alone, Menu from a list giving the remote to Back in the bar before retracing the screens down to the home screen, film fiche with its lists and description, series fiche by columns, player panels during a stream, zapping by the list and by the commands back to the watched channel, a message taking the remote and returning it, the pages of a large catalogue of films, what a move of the remote rebuilds in catalogues of real size, the dock with its shortcuts to a film, a channel, a series, a season and an episode and its folder opened as a fan, Back held straight to the home screen, restored-channel reentry and failed-source reconnect highlight, Lecture/Pause going round the zones of a page of sixty films as the hands of a clock: the bar, the column, the search and the title that was left, the two rows of the home screen, and a folder of the dock opening the folder it holds, the bar drawn magnified where the remote is, no press toward an edge leading nowhere after a pause, Lecture/Pause held switching between the classic remote and the mouse, and the pointer giving the focus to the channels and the icons it crosses and opening the channel under it.'
+      echo 'PASS: XCUIRemote country selection in the column, every zone by the arrows alone, Menu from a list giving the remote to Back in the bar before retracing the screens down to the home screen, film fiche with its lists and description, series fiche by columns, player panels during a stream, zapping by the list and by the commands back to the watched channel, a message taking the remote and returning it, the pages of a large catalogue of films, what a move of the remote rebuilds in catalogues of real size, the dock with its shortcuts to a film, a channel, a series, a season and an episode and its folder opened as a fan, Back held straight to the home screen, restored-channel reentry and failed-source reconnect highlight, Lecture/Pause going round the zones of a page of sixty films as the hands of a clock: the bar, the column, the search and the title that was left, the two rows of the home screen, and a folder of the dock opening the folder it holds, the bar drawn magnified where the remote is, no press toward an edge leading nowhere after a pause, Lecture/Pause held switching between the classic remote and the mouse, the pointer giving the focus to the channels and the icons it crosses and opening the channel under it, and the search as a screen of its own: its field and its column, Menu back to the films, no section keeping a query.'
     fi
   else
     failed=1

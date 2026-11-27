@@ -87,10 +87,13 @@ final class TVRemoteNavigationTests: XCTestCase {
         move(.down, to: channel, maximumPresses: 4, in: app)
         assertFocus(channel, logical: "fixture-country-fr-1", in: app)
         XCTAssertEqual(countries.label, "Pays : France · FR")
-        XCTAssertTrue(app.textFields.matching(NSPredicate(format: "value == %@", "Grand écran")).firstMatch.exists)
+        // The query that 0.9.6 saved with the section is not shown again.
+        XCTAssertFalse(app.textFields.matching(NSPredicate(format: "value == %@", "Grand écran")).firstMatch.exists,
+                       "A section keeps no query.")
+        XCTAssertFalse(element("search-kind-live", in: app).exists, "The section is not the screen of the search.")
         XCTAssertFalse(element("live-channel-fixture-country-fr-0", in: app).exists)
         retainScreenshot("restored-03-returned-to-remembered-channel", in: app)
-        print("PASS: TV_REMOTE saved FR/Grand écran channel released native focus and accepted reentry from the column")
+        print("PASS: TV_REMOTE saved FR/[FR] Cinéma channel released native focus and accepted reentry from the column; the query saved with it by 0.9.6 stayed out")
     }
 
     @MainActor
@@ -985,6 +988,8 @@ final class TVRemoteNavigationTests: XCTestCase {
         let kept = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@ OR identifier BEGINSWITH %@",
                                                     "navigation-dock-item-", "navigation-dock-re"))
         assertOneHasFocus((0..<kept.count).map { kept.element(boundBy: $0) }, in: app)
+        // The large name above the bar says what it is: no bubble over the row above.
+        XCTAssertFalse(element("flux-dock-bubble", in: app).exists, "The home screen names a title without a bubble.")
         retainScreenshot("home-rows-02-second-row", in: app)
         // To the right along the second row, down to its folder.
         move(.right, to: folder, maximumPresses: 9, in: app)
@@ -1166,6 +1171,76 @@ final class TVRemoteNavigationTests: XCTestCase {
         print("PASS: TV_REMOTE Back held on the bar went straight to the home screen, past the films")
     }
 
+    /// "pour serie y'a un souci, j'ai le fond de recherche et recherche n'a
+    /// pas son menu dedié" (David, 27/11). Recherche in the bar opens a
+    /// screen of its own: the field takes the remote, the column says where
+    /// to look, and Menu leaves it for the films, on the title that was
+    /// left. A query belongs to that screen: the series, then the films,
+    /// show all they hold, without it.
+    @MainActor
+    func testTheSearchIsAScreenOfItsOwn() {
+        var app = launch("movies")
+        let card = element("catalog-card-fixture-movie-1", in: app)
+        let field = app.textFields.matching(identifier: "desk-search").firstMatch
+        let back = element("desk-back", in: app)
+        let kinds = ["live", "movie", "series"].map { element("search-kind-\($0)", in: app) }
+        let empty = element("search-empty-state", in: app)
+        assertFocus(card, logical: "fixture-movie-1", in: app)
+        XCTAssertFalse(kinds[1].exists, "The films have a column of their own.")
+
+        XCUIRemote.shared.press(.down)
+        walkDock(to: element("navigation-search", in: app), in: app)
+        XCUIRemote.shared.press(.select)
+        assertCondition("hasFocus == true", on: field, in: app)
+        for row in kinds { XCTAssertTrue(appears(row), "\(row) stands in the column of the search.") }
+        XCTAssertTrue(appears(empty))
+        XCTAssertTrue(empty.label.contains("Que cherchez-vous"), empty.label)
+        assertCondition("exists == false", on: card, in: app)
+        retainScreenshot("search-01-a-screen-of-its-own", in: app)
+
+        // Menu: the films again, on the title that was left. From the field
+        // it leaves at once; from the bar it would first stop on Back.
+        XCUIRemote.shared.press(.menu)
+        let deadline = Date().addingTimeInterval(10 * Self.patience)
+        while Date() < deadline, !card.exists, !holdsFocus(back) { RunLoop.current.run(until: Date().addingTimeInterval(0.2)) }
+        if holdsFocus(back) { XCUIRemote.shared.press(.menu) }
+        assertFocus(card, logical: "fixture-movie-1", in: app)
+        assertCondition("exists == false", on: kinds[1], in: app)
+        retainScreenshot("search-02-back-to-the-films", in: app)
+        app.terminate()
+
+        // A query found a film: Left enters the column on where it looked.
+        app = launch("search-result")
+        defer { app.terminate() }
+        let found = element("catalog-card-fixture-movie-0", in: app)
+        let search = app.textFields.matching(identifier: "desk-search").firstMatch
+        let films = element("search-kind-movie", in: app)
+        assertFocus(found, logical: "fixture-movie-0", in: app)
+        XCTAssertTrue(appears(element("search-clear", in: app)))
+        XCUIRemote.shared.press(.left)
+        assertFocus(films, logical: "search-kind-movie", in: app)
+        retainScreenshot("search-03-its-column", in: app)
+        // Right: back to the film it found, which the column was left for.
+        XCUIRemote.shared.press(.right)
+        assertFocus(found, logical: "fixture-movie-0", in: app)
+
+        // The series from the bar: their own column, and no query.
+        XCUIRemote.shared.press(.down)
+        walkDock(to: element("navigation-tab-series", in: app), in: app)
+        XCUIRemote.shared.press(.select)
+        assertCondition("exists == false", on: films, in: app)
+        assertCondition(NSPredicate(format: "NOT (value CONTAINS[c] %@)", "dunes"), on: search, in: app)
+        retainScreenshot("search-04-the-series-without-the-query", in: app)
+        // The films too: all of them, not what the query found.
+        XCUIRemote.shared.press(.down)
+        walkDock(to: element("navigation-tab-movie", in: app), in: app)
+        XCUIRemote.shared.press(.select)
+        XCTAssertTrue(appears(element("catalog-card-fixture-movie-1", in: app)), "The films show all they hold.")
+        assertCondition(NSPredicate(format: "NOT (value CONTAINS[c] %@)", "dunes"), on: search, in: app)
+        assertCondition("exists == false", on: films, in: app)
+        print("PASS: TV_REMOTE Recherche in the bar opened a screen of its own, its field holding the remote and its column listing where to look; Menu went back to the films on the title that was left; Left from a result entered the column on where it looked; the series and the films showed all they hold, without the query")
+    }
+
     /// The shortcuts of a series: a season opens the fiche of the series on
     /// that season, an episode on that episode, the series its shelf of
     /// seasons. Each time from the films, another section.
@@ -1294,6 +1369,8 @@ final class TVRemoteNavigationTests: XCTestCase {
         // The shortcut of a film opens its fiche; Menu puts the sleeve back.
         move(.left, to: film, maximumPresses: 14, in: app)
         assertFocus(film, logical: "dock-item-shortcuts-fixture-movie-1", in: app)
+        // Under a screen, the bar names the title in full above its icon.
+        XCTAssertTrue(appears(element("flux-dock-bubble", in: app)), "The dock names the shortcut above it.")
         XCUIRemote.shared.press(.select)
         let play = element("media-detail-play", in: app)
         XCTAssertTrue(play.waitForExistence(timeout: 10))

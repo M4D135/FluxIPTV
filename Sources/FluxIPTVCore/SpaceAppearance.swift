@@ -23,8 +23,10 @@ public enum FluxSpace: String, CaseIterable, Identifiable, Codable, Sendable {
         case .series: self = .series
         }
     }
-    /// The screen in front. A search is a screen once something is typed:
-    /// moving to its field alone changes nothing behind it.
+    /// The screen in front. `searching`: the screen of the search is open,
+    /// from the dock or by typing in a field; moving to a field alone
+    /// changes nothing behind it, and a section never shows the pictures
+    /// of the search.
     public static func current(home: Bool, settings: Bool, searching: Bool, kind: IPTVMediaKind) -> FluxSpace {
         if home { return .home }
         if settings { return .settings }
@@ -215,6 +217,10 @@ public struct FluxBackdropPlan: Equatable, Codable, Sendable {
         self.order = order; self.transition = transition
     }
     public static let automatic = FluxBackdropPlan()
+    /// One picture of the library, always shown.
+    public static func picture(_ name: String) -> FluxBackdropPlan {
+        FluxBackdropPlan(mode: .pictures, pictures: [FluxBackdropPicture.art(name).id])
+    }
 
     private enum CodingKeys: String, CodingKey { case mode, pictures, interval, order, transition }
     /// A value missing from what an earlier version saved takes its default.
@@ -308,15 +314,26 @@ public struct FluxBackdropChoices: Equatable, Codable, Sendable {
         // A screen that a later version adds, and this one lacks, is left out.
         own = saved.filter { FluxSpace(rawValue: $0.key) != nil }
     }
-    /// What is saved, or the own pictures of the screens when nothing is.
+    /// What is saved, or the pictures of a new install when nothing is.
     public init(stored: String) {
         if let data = stored.data(using: .utf8), !data.isEmpty,
            let value = try? JSONDecoder().decode(Self.self, from: data) {
             self = value
         } else {
-            self.init()
+            self = .defaults
         }
     }
+    /// The pictures of a new install: those David chose on his Apple TV,
+    /// one for each screen ("garde mes preset d'images de fond pour le par
+    /// defaut", 27/11). All the screens together stay on their own pictures.
+    public static let defaults = FluxBackdropChoices(own: [
+        FluxSpace.home.rawValue: .picture("recherche-2"),
+        FluxSpace.live.rawValue: .picture("tv-1"),
+        FluxSpace.movie.rawValue: .picture("films-1"),
+        FluxSpace.series.rawValue: .picture("series-2"),
+        FluxSpace.search.rawValue: .picture("recherche-1"),
+        FluxSpace.settings.rawValue: .picture("reglages-3"),
+    ])
     public var stored: String {
         let encoder = JSONEncoder()
         encoder.outputFormatting = .sortedKeys

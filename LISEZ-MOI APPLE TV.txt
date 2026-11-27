@@ -1,12 +1,25 @@
-FLUX IPTV 0.9.7 — BUILD 46 — PROJET APPLE TV
+FLUX IPTV 0.9.7 — BUILD 48 — PROJET APPLE TV
 
-NOUVEAUTÉS DE LA 0.9.7 : le plan de l'écran à la place de l'heure.
+NOUVEAUTÉS DE LA 0.9.7 : le plan à la place de l'heure, la recherche à part.
 La barre du bas n'affiche plus l'heure. Le plan de l'écran, qui allume la
 partie qui a la sélection à côté de la touche Lecture/Pause, prend sa place
 dans le coin bas droite, plus grand. L'heure reste sur l'accueil et pendant
 la lecture.
 Sur l'accueil, le nom de la destination sélectionnée et sa ligne se tiennent
-au-dessus de l'icône que la loupe agrandit : ils ne la touchent plus.
+au-dessus de l'icône que la loupe agrandit : ils ne la touchent plus. Un
+titre gardé dans la barre n'y porte plus de bulle : elle recouvrait le grand
+nom, qui le dit déjà.
+RECHERCHE : la touche Recherche du dock ouvre son propre écran, avec son
+fond. Le champ prend la télécommande ; la colonne dit où chercher (Chaînes,
+Films, Séries, avec ce que la recherche y trouve), garde les six dernières
+recherches et l'efface. Si rien n'est trouvé, la télécommande reste dans la
+colonne. Retour revient à l'écran d'où l'on était parti. Une section ne
+garde plus de recherche : en 0.9.6, une recherche restée dans les Séries y
+remettait le fond de Recherche et une liste filtrée.
+FONDS : sur une nouvelle installation, chaque écran prend le fond choisi sur
+l'Apple TV du séjour (Archives infinies, Salon néon 90, Grande salle, Coin
+binge-watching, Observatoire, Studio aux boutons). Un fond déjà choisi ne
+change pas.
 
 NOUVEAUTÉS DE LA 0.9.6 : les flèches en mode souris.
 En 0.9.4 et 0.9.5, une flèche de la télécommande ne déplaçait plus la

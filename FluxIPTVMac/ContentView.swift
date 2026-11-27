@@ -421,8 +421,14 @@ struct FluxScreen: View, Equatable {
     #endif
 
     private var visibleSlice: CatalogSlice {
-        continueOnly ? resumeSlice : library.catalogResults.slice(group:group)
+        // The search shows what its query finds over the whole kind, and
+        // nothing before something is typed.
+        if library.searchScreen {
+            return searchQuery.isEmpty ? CatalogSlice() : library.catalogResults.slice(group: nil)
+        }
+        return continueOnly ? resumeSlice : library.catalogResults.slice(group:group)
     }
+    private var searchQuery: String { library.search.trimmingCharacters(in: .whitespacesAndNewlines) }
     private var catalogFocusContext: CatalogFocusRequest {
         CatalogFocusRequest(sourceID: library.selectedSourceID, kind: library.contentKind,
                             query: library.search, group: group,
@@ -727,7 +733,7 @@ struct FluxScreen: View, Equatable {
         if let request = pendingCatalogFocus, request == catalogFocusContext,
            !library.isFiltering, page == .catalogue, heldItem == nil,
            !modalOpen, !searchFocus, !liveGroupSearchFocus {
-            let target = visible.first?.id ?? "tab-\(library.contentKind.rawValue)"
+            let target = visible.first?.id ?? emptyCatalogFocus
             guard id == target else { return }
             pendingCatalogFocus = nil
             #if FLUX_CATALOG_UI_TESTING
@@ -1140,6 +1146,11 @@ struct FluxScreen: View, Equatable {
         }
         .onChange(of: library.selectedPresetID) { _, _ in clearPreview() }
         .onChange(of: library.search) { _, _ in clearPreview() }
+        #if os(macOS) || os(tvOS)
+        // A search opened by typing in the field of a section is a screen
+        // that Back leaves for that section.
+        .onChange(of: library.searchScreen) { _, open in if open { recordPlace() } }
+        #endif
         .onChange(of: itemOptions?.id) { _, id in if id == nil { itemDockExtra = nil } }
     }
 
@@ -1468,6 +1479,7 @@ struct FluxScreen: View, Equatable {
     /// Dock destination that stands for the screen being shown.
     private var currentDockID: String {
         if page == .settings { return FluxDockItem.settings.focusID }
+        if library.searchScreen && page != .home { return FluxDockItem.search.focusID }
         if favoritesMode && page != .home { return FluxDockItem.favorites.focusID }
         return FluxDockItem(kind: library.contentKind).focusID
     }
@@ -1812,6 +1824,8 @@ struct FluxScreen: View, Equatable {
         #if os(macOS) || os(tvOS)
         // A section of the dock shown among the favourites.
         if id.hasPrefix(Self.favoriteShelfPrefix) { return id == favoriteShelfID(library.contentKind, library.favoriteDockSectionID) }
+        // Where the search looks.
+        if id.hasPrefix("search-kind-") { return library.searchScreen && id == Self.searchKindID(library.contentKind) }
         #endif
         if id == "continue-only" { return continueOnly }
         return false
@@ -1828,11 +1842,14 @@ struct FluxScreen: View, Equatable {
         let keyboard: Bool
         let theme: VideoClubTheme
     }
-    private func liveScopeButton(_ title: String, symbol: String, id: String, count: Int? = nil, action: @escaping () -> Void) -> some View {
+    /// `identified`: the row carries its id for the tests, where no other
+    /// control of the screen can carry the same one.
+    private func liveScopeButton(_ title: String, symbol: String, id: String, count: Int? = nil, identified: Bool = false,
+                                 action: @escaping () -> Void) -> some View {
         let key = ScopeKey(title: title, symbol: symbol, id: id, count: count, selected: liveScopeSelected(id),
                            keyboard: selectedByKeyboard(id), theme: theme)
         return FluxStable(key) {
-            Button { pointerSelect(id); action() } label: {
+            let row = Button { pointerSelect(id); action() } label: {
                 FluxFocused(id: id, logical: key.keyboard) { focused in
                     LiveTVScopeLabel(title: title, symbol: symbol, count: count,
                                      selected: key.selected, focused: focused, accent: themeAccent)
@@ -1844,6 +1861,14 @@ struct FluxScreen: View, Equatable {
             }.buttonStyle(FluxBareButtonStyle()).fluxFocus(nativeFocus, id: id).id(id)
                 .accessibilityLabel(title)
                 .accessibilityValue(key.selected ? "Sélectionné" : "")
+            if identified {
+                row.accessibilityIdentifier(id)
+                    #if os(tvOS) && FLUX_CATALOG_UI_TESTING
+                    .background(TVCatalogControlFrameProbe(identifier: id).allowsHitTesting(false))
+                    #endif
+            } else {
+                row
+            }
         }.equatable()
     }
     private var liveSidebar: some View {
@@ -1945,7 +1970,7 @@ struct FluxScreen: View, Equatable {
                 HStack(spacing: 16) {
                     Image(systemName: "magnifyingglass")
                     TextField("Rechercher une chaîne", text: $library.search)
-                        .focused($searchFocus).onSubmit { searchFocus = false; focusFirstItem() }
+                        .focused($searchFocus).onSubmit { library.rememberSearch(); searchFocus = false; focusFirstItem() }
                     Button("Fermer") { showingSearch = false; searchFocus = false; focusFirstItem() }
                 }.font(.system(size: 25)).padding(18).fluxGlass(radius: 20)
             }
@@ -2022,7 +2047,7 @@ struct FluxScreen: View, Equatable {
                                 .accessibilityLabel("Catégories TV")
                         } else { Image(systemName: "magnifyingglass").foregroundStyle(.secondary) }
                         TextField("Rechercher une chaîne", text: $library.search)
-                            .focused($searchFocus).onSubmit { searchFocus = false; focusFirstItem() }
+                            .focused($searchFocus).onSubmit { library.rememberSearch(); searchFocus = false; focusFirstItem() }
                         if !library.search.isEmpty {
                             Button { library.search = "" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary) }
                                 .buttonStyle(.plain).accessibilityLabel("Effacer la recherche de chaînes")
@@ -2202,7 +2227,7 @@ struct FluxScreen: View, Equatable {
                 HStack {
                     Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
                     TextField("Rechercher dans \(library.contentKind.frenchTitle.lowercased())", text: $library.search)
-                        .focused($searchFocus).fluxFieldStyle().onSubmit { searchFocus = false; focusFirstItem() }
+                        .focused($searchFocus).fluxFieldStyle().onSubmit { library.rememberSearch(); searchFocus = false; focusFirstItem() }
                     Button("Effacer") { library.search = "" }
                     Button("Fermer") { showingSearch = false; searchFocus = false }
                 }.padding(14).fluxGlass().padding(.horizontal, 26)
@@ -3544,6 +3569,9 @@ struct FluxScreen: View, Equatable {
                 setPreview(item)
                 target = item.id
             } else {
+                // The search, shown in another kind, keeps the remote on the
+                // row of its column that chose it when it finds nothing there.
+                let empty = library.searchScreen ? "search-kind-\(kind.rawValue)" : "tab-\(kind.rawValue)"
                 #if os(tvOS)
                 // Nothing is remembered here: the remote starts on the first
                 // title, in the content, rather than on a control beside it.
@@ -3551,14 +3579,14 @@ struct FluxScreen: View, Equatable {
                     revealCatalogItem(first.id)
                     setPreview(first)
                     target = first.id
-                } else { target = "tab-\(kind.rawValue)" }
+                } else { target = empty }
                 #else
-                target = "tab-\(kind.rawValue)"
+                target = empty
                 #endif
             }
             browseRestoreTask = nil
             #if os(tvOS)
-            if target.hasPrefix("tab-") {
+            if target.hasPrefix("tab-") || target.hasPrefix("search-kind-") {
                 // An empty section: its key of the dock is always on screen.
                 pendingBrowseFocus = nil
                 pendingBrowseRestore = false
@@ -3634,6 +3662,14 @@ struct FluxScreen: View, Equatable {
         pendingCatalogFocus = catalogFocusContext
         resolveCatalogFocus()
     }
+    /// Where the remote goes when a catalogue shows nothing: the icon of the
+    /// section in the bar. A search that finds nothing leaves it in its
+    /// column, on where it looked: another kind is one press away, and OK
+    /// on the icon of the bar would have left the search. The handoff is
+    /// acknowledged on this same control.
+    private var emptyCatalogFocus: String {
+        library.searchScreen ? Self.searchKindID(library.contentKind) : "tab-\(library.contentKind.rawValue)"
+    }
     private func resolveCatalogFocus() {
         guard let request = pendingCatalogFocus else { return }
         guard request == catalogFocusContext, page == .catalogue, heldItem == nil,
@@ -3642,7 +3678,7 @@ struct FluxScreen: View, Equatable {
             return
         }
         guard !library.isFiltering else { return }
-        let target = visible.first?.id ?? "tab-\(library.contentKind.rawValue)"
+        let target = visible.first?.id ?? emptyCatalogFocus
         // Publish the destination in the results transaction. In particular,
         // an empty list must move toward its existing header before the native
         // engine can fall back to the search field and cancel this handoff.
@@ -3685,10 +3721,25 @@ struct FluxScreen: View, Equatable {
         guard !modalOpen else { return }
         cancelBrowsingRestore()
         cancelEntrance()
+        #if os(macOS) || os(tvOS)
+        // Back leaves the search for the screen it was opened from, however
+        // that screen was reached: one shown at launch was not recorded.
+        if page == .catalogue, !library.searchScreen { recordPlace() }
+        #endif
         if page != .catalogue { home() } else { dismissCaseImmediately() }
         liveGroupSearchFocus = false
         showingSearch = !usesDesk && (televisionLayout || library.contentKind != .live); searchFocus = true
         #if os(macOS) || os(tvOS)
+        // The search is a screen of its own, with its column and its
+        // pictures; a list of favourites stays among the favourites.
+        if favoritesMode { favoritesMode = false; library.selectedPresetID = nil; library.favoriteDockSectionID = nil }
+        newListKind = nil; renamingList = false; confirmingListDeletion = false
+        // The section comes back on the title it shows, even one that the
+        // remote never moved to: the one the screen opened on.
+        if !library.searchScreen, library.browseItemID == nil, let id = previewID, visibleSlice.item(id: id) != nil {
+            library.browseItemID = id
+        }
+        library.enterSearchScreen()
         // The field may only mount with this update, after leaving the settings.
         sidebarCountries = false
         Task { @MainActor in
@@ -3703,6 +3754,8 @@ struct FluxScreen: View, Equatable {
         // matches. A quick second OK must not open one of those stale items.
         guard page != .catalogue || !library.isFiltering else { return }
         cancelBrowsingRestore()
+        // A title opened from the search keeps its query among the last ones.
+        library.rememberSearch()
         library.selectedItemID = item.id
         setPreview(item)
         if item.isSeriesCollection {loadSeries(item)}
@@ -3973,7 +4026,9 @@ struct FluxScreen: View, Equatable {
             rows.append(deskHeaderIDs + [DeskZone.searchID] + (deskPagerInBand ? pages : [])
                         + (library.selectedSourceID != nil && !library.isLoading ? ["reload"] : []))
             if library.credentialIssue != nil { rows.append(["reconnect-source"]) }
-            if visible.isEmpty && library.credentialIssue == nil && library.contentKind == .live { rows.append(["live-reset"]) }
+            if visible.isEmpty && library.credentialIssue == nil && library.contentKind == .live && !library.searchScreen {
+                rows.append(["live-reset"])
+            }
             if !pages.isEmpty && !deskPagerInBand { rows.append(pages) }
         case .catalogue:
             if library.selectedSourceID != nil && !library.isLoading { rows.append(["reload"]) }
@@ -4297,7 +4352,7 @@ extension FluxScreen {
     /// The screen in front, whose look is shown: its pictures and the theme
     /// of its dock.
     var currentSpace: FluxSpace {
-        FluxSpace.current(home: showsHome, settings: page == .settings, searching: !library.search.isEmpty,
+        FluxSpace.current(home: showsHome, settings: page == .settings, searching: library.searchScreen,
                           kind: library.contentKind)
     }
     private var dockVisible: Bool {
@@ -4350,7 +4405,6 @@ extension FluxScreen {
     private var dockSelection: Set<FluxDockItem> {
         var result: Set<FluxDockItem> = []
         if let current = FluxDockItem(focusID: currentDockID) { result.insert(current) }
-        if page != .settings && (searchFocus || !library.search.isEmpty) { result.insert(.search) }
         return result
     }
     private var fichePresented: Bool { heldItem != nil && caseExpanded }
@@ -5052,6 +5106,7 @@ extension FluxScreen {
         let leavingFavorites = favoritesMode
         favoritesMode = false; sidebarCountries = false
         searchFocus = false; liveGroupSearchFocus = false
+        library.leaveSearchScreen()
         if library.contentKind == kind { home() } else { changeKind(kind) }
         if leavingFavorites { library.selectedPresetID = nil; library.favoriteDockSectionID = nil }
     }
@@ -5562,6 +5617,7 @@ extension FluxScreen {
         newListKind = nil; renamingList = false; confirmingListDeletion = false
         // A list opened from the favourites belongs to that destination.
         if favoritesMode { favoritesMode = false; library.selectedPresetID = nil; library.favoriteDockSectionID = nil }
+        library.leaveSearchScreen()
         livePreview.stop()
         library.flushBrowsingPreferences()
         deskHistory.reset()
@@ -5583,6 +5639,8 @@ extension FluxScreen {
         #endif
         favoritesMode = false
         sidebarCountries = false
+        // The section shows again what it showed before the search.
+        library.leaveSearchScreen()
         if library.contentKind == kind {
             home()
             // The section opens where it was left, as it did at launch. A
@@ -5605,6 +5663,7 @@ extension FluxScreen {
         cancelEntrance()
         if page == .series || heldItem != nil { home() }
         searchFocus = false; liveGroupSearchFocus = false; sidebarCountries = false
+        library.leaveSearchScreen()
         livePreview.stop()
         settingsRequest = DeskSettingsRequest(page: destination, sourceEditor: editing)
         page = .settings
@@ -5629,6 +5688,7 @@ extension FluxScreen {
         #endif
         if page != .catalogue || heldItem != nil { home() }
         sidebarCountries = false
+        library.leaveSearchScreen()
         favoritesMode = true
         if library.selectedPresetID == nil, library.favoriteDockSectionID == nil {
             let kinds = [library.contentKind] + IPTVMediaKind.allCases.filter { $0 != library.contentKind }
@@ -5706,6 +5766,14 @@ extension FluxScreen {
         if id == DeskZone.backID { deskLeaveScreen(); return true }
         if id == DeskZone.homeID { showHome(); return true }
         if id == DeskZone.searchID { search(); return true }
+        if let kind = IPTVMediaKind.allCases.first(where: { Self.searchKindID($0) == id }) { searchIn(kind); return true }
+        if id.hasPrefix(Self.searchRecentPrefix) {
+            if let index = Int(id.dropFirst(Self.searchRecentPrefix.count)), library.recentSearches.indices.contains(index) {
+                searchAgain(library.recentSearches[index])
+            }
+            return true
+        }
+        if id == Self.searchClearID { clearSearch(); return true }
         if id == "countries-back" { closeCountries(); return true }
         if id.hasPrefix("favorite-new-"), let kind = IPTVMediaKind(rawValue: String(id.dropFirst("favorite-new-".count))) {
             beginNewList(kind); return true
@@ -5719,6 +5787,7 @@ extension FluxScreen {
 
     private var deskSidebarIDs: [String] {
         guard page == .catalogue, !library.sources.isEmpty else { return [] }
+        if library.searchScreen { return searchSidebarIDs }
         if favoritesMode {
             return IPTVMediaKind.allCases.flatMap { kind in
                 library.presets.lists(for: kind).map { "favorite-list-\($0.id)" } + ["favorite-new-\(kind.rawValue)"]
@@ -5735,6 +5804,7 @@ extension FluxScreen {
     }
     /// Row of the navigation column that stands for the current selection.
     private var deskScopeID: String {
+        if library.searchScreen { return Self.searchKindID(library.contentKind) }
         if favoritesMode {
             return favoriteShelfID(library.contentKind, library.favoriteDockSectionID)
                 ?? library.selectedPresetID.map { "favorite-list-\($0)" } ?? deskSidebarIDs.first ?? "group-all"
@@ -6139,7 +6209,8 @@ extension FluxScreen {
     /// of the channels, or the favourite lists of the three kinds.
     private var deskSidebar: some View {
         return VStack(alignment: .leading, spacing: Desk.pt(12)) {
-            if favoritesMode { favoritesSidebar }
+            if library.searchScreen { searchSidebar }
+            else if favoritesMode { favoritesSidebar }
             else if sidebarCountries && facetAvailable { countriesSidebar }
             else { scopeSidebar }
         }
@@ -6396,6 +6467,101 @@ extension FluxScreen {
         }
     }
 
+    /// The column of the search: where to look, with what the query finds
+    /// in each kind, and the last queries sent.
+    @ViewBuilder private var searchSidebar: some View {
+        sidebarHeading("RECHERCHE")
+        ScrollViewReader { reader in
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: Desk.pt(5)) {
+                    sidebarSectionTitle("CHERCHER DANS", first: true)
+                    ForEach(IPTVMediaKind.allCases, id: \.self) { kind in
+                        liveScopeButton(Self.searchKindTitle(kind), symbol: FluxDockItem(kind: kind).symbol,
+                                        id: Self.searchKindID(kind),
+                                        count: searchQuery.isEmpty ? nil : library.searchCounts[kind],
+                                        identified: true) { searchIn(kind) }
+                    }
+                    if !library.recentSearches.isEmpty {
+                        sidebarSectionTitle("RECHERCHES RÉCENTES", first: false)
+                        ForEach(Array(library.recentSearches.enumerated()), id: \.offset) { index, query in
+                            liveScopeButton(query, symbol: "clock.arrow.circlepath", id: "\(Self.searchRecentPrefix)\(index)",
+                                            identified: true) {
+                                searchAgain(query)
+                            }
+                        }
+                    }
+                    if !library.search.isEmpty {
+                        liveScopeButton("Effacer la recherche", symbol: "xmark.circle", id: Self.searchClearID,
+                                        identified: true) { clearSearch() }
+                            .padding(.top, Desk.pt(10))
+                    }
+                }.padding(.vertical, Desk.pt(3))
+            }
+            .onChange(of: focusID) { _, id in
+                if let id, remoteNavigationActive, deskSidebarIDs.contains(id) { reader.scrollTo(id, anchor: .center) }
+            }
+        }
+    }
+    private func sidebarSectionTitle(_ title: String, first: Bool) -> some View {
+        Text(title).font(Desk.font(.caption2, .semibold)).tracking(1.5).foregroundStyle(.secondary)
+            .padding(.horizontal, Desk.pt(12)).padding(.top, first ? 8 : 18).padding(.bottom, Desk.pt(5))
+    }
+    static func searchKindTitle(_ kind: IPTVMediaKind) -> String {
+        switch kind {
+        case .live: "Chaînes"
+        case .movie: "Films"
+        case .series: "Séries"
+        }
+    }
+    static func searchKindID(_ kind: IPTVMediaKind) -> String { "search-kind-\(kind.rawValue)" }
+    static let searchRecentPrefix = "search-recent-"
+    static let searchClearID = "search-clear"
+    private var searchSidebarIDs: [String] {
+        IPTVMediaKind.allCases.map { Self.searchKindID($0) }
+            + library.recentSearches.indices.map { "\(Self.searchRecentPrefix)\($0)" }
+            + (library.search.isEmpty ? [] : [Self.searchClearID])
+    }
+
+    /// The search looks among the titles of another kind; the query stays.
+    private func searchIn(_ kind: IPTVMediaKind) {
+        guard library.searchScreen, library.contentKind != kind else { return }
+        changeKind(kind)
+    }
+    /// A query kept among the last ones runs again, and the remote goes to
+    /// what it finds.
+    private func searchAgain(_ query: String) {
+        guard library.searchScreen else { return }
+        library.search = query
+        library.rememberSearch()
+        searchFocus = false
+        focusFirstItem()
+    }
+    /// The query goes; the remote goes back to the field, for another one.
+    private func clearSearch() {
+        library.search = ""
+        search()
+    }
+
+    /// What the screen of the search shows when it finds nothing, or
+    /// before anything is typed.
+    private var searchEmptyState: some View {
+        let noun: String
+        switch library.contentKind {
+        case .live: noun = "les chaînes"
+        case .movie: noun = "les films"
+        case .series: noun = "les séries"
+        }
+        return VStack(spacing: Desk.pt(16)) {
+            Image(systemName: "magnifyingglass").font(Desk.system(48, .light)).foregroundStyle(themeAccent)
+            Text(searchQuery.isEmpty ? "Que cherchez-vous ?" : "Rien pour « \(searchQuery) » dans \(noun)")
+                .font(Desk.font(.title3, .semibold)).multilineTextAlignment(.center).lineLimit(2)
+            Text(searchQuery.isEmpty ? "Saisissez dans le champ le nom d’une chaîne, d’un film ou d’une série."
+                 : "Essayez un autre mot, ou cherchez ailleurs depuis la colonne.")
+                .font(Desk.font(.callout)).foregroundStyle(.secondary).multilineTextAlignment(.center)
+        }.padding(Desk.pt(24)).frame(maxWidth: .infinity, maxHeight: .infinity)
+        .accessibilityElement(children: .combine).accessibilityIdentifier("search-empty-state")
+    }
+
     @ViewBuilder private func newListRow(_ kind: IPTVMediaKind) -> some View {
         if newListKind == kind {
             VStack(alignment: .leading, spacing: Desk.pt(5)) {
@@ -6487,6 +6653,7 @@ extension FluxScreen {
     // MARK: Title and search shared by the three sections
 
     private var deskTitle: String {
+        if library.searchScreen { return "Recherche" }
         if continueOnly { return "À reprendre" }
         if favoritesMode, let shown = library.favoriteDockSectionID, library.dockShelf.section(id: shown) != nil {
             return "Dock · " + library.dockShelf.path(to: shown).map(\.name).joined(separator: " › ")
@@ -6504,8 +6671,11 @@ extension FluxScreen {
         case .series: noun = count == 1 ? "série" : "séries"
         }
         let amount = library.isFiltering ? "Recherche…" : "\(count.formatted(.number.locale(Locale(identifier: "fr_FR")))) \(noun)"
+        let source = library.selectedSource?.name ?? "Bibliothèque"
+        // Before anything is typed, where the search will look.
+        if library.searchScreen && searchQuery.isEmpty { return "Dans les \(Self.searchKindTitle(library.contentKind).lowercased()) · \(source)" }
         // The count first: a long name of source is what a narrow line cuts.
-        return "\(amount) · \(library.selectedSource?.name ?? "Bibliothèque")"
+        return "\(amount) · \(source)"
     }
 
     /// The name of what is shown and, where there is room, what it holds.
@@ -6570,7 +6740,7 @@ extension FluxScreen {
             TextField(prompt, text: $library.search,
                       prompt: Text(prompt).foregroundStyle(searchFocus ? Color.black.opacity(0.55) : Color.white.opacity(0.55)))
                 .textFieldStyle(.plain).font(Desk.font(.body))
-                .focused($searchFocus).onSubmit { searchFocus = false; focusFirstItem() }
+                .focused($searchFocus).onSubmit { library.rememberSearch(); searchFocus = false; focusFirstItem() }
         }
         .padding(.leading, Desk.pt(16)).padding(.trailing, Desk.pt(6)).padding(.vertical, Desk.pt(5))
         .fluxGlass(radius: Desk.pt(22))
@@ -6587,7 +6757,7 @@ extension FluxScreen {
                 .fluxFocus(nativeFocus, id: DeskZone.searchID).id(DeskZone.searchID)
             TextField(prompt, text: $library.search)
                 .textFieldStyle(.plain)
-                .focused($searchFocus).onSubmit { searchFocus = false; focusFirstItem() }
+                .focused($searchFocus).onSubmit { library.rememberSearch(); searchFocus = false; focusFirstItem() }
             if !library.search.isEmpty {
                 Button { library.search = "" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary) }
                     .buttonStyle(.plain).accessibilityLabel("Effacer la recherche")
@@ -6715,6 +6885,8 @@ extension FluxScreen {
             if (library.isLoading || library.isFiltering) && visible.isEmpty {
                 ProgressView(library.isLoading ? "Chargement des chaînes…" : "Recherche…")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if visible.isEmpty && library.searchScreen {
+                searchEmptyState
             } else if visible.isEmpty {
                 VStack(spacing: Desk.pt(16)) {
                     Image(systemName: "tv").font(Desk.system(48, .light)).foregroundStyle(themeAccent)
@@ -6957,6 +7129,8 @@ extension FluxScreen {
         if (library.isLoading || library.isFiltering) && visible.isEmpty {
             ProgressView(library.isLoading ? "Chargement du catalogue…" : "Recherche…")
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if visible.isEmpty && library.searchScreen && library.credentialIssue == nil {
+            searchEmptyState
         } else if visible.isEmpty {
             VStack(spacing: Desk.pt(16)) {
                 Image(systemName: library.contentKind == .movie ? "film" : "square.stack.3d.up")

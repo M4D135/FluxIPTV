@@ -14,8 +14,33 @@ final class IPTVLibrary: ObservableObject {
     @Published private(set) var selectedSourceID: UUID?
     @Published var selectedItemID: String?
     @Published var search = "" {
-        didSet { if oldValue != search && !restoringBrowsing { browsingFilterChanged(); updateResults(debounce: true) } }
+        didSet {
+            guard oldValue != search, !restoringBrowsing else { return }
+            // What is typed is a search, on its own screen: the section
+            // where it was typed keeps what it showed.
+            if !searchScreen, Self.searchHasAScreen, !search.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                enterSearchScreen()
+            }
+            browsingFilterChanged(); updateResults(debounce: true); updateSearchCounts()
+        }
     }
+    /// The screen of the search, with its own column and its own pictures:
+    /// "recherche n'a pas son menu dédié", and the series showed the
+    /// pictures of the search (David, 27/11). Its query runs over the whole
+    /// catalogue of a kind, whatever the filters of that section, which
+    /// keeps them; no section keeps a query.
+    @Published private(set) var searchScreen = false
+    /// How many titles of each kind the query finds, on the screen of the search.
+    @Published private(set) var searchCounts: [IPTVMediaKind: Int] = [:]
+    /// The last queries sent, the latest first.
+    @Published private(set) var recentSearches: [String] = []
+    static let recentSearchesKey = "fluxiptv.search.recent.v1"
+    #if os(macOS) || os(tvOS)
+    static let searchHasAScreen = true
+    #else
+    static let searchHasAScreen = false
+    #endif
+    private var countTask: Task<Void, Never>?
     @Published var contentKind: IPTVMediaKind = .live {
         didSet { if oldValue != contentKind && !restoringBrowsing { changeBrowsingKind() } }
     }
@@ -122,6 +147,7 @@ final class IPTVLibrary: ObservableObject {
            let saved = try? JSONDecoder().decode(DockShelf.self, from: data) {
             dockShelf = saved
         }
+        recentSearches = UserDefaults.standard.stringArray(forKey: Self.recentSearchesKey) ?? []
         browsingPreferences.retainSources(Set(sources.map(\.id)))
         if let first = sources.first(where: { $0.id == browsingPreferences.lastSourceID }) ?? sources.first {
             Task { await selectSource(first.id) }
@@ -168,6 +194,7 @@ final class IPTVLibrary: ObservableObject {
            let saved = try? JSONDecoder().decode(DockShelf.self, from: data) {
             dockShelf = saved
         }
+        recentSearches = browsingDefaults?.stringArray(forKey: Self.recentSearchesKey) ?? []
         sources = [source]
         selectedSourceID = source.id
         catalogIndex = CatalogIndex(items)
@@ -227,7 +254,10 @@ final class IPTVLibrary: ObservableObject {
     func catalogCount(_ kind: IPTVMediaKind) -> Int { catalogIndex.unfiltered(kind).all.items.count }
 
     private func currentBrowsingState(kind: IPTVMediaKind) -> CatalogBrowsingState {
-        CatalogBrowsingState(countryCode: countryCode, group: group, search: search,
+        // A query belongs to the screen of the search: no section keeps one.
+        // Where the search has no screen of its own (iPhone, iPad), the
+        // field is a part of the section and keeps its query, as before.
+        CatalogBrowsingState(countryCode: countryCode, group: group, search: Self.searchHasAScreen ? "" : search,
                              groupSearch: groupSearch, presetID: selectedPresetIDs[kind],
                              continueOnly: continueOnly, catalogPage: catalogPage, browseItemID: browseItemID)
     }
@@ -235,7 +265,8 @@ final class IPTVLibrary: ObservableObject {
     /// Memory is updated immediately; writing UserDefaults is coalesced while
     /// the remote moves across channels. Lifecycle/source changes flush it.
     private func storeActiveBrowsingState() {
-        guard !restoringBrowsing, let context = browsingContext,
+        // The screen of the search leaves the section as it found it.
+        guard !restoringBrowsing, !searchScreen, let context = browsingContext,
               context.sourceID == selectedSourceID, loadedCatalogSourceID == context.sourceID else { return }
         browsingPreferences.remember(currentBrowsingState(kind: context.kind),
                                      sourceID: context.sourceID, kind: context.kind)
@@ -298,11 +329,13 @@ final class IPTVLibrary: ObservableObject {
     private func applyBrowsingState(_ state: CatalogBrowsingState) {
         countryCode = state.countryCode
         group = state.group
-        search = state.search
+        // A section shows what it holds; the screen of the search keeps its
+        // query from one kind to the next, from its first page.
+        if !searchScreen { search = Self.searchHasAScreen ? "" : state.search }
         groupSearch = state.groupSearch
         continueOnly = state.continueOnly
-        catalogPage = state.catalogPage
-        browseItemID = state.browseItemID
+        catalogPage = searchScreen ? 0 : state.catalogPage
+        browseItemID = searchScreen ? nil : state.browseItemID
         if let id = state.presetID { selectedPresetIDs[contentKind] = id }
         else { selectedPresetIDs.removeValue(forKey: contentKind) }
     }
@@ -310,8 +343,11 @@ final class IPTVLibrary: ObservableObject {
     private func restoreBrowsingContext() {
         restoringBrowsing = true
         if let sourceID = selectedSourceID, loadedCatalogSourceID == sourceID {
-            let saved = browsingPreferences.state(for: sourceID, kind: contentKind)
-                .validated(kind: contentKind, index: catalogIndex, presets: presets)
+            var stored = browsingPreferences.state(for: sourceID, kind: contentKind)
+            // A query that 0.9.6 kept with a section is not shown again: the
+            // title it remembers is judged on what the section will show.
+            if Self.searchHasAScreen { stored.search = "" }
+            let saved = stored.validated(kind: contentKind, index: catalogIndex, presets: presets)
             applyBrowsingState(saved)
             browsingContext = (sourceID, contentKind)
         } else {
@@ -348,7 +384,8 @@ final class IPTVLibrary: ObservableObject {
               browsingContext?.kind == contentKind,
               loadedCatalogSourceID == selectedSourceID,
               let id = browseItemID,
-              catalogResults.slice(group: group).item(id: id) == nil else { return }
+              // The search shows the whole kind, whatever the group of the section.
+              catalogResults.slice(group: searchScreen ? nil : group).item(id: id) == nil else { return }
         restoringBrowsing = true
         browseItemID = nil
         catalogPage = 0
@@ -359,9 +396,11 @@ final class IPTVLibrary: ObservableObject {
     private func updateResults(debounce: Bool = false, clear: Bool = false) {
         filterTask?.cancel(); filterToken = UUID()
         let token = filterToken
-        // What the favourites show: a list, or what a section of the dock keeps.
-        let kind = contentKind, term = search, membership = dockMembership ?? selectedPreset?.itemIDs
-        let country = countryCode
+        // What the favourites show: a list, or what a section of the dock
+        // keeps. The search looks through the whole catalogue of the kind.
+        let kind = contentKind, term = search
+        let membership = searchScreen ? nil : dockMembership ?? selectedPreset?.itemIDs
+        let country = searchScreen ? nil : countryCode
         if term.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && membership == nil && country == nil {
             catalogResults = catalogIndex.unfiltered(kind); isFiltering = false
             reconcileVisibleBrowsingSelection()
@@ -392,6 +431,74 @@ final class IPTVLibrary: ObservableObject {
         restoringBrowsing = false
         restoreBrowsingContext()
         updateResults(clear: true)
+        updateSearchCounts()
+    }
+
+    /// Opens the screen of the search over the section in front, which
+    /// keeps what it shows for when it comes back.
+    func enterSearchScreen() {
+        guard !searchScreen else { return }
+        storeActiveBrowsingState()
+        searchScreen = true
+        restoringBrowsing = true
+        catalogPage = 0
+        browseItemID = nil
+        restoringBrowsing = false
+        updateResults(clear: true)
+        updateSearchCounts()
+    }
+
+    /// Leaves the screen of the search: its query goes, and the section
+    /// shows again what it showed, under its own pictures.
+    func leaveSearchScreen() {
+        guard searchScreen else { return }
+        countTask?.cancel()
+        searchScreen = false
+        searchCounts = [:]
+        restoringBrowsing = true
+        search = ""
+        restoringBrowsing = false
+        restoreBrowsingContext()
+        updateResults(clear: true)
+    }
+
+    /// Keeps the query among the last ones: when it is sent, and when a
+    /// title it found is opened. Six at most, the latest first.
+    func rememberSearch() {
+        let term = search.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard searchScreen, !term.isEmpty else { return }
+        var kept = recentSearches.filter { $0.compare(term, options: [.caseInsensitive, .diacriticInsensitive]) != .orderedSame }
+        kept.insert(term, at: 0)
+        recentSearches = Array(kept.prefix(6))
+        browsingDefaults?.set(recentSearches, forKey: Self.recentSearchesKey)
+    }
+
+    /// Counts what the query finds among the channels, the films and the
+    /// series, once the typing pauses.
+    private func updateSearchCounts() {
+        countTask?.cancel()
+        let term = search.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard searchScreen, !term.isEmpty else {
+            if !searchCounts.isEmpty { searchCounts = [:] }
+            return
+        }
+        let index = catalogIndex
+        countTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 300_000_000)
+            guard !Task.isCancelled else { return }
+            let worker = Task.detached(priority: .utility) { () -> [IPTVMediaKind: Int]? in
+                var counts: [IPTVMediaKind: Int] = [:]
+                for kind in IPTVMediaKind.allCases {
+                    guard let found = try? index.matching(kind: kind, search: term) else { return nil }
+                    counts[kind] = found.all.items.count
+                }
+                return counts
+            }
+            let counts = await withTaskCancellationHandler(operation: { await worker.value }, onCancel: { worker.cancel() })
+            guard let self, let counts, !Task.isCancelled, self.searchScreen,
+                  self.search.trimmingCharacters(in: .whitespacesAndNewlines) == term else { return }
+            self.searchCounts = counts
+        }
     }
 
     private func clearCatalog() {
