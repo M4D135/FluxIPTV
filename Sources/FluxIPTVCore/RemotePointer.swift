@@ -1,5 +1,7 @@
 import Foundation
+#if canImport(CoreGraphics)
 import CoreGraphics
+#endif
 
 /// How the remote of an Apple TV goes through a screen. "un mode pointeur
 /// souris avec la télécommande appletv pavé tactile, faut pouvoir choisir
@@ -118,12 +120,14 @@ public struct FluxPointerMotion: Equatable, Sendable {
         return min(2, max(0.75, 0.75 + max(0, velocity) / 1600))
     }
 
-    /// `delta`: the way of the thumb since its last report, in the points of
-    /// the touch surface; `velocity`: its speed, in points per second.
-    public func step(from position: CGPoint, delta: CGVector, velocity: Double, in bounds: CGRect) -> CGPoint {
-        guard delta.dx.isFinite, delta.dy.isFinite else { return Self.clamp(position, to: bounds) }
+    /// `dx`, `dy`: the way of the thumb since its last report, in the points
+    /// of the touch surface; `velocity`: its speed, in points per second.
+    /// Plain numbers, not a `CGVector`: the tests of the core run on Linux,
+    /// where Foundation has points and rectangles but no vectors.
+    public func step(from position: CGPoint, dx: Double, dy: Double, velocity: Double, in bounds: CGRect) -> CGPoint {
+        guard dx.isFinite, dy.isFinite else { return Self.clamp(position, to: bounds) }
         let gain = speed.gain * Self.acceleration(velocity: velocity)
-        return Self.clamp(CGPoint(x: position.x + delta.dx * gain, y: position.y + delta.dy * gain), to: bounds)
+        return Self.clamp(CGPoint(x: Double(position.x) + dx * gain, y: Double(position.y) + dy * gain), to: bounds)
     }
 
     public static func clamp(_ point: CGPoint, to bounds: CGRect) -> CGPoint {

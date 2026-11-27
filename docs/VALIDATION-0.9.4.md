@@ -49,6 +49,28 @@ Les deux sont revérifiés :
 
 Les quatre compilations n’ont pas été relancées pour ces deux chaînes de texte.
 
+## GitHub Actions sur le commit livré (`3889170`)
+
+Le commit a été poussé sur `main` et sur `work/three-rooms-0.9.0`, ce qui a lancé deux exécutions.
+
+| Travail | `main` (45923098645) | branche (45923098956) |
+|---|---|---|
+| tvOS Simulator, tvOS 26.5 : 33 écrans et 22 parcours à la télécommande | Réussi | Réussi |
+| tvOS ARM64 Release | Réussi | Réussi |
+| iOS Simulator | Réussi | Réussi |
+| macOS : compilation et bancs | Échec : la machine hébergée a perdu le contact avec le serveur pendant la compilation | Réussi, toutes étapes |
+| Tests du cœur sous Linux, Swift 6.2.1 | Échec | Échec |
+
+Les tests du cœur ont échoué pour deux raisons :
+- `RemotePointer.swift` importait CoreGraphics, qui n’existe pas sous Linux ;
+- il utilisait `CGVector`, absent de Foundation sous Linux.
+
+Le commit suivant corrige les deux :
+- l’import est gardé par `canImport`, comme dans les autres fichiers du cœur ;
+- `FluxPointerMotion.step` prend `dx` et `dy` en nombres. Le calcul est le même.
+
+Ce commit ne change rien à l’application sur Mac, iPhone ni Apple TV. Le dossier `FluxIPTV-0.9.4` livré reste valable.
+
 ## Ce que les bancs vérifient de nouveau
 
 - **Retour depuis une liste.** Le parcours « Menu retrace les écrans » passe maintenant par la barre : depuis la liste des chaînes, puis depuis les films, Menu donne d’abord la télécommande au bouton Retour de la barre, et seulement le Menu suivant change d’écran, jusqu’à l’accueil.

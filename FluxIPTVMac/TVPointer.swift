@@ -586,11 +586,11 @@ private struct FluxPointerHost<Content: View>: UIViewControllerRepresentable {
             fallthrough
         case .changed:
             let translation = pan.translation(in: view)
-            let delta = CGVector(dx: translation.x - lastTranslation.x, dy: translation.y - lastTranslation.y)
+            let dx = Double(translation.x - lastTranslation.x), dy = Double(translation.y - lastTranslation.y)
             lastTranslation = translation
             let velocity = pan.velocity(in: view)
             let speed = Double((velocity.x * velocity.x + velocity.y * velocity.y).squareRoot())
-            move(to: FluxPointerMotion(speed: settings.speed).step(from: position, delta: delta, velocity: speed, in: view.bounds),
+            move(to: FluxPointerMotion(speed: settings.speed).step(from: position, dx: dx, dy: dy, velocity: speed, in: view.bounds),
                  animated: false)
             hover()
             show()
