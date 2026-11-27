@@ -2,6 +2,7 @@ import SwiftUI
 
 #if os(tvOS)
 import UIKit
+import UIKit.UIGestureRecognizerSubclass
 
 // MARK: - The pointer of a television
 //
@@ -503,8 +504,11 @@ private struct FluxPointerHost<Content: View>: UIViewControllerRepresentable {
     private weak var requested: (any UIFocusItem)?
     /// The control the pointer asked the focus for, and when.
     private var asking: (id: String, at: CFTimeInterval)?
-    /// A press of the arrows still goes from one control to the next.
+    /// A press of the arrows still goes from one control to the next: while
+    /// an arrow is down, and for a moment after it rose.
+    private var arrowDown = false
     private var arrowsUntil: TimeInterval = 0
+    private var arrowsMove: Bool { arrowDown || ProcessInfo.processInfo.systemUptime < arrowsUntil }
     /// A control has been found under the pointer: the controls of the
     /// screens can be found. Until then a click is never held back.
     private var found = false
@@ -540,14 +544,19 @@ private struct FluxPointerHost<Content: View>: UIViewControllerRepresentable {
         watch.delegate = self
         return watch
     }()
-    private lazy var arrows: UILongPressGestureRecognizer = {
-        let arrows = UILongPressGestureRecognizer(target: self, action: #selector(arrowPressed(_:)))
+    private lazy var arrows: FluxArrowWatch = {
+        let arrows = FluxArrowWatch()
         arrows.allowedPressTypes = [UIPress.PressType.upArrow, .downArrow, .leftArrow, .rightArrow]
             .map { NSNumber(value: $0.rawValue) }
         arrows.allowedTouchTypes = []
-        arrows.minimumPressDuration = 0
         arrows.cancelsTouchesInView = false
+        arrows.delaysTouchesEnded = false
         arrows.delegate = self
+        arrows.changed = { [weak self] down in
+            guard let self else { return }
+            arrowDown = down
+            arrowsUntil = ProcessInfo.processInfo.systemUptime + 0.6
+        }
         return arrows
     }()
     /// A click on nothing presses nothing, as a click of a mouse.
@@ -674,7 +683,7 @@ private struct FluxPointerHost<Content: View>: UIViewControllerRepresentable {
         // goes where the thumb goes. What the screens move themselves, and
         // the arrows, still move.
         guard pointerActive, !context.focusHeading.isEmpty else { return true }
-        return ProcessInfo.processInfo.systemUptime < arrowsUntil
+        return arrowsMove
     }
 
     override func didUpdateFocus(in context: UIFocusUpdateContext, with coordinator: UIFocusAnimationCoordinator) {
@@ -844,7 +853,7 @@ private struct FluxPointerHost<Content: View>: UIViewControllerRepresentable {
     }
 
     /// A swipe moves the pointer only; the arrows still move a selection.
-    var movesSelection: Bool { !pointerActive || ProcessInfo.processInfo.systemUptime < arrowsUntil }
+    var movesSelection: Bool { !pointerActive || arrowsMove }
 
     /// Whether `target` has the focus: its screen says so, or the control
     /// that has the focus stands where it stands. The screens with a focus
@@ -947,19 +956,8 @@ private struct FluxPointerHost<Content: View>: UIViewControllerRepresentable {
         }
     }
 
-    @objc private func arrowPressed(_ arrows: UILongPressGestureRecognizer) {
-        if arrows.state == .began { arrowsUntil = ProcessInfo.processInfo.systemUptime + 0.6 }
-    }
-
     @objc private func idleClicked(_ click: UILongPressGestureRecognizer) {
         // Held back: the pointer rests on nothing.
-    }
-
-    override func pressesBegan(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
-        if presses.contains(where: { [.upArrow, .downArrow, .leftArrow, .rightArrow].contains($0.type) }) {
-            arrowsUntil = ProcessInfo.processInfo.systemUptime + 0.6
-        }
-        super.pressesBegan(presses, with: event)
     }
 
     func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,
@@ -1105,6 +1103,15 @@ private struct FluxPointerHost<Content: View>: UIViewControllerRepresentable {
         // The languages over the picture: an audio, then a subtitle.
         case "player-tracks":
             return [SweepStep(via: ["track-audio-a2"], rests: "track-sub-s1")]
+        // The settings over the picture: the column shows Réseau, then
+        // Vidéo again, and a switch of that page.
+        case "player-flow":
+            return [SweepStep(via: ["settings-page-network", "settings-page-video"],
+                              rests: below + "toggle-Reprendre automatiquement films et épisodes")]
+        // A message over the catalogue: its OK, then a channel under it,
+        // which the pointer must not reach, and its OK again.
+        case "player-deep":
+            return [SweepStep(via: ["desk-notice-ok", "fixture-live-58"], rests: "desk-notice-ok")]
         default:
             return []
         }
@@ -1126,20 +1133,25 @@ private struct FluxPointerHost<Content: View>: UIViewControllerRepresentable {
         }
         for (number, step) in steps(for: scenario).enumerated() {
             for (index, name) in step.via.enumerated() {
-                // A control below the bottom of its page: the pointer pushes
-                // the page down to it first.
-                let control = name.hasPrefix(below) ? String(name.dropFirst(below.count)) : name
-                if control != name { await Self.push(toward: control, patience: patience) }
-                // The first control of a step after the first shows once the
-                // flow has clicked.
-                let held = await Self.rest(on: control, patience: patience, waiting: number > 0 && index == 0 ? 60 : 6)
+                // The first control of a step shows once the flow has
+                // clicked, or opened what holds it.
+                let held = await Self.reach(name, patience: patience, waiting: index == 0 ? 60 : 6)
                 shared.trace.append(held ?? "miss:" + name)
                 shared.report()
             }
-            let held = await Self.rest(on: step.rests, patience: patience, waiting: step.via.isEmpty && number > 0 ? 60 : 6)
+            let held = await Self.reach(step.rests, patience: patience, waiting: step.via.isEmpty ? 60 : 6)
             shared.trace.append((number == 0 ? "end" : "end\(number + 1)") + "=" + (held ?? "miss:" + step.rests))
             shared.report()
         }
+    }
+
+    /// Rests on the control `name`. Named `below:` + name, it lies below
+    /// the bottom of its page: the pointer pushes the page down to it first.
+    private static func reach(_ name: String, patience: Double, waiting seconds: Double) async -> String? {
+        guard name.hasPrefix(below) else { return await rest(on: name, patience: patience, waiting: seconds) }
+        let control = String(name.dropFirst(below.count))
+        await push(toward: control, patience: patience)
+        return await rest(on: control, patience: patience, waiting: seconds)
     }
 
     /// A step of a sweep toward a control below the bottom of its page.
@@ -1218,6 +1230,42 @@ private struct FluxPointerHost<Content: View>: UIViewControllerRepresentable {
         shared.report()
     }
     #endif
+}
+
+/// Says at once when an arrow goes down and when it rises. A long press,
+/// even of no duration, begins on the next turn of the run loop: the focus
+/// engine has by then refused to move for the arrow (bench of the 0.9.5,
+/// where the arrows of a flow moved nothing in the mode « Souris »). The
+/// press goes on to the screens: this only watches it.
+private final class FluxArrowWatch: UIGestureRecognizer {
+    var changed: (_ down: Bool) -> Void = { _ in }
+    private var down = false
+
+    override func pressesBegan(_ presses: Set<UIPress>, with event: UIPressesEvent) {
+        down = true
+        changed(true)
+    }
+
+    override func pressesEnded(_ presses: Set<UIPress>, with event: UIPressesEvent) {
+        rise()
+        state = .failed
+    }
+
+    override func pressesCancelled(_ presses: Set<UIPress>, with event: UIPressesEvent) {
+        rise()
+        state = .failed
+    }
+
+    override func reset() {
+        super.reset()
+        rise()
+    }
+
+    private func rise() {
+        guard down else { return }
+        down = false
+        changed(false)
+    }
 }
 
 /// The pointer itself: an arrow or a round spot, white with a dark edge,

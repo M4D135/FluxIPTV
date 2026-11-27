@@ -384,6 +384,12 @@ final class TVRemoteNavigationTests: XCTestCase {
         retainScreenshot("pointer-settings-02-studio-theme", in: app)
         XCUIRemote.shared.press(.select)
         assertCondition(NSPredicate(format: "value == 'Choisi'"), on: element(theme, in: app), in: app)
+        // The arrows still move the cursor, as with the classic remote.
+        let catcher = element("studio-catcher", in: app)
+        let cursor = seen(catcher)?.value as? String ?? ""
+        XCTAssertTrue(cursor.hasPrefix("theme-"), "The cursor of the studio is not on the theme: \(cursor)")
+        XCUIRemote.shared.press(.up)
+        assertCondition(NSPredicate(format: "value != %@", cursor), on: catcher, in: app)
         // Menu closes the studio: the settings have the pointer again.
         XCUIRemote.shared.press(.menu)
         assertCondition("exists == false", on: element("appearance-studio", in: app), in: app)
@@ -408,6 +414,83 @@ final class TVRemoteNavigationTests: XCTestCase {
         XCUIRemote.shared.press(.select)
         assertCondition(NSPredicate(format: "value == 'Sélectionnée'"), on: subtitle, in: app)
         print("PASS: TV_REMOTE the pointer took over from the picture under the languages, and its click chose the subtitle under it")
+    }
+
+    /// The settings over the picture give the thumb back to the pointer:
+    /// the column shows the page it rests on, and a click changes the
+    /// switch under it while the stream goes on.
+    @MainActor
+    func testThePointerWalksTheSettingsOverThePicture() {
+        let app = launch("player-flow", environment: ["FLUX_UI_POINTER": "1"])
+        defer { app.terminate() }
+        let state = element("flux-pointer-state", in: app)
+        let play = element("player-playpause", in: app)
+        let catcher = element("player-catcher", in: app)
+        let settings = element("player-engine", in: app)
+        let video = element("settings-page-video", in: app)
+        // The picture takes the thumb: the pointer waits, and the arrows
+        // open the settings as with the classic remote.
+        assertFocus(play, in: app, leavesByItself: true)
+        assertCondition("exists == false", on: play, in: app)
+        assertFocus(catcher, in: app)
+        assertCondition(NSPredicate(format: "value BEGINSWITH 'suspended'"), on: state, in: app)
+        XCUIRemote.shared.press(.select)
+        assertFocus(play, in: app)
+        move(.right, to: settings, maximumPresses: 5, in: app)
+        XCUIRemote.shared.press(.select)
+        // The pointer takes the settings at once: the column follows it.
+        XCTAssertTrue(appears(video, timeout: 10), "The arrows did not open the settings.")
+        let trace = pointerTrace(until: "end=", on: state)
+        XCTAssertEqual(trace, ["settings-page-network", "settings-page-video", "end=toggle-Reprendre automatiquement films et épisodes"],
+                       "The pointer did not walk the column and rest on the switch: \(trace)")
+        XCTAssertEqual(seen(video)?.value as? String, "Sélectionné", "The column does not show the page the pointer rested on.")
+        XCTAssertFalse(catcher.exists, "Nothing invisible stands under the settings.")
+        let resume = app.buttons["Reprendre automatiquement films et épisodes"]
+        let before = seen(resume)?.value as? String ?? ""
+        retainScreenshot("pointer-player-settings-01-switch", in: app)
+        XCUIRemote.shared.press(.select)
+        assertCondition(NSPredicate(format: "value != %@", before), on: resume, in: app)
+        // Menu closes the panels: the picture takes the thumb again.
+        XCUIRemote.shared.press(.menu)
+        assertCondition("exists == false", on: video, in: app)
+        assertCondition(NSPredicate(format: "value BEGINSWITH 'suspended'"), on: state, in: app)
+        print("PASS: TV_REMOTE the settings over the picture gave the thumb back to the pointer, whose column showed the pages it crossed, and its click changed the switch under it")
+    }
+
+    /// A message takes the pointer as it takes the remote: what stands
+    /// under it is out of reach, and a click on its OK acknowledges it.
+    @MainActor
+    func testThePointerAnswersAMessage() {
+        let app = launch("player-deep", environment: ["FLUX_UI_POINTER": "1"])
+        defer { app.terminate() }
+        let state = element("flux-pointer-state", in: app)
+        let play = element("player-playpause", in: app)
+        let catcher = element("player-catcher", in: app)
+        let acknowledge = element("desk-notice-ok", in: app)
+        let watched = element("live-channel-fixture-live-58", in: app)
+        // The sixtieth channel of the fixture cannot be shown: it raises
+        // the message of a source whose credentials are missing.
+        let unplayable = element("live-channel-fixture-live-59", in: app)
+        assertFocus(play, in: app, leavesByItself: true)
+        assertCondition("exists == false", on: play, in: app)
+        assertFocus(catcher, in: app)
+        // Menu leaves the picture for the catalogue, where the pointer is the remote.
+        XCUIRemote.shared.press(.menu)
+        assertFocus(watched, logical: "fixture-live-58", in: app)
+        assertCondition(NSPredicate(format: "value BEGINSWITH 'active'"), on: state, in: app)
+        // The arrows still move the selection, and the click presses it.
+        XCUIRemote.shared.press(.down)
+        assertFocus(unplayable, logical: "fixture-live-59", in: app)
+        XCUIRemote.shared.press(.select)
+        XCTAssertTrue(appears(acknowledge, timeout: 10), "The channel did not raise its message.")
+        let trace = pointerTrace(until: "end=", on: state)
+        XCTAssertEqual(trace, ["desk-notice-ok", "miss:fixture-live-58", "end=desk-notice-ok"],
+                       "The pointer reached what stands under the message, or not its OK: \(trace)")
+        retainScreenshot("pointer-message-01-ok", in: app)
+        XCUIRemote.shared.press(.select)
+        assertCondition("exists == false", on: acknowledge, in: app)
+        assertFocus(unplayable, logical: "fixture-live-59", in: app)
+        print("PASS: TV_REMOTE the message took the pointer and kept what stands under it out of reach; a click on its OK acknowledged it and gave the channel back")
     }
 
     @MainActor

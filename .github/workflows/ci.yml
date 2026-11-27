@@ -118,7 +118,9 @@ jobs:
         run: bash scripts/test-live-preview.sh 2>&1 | tee build/logs/live-preview-native.log
       - name: Capture the native television and shelf catalogue
         if: ${{ !cancelled() && matrix.platform == 'macOS' && steps.apple_build.outcome == 'success' }}
-        timeout-minutes: 10
+        # Eight and a half to nine and a half minutes on a hosted Intel Mac
+        # (647d5ae, e5e24fb on main); over ten once (e5e24fb on the branch).
+        timeout-minutes: 20
         run: bash scripts/test-catalog-ui.sh 2>&1 | tee build/logs/catalog-ui-native.log
       - name: Capture and navigate the native Apple TV interface
         if: ${{ !cancelled() && matrix.platform == 'tvOS' && steps.apple_build.outcome == 'success' }}

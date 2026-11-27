@@ -1,5 +1,10 @@
 # Feuille de route FLUX IPTV
 
+## Intégré dans les sources 0.9.6 — build 44
+
+- **Les flèches en mode souris** : en 0.9.4 et 0.9.5, une flèche ne déplaçait plus la sélection quand le pointeur était la télécommande. Le pointeur apprend désormais qu’une flèche est enfoncée au moment de l’appui, avant que tvOS décide du déplacement. Le défaut a été trouvé par le parcours qui pointe un message.
+- **Deux parcours du pointeur de plus** au banc Apple TV : les réglages pendant la lecture, et un message au-dessus du catalogue.
+
 ## Intégré dans les sources 0.9.5 — build 43
 
 Réponse de David le 27 novembre à « pointeur aussi dans les Réglages et les panneaux ? » : « Oui, lance-la ».

@@ -1,4 +1,9 @@
-FLUX IPTV 0.9.5 — BUILD 43 — PROJET APPLE TV
+FLUX IPTV 0.9.6 — BUILD 44 — PROJET APPLE TV
+
+NOUVEAUTÉS DE LA 0.9.6 : les flèches en mode souris.
+En 0.9.4 et 0.9.5, une flèche de la télécommande ne déplaçait plus la
+sélection en mode souris : le pointeur apprenait trop tard qu'elle était
+enfoncée. Elle la déplace de nouveau, et le pointeur la suit.
 
 NOUVEAUTÉS DE LA 0.9.5 : le mode souris partout.
 RÉGLAGES : le pointeur sélectionne la colonne des pages, dont la page suit le

@@ -1,6 +1,8 @@
-# FLUX IPTV 0.9.5 — build 43 — Bureau Mac : dock, colonnes et panneaux de verre
+# FLUX IPTV 0.9.6 — build 44 — Bureau Mac : dock, colonnes et panneaux de verre
 
 Application native SwiftUI pour macOS, iOS et tvOS.
+
+**La 0.9.6 rend les flèches au mode souris.** En 0.9.4 et en 0.9.5, une flèche de la télécommande ne déplaçait plus la sélection en mode souris. Le pointeur apprenait trop tard qu’une flèche était enfoncée : tvOS avait déjà refusé le déplacement, comme pour un glissement. Il l’apprend désormais au moment de l’appui ; la sélection avance, et le pointeur la suit. Un nouveau parcours du banc, qui pointe un message, a montré le défaut ; un autre pointe les réglages pendant la lecture.
 
 **La 0.9.5 étend le mode souris à toute l’Apple TV.** Le pointeur sélectionne maintenant les Réglages : la colonne, dont la page suit le pointeur, et chaque touche du contenu. Poussé contre le bas d’une page plus longue que l’écran, il s’y arrête et la page défile. Il sélectionne aussi le panneau « Favoris, listes et dock », les messages, les réglages pendant la lecture et Audio et sous-titres, au-dessus de l’image. Le studio d’apparence a son propre pointeur : le curseur se pose où il s’arrête, et un clic choisit. Un glissement n’y déplace plus le curseur ; les flèches le déplacent toujours, et le pointeur les suit. Dans une fiche, un clic appuie de nouveau sur la commande survolée : en 0.9.4, il y restait sans effet. Seul le formulaire d’une source garde la télécommande classique ; le pointeur s’y efface.
 
@@ -236,7 +238,7 @@ L’archive contient les sources et l’installateur Mac, pas un binaire Apple p
 
 1. Sur Mac, quitter l’ancienne app et arrêter le lancement depuis Xcode.
 2. Décompresser, puis ouvrir **Installer Flux IPTV.command**. L’installateur compile sur ce Mac et vérifie le démarrage ; cette vérification ne remplace pas un essai de lecture.
-3. Vérifier **FLUX 0.9.5 · build 43** en bas de la colonne de Réglages.
+3. Vérifier **FLUX 0.9.6 · build 44** en bas de la colonne de Réglages.
 
 Prérequis de déploiement : macOS 14, iOS 17 ou tvOS 17. Installer Xcode complet pour compiler ; le verre natif demande la version 26 des systèmes, les versions antérieures reçoivent un matériau translucide. Sur iPhone/iPad ou Apple TV, ouvrir `FluxIPTV.xcodeproj`, choisir **FluxIPTViOS** ou **FluxIPTVTV**, puis renseigner l’équipe de signature pour un appareil physique.
 
@@ -250,7 +252,7 @@ Ouvrir **`FluxIPTV-AppleTV.xcodeproj`**, ou lancer **`Ouvrir Flux IPTV Apple TV.
 
 ## Validation
 
-Le périmètre vérifié pour cette version est dans [docs/VALIDATION-0.9.5.md](docs/VALIDATION-0.9.5.md), qui s’ajoute à ceux de la 0.9.4 dans [docs/VALIDATION-0.9.4.md](docs/VALIDATION-0.9.4.md), de la 0.9.3 dans [docs/VALIDATION-0.9.3.md](docs/VALIDATION-0.9.3.md), de la 0.9.2 dans [docs/VALIDATION-0.9.2.md](docs/VALIDATION-0.9.2.md), de la 0.9.1 dans [docs/VALIDATION-0.9.1.md](docs/VALIDATION-0.9.1.md) et de la 0.9.0 dans [docs/VALIDATION-0.9.0.md](docs/VALIDATION-0.9.0.md), avec ce qui ne l’a pas été. Les tests unitaires du cœur ne démontrent ni la compilation des frameworks Apple, ni la fluidité réelle, ni la lecture des flux du fournisseur. Les résultats des versions précédentes ne valident pas la nouvelle interface du Mac.
+Le périmètre vérifié pour cette version est dans [docs/VALIDATION-0.9.6.md](docs/VALIDATION-0.9.6.md), qui s’ajoute à ceux de la 0.9.5 dans [docs/VALIDATION-0.9.5.md](docs/VALIDATION-0.9.5.md), de la 0.9.4 dans [docs/VALIDATION-0.9.4.md](docs/VALIDATION-0.9.4.md), de la 0.9.3 dans [docs/VALIDATION-0.9.3.md](docs/VALIDATION-0.9.3.md), de la 0.9.2 dans [docs/VALIDATION-0.9.2.md](docs/VALIDATION-0.9.2.md), de la 0.9.1 dans [docs/VALIDATION-0.9.1.md](docs/VALIDATION-0.9.1.md) et de la 0.9.0 dans [docs/VALIDATION-0.9.0.md](docs/VALIDATION-0.9.0.md), avec ce qui ne l’a pas été. Les tests unitaires du cœur ne démontrent ni la compilation des frameworks Apple, ni la fluidité réelle, ni la lecture des flux du fournisseur. Les résultats des versions précédentes ne valident pas la nouvelle interface du Mac.
 
 ## Publication sur l’App Store
 
