@@ -90,7 +90,7 @@ Ces choix se trouvent dans Réglages › Télécommande › Pointeur :
 | Vérification de types : Mac et banc du Mac, tvOS, tvOS du banc, parcours de la télécommande, variante App Store pour tvOS, et iPhone et iPad (simulateur) | Aucune erreur. |
 | Tests du cœur (`swift test`) | 207 tests, aucun échec. |
 | Banc Apple TV ciblé, simulateur Apple TV 1080p sous tvOS 27.2 | Les 6 parcours concernés, rejoués avant les correctifs du banc : 4 réussis. Après les correctifs, les 2 autres réussissent (voir plus bas). |
-| Banc Apple TV complet (`scripts/test-tvos-catalog-ui.sh`) | À compléter. |
+| Banc Apple TV complet (`scripts/test-tvos-catalog-ui.sh`), Apple TV 4K (4e génération) en 1080p sous tvOS 27.2 | 33 écrans capturés, le focus natif sur le contrôle attendu dans chacun, et les 31 parcours de la télécommande : aucun échec, en 24 minutes, dont 19 min 40 pour les parcours. |
 | Banc Mac avec la galerie (`FLUX_CATALOG_UI_BACKGROUND=1 FLUX_CATALOG_UI_GALLERY=1 scripts/test-catalog-ui.sh`) | 95 captures et 29 scénarios de touches, en 6 min 47. Comme en 0.9.8, ce mode laisse de côté les scénarios de la recherche qui demandent la fenêtre active. |
 
 ## Ce que la vérification a trouvé
