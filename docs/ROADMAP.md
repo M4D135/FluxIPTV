@@ -1,5 +1,10 @@
 # Feuille de route FLUX IPTV
 
+## Intégré dans les sources 0.9.13 — build 54
+
+- **Retour et Accueil sous le pointeur** (« mode pointeur impossible de cliquer sur precedent ou home, boutons du haut inactifs avec pointeur », photo du téléviseur, 28 novembre) : sur l’Apple TV, en mode souris, le dock masqué, le pointeur sélectionne Retour et Accueil en haut de la colonne des Réglages, et un clic y appuie ; de même Fermer, en haut des réglages pendant la lecture. L’en-tête de la colonne des Réglages ne donnait pas leurs noms au pointeur, à la différence de ceux des catalogues.
+- **Au simulateur** : la 0.9.13 est vérifiée au simulateur Apple TV et sur le Mac ; rien n’est installé sur les Apple TV du séjour.
+
 ## Intégré dans les sources 0.9.12 — build 53
 
 - **Les chaînes en tableau** (« la colonne c long a parcourir, faut un tableau », 28 novembre) : sur le Mac et sur l’Apple TV, les chaînes de la télévision se rangent en tableau, deux par rangée à côté de l’aperçu sur l’écran d’une Apple TV, trois quand l’aperçu est replié, quatre quand la colonne l’est aussi ; une page en tient une quarantaine. Le nom d’une chaîne tient sur deux lignes dans une case du tableau.

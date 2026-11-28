@@ -519,6 +519,49 @@ final class TVRemoteNavigationTests: XCTestCase {
         print("PASS: TV_REMOTE the pointer walked a page of the settings and its column, opened the studio, chose a theme there and came back")
     }
 
+    /// "mode pointeur impossible de cliquer sur precedent ou home, boutons
+    /// du haut inactifs avec pointeur" (David, 28/11). Without the dock the
+    /// settings keep Back and Home at the top of their column: up to the
+    /// 0.9.12 the pointer could not give them the remote, and its clicks
+    /// went nowhere. Over the picture, the key at the same place closes
+    /// the settings.
+    @MainActor
+    func testThePointerReachesTheKeysAtTheTopOfTheSettings() {
+        var app = launch("settings", environment: ["FLUX_UI_POINTER": "1", "FLUX_UI_DOCK_HIDDEN": "1"])
+        var state = element("flux-pointer-state", in: app)
+        let sources = element("settings-page-sources", in: app)
+        let home = element("desk-home-screen", in: app)
+        var trace = pointerTrace(until: "end=", on: state)
+        XCTAssertEqual(trace, ["desk-home", "end=desk-back"], "The pointer did not give the remote to Home, then to Back: \(trace)")
+        retainScreenshot("pointer-header-01-back", in: app)
+        // The settings opened first: Back leads to the home screen.
+        XCUIRemote.shared.press(.select)
+        XCTAssertTrue(home.waitForExistence(timeout: 10 * Self.patience), "The click on Back did not leave the settings.")
+        trace = pointerTrace(until: "end2=", on: state)
+        XCTAssertEqual(trace.last, "end2=settings", "The pointer does not rest on the settings in the bar: \(trace)")
+        XCUIRemote.shared.press(.select)
+        XCTAssertTrue(appears(sources, timeout: 10 * Self.patience), "The click in the bar did not open the settings again.")
+        trace = pointerTrace(until: "end3=", on: state)
+        XCTAssertEqual(trace.last, "end3=desk-home", "The pointer does not rest on Home: \(trace)")
+        retainScreenshot("pointer-header-02-home", in: app)
+        XCUIRemote.shared.press(.select)
+        XCTAssertTrue(home.waitForExistence(timeout: 10 * Self.patience), "The click on Home did not lead home.")
+        assertCondition("exists == false", on: sources, in: app)
+        app.terminate()
+        // Over the picture, Fermer.
+        app = launch("player-settings", environment: ["FLUX_UI_POINTER": "1"])
+        defer { app.terminate() }
+        state = element("flux-pointer-state", in: app)
+        let video = element("settings-page-video", in: app)
+        trace = pointerTrace(until: "end=", on: state)
+        XCTAssertEqual(trace, ["settings-page-network", "end=desk-close"],
+                       "The pointer did not walk the column and rest on the key that closes the settings: \(trace)")
+        retainScreenshot("pointer-header-03-close", in: app)
+        XCUIRemote.shared.press(.select)
+        assertCondition("exists == false", on: video, in: app)
+        print("PASS: TV_REMOTE without the dock the pointer gave the remote to Home and Back at the top of the settings; its click on Back left them, on Home led home, and on Fermer closed the settings over the picture")
+    }
+
     /// Over the picture the thumb is the picture's; a panel over it, the
     /// languages, gives it back to the pointer.
     @MainActor

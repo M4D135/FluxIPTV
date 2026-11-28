@@ -1,4 +1,11 @@
-FLUX IPTV 0.9.12 — BUILD 53 — PROJET APPLE TV
+FLUX IPTV 0.9.13 — BUILD 54 — PROJET APPLE TV
+
+NOUVEAUTÉS DE LA 0.9.13 : Retour et Accueil sous le pointeur.
+MODE SOURIS : quand le dock est masqué, Retour et Accueil se tiennent en
+haut de la colonne des Réglages. Le pointeur s'y posait sans leur donner
+la télécommande, et un clic n'y faisait rien ; il les sélectionne
+désormais, et un clic y appuie. Fermer, en haut des réglages ouverts
+pendant la lecture, aussi.
 
 NOUVEAUTÉS DE LA 0.9.12 : les chaînes en tableau, les panneaux qui se
 replient.

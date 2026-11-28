@@ -154,6 +154,11 @@ struct PlaybackSettingsView: View {
     #if os(tvOS)
     /// Page under the remote: walking the list shows each page at once.
     @FocusState private var focusedPage: Page?
+    /// Back, Home or Fermer, at the top of the column: the pointer of the
+    /// remote gives them the focus by their names. "mode pointeur
+    /// impossible de cliquer sur precedent ou home" (David, 28/11): up to
+    /// the 0.9.12 they had none for it.
+    @FocusState private var headerFocus: String?
     #endif
     #if os(macOS)
     /// The keyboard of the window, which the screen gives to the settings.
@@ -395,14 +400,25 @@ struct PlaybackSettingsView: View {
     @ViewBuilder private var navigationHeading: some View {
         #if os(macOS) || os(tvOS)
         if overPlayback {
-            DeskColumnHeader(title: "RÉGLAGES", close: close)
+            DeskColumnHeader(title: "RÉGLAGES", close: close, systemFocus: headerFocusBinding)
         } else if let goBack, let goHome {
-            DeskColumnHeader(title: "RÉGLAGES", backTitle: backTitle, back: goBack, home: goHome)
+            DeskColumnHeader(title: "RÉGLAGES", backTitle: backTitle, back: goBack, home: goHome, systemFocus: headerFocusBinding)
         } else { plainNavigationHeading }
         #else
         plainNavigationHeading
         #endif
     }
+    #if os(macOS) || os(tvOS)
+    /// The focus of the keys at the top of the column, for the pointer of a
+    /// television; the keyboard of a Mac reaches them through the screen.
+    private var headerFocusBinding: FocusState<String?>.Binding? {
+        #if os(tvOS)
+        $headerFocus
+        #else
+        nil
+        #endif
+    }
+    #endif
     private var plainNavigationHeading: some View {
         Label("RÉGLAGES", systemImage: "gearshape")
             .font(Desk.font(.caption, .semibold)).tracking(1.5).foregroundStyle(.secondary)

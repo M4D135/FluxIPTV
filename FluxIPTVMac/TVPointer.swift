@@ -1405,6 +1405,19 @@ private struct FluxPointerHost<Content: View>: UIViewControllerRepresentable {
             let theme = FluxDockTheme.Family.allCases.flatMap(\.themes).first { $0 != FluxDockTheme.defaultValue } ?? .defaultValue
             return [SweepStep(via: ["preset-*", below + "toggle-*", "settings-page-appearance"], rests: "studio-dock"),
                     SweepStep(via: ["studio-scope-live"], rests: "studio-theme-" + theme.rawValue)]
+        // Sources, without the dock: Home and Back at the top of the
+        // column, which the pointer could not reach up to the 0.9.12 ("mode
+        // pointeur impossible de cliquer sur precedent ou home", David,
+        // 28/11). The click on Back leads to the home screen, whose bar
+        // opens the settings again, where the click on Home leads home.
+        case "settings":
+            return [SweepStep(via: [DeskZone.homeID], rests: DeskZone.backID),
+                    SweepStep(via: [], rests: FluxDockItem.settings.focusID),
+                    SweepStep(via: [], rests: DeskZone.homeID)]
+        // The settings over the picture: a row of the column, then the key
+        // that closes them, at its top.
+        case "player-settings":
+            return [SweepStep(via: ["settings-page-network"], rests: DeskColumnHeader.closeID)]
         // The languages over the picture: an audio, then a subtitle.
         case "player-tracks":
             return [SweepStep(via: ["track-audio-a2"], rests: "track-sub-s1")]

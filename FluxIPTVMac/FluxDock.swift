@@ -1510,8 +1510,10 @@ struct DeskColumnHeader: View {
     /// Identifier selected with the keyboard or a remote, and the native
     /// focus that follows it.
     var focusedID: String?
+    /// The focus that the keys follow; on a television, the pointer of the
+    /// remote gives it to them by their names.
     var systemFocus: FocusState<String?>.Binding?
-
+    static let closeID = "desk-close"
 
     var body: some View {
         HStack(spacing: Desk.tv(8)) {
@@ -1539,7 +1541,9 @@ struct DeskColumnHeader: View {
                 bound(DeskHeaderButton(symbol: panel.symbol, title: panel.foldTitle, identifier: panel.foldID,
                                        focused: focusedID == panel.foldID, action: fold), id: panel.foldID)
             }
-            if let close { DeskHeaderButton(symbol: "xmark", title: "Fermer", identifier: "desk-close", action: close) }
+            if let close {
+                bound(DeskHeaderButton(symbol: "xmark", title: "Fermer", identifier: Self.closeID, action: close), id: Self.closeID)
+            }
         }
         .padding(.top, 1)
     }
