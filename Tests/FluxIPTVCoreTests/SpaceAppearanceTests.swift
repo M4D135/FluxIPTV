@@ -195,8 +195,9 @@ final class SpaceAppearanceTests: XCTestCase {
 
     /// The choices are decoded once for each text kept (0.9.10): read again,
     /// after another text or the same one, they are those of their text.
-    @MainActor
-    func testTheChoicesReadAgainAreThoseOfTheirText() {
+    /// Its cache lives on the main actor, where the tests run: a class
+    /// whose tests are not all isolated alike does not build under Linux.
+    func testTheChoicesReadAgainAreThoseOfTheirText() { MainActor.assumeIsolated {
         var choices = FluxBackdropChoices()
         choices.set(FluxBackdropPlan(mode: .pictures, pictures: ["art:films-1"], interval: .seconds15, order: .shuffled, transition: .cut), for: .movie)
         let saved = choices.stored
@@ -205,7 +206,7 @@ final class SpaceAppearanceTests: XCTestCase {
             XCTAssertEqual(FluxBackdropChoices.reading(stored), FluxBackdropChoices(stored: stored), stored)
         }
         XCTAssertEqual(FluxBackdropChoices.reading(saved), choices)
-    }
+    } }
 
     /// "garde mes preset d'images de fond pour le par defaut" (David, 27/11):
     /// a new install shows the pictures chosen on his Apple TV.

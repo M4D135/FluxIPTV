@@ -34,8 +34,9 @@ final class SynopsisPagesTests: XCTestCase {
     /// The pages are cut once for each text kept (0.9.10): read again, after
     /// another text, another length or the same ones, they are those of their
     /// text.
-    @MainActor
-    func testThePagesReadAgainAreThoseOfTheirText() {
+    /// Its cache lives on the main actor, where the tests run: a class
+    /// whose tests are not all isolated alike does not build under Linux.
+    func testThePagesReadAgainAreThoseOfTheirText() { MainActor.assumeIsolated {
         let long = text(400), short = text(30), accented = "Été " + text(200) + " ﬁn"
         let readings: [(String, Int)] = [(long, 520), (long, 520), (long, 850), (short, 520), ("", 520),
                                          (accented, 520), (long, 520), (accented, 520), (accented, 40), ("", 850), (long, 520)]
@@ -47,5 +48,5 @@ final class SynopsisPagesTests: XCTestCase {
         XCTAssertEqual(SynopsisPages.reading(composed, length: 40), SynopsisPages.split(composed, length: 40))
         XCTAssertEqual(SynopsisPages.reading(decomposed, length: 40), SynopsisPages.split(decomposed, length: 40))
         XCTAssertEqual(SynopsisPages.reading(decomposed, length: 40).first?.unicodeScalars.contains("\u{301}"), true)
-    }
+    } }
 }
