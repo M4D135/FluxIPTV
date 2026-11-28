@@ -24,7 +24,7 @@ struct PlaybackSettingsView: View {
             case .sources: "Sources"
             case .appearance: "Interface"
             case .graphics: "Graphismes"
-            case .dock: "Dock"
+            case .dock: "Thème et dock"
             case .remote: Self.remoteTitle
             case .video: "Vidéo"
             case .network: "Réseau"
@@ -52,7 +52,7 @@ struct PlaybackSettingsView: View {
             case .sources: "Vos abonnements et vos playlists."
             case .appearance: "Studio, couleurs des écrans et présentation des fiches."
             case .graphics: "Qualité selon l’appareil, comme dans un jeu, et chacun de ses réglages."
-            case .dock: "Emplacement, thème, loupe, icônes et raccourcis."
+            case .dock: "Thème des fenêtres et du dock, emplacement, loupe, icônes et raccourcis."
             case .remote: Self.remoteSubtitle
             case .video: "Moteur de lecture et déplacements dans la vidéo."
             case .network: "Compromis entre zapping et stabilité."
@@ -120,6 +120,7 @@ struct PlaybackSettingsView: View {
     @AppStorage(FluxDockVisibility.storageKey) private var dockShown = FluxDockVisibility.defaultValue
     @AppStorage(FluxDockTheme.storageKey) private var dockTheme: FluxDockTheme = .defaultValue
     @AppStorage(FluxDockThemeChoices.storageKey) private var spaceThemes = ""
+    @AppStorage(FluxThemeScope.storageKey) private var themeScope: FluxThemeScope = .defaultValue
     #if os(tvOS)
     @State private var studio: StudioShelf?
     #endif
@@ -337,7 +338,7 @@ struct PlaybackSettingsView: View {
                 }
                 .padding(Desk.pt(14)).frame(width: navigationWidth)
                 .frame(maxHeight: .infinity, alignment: .top)
-                .fluxGlass(radius: Desk.pt(25))
+                .fluxWindow(radius: Desk.pt(25))
                 .padding(.bottom, navigationFootRoom)
                 #if os(tvOS)
                 .focusSection()
@@ -358,6 +359,12 @@ struct PlaybackSettingsView: View {
                                     .padding(.horizontal, Desk.pt(26)).padding(.bottom, Desk.pt(24))
                             }
                         }
+                        // The page stops at the edges of its window. On an
+                        // Apple TV HD in Fluide, under tvOS 26, its sections
+                        // went on below the window, down to the foot of the
+                        // screen (photo of David, 28/11). Across, the room
+                        // keeps whole a key that grows under the remote.
+                        .mask { Rectangle().padding(.horizontal, -Desk.pt(40)) }
                         #if os(macOS)
                         // The control that the keyboard reaches comes into view.
                         .onAppear { keys?.scroll = { id in withAnimation(.easeOut(duration: 0.18)) { proxy.scrollTo(id) } } }
@@ -366,7 +373,8 @@ struct PlaybackSettingsView: View {
                     if playback.restartPending { restartBar.padding(Desk.pt(14)) }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                .fluxGlass(radius: Desk.pt(27))
+                .clipShape(RoundedRectangle(cornerRadius: Desk.pt(27), style: .continuous))
+                .fluxWindow(radius: Desk.pt(27))
                 #if os(tvOS)
                 // Right from any page enters its content, wherever it starts.
                 .focusSection()
@@ -758,7 +766,7 @@ struct PlaybackSettingsView: View {
                 // Where a bar that is not shown would stand does not matter.
                 .disabled(!dockShown).opacity(dockShown ? 1 : 0.4)
             }
-            section("Thème", "L’apparence de la plaque et des icônes, sur tous les écrans. Un écran peut garder le sien : le studio les essaie en plein écran, écran par écran.") {
+            section("Thème", "L’apparence du dock et des fenêtres — la colonne, les panneaux, les fiches, les réglages et les messages —, sur tous les écrans. Un écran peut garder le sien : le studio les essaie en plein écran, écran par écran.") {
                 ForEach(FluxDockTheme.Family.allCases) { family in
                     Text(family.title).font(Desk.font(.headline, .semibold)).foregroundStyle(.secondary)
                     // Built at once: the keys reach a theme below the edge of the page.
@@ -766,6 +774,9 @@ struct PlaybackSettingsView: View {
                         ForEach(family.themes) { choice in themeTile(choice) }
                     }
                 }
+                // "theme general et on choisit que doc ou le reste" (David, 28/11).
+                DeskChoice(title: "Le thème habille", options: FluxThemeScope.allCases.map { ($0, $0.title) }, selection: $themeScope)
+                Text(scopeCaption).font(Desk.font(.caption)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 let own = FluxDockThemeChoices.parse(spaceThemes)
                 if !own.isEmpty {
                     Text("Gardent leur propre thème : " + FluxSpace.allCases.compactMap { space in own[space].map { "\(space.title) (\($0.title))" } }.joined(separator: ", ") + ".")
@@ -804,7 +815,7 @@ struct PlaybackSettingsView: View {
                 }
                 settingsKey("Dock par défaut") {
                     dockPosition = .defaultValue; dockShown = FluxDockVisibility.defaultValue
-                    dockTheme = .defaultValue; spaceThemes = ""; dockOrder = ""
+                    dockTheme = .defaultValue; spaceThemes = ""; dockOrder = ""; themeScope = .defaultValue
                     dockZoom = .defaultValue; dockLook = .defaultValue
                 }
             }
@@ -1046,6 +1057,14 @@ struct PlaybackSettingsView: View {
         .accessibilityLabel("Dock \(choice.title.lowercased())").accessibilityAddTraits(selected ? .isSelected : [])
         .accessibilityIdentifier("settings-dock-position-\(choice.rawValue)")
         .deskTarget("position-\(choice.rawValue)") { dockPosition = choice }
+    }
+
+    private var scopeCaption: String {
+        switch themeScope {
+        case .everywhere: "Verre et Sans fond laissent aux fenêtres le verre de l’application."
+        case .dock: "Les fenêtres gardent le verre de l’application."
+        case .windows: "Le dock garde le verre de l’application ; Verre et Sans fond y laissent aussi les fenêtres."
+        }
     }
 
     private func themeTile(_ choice: FluxDockTheme) -> some View {
@@ -1393,7 +1412,7 @@ struct PlaybackSettingsView: View {
     private var appearanceSettings: some View {
         VStack(alignment: .leading, spacing: Desk.pt(16)) {
             #if os(macOS) || os(tvOS)
-            section("Studio d’apparence", "Les fonds de chaque écran, seuls ou en diaporama, et le thème du dock, écran par écran. Tout s’essaie en plein écran avant d’être gardé.") {
+            section("Studio d’apparence", "Les fonds de chaque écran, seuls ou en diaporama, et le thème du dock et des fenêtres, écran par écran. Tout s’essaie en plein écran avant d’être gardé.") {
                 HStack(spacing: Desk.pt(12)) {
                     studioTile(.backdrops, line: "\(FluxBackdropLibrary.art.count) fonds dessinés, diaporama")
                     studioTile(.dock, line: "\(FluxDockTheme.allCases.count) thèmes : d’aujourd’hui, rétro et dessinés")

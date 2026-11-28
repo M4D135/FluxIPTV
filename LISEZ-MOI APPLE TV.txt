@@ -1,4 +1,23 @@
-FLUX IPTV 0.9.10 — BUILD 51 — PROJET APPLE TV
+FLUX IPTV 0.9.11 — BUILD 52 — PROJET APPLE TV
+
+NOUVEAUTÉS DE LA 0.9.11 : un thème pour toute l'application.
+FENÊTRES : le thème du dock habille aussi les fenêtres — la colonne, les
+panneaux de la télévision, les fiches, les réglages, les messages. Néon les
+entoure d'un tube de lumière aux couleurs de l'écran, Art déco de son
+cuivre, Biseaux de son relief gris ; Couleurs, Tactile, Givre et Verre
+nocturne habillent leur verre, Verre et Sans fond le leur laissent.
+AU CHOIX : Réglages › Thème et dock › « Le thème habille » : le dock et les
+fenêtres (au départ), le dock seulement, ou les fenêtres seulement. Un
+écran qui garde son thème l'applique aussi à ses fenêtres, et le studio
+d'apparence l'essaie sur un dock et sur une fenêtre. Les champs de
+recherche, la barre de l'accueil et les commandes sur l'image gardent le
+verre. Les plaques sont faites de remplissages et de traits, sans ombre ni
+flou ; les thèmes qui remplacent le verre ne prélèvent rien derrière elles.
+APPLE TV HD : le préréglage Fluide, qu'Automatique choisit pour elle, garde
+désormais les fonds (des images fixes, décodées une fois en 1920 × 1080) ;
+restée en Automatique, elle les retrouve d'elle-même à la mise à jour.
+RÉGLAGES : la page s'arrête au bord de sa fenêtre. Sur l'Apple TV HD de la
+chambre, en Fluide, elle descendait jusqu'au pied de l'écran.
 
 NOUVEAUTÉS DE LA 0.9.10 : l'application plus légère, l'aperçu gardé, la fiche
 en un fondu.
@@ -194,7 +213,8 @@ HD et la première Apple TV 4K, un verre dessiné avec le flou du système.
 Réglages > Graphismes > Liquid Glass le coupe (surfaces sombres), et
 Réglages > Graphismes > Mouvements de la sélection coupe ce qui bouge quand
 la sélection change, si cela saccade sur votre Apple TV. Le préréglage
-Fluide coupe les deux, avec les fonds et l'aperçu automatique.
+Fluide coupe les deux, avec l'aperçu automatique ; depuis la 0.9.11, il
+garde les fonds.
 
 CHANGER DE PARTIE : la touche Lecture/Pause de la télécommande fait le tour
 des parties de l'écran, dans le sens des aiguilles d'une montre. Depuis un
@@ -262,13 +282,13 @@ DOSSIERS DU DOCK : dans « Favoris, listes et dock », « Créer un dossier du
 dock » range le titre dans un nouveau dossier, dans la barre ou dans un autre
 dossier (« Dans : … »). Un dossier est une seule icône, qui s'ouvre en
 éventail ; un dossier qu'il contient s'ouvre à sa place, et Menu remonte.
-Réglages › Dock choisit son icône, le renomme, le range ailleurs, le supprime.
+Réglages › Thème et dock choisit son icône, le renomme, le range ailleurs, le supprime.
 Le menu Favoris montre aussi, sous chaque genre, ce que garde le dock.
 ACCUEIL : quand la barre se remplit elle prend une deuxième puis une troisième
 rangée au lieu de rapetisser ses icônes ; Haut et Bas changent de rangée.
 Pour retirer un raccourci : appui long sur son icône dans le dock, décochez.
 Le nom complet de l'icône sélectionnée s'affiche au-dessus d'elle.
-Réglages › Dock renomme et supprime les sections, et masque les récents.
+Réglages › Thème et dock renomme et supprime les sections, et masque les récents.
 Les icônes ne deviennent jamais trop petites : un dock plein range les
 raccourcis en trop dans un dossier « Autres ».
 

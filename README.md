@@ -1,6 +1,8 @@
-# FLUX IPTV 0.9.10 — build 51 — Bureau Mac : dock, colonnes et panneaux de verre
+# FLUX IPTV 0.9.11 — build 52 — Bureau Mac : dock, colonnes et panneaux de verre
 
 Application native SwiftUI pour macOS, iOS et tvOS.
+
+**La 0.9.11 fait du thème du dock celui de toute l’application.** Les fenêtres le prennent aussi : la colonne, les panneaux de la télévision, le panneau d’un titre, les fiches, les réglages, la feuille d’une source, les messages et le plan des zones. Néon entoure chaque fenêtre d’un tube de lumière aux couleurs de l’écran, Art déco de son cuivre aux angles ciselés, Biseaux de son relief gris ; Couleurs, Tactile, Givre et Verre nocturne habillent le verre des fenêtres, et Verre et Sans fond le leur laissent tel quel. Réglages › Thème et dock › « Le thème habille » choisit le dock et les fenêtres (au départ), le dock seulement, ou les fenêtres seulement. Un écran qui garde son propre thème l’applique à ses fenêtres comme à son dock, et le studio d’apparence l’essaie sur un dock et sur une fenêtre. Les champs de recherche, les boutons de la barre du haut, la barre de l’accueil et les commandes posées sur l’image pendant la lecture gardent le verre. Une plaque est faite de remplissages et de traits, sans ombre ni flou ; les thèmes qui remplacent le verre ne prélèvent rien derrière leurs fenêtres. Sur une Apple TV HD, deux défauts vus sur le téléviseur de la chambre sont corrigés : le préréglage Fluide, qu’Automatique choisit pour elle, garde désormais les fonds, et une Apple TV HD restée en Automatique les retrouve d’elle-même à la mise à jour ; la page des Réglages s’arrête au bord de sa fenêtre, où elle descendait jusqu’au pied de l’écran. La 0.9.11 rend aussi compilables sous Linux les tests du cœur, que la CI de la 0.9.10 n’y construisait pas.
 
 **La 0.9.10 allège l’application.** À l’écran, deux choses changent sur l’Apple TV : l’aperçu d’une chaîne continue quand la sélection quitte la liste pour la colonne, la recherche ou le dock, comme sur le Mac, et une fiche apparaît et s’efface d’un seul fondu, sans que son boîtier reste à l’écran. Mesurée au simulateur Apple TV, elle dépense moitié moins de calcul pendant la lecture d’un film (−52 %) et près d’un tiers de moins pour descendre une longue liste de chaînes (−31 %) ; sur l’Apple TV 4K du salon, deux tiers de moins pendant un film (−66 %), et le banc y ouvre désormais la télévision, les listes et la grande grille, où celui de la 0.9.9 débordait la pile du fil principal : un appui qui mène d’un titre à un autre de la page ne redessine plus l’écran entier, et le temps qui passe pendant la lecture ne redessine plus que son bandeau. La mémoire baisse d’un quart sur les écrans des chaînes et des films. Le cœur commun lit une liste M3U de 92 000 entrées en 182 ms au lieu de 2,6 s, charge un catalogue Xtream de 92 000 titres en 0,5 s au lieu de 0,9, cherche dans tout le catalogue en 1 ms au lieu de 72, et son index pèse 7,5 Mo au lieu de 116. L’application de l’Apple TV passe de 89,0 à 61,1 Mo : ses fonds sont livrés à la taille où elle les décode (5,9 Mo au lieu de 14,5), son exécutable sans ses 19 Mo de symboles, et le lecteur des bandes-annonces, inutilisé depuis le build 33, part avec YouTubeKit. Release compile désormais l’application en module entier. Les mesures, les changements et l’audit des sources sont détaillés dans [docs/OPTIMISATION.md](docs/OPTIMISATION.md).
 
@@ -67,7 +69,8 @@ Hors de l’accueil, le dock se tient en bas de l’écran, au centre, comme le 
   - Illustrés : Néon 90, Verre nocturne, Art déco. Leur plaque et leurs icônes sont des images dessinées pour eux.
 
   Ils rappellent des systèmes connus sans reprendre ni leur nom ni leurs images. Chaque écran peut garder le sien, depuis le studio d’apparence.
-- **Ordre** : glisser une icône dans le dock, ou utiliser les flèches de Réglages › Dock.
+- **Le thème habille** : le dock et les fenêtres (par défaut) — la colonne, les panneaux, les fiches, les réglages, les messages —, le dock seulement, ou les fenêtres seulement. Verre et Sans fond laissent aux fenêtres leur verre ; un écran qui garde son thème l’applique à ses fenêtres comme à son dock.
+- **Ordre** : glisser une icône dans le dock, ou utiliser les flèches de Réglages › Thème et dock.
 - Un clic secondaire sur le dock donne l’emplacement, le thème, l’agrandissement et l’allure de l’icône sélectionnée.
 
 ### Ce que l’on garde dans le dock
@@ -76,12 +79,12 @@ Après ses six destinations, le dock tient ce que l’on y range, chaque partie 
 
 - **Des raccourcis** vers une chaîne, un film, une série, une de ses saisons ou un de ses épisodes. L’icône est l’image du titre ; une pastille dit la saison ou l’épisode (S3, S12·E15). Une chaîne se lance, un film ouvre sa fiche, une série son rayon de saisons, une saison ou un épisode la fiche de la série ouverte dessus.
 - **Des sections nommées.** « Favoris, listes et dock » — l’étoile d’un titre, ou un appui long sur lui — liste sous les listes de favoris les sections du dock : on coche celles qui gardent le titre, on en crée une en la nommant, exactement comme une liste. Depuis une série, on choisit d’y ranger la série, la saison affichée ou l’épisode choisi.
-- **La vidéo en cours** : le film ou l’épisode laissé en route, avec sa progression ; un appui reprend la lecture. Puis **les derniers titres regardés**, trois au plus, que l’on peut garder d’un appui long. Réglages › Dock les masque.
-- **Des dossiers.** On crée un dossier dans le dock depuis « Favoris, listes et dock » (« Créer un dossier du dock », dans la barre ou dans un autre dossier) ou, vide, depuis Réglages › Dock. C’est une seule icône de la barre, qui s’ouvre **en éventail** : ses titres sortent de l’icône l’un après l’autre, leur nom à côté d’eux. Un dossier peut en contenir d’autres, jusqu’à quatre de profondeur : la ligne d’un dossier montre ses titres à la place des autres, la première ligne et **Retour** ramènent au dossier du dessus. Un dossier long montre ses titres un éventail à la fois. Son icône se choisit parmi vingt-six dans Réglages › Dock, ou sur le Mac par un clic secondaire sur elle ; sans choix, elle montre ses premiers titres. Réglages › Dock fait aussi d’une section un dossier, range un dossier dans un autre, le renomme et le supprime.
+- **La vidéo en cours** : le film ou l’épisode laissé en route, avec sa progression ; un appui reprend la lecture. Puis **les derniers titres regardés**, trois au plus, que l’on peut garder d’un appui long. Réglages › Thème et dock les masque.
+- **Des dossiers.** On crée un dossier dans le dock depuis « Favoris, listes et dock » (« Créer un dossier du dock », dans la barre ou dans un autre dossier) ou, vide, depuis Réglages › Thème et dock. C’est une seule icône de la barre, qui s’ouvre **en éventail** : ses titres sortent de l’icône l’un après l’autre, leur nom à côté d’eux. Un dossier peut en contenir d’autres, jusqu’à quatre de profondeur : la ligne d’un dossier montre ses titres à la place des autres, la première ligne et **Retour** ramènent au dossier du dessus. Un dossier long montre ses titres un éventail à la fois. Son icône se choisit parmi vingt-six dans Réglages › Thème et dock, ou sur le Mac par un clic secondaire sur elle ; sans choix, elle montre ses premiers titres. Réglages › Thème et dock fait aussi d’une section un dossier, range un dossier dans un autre, le renomme et le supprime.
 - **Les listes de favoris en dossiers.** Une liste de favoris se met dans le dock depuis son écran (« Dossier dans le dock ») ; elle s’ouvre de la même façon, et sa dernière ligne ouvre la liste entière.
 - **Le menu Favoris réunit tout.** Sous chaque genre, après ses listes, il montre les sections et les dossiers du dock qui gardent des titres de ce genre.
 
-Le nom complet de l’icône pointée s’affiche au-dessus d’elle. Un appui long sur un raccourci — un clic secondaire sur Mac — rouvre ses listes pour le retirer ou le déplacer ; sur Mac on le fait aussi glisser dans sa section. Réglages › Dock renomme et supprime les sections.
+Le nom complet de l’icône pointée s’affiche au-dessus d’elle. Un appui long sur un raccourci — un clic secondaire sur Mac — rouvre ses listes pour le retirer ou le déplacer ; sur Mac on le fait aussi glisser dans sa section. Réglages › Thème et dock renomme et supprime les sections.
 
 Les icônes ne rapetissent jamais au point de ne plus se lire depuis un canapé : un dock bien rempli les réduit d’un cinquième au plus, cède le nom de l’écran précédent, retire d’abord les titres récents, et range enfin les raccourcis en trop dans un dossier **Autres**, à la suite des raccourcis. Rien de ce que l’on a gardé n’est perdu. Sous la colonne de navigation, le dock compact ne montre que ses destinations. **L’accueil garde ses grandes icônes, sur une seule rangée**, au pied de l’écran : les raccourcis en trop y vont aussi dans **Autres**, et les titres récents ne partent que si la place manque encore. Un dossier qui s’y ouvre a toute la hauteur, jusque sous le haut de l’écran. L’icône sélectionnée y grandit avec ses voisines, comme sous le pointeur, au clavier comme à la télécommande.
 
@@ -125,7 +128,7 @@ Dans **Réglages**, les flèches vont d’un contrôle à l’autre : parcourir 
 
 ## Studio d’apparence
 
-Réglages › Interface › **Studio d’apparence** ouvre en plein écran deux rayons : **Fonds** et **Dock**. Le studio s’ouvre sur sa vitrine : derrière ses onglets passent les trois images dessinées pour la boutique.
+Réglages › Interface › **Studio d’apparence** ouvre en plein écran deux rayons : **Fonds** et **Thème**. Le studio s’ouvre sur sa vitrine : derrière ses onglets passent les trois images dessinées pour la boutique.
 
 - **Pour quel écran** : tous les écrans, ou un seul (Accueil, TV, Films, Séries, Recherche, Réglages). Un écran choisi garde ce qu’on lui donne. « Comme tous les écrans » le rend au choix commun ; « Le même partout » rend tous les écrans au choix commun.
 - **Fonds**, trois choix :
@@ -133,7 +136,7 @@ Réglages › Interface › **Studio d’apparence** ouvre en plein écran deux 
   - **Aucun** : la couleur de l’écran, le plus léger à afficher.
   - **Images choisies** : parmi les seize fonds dessinés (deux ou trois par écran, trois pour la boutique, voir [docs/FONDS.md](docs/FONDS.md)).
 - **Diaporama** : plusieurs images choisies passent l’une après l’autre. On règle leur ordre et leur durée (15 s, 30 s, 1, 5 ou 15 min). Elles passent dans l’ordre ou au hasard, en fondu ou d’un coup.
-- **Dock** : les dix-huit thèmes, rangés par famille, essayés sur un dock posé sur le fond de l’écran.
+- **Thème** : les dix-huit thèmes, rangés par famille, essayés sur un dock et sur une fenêtre posés sur le fond de l’écran, chacun selon ce que le thème habille.
 - **Essayer avant de garder** : ce sur quoi le curseur s’arrête s’essaie aussitôt derrière le studio, et **Plein écran** le montre seul. **OK** le garde pour l’écran choisi. **Lecture/Pause** sur la télécommande, **Espace** au clavier, passe en plein écran ; une touche en revient. **Retour** referme le studio ; ce qui est gardé reste en place.
 - **Collections** : chaque fond et chaque thème appartient à une collection, comme « Fonds dessinés · TV » ou « Docks · Rétro », et porte « Inclus ». Tout est fourni avec l’application ; l’essai restera gratuit quand une collection aura un prix.
 
@@ -147,7 +150,7 @@ Derrière les écrans, les fonds sont les images dessinées pour eux ([docs/FOND
 
 ## Apple TV
 
-L’Apple TV reprend le bureau du Mac : accueil, dock en bas au centre, colonne de navigation, télévision en trois colonnes avec l’aperçu, catalogue des films et des séries, rayon des saisons, fiches en verre, favoris, réglages et sources dans l’écran, commandes de lecture, langues et liste des chaînes sur l’image. Les pays et les langues se choisissent dans la colonne. **Menu** revient en arrière comme le Précédent d’un navigateur, après être passé par la barre, et chaque destination s’ouvre avec la télécommande dans son contenu. Ce qui diffère du Mac : pas de plan de l’écran sur Retour, dont la télécommande n’a pas besoin, et le dock ne se réordonne pas à la télécommande ; son emplacement et son thème se règlent dans Réglages › Dock, et le thème de chaque écran dans le studio d’apparence.
+L’Apple TV reprend le bureau du Mac : accueil, dock en bas au centre, colonne de navigation, télévision en trois colonnes avec l’aperçu, catalogue des films et des séries, rayon des saisons, fiches en verre, favoris, réglages et sources dans l’écran, commandes de lecture, langues et liste des chaînes sur l’image. Les pays et les langues se choisissent dans la colonne. **Menu** revient en arrière comme le Précédent d’un navigateur, après être passé par la barre, et chaque destination s’ouvre avec la télécommande dans son contenu. Ce qui diffère du Mac : pas de plan de l’écran sur Retour, dont la télécommande n’a pas besoin, et le dock ne se réordonne pas à la télécommande ; son emplacement et son thème se règlent dans Réglages › Thème et dock, et le thème de chaque écran dans le studio d’apparence.
 
 **Charger une liste** et **Modifier la source** occupent tout l’écran : le type de source à gauche, les champs et les deux boutons à droite, visibles d’un coup, sans défilement.
 
@@ -198,7 +201,7 @@ La disposition de la 0.8.9 est conservée : bandeau TV, Films, Séries et Recher
 
 Sur Apple TV comme sur le Mac, **Réglages → Graphismes** règle l’affichage comme dans un jeu. En tête, l’appareil détecté et le préréglage conseillé pour lui. Quatre tuiles :
 - **Automatique** suit l’appareil : Fluide pour une Apple TV HD, Équilibré pour la première Apple TV 4K et un Mac Intel, Qualité pour les autres. C’est le réglage d’une nouvelle installation. À la mise à jour depuis la 0.9.3, il ne s’applique que si rien n’avait été coupé à la main : un verre, des mouvements, des fonds ou un aperçu coupés restent tels quels ;
-- **Fluide** coupe le verre, les mouvements, les fonds et l’aperçu automatique ;
+- **Fluide** coupe le verre, les mouvements et l’aperçu automatique ; depuis la 0.9.11, il garde les fonds, des images fixes décodées une fois à la taille de l’écran ;
 - **Équilibré** garde le verre, les fonds et les aperçus, sans les mouvements ni le reflet du panneau ;
 - **Qualité** garde tout.
 
@@ -250,7 +253,7 @@ L’archive contient les sources et l’installateur Mac, pas un binaire Apple p
 
 1. Sur Mac, quitter l’ancienne app et arrêter le lancement depuis Xcode.
 2. Décompresser, puis ouvrir **Installer Flux IPTV.command**. L’installateur compile sur ce Mac et vérifie le démarrage ; cette vérification ne remplace pas un essai de lecture.
-3. Vérifier **FLUX 0.9.10 · build 51** en bas de la colonne de Réglages.
+3. Vérifier **FLUX 0.9.11 · build 52** en bas de la colonne de Réglages.
 
 Prérequis de déploiement : macOS 14, iOS 17 ou tvOS 17. Installer Xcode complet pour compiler ; le verre natif demande la version 26 des systèmes, les versions antérieures reçoivent un matériau translucide. Sur iPhone/iPad ou Apple TV, ouvrir `FluxIPTV.xcodeproj`, choisir **FluxIPTViOS** ou **FluxIPTVTV**, puis renseigner l’équipe de signature pour un appareil physique.
 
@@ -264,7 +267,7 @@ Ouvrir **`FluxIPTV-AppleTV.xcodeproj`**, ou lancer **`Ouvrir Flux IPTV Apple TV.
 
 ## Validation
 
-Le périmètre vérifié pour cette version est dans [docs/VALIDATION-0.9.10.md](docs/VALIDATION-0.9.10.md), avec les mesures et l’audit des ressources dans [docs/OPTIMISATION.md](docs/OPTIMISATION.md) ; il s’ajoute à ceux de la 0.9.9 dans [docs/VALIDATION-0.9.9.md](docs/VALIDATION-0.9.9.md), de la 0.9.8 dans [docs/VALIDATION-0.9.8.md](docs/VALIDATION-0.9.8.md), de la 0.9.7 dans [docs/VALIDATION-0.9.7.md](docs/VALIDATION-0.9.7.md), de la 0.9.6 dans [docs/VALIDATION-0.9.6.md](docs/VALIDATION-0.9.6.md), de la 0.9.5 dans [docs/VALIDATION-0.9.5.md](docs/VALIDATION-0.9.5.md), de la 0.9.4 dans [docs/VALIDATION-0.9.4.md](docs/VALIDATION-0.9.4.md), de la 0.9.3 dans [docs/VALIDATION-0.9.3.md](docs/VALIDATION-0.9.3.md), de la 0.9.2 dans [docs/VALIDATION-0.9.2.md](docs/VALIDATION-0.9.2.md), de la 0.9.1 dans [docs/VALIDATION-0.9.1.md](docs/VALIDATION-0.9.1.md) et de la 0.9.0 dans [docs/VALIDATION-0.9.0.md](docs/VALIDATION-0.9.0.md), avec ce qui ne l’a pas été. Les tests unitaires du cœur ne démontrent ni la compilation des frameworks Apple, ni la fluidité réelle, ni la lecture des flux du fournisseur. Les résultats des versions précédentes ne valident pas la nouvelle interface du Mac.
+Le périmètre vérifié pour cette version est dans [docs/VALIDATION-0.9.11.md](docs/VALIDATION-0.9.11.md) ; il s’ajoute à ceux de la 0.9.10 dans [docs/VALIDATION-0.9.10.md](docs/VALIDATION-0.9.10.md), avec les mesures et l’audit des ressources dans [docs/OPTIMISATION.md](docs/OPTIMISATION.md), de la 0.9.9 dans [docs/VALIDATION-0.9.9.md](docs/VALIDATION-0.9.9.md), de la 0.9.8 dans [docs/VALIDATION-0.9.8.md](docs/VALIDATION-0.9.8.md), de la 0.9.7 dans [docs/VALIDATION-0.9.7.md](docs/VALIDATION-0.9.7.md), de la 0.9.6 dans [docs/VALIDATION-0.9.6.md](docs/VALIDATION-0.9.6.md), de la 0.9.5 dans [docs/VALIDATION-0.9.5.md](docs/VALIDATION-0.9.5.md), de la 0.9.4 dans [docs/VALIDATION-0.9.4.md](docs/VALIDATION-0.9.4.md), de la 0.9.3 dans [docs/VALIDATION-0.9.3.md](docs/VALIDATION-0.9.3.md), de la 0.9.2 dans [docs/VALIDATION-0.9.2.md](docs/VALIDATION-0.9.2.md), de la 0.9.1 dans [docs/VALIDATION-0.9.1.md](docs/VALIDATION-0.9.1.md) et de la 0.9.0 dans [docs/VALIDATION-0.9.0.md](docs/VALIDATION-0.9.0.md), avec ce qui ne l’a pas été. Les tests unitaires du cœur ne démontrent ni la compilation des frameworks Apple, ni la fluidité réelle, ni la lecture des flux du fournisseur. Les résultats des versions précédentes ne valident pas la nouvelle interface du Mac.
 
 ## Publication sur l’App Store
 

@@ -119,7 +119,7 @@ struct PlayerSurface: View {
                     #endif
                 }
                 .foregroundStyle(.white)
-                .padding(Desk.pt(20)).frame(maxWidth: Desk.pt(440)).fluxGlass(radius: Desk.pt(22))
+                .padding(Desk.pt(20)).frame(maxWidth: Desk.pt(440)).fluxWindow(radius: Desk.pt(22))
                 .padding(Desk.pt(20))
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }

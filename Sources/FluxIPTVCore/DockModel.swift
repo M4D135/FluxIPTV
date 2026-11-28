@@ -135,6 +135,39 @@ public enum FluxDockTheme: String, CaseIterable, Identifiable, Sendable {
     }
 }
 
+/// What the theme dresses: "fait theme general pas que dock, ou au choix
+/// donc theme general et on choisit que doc ou le reste" (David, 28/11).
+/// A theme kept for the windows leaves the plain glass to the dock; kept
+/// for the dock, it leaves the glass to the windows.
+public enum FluxThemeScope: String, CaseIterable, Identifiable, Sendable {
+    case everywhere, dock, windows
+    public static let storageKey = "fluxiptv.theme.scope.v1"
+    public static let defaultValue: Self = .everywhere
+    public var id: String { rawValue }
+
+    public var title: String {
+        switch self {
+        case .everywhere: "Le dock et les fenêtres"
+        case .dock: "Le dock seulement"
+        case .windows: "Les fenêtres seulement"
+        }
+    }
+    public var dressesDock: Bool { self != .windows }
+    public var dressesWindows: Bool { self != .dock }
+    /// The theme the bar is drawn in.
+    public func dockTheme(_ chosen: FluxDockTheme) -> FluxDockTheme { dressesDock ? chosen : .glass }
+    /// The theme the windows are drawn in; nil keeps their glass.
+    public func windowTheme(_ chosen: FluxDockTheme) -> FluxDockTheme? {
+        dressesWindows && chosen.dressesWindows ? chosen : nil
+    }
+}
+
+extension FluxDockTheme {
+    /// The glass of the app is already that of Verre, and a window cannot
+    /// do without a plate as the icons of Sans fond do: both keep it.
+    public var dressesWindows: Bool { self != .glass && self != .floating }
+}
+
 /// Destinations of the bar. Their order is a user preference; a destination
 /// added by a later version joins the end of a saved order.
 public enum FluxDockItem: String, CaseIterable, Identifiable, Sendable {

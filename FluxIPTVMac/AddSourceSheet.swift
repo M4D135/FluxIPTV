@@ -298,7 +298,7 @@ struct AddSourceSheet: View {
             }
             .padding(34)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            .fluxGlass(radius: 36)
+            .fluxWindow(radius: 36)
         }
         .padding(.horizontal, 16).padding(.vertical, 6)
         .frame(maxWidth: .infinity, maxHeight: .infinity)

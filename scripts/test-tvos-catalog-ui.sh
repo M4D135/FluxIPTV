@@ -136,7 +136,8 @@ if [[ ! "$simulator_id" =~ ^[0-9A-Fa-f-]{36}$ ]]; then
 fi
 printf 'Temporary simulator: %s\n' "$simulator_id" >> "$capture_root/simulator.log"
 
-if run_bounded 900 xcodebuild -project "$smoke_repo/FluxIPTV-AppleTV.xcodeproj" \
+# Twenty-five minutes: ten were spent here on a hosted machine (6c27b8b on main).
+if run_bounded 1500 xcodebuild -project "$smoke_repo/FluxIPTV-AppleTV.xcodeproj" \
   -scheme FluxIPTVTV -configuration Debug -destination "platform=tvOS Simulator,id=$simulator_id" \
   -derivedDataPath "$smoke_root/DerivedData" \
   'SWIFT_ACTIVE_COMPILATION_CONDITIONS=DEBUG FLUX_CATALOG_UI_TESTING' \
@@ -160,16 +161,23 @@ ready_file="$data_container/Library/Caches/FluxTVCatalogUI-ready.json"
 failed=0
 capture_paths=()
 # Retain every restoration attempt while exposing only the last successful one
-# through the thirty-three canonical gallery paths. Never reuse an older run's pair.
+# through the thirty-four canonical gallery paths. Never reuse an older run's pair.
 rm -f "$capture_root/live-restored-ready.json" "$capture_root/live-restored.png" \
   "$capture_root/live-restored-stdout.log" "$capture_root/live-restored-stderr.log"
 # FLUX_TVOS_FLOWS="testA testB" plays only these remote flows, without the
 # captures: a correction is tried again in minutes. A delivery plays everything.
 selected_flows="${FLUX_TVOS_FLOWS:-}"
-capture_cases='home movie movies movies-many movies-many-lean lists dock dock-home dock-folder dock-lists series seasons live live-many live-many-light player player-film player-tracks player-settings player-banner player-banner-opening zapping settings settings-graphics settings-remote welcome add-source search-empty search-result live-fr live-es country-picker live-restored:1 live-restored:2 live-restored:3'
+# FLUX_TVOS_CAPTURES="settings-graphics-light theme-neon:live" captures only
+# these screens, without the remote flows: a drawing is looked at again in
+# minutes. A delivery captures everything.
+selected_captures="${FLUX_TVOS_CAPTURES:-}"
+capture_cases='home movie movies movies-many movies-many-lean lists dock dock-home dock-folder dock-lists series seasons live live-many live-many-light player player-film player-tracks player-settings player-banner player-banner-opening zapping settings settings-graphics settings-graphics-light settings-remote welcome add-source search-empty search-result live-fr live-es country-picker live-restored:1 live-restored:2 live-restored:3 theme-neon:live theme-artDeco:movie'
 if [[ -n "$selected_flows" ]]; then
   capture_cases=''
   printf 'Selected remote flows only, no captures: %s\n' "$selected_flows"
+elif [[ -n "$selected_captures" ]]; then
+  capture_cases="$selected_captures"
+  printf 'Selected captures only, no remote flows: %s\n' "$selected_captures"
 fi
 for capture_case in $capture_cases; do
   scenario="${capture_case%%:*}"
@@ -178,6 +186,16 @@ for capture_case in $capture_cases; do
   if [[ "$scenario" == live-restored ]]; then
     capture_label="live-restored-attempt-${capture_case#*:}"
     scenario_root="$capture_root/repeats/$capture_label"
+  fi
+  # "theme-neon:live": the screen of a scenario again, its dock and its
+  # windows drawn in a theme of the app; the remote must find the same
+  # places in it. Its files go apart, beside the canonical ones.
+  theme=''
+  if [[ "$scenario" == theme-* ]]; then
+    theme="${scenario#theme-}"
+    scenario="${capture_case#*:}"
+    capture_label="$scenario-$theme"
+    scenario_root="$capture_root/themes/$theme"
   fi
   mkdir -p "$scenario_root"
   scenario_failed=0
@@ -207,6 +225,7 @@ for capture_case in $capture_cases; do
     zapping) filename='player-zapping.png' ;;
     settings) filename='settings-sources.png' ;;
     settings-graphics) filename='settings-graphics.png' ;;
+    settings-graphics-light) filename='settings-graphics-light.png' ;;
     settings-remote) filename='settings-remote.png' ;;
     welcome) filename='welcome.png' ;;
     add-source) filename='add-source.png' ;;
@@ -220,7 +239,8 @@ for capture_case in $capture_cases; do
   rm -f "$ready_file" "$scenario_root/$scenario-ready.json" "$scenario_root/$filename" \
     "$scenario_root/$scenario-stdout.log" "$scenario_root/$scenario-stderr.log"
   # Terminate any surviving fixture process before each launch, including repeats.
-  if ! run_bounded 30 env "SIMCTL_CHILD_FLUX_UI_SCENARIO=$scenario" xcrun simctl launch --terminate-running-process \
+  if ! run_bounded 30 env "SIMCTL_CHILD_FLUX_UI_SCENARIO=$scenario" "SIMCTL_CHILD_FLUX_UI_THEME=$theme" \
+    xcrun simctl launch --terminate-running-process \
     "--stdout=$scenario_root/$scenario-stdout.log" "--stderr=$scenario_root/$scenario-stderr.log" \
     "$simulator_id" "$bundle_id" >> "$capture_root/simulator.log" 2>&1; then
     printf 'Failed to launch the %s scenario.\n' "$capture_label" >&2
@@ -406,10 +426,18 @@ if [[ -z "$selected_flows" ]]; then
     > "$capture_root/capture-validation.log" 2>&1; then failed=1; fi
   cat "$capture_root/capture-validation.log"
 fi
+if [[ -n "$selected_captures" ]]; then
+  if [[ "$failed" -ne 0 ]]; then
+    printf 'FAIL: the selected captures. Review PNGs and logs in %s\n' "$capture_root" >&2
+    exit 1
+  fi
+  printf 'PASS: the selected captures only, without the remote flows: %s\n' "$selected_captures"
+  exit 0
+fi
 
 # Add the UI-test runner only after the unchanged capture checks. The delivered
 # projects stay untouched, and XCTest attachments live inside this xcresult,
-# keeping the thirty-three canonical gallery PNG paths unchanged.
+# keeping the thirty-four canonical gallery PNG paths unchanged.
 rm -rf "$capture_root/remote-navigation.xcresult" "$capture_root/remote-navigation-attachments"
 rm -f "$capture_root/remote-navigation.log" "$capture_root/remote-attachments-export.log"
 if python3 "$repo_root/scripts/add-tvos-remote-test-target.py" \
@@ -417,9 +445,9 @@ if python3 "$repo_root/scripts/add-tvos-remote-test-target.py" \
   > "$capture_root/remote-target.log" 2>&1 \
   && run_bounded 30 plutil -lint "$smoke_repo/FluxIPTV-AppleTV.xcodeproj/project.pbxproj" \
   >> "$capture_root/remote-target.log" 2>&1; then
-  # Twenty flows: fifteen minutes on a recent Mac. A hosted Intel runner
-  # took close to twenty-five for fourteen of them, and a runner twice as
-  # slow has been met.
+  # Thirty-two flows: twenty minutes on a recent Mac. Hosted Intel runners
+  # took forty-nine and sixty-seven, compilation included (6c27b8b, on the
+  # branch and on main): ninety minutes leave room for a slower one.
   # TEST_RUNNER_FLUX_UI_PATIENCE, when the caller sets it, reaches the flows
   # as FLUX_UI_PATIENCE: how many times longer the screen keeps what leaves
   # by itself, for a machine that answers slowly.
@@ -428,7 +456,7 @@ if python3 "$repo_root/scripts/add-tvos-remote-test-target.py" \
   for flow in $selected_flows; do
     only_testing+=("-only-testing:FluxIPTVTVRemoteNavigationTests/TVRemoteNavigationTests/$flow")
   done
-  if run_bounded 4200 xcodebuild -project "$smoke_repo/FluxIPTV-AppleTV.xcodeproj" \
+  if run_bounded 5400 xcodebuild -project "$smoke_repo/FluxIPTV-AppleTV.xcodeproj" \
     -scheme FluxIPTVTVRemoteNavigation -configuration Debug \
     -destination "platform=tvOS Simulator,id=$simulator_id" \
     -derivedDataPath "$smoke_root/DerivedData" -parallel-testing-enabled NO \
@@ -455,10 +483,13 @@ fi
 
 # Export original attachments and Xcode's manifest even after test failures so
 # the actual remote-action screenshots can be reviewed without a Mac/Xcode.
+# Two minutes, then five: after the flows of 6c27b8b on a hosted machine, the
+# first call to xcresulttool did not answer within thirty seconds, and the
+# Apple TV entry failed although every screen and every flow had passed.
 if [[ -d "$capture_root/remote-navigation.xcresult" ]]; then
-  if run_bounded 30 xcrun xcresulttool help export attachments \
+  if run_bounded 120 xcrun xcresulttool help export attachments \
     > "$capture_root/remote-attachments-export.log" 2>&1 \
-    && run_bounded 60 xcrun xcresulttool export attachments \
+    && run_bounded 300 xcrun xcresulttool export attachments \
     --path "$capture_root/remote-navigation.xcresult" \
     --output-path "$capture_root/remote-navigation-attachments" \
     >> "$capture_root/remote-attachments-export.log" 2>&1; then
@@ -481,7 +512,7 @@ if [[ -n "$selected_flows" ]]; then
   printf 'PASS: selected remote flows only; the captures were not run.\n'
   exit 0
 fi
-printf 'PASS: Thirty-three native tvOS scenarios have native focus matching the measured intended control, bounded everywhere but on the bare picture of a channel, whose banner stands alone inside the safe area, and nonempty compositor captures; both production search submissions reject stale activation; France, Spain and the country picker preserve the mixed catalogue; browsing filters survive section changes, preferences recreation and catalogue refresh; the actual UI restores saved filters and native focus without a seeded selection on all three cold launches.\n'
+printf 'PASS: Thirty-six native tvOS screens (thirty-four scenarios, two of them again in a theme of the app) have native focus matching the measured intended control, bounded everywhere but on the bare picture of a channel, whose banner stands alone inside the safe area, and nonempty compositor captures; both production search submissions reject stale activation; France, Spain and the country picker preserve the mixed catalogue; browsing filters survive section changes, preferences recreation and catalogue refresh; the actual UI restores saved filters and native focus without a seeded selection on all three cold launches.\n'
 printf 'Review the PNGs in %s for actual glass, readable menus, channel size, clipping, episode restoration and country selection.\n' "$capture_root"
 printf 'XCUIRemote also checks native simulator navigation with retained XCTest screenshots; physical Apple TV hardware rendering and provider playback still need their own verification.
 '

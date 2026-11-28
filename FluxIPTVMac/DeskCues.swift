@@ -37,7 +37,7 @@ struct DeskMiniMap: View, Equatable {
             key
         }
         .padding(.horizontal, Desk.pt(14)).frame(height: Desk.pt(44))
-        .fluxGlass(radius: Desk.pt(22))
+        .fluxWindow(radius: Desk.pt(22))
         .accessibilityElement(children: .ignore)
         #if os(tvOS)
         .accessibilityLabel("Lecture/Pause : partie suivante de l’écran")

@@ -380,7 +380,7 @@ public enum FluxQualityPreset: String, CaseIterable, Identifiable, Sendable {
     }
     public var subtitle: String {
         switch self {
-        case .fluid: "Ni verre, ni mouvement, ni fond, ni aperçu : le plus léger, pour une Apple TV HD."
+        case .fluid: "Ni verre, ni mouvement, ni aperçu : le plus léger, pour une Apple TV HD. Les fonds restent, en images fixes."
         case .balanced: "Verre, fonds et aperçus, sans les mouvements de la sélection ni le reflet du panneau."
         case .quality: "Tout : verre, mouvements, reflet du panneau, fonds et aperçus."
         }
@@ -398,7 +398,11 @@ public enum FluxQualityPreset: String, CaseIterable, Identifiable, Sendable {
     }
     public var glass: Bool { self != .fluid }
     public var motion: Bool { self == .quality }
-    public var backdrops: Bool { self != .fluid }
+    /// Every preset keeps the pictures behind the screens: a picture is
+    /// decoded once, at the size of the screen, and does not move. "sur
+    /// appletv gen 3 chambre, j'ai aucun ecran de fond" (David, 28/11):
+    /// until the 0.9.11, Fluide took them away from an Apple TV HD.
+    public var backdrops: Bool { true }
     public var livePreview: Bool { self != .fluid }
     /// The part of the screen that holds the remote: a still edge costs
     /// nothing; the glint that crosses it is a motion.

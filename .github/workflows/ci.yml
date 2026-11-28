@@ -54,7 +54,8 @@ jobs:
     runs-on: macos-26-intel
     # The Apple TV entry took fifty minutes with fourteen remote flows on
     # the hosted machine of 65875ef, and a machine twice as slow has been met.
-    timeout-minutes: 110
+    # With thirty-two flows, it took a hundred minutes on main for 6c27b8b.
+    timeout-minutes: 150
     env:
       DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
     strategy:
@@ -116,8 +117,9 @@ jobs:
         run: bash scripts/test-catalog-ui.sh 2>&1 | tee build/logs/catalog-ui-native.log
       - name: Capture and navigate the native Apple TV interface
         if: ${{ !cancelled() && matrix.platform == 'tvOS' && steps.apple_build.outcome == 'success' }}
-        # Thirty-three launches, then twenty remote flows bounded to seventy minutes.
-        timeout-minutes: 95
+        # Thirty-six launches, then thirty-two remote flows bounded to ninety
+        # minutes; eighty-six minutes in all on main for 6c27b8b.
+        timeout-minutes: 125
         env:
           # These machines answer the remote flows three times more slowly
           # than a Mac: the screen keeps as much longer what leaves by

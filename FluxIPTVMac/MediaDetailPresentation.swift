@@ -514,7 +514,7 @@ struct MediaDetailPresentation: View {
             .padding(wide ? Desk.tv(60) : 24)
             #if os(macOS) || os(tvOS)
             .frame(maxWidth: min(contentWidth, geometry.size.width - Desk.tv(96)), maxHeight: geometry.size.height - Desk.pt(40))
-            .fluxGlass(radius: Desk.pt(34))
+            .fluxWindow(radius: Desk.pt(34))
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             #else
             .frame(maxWidth: contentWidth).frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -928,7 +928,7 @@ extension MediaDetailPresentation {
                 }
             }
             .background(.black.opacity(0.18), in: shape)
-            .fluxGlass(radius: Desk.pt(34))
+            .fluxWindow(radius: Desk.pt(34))
             .shadow(color: .black.opacity(softens ? 0.5 : 0), radius: softens ? 36 : 0, x: 0, y: softens ? 20 : 0)
             // A television gives its focus to nothing invisible: there the
             // sheet starts just above nothing, so that its controls can take

@@ -272,6 +272,24 @@ struct FluxScreen: View, Equatable {
         switch kind { case .movie: cinemaTheme; case .series: seriesTheme; case .live: tvTheme }
     }
     private var themeAccent:Color {let p=theme.palette.accent;return Color(red:p.x,green:p.y,blue:p.z)}
+    /// The theme of the app, which the windows take as the dock does
+    /// (`FluxThemeScope`): that of all screens, or the one a screen keeps.
+    @AppStorage(FluxThemeScope.storageKey) private var themeScope: FluxThemeScope = .defaultValue
+    @AppStorage(FluxDockTheme.storageKey) private var allScreensTheme: FluxDockTheme = .defaultValue
+    @AppStorage(FluxDockThemeChoices.storageKey) private var spaceThemes = ""
+    /// The windows of the screen in front, in its theme; nil keeps their glass.
+    private var windowLook: FluxWindowLook? {
+        #if os(macOS) || os(tvOS)
+        let space = currentSpace
+        #else
+        let space = FluxSpace(kind: library.contentKind)
+        #endif
+        guard let chosen = themeScope.windowTheme(FluxDockThemeChoices.theme(for: space, all: allScreensTheme, stored: spaceThemes))
+        else { return nil }
+        let p = theme.palette
+        return FluxWindowLook(theme: chosen, accent: Color(red: p.accent.x, green: p.accent.y, blue: p.accent.z),
+                              second: Color(red: p.second.x, green: p.second.y, blue: p.second.z))
+    }
     @State private var zapBanner = false
     @State private var zapToken = UUID()
     /// The channel was changed from the bare picture: the picture stays bare.
@@ -633,6 +651,7 @@ struct FluxScreen: View, Equatable {
             .environment(\.fluxRichGlass, richGlass)
             .environment(\.fluxRichMotion, focusMotion)
             .environment(\.fluxArtwork, artworkEnabled)
+            .environment(\.fluxWindowLook, windowLook)
     }
 
     // Opaque subview boundaries keep each SwiftUI expression small enough for
@@ -2174,7 +2193,7 @@ struct FluxScreen: View, Equatable {
         }
         .padding(14).frame(width: liveSidebarWidth)
         .frame(maxHeight: .infinity, alignment: .top)
-        .fluxGlass(radius: 25)
+        .fluxWindow(radius: 25)
     }
     private var liveCompactScopes: some View {
         HStack(spacing: 8) {
@@ -2424,7 +2443,7 @@ struct FluxScreen: View, Equatable {
                         .frame(width: compactNavigation ? 112 : browserHeight < 580 ? 140 : browserHeight < 700 ? 220 : liveSidebarVisible ? 330 : 280)
                     liveSelectedActions(item).frame(minWidth: compactNavigation ? 120 : 160, maxWidth: .infinity, alignment: .leading)
         }
-        .padding(browserHeight < 580 ? 10 : 14).fluxGlass(radius: 27)
+        .padding(browserHeight < 580 ? 10 : 14).fluxWindow(radius: 27)
         .shadow(color: .black.opacity(0.26), radius: 16, x: 0, y: 12)
         .transition(.scale(scale: 0.96, anchor: .bottom).combined(with: .opacity))
         .accessibilityElement(children: .contain)
@@ -5047,7 +5066,7 @@ extension FluxScreen {
             Color.black.opacity(0.45).ignoresSafeArea()
                 .contentShape(Rectangle()).onTapGesture { itemOptions = nil }
             itemPanel(item)
-                .fluxGlass(radius: Desk.pt(28))
+                .fluxWindow(radius: Desk.pt(28))
                 .shadow(color: .black.opacity(0.45), radius: Desk.pt(30), y: 16)
                 // Like a fiche, the panel never slides under the dock.
                 .padding(ficheInsets)
@@ -5079,7 +5098,7 @@ extension FluxScreen {
                     .accessibilityIdentifier("desk-notice-ok")
                 }
             }
-            .padding(Desk.pt(24)).frame(maxWidth: Desk.pt(540)).fluxGlass(radius: Desk.pt(26))
+            .padding(Desk.pt(24)).frame(maxWidth: Desk.pt(540)).fluxWindow(radius: Desk.pt(26))
             .shadow(color: .black.opacity(0.45), radius: Desk.pt(30), y: 16)
         }
         .transition(.opacity)
@@ -5916,7 +5935,7 @@ extension FluxScreen {
                 .font(Desk.font(.callout, .medium)).foregroundStyle(themeAccent)
         }
         .padding(.horizontal, Desk.pt(22)).frame(height: Desk.pt(46))
-        .fluxGlass(radius: Desk.pt(23))
+        .fluxWindow(radius: Desk.pt(23))
         .shadow(color: .black.opacity(0.4), radius: 16, y: 8)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
         .allowsHitTesting(false)
@@ -6601,7 +6620,7 @@ extension FluxScreen {
         // A frame drawn after the glass would be sampled by it: the frames
         // of the zones belong to what each glass panel shows.
         .overlay { zoneFrame(.column, radius: Desk.pt(25)) }
-        .fluxGlass(radius: Desk.pt(25))
+        .fluxWindow(radius: Desk.pt(25))
         .padding(.bottom, navigationFootRoom)
     }
 
@@ -7296,7 +7315,7 @@ extension FluxScreen {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .overlay { zoneFrame(.content, radius: Desk.pt(25)) }
         .clipShape(RoundedRectangle(cornerRadius: Desk.pt(25), style: .continuous))
-        .fluxGlass(radius: Desk.pt(25))
+        .fluxWindow(radius: Desk.pt(25))
     }
 
     /// What a channel of the list is drawn from.
@@ -7403,7 +7422,7 @@ extension FluxScreen {
         .padding(Desk.pt(14))
         .frame(maxHeight: .infinity, alignment: .top)
         .overlay { zoneFrame(.actions, radius: Desk.pt(27)) }
-        .fluxGlass(radius: Desk.pt(27))
+        .fluxWindow(radius: Desk.pt(27))
         .accessibilityElement(children: .contain)
     }
 

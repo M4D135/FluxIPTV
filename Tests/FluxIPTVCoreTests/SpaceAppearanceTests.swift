@@ -234,7 +234,10 @@ final class SpaceAppearanceTests: XCTestCase {
     }
 
     func testThePresetsGoFromTheLightestToTheRichest() {
-        XCTAssertEqual(FluxQualityPreset.matching(glass: false, motion: false, backdrops: false, livePreview: false, glint: .edge), .fluid)
+        XCTAssertEqual(FluxQualityPreset.matching(glass: false, motion: false, backdrops: true, livePreview: false, glint: .edge), .fluid)
+        // The pictures turned off are no preset: Fluide keeps them (0.9.11).
+        XCTAssertNil(FluxQualityPreset.matching(glass: false, motion: false, backdrops: false, livePreview: false, glint: .edge))
+        XCTAssertTrue(FluxQualityPreset.allCases.allSatisfy(\.backdrops))
         XCTAssertEqual(FluxQualityPreset.matching(glass: true, motion: false, backdrops: true, livePreview: true, glint: .edge), .balanced)
         XCTAssertEqual(FluxQualityPreset.matching(glass: true, motion: true, backdrops: true, livePreview: true, glint: .glint), .quality)
         XCTAssertNil(FluxQualityPreset.matching(glass: false, motion: true, backdrops: true, livePreview: true, glint: .glint))

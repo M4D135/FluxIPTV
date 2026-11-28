@@ -1,20 +1,21 @@
 import SwiftUI
 
 /// The shelves of the studio of the appearance: the pictures behind the
-/// screens, and the dock. The icons get a shelf of their own with their packs.
+/// screens, and the theme of the dock and of the windows. The icons get a
+/// shelf of their own with their packs.
 enum StudioShelf: String, CaseIterable, Identifiable {
     case backdrops, dock
     var id: String { rawValue }
     var title: String {
         switch self {
         case .backdrops: "Fonds"
-        case .dock: "Dock"
+        case .dock: "Thème"
         }
     }
     var symbol: String {
         switch self {
         case .backdrops: "photo.on.rectangle.angled"
-        case .dock: "dock.rectangle"
+        case .dock: "paintbrush"
         }
     }
 }
@@ -89,6 +90,7 @@ struct AppearanceStudio: View {
     @AppStorage(FluxBackdropChoices.storageKey) private var storedBackdrops = ""
     @AppStorage(FluxDockTheme.storageKey) private var dockAll: FluxDockTheme = .defaultValue
     @AppStorage(FluxDockThemeChoices.storageKey) private var dockSpaces = ""
+    @AppStorage(FluxThemeScope.storageKey) private var themeScope: FluxThemeScope = .defaultValue
     @AppStorage(MediaThemePreferences.cinemaKey) private var cinemaTheme: VideoClubTheme = .neo90
     @AppStorage(MediaThemePreferences.seriesKey) private var seriesTheme: VideoClubTheme = .neo90
     @AppStorage(MediaThemePreferences.tvKey) private var tvTheme: VideoClubTheme = .neo90
@@ -466,7 +468,7 @@ struct AppearanceStudio: View {
 
     private var fullScreenLayer: some View {
         ZStack(alignment: .bottom) {
-            if shelf == .dock { StudioDock(theme: shownTheme, space: previewSpace, palette: spaceTheme(previewKind)).padding(.bottom, Desk.pt(28)) }
+            if shelf == .dock { themeSamples.padding(.bottom, Desk.pt(28)) }
             if fullScreenHint {
                 Text(Self.returnHint)
                     .font(Desk.font(.callout, .semibold))
@@ -516,8 +518,7 @@ struct AppearanceStudio: View {
                     info.padding(.top, Desk.pt(26))
                     Spacer(minLength: Desk.pt(8))
                     if shelf == .dock {
-                        StudioDock(theme: shownTheme, space: previewSpace, palette: spaceTheme(previewKind))
-                            .frame(maxWidth: .infinity).padding(.bottom, Desk.pt(16))
+                        themeSamples.frame(maxWidth: .infinity).padding(.bottom, Desk.pt(16))
                     }
                     let height = geometry.size.height * (shelf == .dock ? 0.4 : 0.5)
                     panel(height: height).frame(height: height)
@@ -546,6 +547,19 @@ struct AppearanceStudio: View {
                     interactive(item, line: .scope, index: index) { chip(item) }
                 }
             }
+        }
+    }
+
+    /// The theme tried on a dock and on a window, as far as it dresses each.
+    private var themeSamples: some View {
+        let palette = spaceTheme(previewKind).palette
+        let look = themeScope.windowTheme(shownTheme).map { theme in
+            FluxWindowLook(theme: theme, accent: Color(red: palette.accent.x, green: palette.accent.y, blue: palette.accent.z),
+                           second: Color(red: palette.second.x, green: palette.second.y, blue: palette.second.z))
+        }
+        return HStack(alignment: .bottom, spacing: Desk.pt(28)) {
+            StudioDock(theme: themeScope.dockTheme(shownTheme), space: previewSpace, palette: spaceTheme(previewKind))
+            StudioWindow(look: look)
         }
     }
 
@@ -1041,6 +1055,28 @@ private struct StudioBadge: View {
             .padding(.horizontal, Desk.pt(4))
             .background(Color.cyan, in: Capsule())
             .foregroundStyle(.black)
+    }
+}
+
+/// A window as the screens draw theirs, beside the dock of the studio.
+private struct StudioWindow: View {
+    let look: FluxWindowLook?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Desk.pt(8)) {
+            Text("Fenêtres").font(Desk.font(.headline, .semibold))
+            Text("Colonne, panneaux, fiches, réglages").font(Desk.font(.caption)).foregroundStyle(.secondary)
+            HStack(spacing: Desk.pt(8)) {
+                Capsule().fill(.white.opacity(0.85)).frame(width: Desk.pt(64), height: Desk.pt(8))
+                Capsule().fill(.white.opacity(0.35)).frame(width: Desk.pt(96), height: Desk.pt(8))
+            }
+        }
+        .padding(Desk.pt(18))
+        .frame(width: Desk.pt(300), alignment: .leading)
+        .fluxWindow(radius: Desk.pt(22))
+        .environment(\.fluxWindowLook, look)
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
     }
 }
 

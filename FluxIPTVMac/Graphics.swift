@@ -7,7 +7,9 @@ enum FluxGraphics {
     static let stageKey = "fluxiptv.appearance.stage"
     /// The preset last written, so that « Automatique » applies it once per
     /// machine: what is changed afterwards, here or in the studio, stays.
-    static let appliedKey = "fluxiptv.quality.applied.v1"
+    /// v2 since the 0.9.11, whose Fluide keeps the pictures behind the
+    /// screens: an Apple TV HD left in « Automatique » gets them back once.
+    static let appliedKey = "fluxiptv.quality.applied.v2"
 
     /// The model identifier, `AppleTV5,3` or `Mac14,2`; a simulator names
     /// the one it stands for.
@@ -63,12 +65,11 @@ enum FluxGraphics {
     static func apply(_ preset: FluxQualityPreset, _ defaults: UserDefaults = .standard) {
         defaults.set(preset.glass, forKey: FluxAppearance.glassKey)
         defaults.set(preset.motion, forKey: FluxAppearance.motionKey)
+        // The pictures behind the screens: those turned off come back with
+        // a preset that shows them, as every preset does since the 0.9.11.
         let stage = defaults.string(forKey: stageKey).flatMap(ProceduralCinema.Style.init(rawValue:)) ?? .orbit
-        if preset.backdrops {
-            if stage == .off { defaults.set(ProceduralCinema.Style.orbit.rawValue, forKey: stageKey) }
-        } else {
-            defaults.set(ProceduralCinema.Style.off.rawValue, forKey: stageKey)
-        }
+        let shown: ProceduralCinema.Style = preset.backdrops ? (stage == .off ? .orbit : stage) : .off
+        defaults.set(shown.rawValue, forKey: stageKey)
         defaults.set(preset.livePreview, forKey: LiveTVPreviewDelay.automaticKey)
         defaults.set(preset.glint.rawValue, forKey: FluxPanelGlint.storageKey)
         defaults.set(preset.rawValue, forKey: appliedKey)

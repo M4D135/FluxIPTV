@@ -37,7 +37,7 @@ cleanup() {
 }
 trap cleanup EXIT
 smoke_app="$smoke_root/CatalogUISmoke.app"
-mkdir -p "$smoke_app/Contents/MacOS" "$smoke_app/Contents/Resources/Backdrops" "$capture_root"
+mkdir -p "$smoke_app/Contents/MacOS" "$smoke_app/Contents/Resources/Backdrops" "$smoke_app/Contents/Resources/DockPacks" "$capture_root"
 cat > "$smoke_app/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -55,6 +55,10 @@ version="$(sed -n 's/^[[:space:]]*MARKETING_VERSION = \([0-9.]*\);/\1/p' "$repo_
 
 # The pictures drawn for the screens, which they show behind them.
 cp "$repo_root"/FluxIPTVMac/Backdrops/*.jpg "$smoke_app/Contents/Resources/Backdrops/"
+# The pictures of the drawn docks (Néon 90, Verre nocturne, Art déco), as the
+# app carries them: without them, the captures of these themes showed the plain
+# icons the dock falls back on (until the 0.9.11).
+cp "$repo_root"/FluxIPTVMac/DockPacks/*.heic "$smoke_app/Contents/Resources/DockPacks/"
 
 # All real app sources, with only its ordinary @main entry point omitted.
 production_sources=()

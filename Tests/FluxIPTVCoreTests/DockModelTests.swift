@@ -19,6 +19,26 @@ final class DockModelTests: XCTestCase {
         XCTAssertEqual(Set(order), Set(FluxDockItem.allCases))
     }
 
+    func testTheThemeDressesWhatItsScopeNames() {
+        XCTAssertEqual(FluxThemeScope.defaultValue, .everywhere)
+        XCTAssertEqual(FluxThemeScope.everywhere.dockTheme(.neon), .neon)
+        XCTAssertEqual(FluxThemeScope.everywhere.windowTheme(.neon), .neon)
+        XCTAssertEqual(FluxThemeScope.dock.dockTheme(.phosphor), .phosphor)
+        XCTAssertNil(FluxThemeScope.dock.windowTheme(.phosphor))
+        // Kept for the windows, the theme leaves the bar its glass.
+        XCTAssertEqual(FluxThemeScope.windows.dockTheme(.artDeco), .glass)
+        XCTAssertEqual(FluxThemeScope.windows.windowTheme(.artDeco), .artDeco)
+        // Verre is the glass of the windows already; Sans fond has no plate to lend them.
+        for scope in FluxThemeScope.allCases {
+            XCTAssertNil(scope.windowTheme(.glass))
+            XCTAssertNil(scope.windowTheme(.floating))
+        }
+        XCTAssertEqual(FluxDockTheme.allCases.filter(\.dressesWindows).count, FluxDockTheme.allCases.count - 2)
+        // Each scope is saved under its own name, and an unknown one reads as absent.
+        XCTAssertEqual(Set(FluxThemeScope.allCases.map(\.rawValue)).count, FluxThemeScope.allCases.count)
+        XCTAssertNil(FluxThemeScope(rawValue: "partout"))
+    }
+
     func testMovingADestinationClampsToTheBarAndKeepsEveryDestination() {
         let order = FluxDockItem.allCases
         XCTAssertEqual(FluxDockItem.moving(.settings, to: 0, in: order).first, .settings)

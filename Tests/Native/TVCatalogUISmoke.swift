@@ -267,7 +267,7 @@ private struct TVProbeReadout: View {
         case "live-error": return "navigation-countries"
         // Réglages opens with the remote on the page it shows.
         case "settings": return "settings-page-sources"
-        case "settings-graphics": return "settings-page-graphics"
+        case "settings-graphics", "settings-graphics-light": return "settings-page-graphics"
         case "settings-remote": return "settings-page-remote"
         case "pointer", "pointer-list": return "live-channel-fixture-live-0"
         case "player-settings": return "settings-page-video"
@@ -285,7 +285,7 @@ private struct TVProbeReadout: View {
         case "dock-home": return CGSize(width: 100, height: 100)
         // A title of the open folder: the size of an icon of the dock.
         case "dock-folder": return CGSize(width: 76, height: 48)
-        case "settings", "settings-graphics", "settings-remote", "player-settings": return CGSize(width: 240, height: 48)
+        case "settings", "settings-graphics", "settings-graphics-light", "settings-remote", "player-settings": return CGSize(width: 240, height: 48)
         case "live-error": return CGSize(width: 150, height: 50)
         case "country-picker": return CGSize(width: 240, height: 54)
         case "movies", "movies-many", "movies-many-lean", "search-result", "seasons", "dock": return CGSize(width: 240, height: 350)
@@ -337,7 +337,9 @@ private struct TVProbeReadout: View {
     /// Screens of the desk shown over the catalogue of the live scenario.
     /// "pointer": the live catalogue under the pointer of the remote;
     /// "pointer-list": the same, the pointer riding the list of the channels.
-    static let deskScenarios = ["home", "settings", "settings-dock", "settings-graphics", "settings-remote", "zapping", "player-settings",
+    /// "settings-graphics-light": the settings as an Apple TV HD shows them,
+    /// in Fluide, their page cut at the edge of its window (0.9.11).
+    static let deskScenarios = ["home", "settings", "settings-dock", "settings-graphics", "settings-graphics-light", "settings-remote", "zapping", "player-settings",
                                 "player", "player-flow", "player-deep", "player-banner", "player-banner-opening", "pointer", "pointer-list"]
     /// The bare picture just after a change of channel, under its banner.
     var showsBanner: Bool { scenario.hasPrefix("player-banner") }
@@ -352,7 +354,7 @@ private struct TVProbeReadout: View {
         switch scenario {
         case "settings": return .sources
         case "settings-dock": return .dock
-        case "settings-graphics": return .graphics
+        case "settings-graphics", "settings-graphics-light": return .graphics
         case "settings-remote": return .remote
         default: return nil
         }
@@ -694,7 +696,14 @@ private struct TVProbeReadout: View {
         }
         UserDefaults.standard.removeObject(forKey: FluxDockTheme.storageKey)
         UserDefaults.standard.removeObject(forKey: FluxDockThemeChoices.storageKey)
-        UserDefaults.standard.setVolatileDomain(folder.merging([
+        UserDefaults.standard.removeObject(forKey: FluxThemeScope.storageKey)
+        // FLUX_UI_THEME: a screen of the bench drawn again in a theme of the
+        // app, on its dock and its windows (`theme-neon:live` in the script).
+        var themed = folder
+        if let theme = ProcessInfo.processInfo.environment["FLUX_UI_THEME"].flatMap(FluxDockTheme.init(rawValue:)) {
+            themed[FluxDockTheme.storageKey] = theme.rawValue
+        }
+        UserDefaults.standard.setVolatileDomain(themed.merging([
             // Liquid Glass is what the application shows by default: the
             // captures and the focus checks run on it.
             // "…-light", or the bench asking for it: the dark surfaces and

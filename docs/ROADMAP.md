@@ -1,5 +1,17 @@
 # Feuille de route FLUX IPTV
 
+## Intégré dans les sources 0.9.11 — build 52
+
+- **Un thème pour toute l’application** (« theme dock super mais ça serai bien aussi que l'egfet neon soit sur toutes les fenetres aussi, en gros fait theme general pas que dock », 28 novembre) : le thème du dock habille aussi les fenêtres — la colonne, les panneaux de la télévision, le panneau d’un titre, les fiches, les réglages, la feuille d’une source, les messages et le plan des zones. Seize thèmes sur dix-huit y ont leur manière : Néon un tube de lumière aux couleurs de l’écran, Art déco un cadre de cuivre aux angles ciselés, Biseaux et Huit couleurs un relief gris, Couleurs, Tactile, Givre et Verre nocturne un verre habillé. Verre et Sans fond laissent aux fenêtres leur verre.
+- **Au choix** (« ou au choix donc theme general et on choisit que doc ou le reste ») : Réglages › Thème et dock › « Le thème habille » — le dock et les fenêtres (au départ), le dock seulement, ou les fenêtres seulement. Un écran qui garde son propre thème l’applique à ses fenêtres comme à son dock.
+- **Le studio** (« un systeme de theme bien elaboré ») : son étagère Thème essaie le thème sur un dock et sur une fenêtre, chacun selon ce que le thème habille.
+- **Léger** : une plaque est faite de remplissages et de traits, sans ombre ni flou ; les thèmes qui remplacent le verre ne prélèvent rien derrière leurs fenêtres. Leur coût sur une Apple TV reste à mesurer.
+- **Les fonds sur une Apple TV HD** (« sur appletv gen 3 chambre, j'ai aucun ecran de fond », 28 novembre) : Fluide, qu’Automatique choisit pour l’Apple TV HD, coupait les fonds ; il les garde désormais, des images fixes décodées une fois en 1920 × 1080. Une Apple TV HD restée en Automatique les retrouve d’elle-même à la mise à jour.
+- **Les Réglages dans leur fenêtre** (« bug dans options ça deborde », photo du téléviseur de la chambre, 28 novembre) : sur l’Apple TV HD, en Fluide, les sections de la page descendaient sous sa fenêtre, jusqu’au pied de l’écran ; la page s’arrête désormais au bord de sa fenêtre, en haut comme en bas.
+- **Les tests du cœur sous Linux** : la CI de la 0.9.10 ne les construisait pas, deux classes mêlant des tests isolés sur le fil principal et d’autres ; ils y compilent de nouveau.
+- **La CI sur les machines lentes** : sur main, la machine hébergée de la 0.9.10 a mis 67 minutes pour les parcours de l’Apple TV, sur 70, et l’export de leurs pièces jointes a dépassé sa borne de 30 secondes après que tout avait passé ; les bornes sont relevées (parcours 90 minutes, compilation du banc 25, étape 125, travail 150, export 2 puis 5 minutes). Le banc du Mac emporte aussi les images des docks dessinés.
+- **Au simulateur** : la 0.9.11 est vérifiée au simulateur Apple TV et sur le Mac ; rien n’est installé sur les Apple TV du séjour.
+
 ## Intégré dans les sources 0.9.10 — build 51
 
 - **L’aperçu gardé** (« on perd l'aperçu si on sort de la liste, c pas bon non plus », photo du séjour, 28 novembre) : sur l’Apple TV, l’aperçu d’une chaîne continue quand la sélection quitte la liste pour la colonne, la recherche ou le dock, comme sur le Mac. Choisir une catégorie, une liste, un pays ou taper une recherche l’arrête.

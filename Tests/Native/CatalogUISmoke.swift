@@ -367,11 +367,12 @@ private enum CatalogUIFailure: Error, CustomStringConvertible {
             // from the dock enters the column on the page shown, Right
             // enters the page on its first tile, Automatique, Right again is
             // Fluide, and OK does what a click does: the display turns
-            // « Fluide », the decors go, and Automatique lets go.
+            // « Fluide », the glass and the movements go, the pictures behind
+            // the screens stay (0.9.11), and Automatique lets go.
             Scenario(kind: .movie, filename: "keys-settings.png", settings: .graphics,
                      actions: [.up, .right, .right, .select], expectedFocus: "preset-fluid",
                      expectedDefaults: [FluxAppearance.glassKey: false, FluxAppearance.motionKey: false,
-                                        "fluxiptv.appearance.stage": ProceduralCinema.Style.off.rawValue,
+                                        "fluxiptv.appearance.stage": ProceduralCinema.Style.orbit.rawValue,
                                         FluxQualityPreset.automaticKey: false]),
             // Walking the column shows each page: four rows down from
             // Interface is Vidéo, past Graphismes, Dock and Clavier, and

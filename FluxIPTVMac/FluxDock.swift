@@ -297,12 +297,16 @@ struct FluxDock: View {
     @AppStorage(FluxDockPosition.storageKey) private var position: FluxDockPosition = .defaultValue
     @AppStorage(FluxDockTheme.storageKey) private var allScreensTheme: FluxDockTheme = .defaultValue
     @AppStorage(FluxDockThemeChoices.storageKey) private var spaceThemes = ""
-    private var theme: FluxDockTheme { FluxDockThemeChoices.theme(for: space, all: allScreensTheme, stored: spaceThemes) }
+    @AppStorage(FluxThemeScope.storageKey) private var themeScope: FluxThemeScope = .defaultValue
+    /// The theme chosen for the screen in front.
+    private var chosenTheme: FluxDockTheme { FluxDockThemeChoices.theme(for: space, all: allScreensTheme, stored: spaceThemes) }
+    /// The theme the bar is drawn in: the glass when the theme is kept for the windows.
+    private var theme: FluxDockTheme { themeScope.dockTheme(chosenTheme) }
     #if !os(tvOS)
     /// The menu of the bar changes the theme of the screen in front: its
     /// own one, or that of all screens when it keeps none.
     private var themeChoice: Binding<FluxDockTheme> {
-        Binding(get: { theme }, set: { chosen in
+        Binding(get: { chosenTheme }, set: { chosen in
             if FluxDockThemeChoices.parse(spaceThemes)[space] != nil {
                 spaceThemes = FluxDockThemeChoices.setting(chosen, for: space, in: spaceThemes)
             } else {
