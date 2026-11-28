@@ -166,6 +166,8 @@ struct FluxScreen: View, Equatable {
     @AppStorage(FluxAppearance.artworkKey) private var artworkEnabled = true
     @AppStorage(FluxAppearance.densityKey) private var density = "cinema"
     @AppStorage(ClubInterfaceProfile.storageKey) private var clubProfile: ClubInterfaceProfile = .neoVideoClub
+    /// The panels of the desk folded away, section by section (0.9.12).
+    @AppStorage(DeskFolds.storageKey) private var deskFolds = DeskFolds()
     @State private var remoteNavigationActive = false
     #if os(macOS)
     /// The keyboard in the settings: the screen gives it to them from the dock.
@@ -547,8 +549,24 @@ struct FluxScreen: View, Equatable {
     private var visible: CatalogItems { visibleSlice.items }
     private var groups: [String] { library.catalogResults.groups }
     private var catalogPageSize: Int {
-        if usesDesk && library.contentKind == .live { return max(1, columns) * 40 }
+        // The table of the channels: about forty of them, in full rows.
+        if usesDesk && library.contentKind == .live { return DeskChannelGrid.pageSize(columns: columns) }
         return max(library.contentKind == .live ? 1 : 2,columns)*12
+    }
+    /// The preview of the channels is folded away, and nothing plays behind it.
+    private var previewFolded: Bool { usesDesk && deskFolds.isFolded(.preview, in: .live) }
+    /// The column of a section folds away. The search and the lists of
+    /// favourites keep theirs: it is what they show.
+    private var columnFoldable: Bool { usesDesk && !library.searchScreen && !favoritesMode }
+    private var columnFolded: Bool { columnFoldable && deskFolds.isFolded(.column, in: library.contentKind) }
+    /// The keys at the foot of a page, under its last row: "quand arrive en
+    /// bas de liste on doit tout remonter jusqu'au debut pour pouvoir
+    /// atteindre les boutons de changement de page" (David, 28/11).
+    static let pageFootPrevID = "page-prev-foot"
+    static let pageFootNextID = "page-next-foot"
+    private var deskFootIDs: [String] {
+        guard usesDesk, page == .catalogue, !visible.isEmpty, catalogPageCount > 1 else { return [] }
+        return (catalogPage > 0 ? [Self.pageFootPrevID] : []) + (catalogPage + 1 < catalogPageCount ? [Self.pageFootNextID] : [])
     }
     private var catalogPageCount: Int { visibleSlice.pageCount(size:catalogPageSize) }
     private var displayedItems: CatalogItems { visibleSlice.window(page:catalogPage,size:catalogPageSize) }
@@ -561,7 +579,7 @@ struct FluxScreen: View, Equatable {
     /// preview with it.
     private var livePreviewAllowed: Bool {
         page == .catalogue && library.contentKind == .live && heldItem == nil && entranceItem == nil
-            && !modalOpen && scenePhase == .active
+            && !modalOpen && scenePhase == .active && !previewFolded
     }
     private var livePreviewKey: String {
         "\(livePreviewAllowed)|\(previewItem?.id ?? "")|\(automaticLivePreview)|\(livePreviewDelay.rawValue)|\(library.selectedSourceID?.uuidString ?? "")"
@@ -577,17 +595,28 @@ struct FluxScreen: View, Equatable {
     private func resetCatalogWindow() {
         rebuildResumeSlice(); catalogPage = 0
     }
-    private func changeCatalogPage(_ delta: Int) {
+    /// `foot`: turned from the keys under the last row, the page is read
+    /// again from its first title, which takes the selection.
+    private func changeCatalogPage(_ delta: Int, foot: Bool = false) {
         let target = max(0,min(catalogPageCount-1,catalogPage+delta))
         guard target != catalogPage else { return }
         catalogPage = target
         // The key that turned the page keeps the selection, to turn the next
         // one at once: a large catalogue has hundreds of them. At an end of
         // the catalogue that key goes, and the other one takes the selection.
-        if focusID == "page-next" { if target + 1 >= catalogPageCount { focusID = "page-prev" } }
+        if foot { if let first = displayedItems.first { focusID = first.id } }
+        else if focusID == "page-next" { if target + 1 >= catalogPageCount { focusID = "page-prev" } }
         else if focusID == "page-prev" { if target == 0 { focusID = "page-next" } }
         else if let first = displayedItems.first { focusID = first.id }
         if let first = displayedItems.first { setPreview(first) }
+        #if os(tvOS)
+        // The remote follows: the first title of the page, which a lazy
+        // list builds once it is brought on screen, is asked until it has it.
+        if foot, let first = displayedItems.first {
+            let shown = page
+            sendRemote(to: first.id, reader: scrolls.pane) { page == shown && !deskCovered && focusID == first.id }
+        }
+        #endif
     }
     private var modalOpen: Bool {
         addingSource || editingSource != nil || presetEditor != nil || deletingPreset != nil || itemOptions != nil || showingSources || showingLists || showingEngines || showingGroups || showingCountries || showingNavigationMenu || library.alertMessage != nil || playerSettings != nil || studioOpen
@@ -834,6 +863,14 @@ struct FluxScreen: View, Equatable {
             restoreBrowsingContext()
             return
         }
+        // Down from the last row of a page reaches its foot on Page
+        // suivante, whichever title it left: that is what it is pressed for.
+        if let id, id == Self.pageFootPrevID, let from = focusID, visibleSlice.item(id: from) != nil,
+           deskFootIDs.contains(Self.pageFootNextID), !FluxPointerState.shared.active {
+            focusID = Self.pageFootNextID
+            systemFocus = Self.pageFootNextID
+            return
+        }
         if id != nil, page == .catalogue, heldItem == nil, !modalOpen {
             browserHasEnteredFocus = true
         }
@@ -945,9 +982,12 @@ struct FluxScreen: View, Equatable {
                 await Task.yield()
                 guard columnEntryRequest == id, page == .catalogue else { return }
                 // A lazy list knows a row it has not built yet by its
-                // category, not by the name given to the row.
-                if id.hasPrefix("live-category-") { scrolls.column?.scrollTo(String(id.dropFirst("live-category-".count)), anchor: .center) }
-                scrolls.column?.scrollTo(id, anchor: .center)
+                // category, not by the name given to the row. A folded
+                // column has no list to bring it in.
+                if !columnFolded {
+                    if id.hasPrefix("live-category-") { scrolls.column?.scrollTo(String(id.dropFirst("live-category-".count)), anchor: .center) }
+                    scrolls.column?.scrollTo(id, anchor: .center)
+                }
                 // A request the system declined still reads as granted.
                 liveGroupSearchFocus = false
                 systemFocus = nil
@@ -1185,6 +1225,10 @@ struct FluxScreen: View, Equatable {
         .onChange(of: dockShown) { _, _ in updateColumns(geometry.size.width) }
         .onChange(of: density) { _, _ in updateColumns(geometry.size.width) }
         .onChange(of: clubProfile) { _, _ in updateColumns(geometry.size.width) }
+        // A panel folded or unfolded, or a column that the search and the
+        // lists of favourites keep open: the table takes the width left.
+        .onChange(of: columnFolded) { _, _ in updateColumns(geometry.size.width) }
+        .onChange(of: previewFolded) { _, _ in updateColumns(geometry.size.width) }
         #if !os(tvOS)
         #if os(iOS)
         .sheet(isPresented: Binding(get: { showRemote && page != .player && geometry.size.width < 800 }, set: { if !$0 { showRemote = false } })) {
@@ -1774,12 +1818,15 @@ struct FluxScreen: View, Equatable {
         editingSource = source
         #endif
     }
-    /// Back and Home stand at the top of the column unless the bar carries them.
+    /// Back and Home stand at the top of the column unless the bar carries
+    /// them, and the key that folds the column at its end. A folded column
+    /// keeps Back and Home at the top of its strip.
     private var deskHeaderIDs: [String] {
         #if os(iOS)
         return []
         #else
-        return barFlanks ? [] : [DeskZone.backID, DeskZone.homeID]
+        let flanks = barFlanks ? [] : [DeskZone.backID, DeskZone.homeID]
+        return flanks + (page == .catalogue && columnFoldable && !columnFolded ? [DeskPanel.column.foldID] : [])
         #endif
     }
     /// A remote always shows what it selects; a keyboard only once it is used.
@@ -2577,6 +2624,9 @@ struct FluxScreen: View, Equatable {
                 .padding(.horizontal, Desk.tv(16))
                 #endif
                 .padding(.vertical, Desk.tv(12))
+                #if os(macOS) || os(tvOS)
+                if catalogPageCount > 1 { deskPageFoot.padding(.bottom, Desk.tv(12)) }
+                #endif
             }
             // The pointer rides the grid as a scroll pointer (`fluxPointerList`).
             .fluxPointerList()
@@ -5715,6 +5765,8 @@ extension FluxScreen {
         if isDeskSidebarID(id) { return .column }
         if deskTrailingIDs.contains(id) { return .actions }
         if focusRows.contains(where: { $0.contains(id) }) { return .top }
+        // The keys under the last row belong to the table.
+        if deskFootIDs.contains(id) { return .content }
         return visibleSlice.item(id: id) == nil ? nil : .content
     }
 
@@ -6105,6 +6157,11 @@ extension FluxScreen {
         }
         if id == DeskZone.backID { deskLeaveScreen(); return true }
         if id == DeskZone.homeID { showHome(); return true }
+        // The panels that fold away, and the keys under the last row of a page (0.9.12).
+        if let panel = DeskPanel.allCases.first(where: { $0.foldID == id }) { setDeskPanel(panel, folded: true); return true }
+        if let panel = DeskPanel.allCases.first(where: { $0.unfoldID == id }) { setDeskPanel(panel, folded: false); return true }
+        if id == Self.pageFootPrevID { changeCatalogPage(-1, foot: true); return true }
+        if id == Self.pageFootNextID { changeCatalogPage(1, foot: true); return true }
         if id == DeskZone.searchID { search(); return true }
         if let kind = IPTVMediaKind.allCases.first(where: { Self.searchKindID($0) == id }) { searchIn(kind); return true }
         if id.hasPrefix(Self.searchRecentPrefix) {
@@ -6134,6 +6191,8 @@ extension FluxScreen {
                     + favoriteShelves(kind).compactMap { favoriteShelfID(kind, $0.section.id) }
             }
         }
+        // A folded column is the key that unfolds it.
+        if columnFolded { return [DeskPanel.column.unfoldID] }
         if sidebarCountries && facetAvailable {
             return ["countries-back", "country-all"] + facetEntries.map { "country-\($0.code)" }
         }
@@ -6148,6 +6207,7 @@ extension FluxScreen {
     private func isDeskSidebarID(_ id: String) -> Bool {
         guard page == .catalogue, !library.sources.isEmpty else { return false }
         if library.searchScreen || favoritesMode { return deskSidebarIDs.contains(id) }
+        if columnFolded { return id == DeskPanel.column.unfoldID }
         if sidebarCountries && facetAvailable {
             if id == "countries-back" || id == "country-all" { return true }
             guard id.hasPrefix("country-") else { return false }
@@ -6176,14 +6236,18 @@ extension FluxScreen {
             return favoriteShelfID(library.contentKind, library.favoriteDockSectionID)
                 ?? library.selectedPresetID.map { "favorite-list-\($0)" } ?? deskSidebarIDs.first ?? "group-all"
         }
+        if columnFolded { return DeskPanel.column.unfoldID }
         if sidebarCountries { return library.countryCode.map { "country-\($0)" } ?? "country-all" }
         if continueOnly { return "continue-only" }
         return liveScopeID
     }
+    /// Beside the channels: the actions of the one previewed and the key
+    /// that folds the preview, or the key that unfolds it.
     private var deskTrailingIDs: [String] {
-        guard page == .catalogue, library.contentKind == .live, let item = previewItem,
-              visibleSlice.index(of: item.id) != nil else { return [] }
-        return ["live-watch", "live-favorite"] + (livePreview.player == nil ? [] : ["live-preview-mute"])
+        guard page == .catalogue, library.contentKind == .live, !library.sources.isEmpty else { return [] }
+        if previewFolded { return [DeskPanel.preview.unfoldID] }
+        guard let item = previewItem, visibleSlice.index(of: item.id) != nil else { return [DeskPanel.preview.foldID] }
+        return ["live-watch", "live-favorite"] + (livePreview.player == nil ? [] : ["live-preview-mute"]) + [DeskPanel.preview.foldID]
     }
 
     #if os(tvOS)
@@ -6205,6 +6269,18 @@ extension FluxScreen {
     private func deskContentMove(from current: String?, _ action: RemoteAction) -> String? {
         switch page {
         case .catalogue:
+            // The keys under the last row of a page: Up goes back to that
+            // row, Left and Right from one key to the other, and Down
+            // stays, for the dock to take it.
+            if let current, let index = deskFootIDs.firstIndex(of: current) {
+                let keys = deskFootIDs
+                switch action {
+                case .left: return index > 0 ? keys[index - 1] : current
+                case .right: return index + 1 < keys.count ? keys[index + 1] : current
+                case .up: return displayedItems.last?.id ?? current
+                default: return current
+                }
+            }
             return DeskNavigation.move(from: current, action: action, items: visibleSlice, columns: columns,
                                        sidebarIDs: deskSidebarIDs, preferredSidebarID: deskScopeID,
                                        preferredItemID: previewID, toolbar: focusRows, trailingIDs: deskTrailingIDs,
@@ -6284,20 +6360,34 @@ extension FluxScreen {
         return target
     }
 
+    /// A panel folded away leaves a strip along its edge, with the key that unfolds it.
+    var deskRailWidth: CGFloat { Desk.pt(56) }
+    /// The width that a bar on a side of the window takes from the screens.
+    private var deskDockInset: CGFloat { dockShown && dockPosition.isVertical ? FluxDockMetrics.thickness(dockPosition) : 0 }
+
     func updateDeskColumns(_ usable: CGFloat) {
         liveSidebarVisible = true
         // Without the bar a screen takes the whole window.
-        let dock = dockShown && dockPosition.isVertical ? FluxDockMetrics.thickness(dockPosition) : 0
+        let dock = deskDockInset
         deskWidth = usable - dock
-        let content = usable - dock - Desk.pt(48) - liveSidebarWidth - Desk.pt(18)
+        let content = usable - dock - Desk.pt(48) - (columnFolded ? deskRailWidth : liveSidebarWidth) - Desk.pt(18)
         if library.contentKind == .live {
-            // One list of channels; the picture takes the width that remains,
-            // as long as its panel keeps the height for what is written below.
-            let list = min(Desk.pt(460), max(Desk.pt(330), content * 0.34))
-            let strip = !dockShown || dockPosition.isVertical || dockPosition == .corner ? 0 : FluxDockMetrics.thickness(dockPosition)
-            let byHeight = (browserHeight - Desk.pt(52) - Desk.pt(310) - strip) * 16 / 9 + Desk.pt(28)
-            deskPreviewWidth = max(Desk.pt(380), min(content - list - Desk.pt(18), byHeight))
-            columns = 1
+            // A table of channels: tiles as wide as the longest names need,
+            // as many as the width holds (0.9.12, "faut un tableau").
+            let tile = Desk.tv(300), gap = Desk.pt(10), inset = 2 * Desk.pt(12)
+            if previewFolded {
+                deskPreviewWidth = deskRailWidth
+            } else {
+                // Two tiles beside the picture where the screen holds them;
+                // the picture takes the width that remains, as long as its
+                // panel keeps the height for what is written below.
+                let pair = 2 * tile + gap + inset
+                let strip = !dockShown || dockPosition.isVertical || dockPosition == .corner ? 0 : FluxDockMetrics.thickness(dockPosition)
+                let byHeight = (browserHeight - Desk.pt(52) - Desk.pt(310) - strip) * 16 / 9 + Desk.pt(28)
+                deskPreviewWidth = max(Desk.pt(380), min(content - pair - Desk.pt(18), byHeight))
+            }
+            columns = DeskChannelGrid.columns(width: Double(content - deskPreviewWidth - Desk.pt(18) - inset),
+                                              tile: Double(tile), gap: Double(gap))
         } else {
             // The gap between two sleeves, as the grid draws it.
             let estimated = (content - Desk.pt(32) + Desk.tv(4)) / (cardWidth + Desk.tv(4))
@@ -6305,6 +6395,66 @@ extension FluxScreen {
             // a rounding of the scale must not cost a column.
             columns = estimated.isFinite ? Int(max(2, min(10, estimated + 0.02))) : 5
         }
+    }
+
+    /// Folds a panel of the section away, or unfolds it (0.9.12): "pour
+    /// l'aperçu faut pouvoir le replier du coup, pareil pour liste de gauche,
+    /// et aussi pour film serie" (David, 28/11). The remote goes on into the
+    /// table when a panel folds, and into the panel when it opens again.
+    func setDeskPanel(_ panel: DeskPanel, folded: Bool) {
+        let kind = library.contentKind
+        guard panel.exists(in: kind), panel == .preview || columnFoldable else { return }
+        let next = deskFolds.setting(panel, in: kind, folded: folded)
+        guard next != deskFolds else { return }
+        let change = {
+            deskFolds = next
+            updateDeskColumns(deskWidth + deskDockInset)
+        }
+        // A slow Apple TV lays the table out again at once rather than
+        // drawing every picture of the way.
+        if reduceMotion || !focusMotion { change() }
+        else { withAnimation(.spring(response: 0.34, dampingFraction: 0.9), change) }
+        let target: String
+        if folded {
+            // The title selected, on the page the new table gives it.
+            guard let item = visibleSlice.item(id: previewID) ?? displayedItems.first else {
+                // An empty table: the strip that stands for the panel.
+                handDeskFocus(to: panel.unfoldID)
+                return
+            }
+            revealCatalogItem(item.id)
+            target = item.id
+        } else if panel == .column {
+            #if os(tvOS)
+            enterColumn()
+            #else
+            focusID = deskScopeID
+            if remoteNavigationActive { systemFocus = focusID }
+            #endif
+            return
+        } else {
+            target = deskTrailingIDs.first ?? DeskPanel.preview.foldID
+        }
+        handDeskFocus(to: target)
+    }
+
+    /// Gives the remote, or the selection of the keyboard, to a control the
+    /// screen has just drawn.
+    private func handDeskFocus(to id: String) {
+        focusID = id
+        #if os(tvOS)
+        let shown = page
+        if visibleSlice.item(id: id) != nil {
+            sendRemote(to: id, reader: scrolls.pane) { page == shown && !deskCovered && focusID == id }
+        } else {
+            // A key that has just come on screen declines the remote until
+            // it is drawn: it is asked again, as a title is.
+            holdRemote(on: id) { page == shown && !deskCovered && focusID == id }
+        }
+        #else
+        if visibleSlice.item(id: id) != nil { scrolls.pane?.scrollTo(id, anchor: .center) }
+        if remoteNavigationActive { systemFocus = id }
+        #endif
     }
 }
 #endif
@@ -6624,13 +6774,57 @@ extension FluxScreen {
         .padding(.bottom, navigationFootRoom)
     }
 
-    /// Back and the home screen are at the top of every navigation column.
-    /// With the search, the reload and the pages they form the top zone.
+    /// Back and the home screen are at the top of every navigation column,
+    /// and the key that folds the column of a section away (0.9.12). With
+    /// the search, the reload and the pages they form the top zone.
     private func sidebarHeading(_ title: String) -> some View {
         DeskColumnHeader(title: title, backTitle: deskBackTitle,
                          back: barFlanks ? nil : { deskLeaveScreen() }, home: barFlanks ? nil : { showHome() },
+                         fold: columnFoldable ? { setDeskPanel(.column, folded: true) } : nil,
                          focusedID: focusShown ? shownFocusID : nil, systemFocus: nativeFocus)
-            .overlay { if !barFlanks { zoneFrame(.top, radius: Desk.pt(14), outset: 6, labelled: false) } }
+            .overlay { if !barFlanks || columnFoldable { zoneFrame(.top, radius: Desk.pt(14), outset: 6, labelled: false) } }
+    }
+
+    /// A panel folded away: a strip along its edge, with the key that
+    /// unfolds it. The strip of the column keeps Back and Home above it,
+    /// where the bar does not carry them.
+    private func deskRail(_ panel: DeskPanel) -> some View {
+        let shown = focusShown ? shownFocusID : nil
+        return VStack(spacing: Desk.pt(12)) {
+            if panel == .column, !barFlanks {
+                VStack(spacing: Desk.pt(10)) {
+                    DeskHeaderButton(symbol: "chevron.backward", title: deskBackTitle, identifier: DeskZone.backID,
+                                     focused: shown == DeskZone.backID) { deskLeaveScreen() }
+                        .fluxFocus(nativeFocus, id: DeskZone.backID).id(DeskZone.backID)
+                    DeskHeaderButton(symbol: "house.fill", title: "Accueil", identifier: DeskZone.homeID,
+                                     focused: shown == DeskZone.homeID) { showHome() }
+                        .fluxFocus(nativeFocus, id: DeskZone.homeID).id(DeskZone.homeID)
+                }
+                .padding(.vertical, Desk.pt(4))
+                .overlay { zoneFrame(.top, radius: Desk.pt(14), outset: 6, labelled: false) }
+            }
+            DeskHeaderButton(symbol: panel.symbol, title: panel.unfoldTitle, identifier: panel.unfoldID,
+                             focused: shown == panel.unfoldID) { setDeskPanel(panel, folded: false) }
+                .fluxFocus(nativeFocus, id: panel.unfoldID).id(panel.unfoldID)
+            // What is folded there: the name the column bears, or the preview.
+            DeskRailCaption(title: panel == .preview ? "APERÇU"
+                                : library.contentKind == .live ? "TÉLÉVISION" : library.contentKind == .movie ? "FILMS" : "SÉRIES",
+                            leading: panel == .column)
+                .padding(.top, Desk.pt(4))
+            Spacer(minLength: 0)
+        }
+        .padding(.vertical, Desk.pt(14))
+        .frame(width: deskRailWidth)
+        .frame(maxHeight: .infinity, alignment: .top)
+        #if os(macOS)
+        // The pointer unfolds the panel from anywhere on its strip.
+        .contentShape(Rectangle())
+        .onTapGesture { setDeskPanel(panel, folded: false) }
+        #endif
+        .overlay { zoneFrame(panel == .column ? .column : .actions, radius: Desk.pt(25)) }
+        .fluxWindow(radius: Desk.pt(25))
+        .padding(.bottom, panel == .column ? navigationFootRoom : 0)
+        .accessibilityElement(children: .contain)
     }
 
     @ViewBuilder private var scopeSidebar: some View {
@@ -7265,21 +7459,43 @@ extension FluxScreen {
     var liveDeskCatalogue: some View {
         FluxGlassGroup {
             HStack(alignment: .top, spacing: Desk.pt(18)) {
-                deskSidebar.deskFocusSection()
+                deskColumn
                 VStack(alignment: .leading, spacing: Desk.pt(12)) {
                     deskTopBand
                     Group { liveNotices }.deskFocusSection()
                     liveDeskChannels
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                .padding(.bottom, deskContentFootRoom)
                 .deskFocusSection()
                 // Regarder and Favoris stand lower than most channels: the
                 // panel answers Right from any of them.
-                liveDeskPreviewPanel.frame(width: deskPreviewWidth).deskFocusSection()
+                if previewFolded {
+                    deskRail(.preview).deskFocusSection()
+                        .transition(.move(edge: .trailing).combined(with: .opacity))
+                } else {
+                    liveDeskPreviewPanel.frame(width: deskPreviewWidth).deskFocusSection()
+                        .transition(.move(edge: .trailing).combined(with: .opacity))
+                }
             }
         }
         .padding(.horizontal, Desk.pt(24))
     }
+
+    /// The column of the section, or the strip it folds to.
+    @ViewBuilder private var deskColumn: some View {
+        if columnFolded {
+            deskRail(.column).deskFocusSection()
+                .transition(.move(edge: .leading).combined(with: .opacity))
+        } else {
+            deskSidebar.deskFocusSection()
+                .transition(.move(edge: .leading).combined(with: .opacity))
+        }
+    }
+
+    /// The compact dock sits under the column: a column folded to its strip
+    /// leaves the dock under the table, which then stops above it.
+    private var deskContentFootRoom: CGFloat { columnFolded ? navigationFootRoom : 0 }
 
     private var liveDeskChannels: some View {
         Group {
@@ -7305,9 +7521,12 @@ extension FluxScreen {
                         livePagination.padding(.horizontal, Desk.pt(14)).padding(.top, Desk.pt(10)).padding(.bottom, Desk.pt(2))
                     }
                     ScrollView {
-                        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: Desk.pt(10)), count: max(1, columns)), spacing: Desk.pt(8)) {
-                            ForEach(displayedItems) { item in liveDeskChannel(item) }
-                        }.padding(Desk.pt(12)).fluxPointerList()
+                        VStack(spacing: 0) {
+                            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: Desk.pt(10)), count: max(1, columns)), spacing: Desk.pt(8)) {
+                                ForEach(displayedItems) { item in liveDeskChannel(item) }
+                            }.padding(Desk.pt(12)).fluxPointerList()
+                            if catalogPageCount > 1 { deskPageFoot.padding(.bottom, Desk.pt(8)) }
+                        }
                     }
                 }
             }
@@ -7316,6 +7535,24 @@ extension FluxScreen {
         .overlay { zoneFrame(.content, radius: Desk.pt(25)) }
         .clipShape(RoundedRectangle(cornerRadius: Desk.pt(25), style: .continuous))
         .fluxWindow(radius: Desk.pt(25))
+    }
+
+    /// The keys under the last row of a page: from the bottom of a page the
+    /// next one is a press away (0.9.12), as from the top of the screen.
+    var deskPageFoot: some View {
+        HStack(spacing: Desk.pt(14)) {
+            Spacer(minLength: 0)
+            navButton("Page précédente", icon: "chevron.left", id: Self.pageFootPrevID) { changeCatalogPage(-1, foot: true) }
+                .disabled(catalogPage == 0)
+            Text("\(catalogPage + 1) / \(catalogPageCount)").font(Desk.font(.callout).monospacedDigit())
+                .foregroundStyle(.secondary).lineLimit(1).fixedSize()
+                .accessibilityLabel("Page \(catalogPage + 1) sur \(catalogPageCount)")
+            navButton("Page suivante", icon: "chevron.right", id: Self.pageFootNextID) { changeCatalogPage(1, foot: true) }
+                .disabled(catalogPage + 1 >= catalogPageCount)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, Desk.pt(12)).padding(.top, Desk.pt(4))
+        .accessibilityElement(children: .contain)
     }
 
     /// What a channel of the list is drawn from.
@@ -7329,11 +7566,14 @@ extension FluxScreen {
         let selected: Bool
         let theme: VideoClubTheme
         let reduceMotion: Bool
+        /// Lines of the name: a tile of the table holds two.
+        let lines: Int
     }
 
     private func liveDeskChannel(_ item: IPTVItem) -> some View {
         let key = ChannelKey(item: item, number: (visibleSlice.index(of: item.id) ?? 0) + 1, rich: focusMotion, favorite: library.isFavorite(item),
-                             selected: selectedByKeyboard(item.id), theme: theme, reduceMotion: reduceMotion)
+                             selected: selectedByKeyboard(item.id), theme: theme, reduceMotion: reduceMotion,
+                             lines: columns > 1 ? 2 : 1)
         #if os(tvOS)
         // The row under the remote grows over its neighbours.
         return FluxRaised { report in
@@ -7357,7 +7597,8 @@ extension FluxScreen {
             else { pointerSelect(item.id); setPreview(item) }
         } label: {
             FluxFocused(id: item.id, logical: key.selected) { highlighted in
-                LiveTVChannelRow(item: item, number: key.number, favorite: key.favorite, highlighted: highlighted, accent: themeAccent)
+                LiveTVChannelRow(item: item, number: key.number, favorite: key.favorite, highlighted: highlighted, accent: themeAccent,
+                                 nameLines: key.lines)
                     #if os(tvOS)
                     .animation(key.reduceMotion || !key.rich ? nil : .easeOut(duration: 0.12), value: highlighted)
                     #else
@@ -7461,9 +7702,18 @@ extension FluxScreen {
                 .aspectRatio(16.0 / 9.0, contentMode: .fit)
                 .clipShape(RoundedRectangle(cornerRadius: Desk.pt(20)))
                 .overlay { RoundedRectangle(cornerRadius: Desk.pt(20)).strokeBorder(.white.opacity(0.30), lineWidth: 1).allowsHitTesting(false) }
+                HStack { Spacer(minLength: 0); previewFoldKey }
             }
             Spacer(minLength: 0)
         }
+    }
+
+    /// Folds the preview away: the table of the channels takes its width.
+    private var previewFoldKey: some View {
+        let panel = DeskPanel.preview
+        return DeskHeaderButton(symbol: panel.symbol, title: panel.foldTitle, identifier: panel.foldID,
+                                focused: focusShown && shownFocusID == panel.foldID) { setDeskPanel(.preview, folded: true) }
+            .fluxFocus(nativeFocus, id: panel.foldID).id(panel.foldID)
     }
 
     private func liveDeskDetails(_ item: IPTVItem) -> some View {
@@ -7503,6 +7753,8 @@ extension FluxScreen {
                                   id: "live-preview-mute", iconOnly: true) { preview.toggleMuted() }
                     }
                 }
+                Spacer(minLength: 0)
+                previewFoldKey
             }
             Divider().overlay(.white.opacity(0.14))
             Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 16, verticalSpacing: 9) {
@@ -7531,13 +7783,14 @@ extension FluxScreen {
     var mediaDeskCatalogue: some View {
         FluxGlassGroup {
             HStack(alignment: .top, spacing: Desk.pt(18)) {
-                deskSidebar.deskFocusSection()
+                deskColumn
                 VStack(alignment: .leading, spacing: Desk.pt(12)) {
                     deskTopBand
                     Group { liveNotices }.deskFocusSection()
                     mediaDeskContent
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                .padding(.bottom, deskContentFootRoom)
                 .deskFocusSection()
             }
         }

@@ -278,7 +278,8 @@ private struct TVProbeReadout: View {
 
     var minimumFocusSize: CGSize {
         switch scenario {
-        // A channel is a row of the list, not a tile.
+        // A channel is a tile of the table, at least as wide as two of
+        // them beside the picture (0.9.12).
         case "live", "live-many", "live-many-light", "live-fr", "live-es", "live-restored", "zapping": return CGSize(width: 300, height: 60)
         case "home": return CGSize(width: 150, height: 150)
         // Its one full bar keeps icons larger than those of the dock.
@@ -441,6 +442,11 @@ private struct TVProbeReadout: View {
             // at a time, and than a page of the catalogue. Their logos are
             // smaller, so that the cache of the application keeps them all.
             let deep = scenario == "player-deep"
+            // "pointer-list" rides a whole page of the table of the channels
+            // (0.9.12): eighteen channels make nine rows, and the list would
+            // stop scrolling under the thumb before the scroll pointer is seen
+            // to keep its height.
+            let page = scenario == "pointer-list"
             // The banner is read on the catalogue of a real subscription:
             // tens of thousands of channels, so a number of five digits.
             let banner = scenario.hasPrefix("player-banner")
@@ -456,7 +462,7 @@ private struct TVProbeReadout: View {
             let realNames = ["FR: HORIZON INFO", "PRISME: GRAND ÉCRAN FESTIVAL", "FR| DÉCOUVERTE NATURE & VOYAGES",
                              "PRISME: PANORAMA JEUNESSE", "ÉVASION MUSIQUE HITS", "FR: SCÈNE SPORT 360"]
             let marks = ["ᴴᴰ", "ᴿᴬᵂ", "ᶠᴴᴰ", "⁴ᴷ", "ᴴᴰ", "ᴿᴬᵂ"]
-            let channels = try (0..<(banner || many ? 24_665 : deep ? 110 : 18)).map { (index: Int) in
+            let channels = try (0..<(banner || many ? 24_665 : deep || page ? 110 : 18)).map { (index: Int) in
                 let kind = index % channelNames.count
                 let name: String
                 if real {
@@ -469,7 +475,7 @@ private struct TVProbeReadout: View {
                 var url: URL? = nil
                 if !(banner || many) || abs(index - watched) < (many ? 84 : 40) {
                     let file = artworkRoot.appendingPathComponent("live-\(index).png")
-                    let small = deep || banner || many
+                    let small = deep || page || banner || many
                     cache(try artwork(width: small ? 240 : 480, height: small ? 135 : 270, index: index,
                                       title: (real ? realNames[kind] : name).uppercased(), subtitle: "CHAÎNE LOCALE"), at: file)
                     url = file
@@ -697,6 +703,14 @@ private struct TVProbeReadout: View {
         UserDefaults.standard.removeObject(forKey: FluxDockTheme.storageKey)
         UserDefaults.standard.removeObject(forKey: FluxDockThemeChoices.storageKey)
         UserDefaults.standard.removeObject(forKey: FluxThemeScope.storageKey)
+        // The panels that a flow folds stay folded at the next launch: each
+        // one starts with them open, or folded as FLUX_UI_FOLDS says
+        // ("folds-preview-live:live-many" in the script, 0.9.12).
+        UserDefaults.standard.removeObject(forKey: DeskFolds.storageKey)
+        if let folds = ProcessInfo.processInfo.environment["FLUX_UI_FOLDS"].flatMap(DeskFolds.init(rawValue:)),
+           folds != DeskFolds() {
+            UserDefaults.standard.set(folds.rawValue, forKey: DeskFolds.storageKey)
+        }
         // FLUX_UI_THEME: a screen of the bench drawn again in a theme of the
         // app, on its dock and its windows (`theme-neon:live` in the script).
         var themed = folder

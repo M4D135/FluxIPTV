@@ -48,7 +48,13 @@ public enum DeskNavigation {
                 return width > 1 && index + 1 < all.count ? all[index + 1].id : all[index].id
             case .up:
                 if row > 0 { return all[index - width].id }
-                return rows.last.map { $0[min(column, $0.count - 1)] } ?? all[index].id
+                // The controls above the column are reached from the column:
+                // the grid goes up to those that stand above it (0.9.12).
+                return rows.last.map { line in
+                    let above = line.filter { !headerIDs.contains($0) }
+                    let keys = above.isEmpty ? line : above
+                    return keys[min(column, keys.count - 1)]
+                } ?? all[index].id
             case .down:
                 if index + width < all.count { return all[index + width].id }
                 // A shorter last row stays reachable from the row above it.
@@ -65,7 +71,10 @@ public enum DeskNavigation {
             case .up: return row > 0 ? rows[row - 1][min(column, rows[row - 1].count - 1)] : current
             case .down:
                 if row + 1 < rows.count { return rows[row + 1][min(column, rows[row + 1].count - 1)] }
-                return all.isEmpty ? current : all[min(column, min(width, all.count) - 1)].id
+                // Into the grid under the control left, counted among those
+                // that stand above the grid.
+                let place = rows[row].filter { !headerIDs.contains($0) }.firstIndex(of: current) ?? 0
+                return all.isEmpty ? current : all[min(place, min(width, all.count) - 1)].id
             default: return current
             }
         }

@@ -151,6 +151,9 @@ struct LiveTVChannelRow: View {
     let favorite: Bool
     let highlighted: Bool
     let accent: Color
+    /// A tile of the table of the channels, narrower than a row of a list,
+    /// gives the name two lines before it shrinks it (0.9.12).
+    var nameLines = 1
     /// A television is read from the sofa; a Mac shows the same row at
     /// the size of its window.
     private var k: CGFloat {
@@ -182,7 +185,8 @@ struct LiveTVChannelRow: View {
             VStack(alignment: .leading, spacing: 3 * k) {
                 // Names of a playlist are long, and differ by their end: a
                 // number, a mark of quality. They shrink before they are cut.
-                Text(item.name).font(.system(size: 17 * k, weight: .semibold)).lineLimit(1).minimumScaleFactor(0.78)
+                Text(item.name).font(.system(size: 17 * k, weight: .semibold)).lineLimit(nameLines).minimumScaleFactor(0.78)
+                    .fixedSize(horizontal: false, vertical: nameLines > 1)
                 Text(item.group).font(.system(size: small)).foregroundStyle(.secondary).lineLimit(1)
             }.frame(maxWidth: .infinity, alignment: .leading)
             if favorite { Image(systemName: "star.fill").font(.system(size: 12 * k)).foregroundStyle(.yellow) }

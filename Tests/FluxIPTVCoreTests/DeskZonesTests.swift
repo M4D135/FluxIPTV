@@ -123,6 +123,33 @@ final class DeskZonesTests: XCTestCase {
         XCTAssertEqual(move("desk-back", .down, sidebar: []), "page-prev")
     }
 
+    /// The grid goes up to the controls that stand above it, not to those
+    /// above the column, which its top row reaches (0.9.12: the key that
+    /// folds the column stands at the start of the line of the search).
+    func testTheGridGoesUpToTheControlsAboveItAndNotToThoseOfTheColumn() {
+        let source = UUID()
+        let items = CatalogSlice((0..<4).map { index in
+            IPTVItem(id: "item-\(index)", sourceID: source, name: "Titre \(index)", group: "Groupe",
+                     logoURL: nil, kind: .live, directURL: nil, xtreamStreamID: String(index), fileExtension: "m3u8")
+        })
+        func move(_ from: String?, _ action: RemoteAction, header: [String]) -> String? {
+            DeskNavigation.move(from: from, action: action, items: items, columns: 2, sidebarIDs: ["countries", "group-all"],
+                                preferredSidebarID: "group-all", preferredItemID: "item-0",
+                                toolbar: [header + ["search-field", "reload"]], trailingIDs: ["watch"], headerIDs: header)
+        }
+        for header in [["desk-column-fold"], ["desk-back", "desk-home", "desk-column-fold"], []] {
+            XCTAssertEqual(move("item-0", .up, header: header), "search-field", "\(header)")
+            XCTAssertEqual(move("item-1", .up, header: header), "reload", "\(header)")
+            XCTAssertEqual(move("search-field", .down, header: header), "item-0", "\(header)")
+            XCTAssertEqual(move("reload", .down, header: header), "item-1", "\(header)")
+        }
+        // The key of the column is reached from the column and from the search.
+        XCTAssertEqual(move("countries", .up, header: ["desk-column-fold"]), "desk-column-fold")
+        XCTAssertEqual(move("search-field", .left, header: ["desk-column-fold"]), "desk-column-fold")
+        XCTAssertEqual(move("desk-column-fold", .right, header: ["desk-column-fold"]), "search-field")
+        XCTAssertEqual(move("desk-column-fold", .down, header: ["desk-column-fold"]), "countries")
+    }
+
     /// One key goes round the zones as the hands of a clock: from the
     /// content to the bar below, the column on the left, the line of the
     /// search above, and the content again.

@@ -388,26 +388,44 @@ private enum CatalogUIFailure: Error, CustomStringConvertible {
             Scenario(kind: .movie, filename: "keys-settings-dock.png", settings: .appearance,
                      actions: [.up] + Array(repeating: .down, count: 9), expectedFocus: FluxDockItem.settings.focusID),
             // "ne pas laisser de fonctionnalité vide": keys a pause apart, each
-            // a fresh press. The television starts in its column: Left goes
-            // to Back, and Up from Back returns to the row that was left.
+            // a fresh press. The television starts on its first channel, as
+            // the screen asks since the 0.9.12 (up to the 0.9.11 the first
+            // focus of the window put it in the column): Left goes to the
+            // column, Left again to Back, and Up from Back returns to the row
+            // that was left.
             // Past one end of the bar comes the other, both ways. Right past
             // the actions of a channel and Up past the line of the search go
             // to the icon of the screen; Down from the bar leads to the
             // search, and Left from the column of the settings to Back.
-            Scenario(kind: .live, filename: "keys-edge-back.png", actions: [.left],
+            Scenario(kind: .live, filename: "keys-edge-back.png", actions: [.left, .left],
                      expectedFocus: DeskZone.backID, defaults: [Self.keyGap: 0.6]),
-            Scenario(kind: .live, filename: "keys-edge-back-up.png", actions: [.left, .up],
-                     expectedFocus: "countries", defaults: [Self.keyGap: 0.6]),
-            Scenario(kind: .live, filename: "keys-edge-ring.png", actions: [.left, .left],
+            Scenario(kind: .live, filename: "keys-edge-back-up.png", actions: [.left, .left, .up],
+                     expectedFocus: "group-all", defaults: [Self.keyGap: 0.6]),
+            Scenario(kind: .live, filename: "keys-edge-ring.png", actions: [.left, .left, .left],
                      expectedFocus: FluxDockItem.settings.focusID, defaults: [Self.keyGap: 0.6]),
-            Scenario(kind: .live, filename: "keys-edge-ring-back.png", actions: [.left, .left, .right],
+            Scenario(kind: .live, filename: "keys-edge-ring-back.png", actions: [.left, .left, .left, .right],
                      expectedFocus: DeskZone.backID, defaults: [Self.keyGap: 0.6]),
             // A run of presses stops at the edge: the second Left, close
-            // behind the first, stays on Back.
+            // behind the first that reached the column, stays in it.
             Scenario(kind: .live, filename: "keys-edge-run.png", actions: [.left, .left],
-                     expectedFocus: DeskZone.backID),
-            Scenario(kind: .live, filename: "keys-edge-right.png", actions: [.right, .right, .right, .right],
+                     expectedFocus: "group-all"),
+            // The channels stand in a table of two tiles beside the picture
+            // (0.9.12): Right crosses its row, the actions of the channel and
+            // the key that folds the preview, then the edge.
+            Scenario(kind: .live, filename: "keys-edge-right.png", actions: Array(repeating: .right, count: 5),
                      expectedFocus: FluxDockItem.live.focusID, defaults: [Self.keyGap: 0.6]),
+            // OK on that key folds the preview: the table takes its width,
+            // and the channel left keeps the selection.
+            Scenario(kind: .live, filename: "keys-fold-preview.png", actions: Array(repeating: .right, count: 4) + [.select],
+                     expectedFocus: "fixture-live-1", expectedDefaults: [DeskFolds.storageKey: "preview-live"]),
+            // Up from the first row of the column reaches the key that folds
+            // it, at the top of the column; OK folds it, and the table has
+            // the remote on its first channel. Up from that channel goes to
+            // the search above it, not to the key of the column.
+            Scenario(kind: .live, filename: "keys-fold-column.png", actions: [.left, .up, .up, .select],
+                     expectedFocus: "fixture-live-0", expectedDefaults: [DeskFolds.storageKey: "column-live"]),
+            Scenario(kind: .live, filename: "keys-up-search.png", actions: [.up],
+                     expectedFocus: DeskZone.searchID),
             Scenario(kind: .movie, filename: "keys-edge-top.png", actions: [.up, .up],
                      expectedFocus: FluxDockItem.movie.focusID, defaults: [Self.keyGap: 0.6]),
             // From the compass of the zones, Down enters the bar; the next
@@ -423,6 +441,14 @@ private enum CatalogUIFailure: Error, CustomStringConvertible {
                                                  "fluxiptv.fixture.dockPointer": 1], gallery: true))
         }
         scenarios.append(Scenario(kind: .movie, filename: "languages.png", languages: true, gallery: true))
+        // The panels folded away to their strips (0.9.12): the table of the
+        // channels without its preview, then without its column as well,
+        // and the films without their column.
+        scenarios.append(Scenario(kind: .live, filename: "catalog-tv-folded.png", defaults: [DeskFolds.storageKey: "preview-live"]))
+        scenarios.append(Scenario(kind: .live, filename: "catalog-tv-folded-both.png",
+                                  defaults: [DeskFolds.storageKey: "column-live,preview-live"]))
+        scenarios.append(Scenario(kind: .movie, filename: "catalog-films-folded.png", manyFilms: true,
+                                  defaults: [DeskFolds.storageKey: "column-movie"]))
         // The studio of the appearance: a picture drawn for the television
         // tried behind it, and a theme of the dock tried on its dock.
         // It opens on its shop window: the pictures of the boutique.

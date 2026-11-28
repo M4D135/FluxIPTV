@@ -1,4 +1,4 @@
-FLUX IPTV 0.9.11 — BUILD 52 — BUREAU MAC : DOCK, COLONNES ET VERRE - Installation sur votre Mac
+FLUX IPTV 0.9.12 — BUILD 53 — BUREAU MAC : DOCK, COLONNES ET VERRE - Installation sur votre Mac
 
 1. Quittez FLUX IPTV et arrêtez le projet s'il tourne dans Xcode.
 2. Décompressez l'archive et double-cliquez sur « Installer Flux IPTV.command ».
@@ -9,8 +9,8 @@ FLUX IPTV 0.9.11 — BUILD 52 — BUREAU MAC : DOCK, COLONNES ET VERRE - Install
    L'installateur contrôle que le processus reste actif et restaure l'ancien
    bundle en cas d'échec du démarrage. Ce contrôle ne valide pas la lecture.
 4. Ensuite ouvrez uniquement FluxIPTV.app depuis le Finder ou le Dock.
-   Ne relancez pas l'installateur à chaque utilisation. Vérifiez « FLUX 0.9.11 ·
-   build 52 » en bas de la colonne de Réglages, et la page Graphismes.
+   Ne relancez pas l'installateur à chaque utilisation. Vérifiez « FLUX 0.9.12 ·
+   build 53 » en bas de la colonne de Réglages, et la page Graphismes.
 
 Sur Mac, VLC intégré est désactivé. En cas de format incompatible, installez le
 lecteur VLC officiel et utilisez le bouton « Ouvrir dans VLC externe ».
@@ -35,6 +35,15 @@ La compilation est effectuée sur votre Mac. Cette archive ne contient pas un
 binaire macOS précompilé ; l'installateur n'a pas été exécuté sous macOS ici.
 
 Réglages > Sources > Modifier permet de choisir « Sur ce Mac, sans Trousseau ». Les identifiants sont alors dans un fichier privé non chiffré (permissions 600) ; le Trousseau demeure plus sûr. Les favoris sont conservés.
+
+NOUVEAUTÉS DE LA 0.9.12
+Les chaînes de la télévision se rangent en tableau, autant par rangée que
+la fenêtre en tient, et une page en tient une quarantaine. L'aperçu se
+replie par la touche au bout de ses boutons, la colonne par celle de son
+en-tête, à la télévision comme dans les films et les séries : il reste une
+bande étroite à leur nom, qu'un clic rouvre. Ce qui est replié le reste
+d'un lancement à l'autre. Page précédente et Page suivante se tiennent
+aussi au pied de la page, sous la dernière rangée.
 
 NOUVEAUTÉS DE LA 0.9.11
 Le thème du dock devient celui de toute l'application : les fenêtres le
@@ -215,7 +224,7 @@ Réglages > Interface conserve les thèmes propres à chaque espace.
 
 La lecture principale garde ses commandes flottantes.
 
-Voir README.md, docs/OPTIMISATION.md, docs/VALIDATION-0.9.11.md, docs/VALIDATION-0.9.10.md, docs/VALIDATION-0.9.9.md, docs/VALIDATION-0.9.8.md, docs/VALIDATION-0.9.7.md, docs/VALIDATION-0.9.6.md, docs/VALIDATION-0.9.5.md, docs/VALIDATION-0.9.4.md, docs/VALIDATION-0.9.3.md, docs/VALIDATION-0.9.2.md, docs/VALIDATION-0.9.1.md et docs/VALIDATION-0.9.0.md pour les comportements et les limites.
+Voir README.md, docs/OPTIMISATION.md, docs/VALIDATION-0.9.12.md, docs/VALIDATION-0.9.11.md, docs/VALIDATION-0.9.10.md, docs/VALIDATION-0.9.9.md, docs/VALIDATION-0.9.8.md, docs/VALIDATION-0.9.7.md, docs/VALIDATION-0.9.6.md, docs/VALIDATION-0.9.5.md, docs/VALIDATION-0.9.4.md, docs/VALIDATION-0.9.3.md, docs/VALIDATION-0.9.2.md, docs/VALIDATION-0.9.1.md et docs/VALIDATION-0.9.0.md pour les comportements et les limites.
 
 APPLE TV : ouvrez FluxIPTV-AppleTV.xcodeproj (schéma FluxIPTVTV), puis
 choisissez la destination Apple TV. Voir LISEZ-MOI APPLE TV.txt.

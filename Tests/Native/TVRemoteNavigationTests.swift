@@ -139,14 +139,19 @@ final class TVRemoteNavigationTests: XCTestCase {
         assertFocus(channel, logical: "fixture-live-0", in: app)
         assertCondition(NSPredicate(format: "value BEGINSWITH %@", "fixture-live-0 "), on: preview, in: app)
 
-        // Up: the search field, above the list.
+        // Up: the search field, above the table.
         XCUIRemote.shared.press(.up)
         assertCondition("hasFocus == true", on: search, in: app)
         assertPreviewStays(preview, with: "fixture-live-0", on: "the search field")
+        // Down: the first row of the table, on the tile the system finds
+        // under the field (0.9.12), as in the grid of the films; Left then
+        // reaches the first channel when it was the second.
         XCUIRemote.shared.press(.down)
+        assertCondition(NSPredicate(format: "value == %@ OR value == %@", "fixture-live-0", "fixture-live-1"), on: logical, in: app)
+        if (logical.value as? String) == "fixture-live-1" { XCUIRemote.shared.press(.left) }
         assertFocus(channel, logical: "fixture-live-0", in: app)
-        // Left: the navigation column. Right twice: the list, then the
-        // actions beside the preview.
+        // Left: the navigation column. Right: the table, then along its row
+        // to the actions beside the preview.
         XCUIRemote.shared.press(.left)
         assertCondition("hasFocus == false", on: channel, in: app)
         assertCondition(NSPredicate(format: "value BEGINSWITH %@ OR value == %@", "group-", "countries"), on: logical, in: app)
@@ -155,13 +160,18 @@ final class TVRemoteNavigationTests: XCTestCase {
         // From a channel further down, the column is still entered on the
         // row of what is shown, not on the one that faces that channel, and
         // it is left for the channel the remote came from.
-        let fourth = element("live-channel-fixture-live-3", in: app)
-        move(.down, to: fourth, maximumPresses: 4, in: app)
-        assertFocus(fourth, logical: "fixture-live-3", in: app)
-        assertCondition(NSPredicate(format: "value BEGINSWITH %@", "fixture-live-3 "), on: preview, in: app)
+        // The table has two tiles beside the picture (0.9.12): the third
+        // channel stands under the first.
+        let third = element("live-channel-fixture-live-2", in: app)
+        move(.down, to: third, maximumPresses: 4, in: app)
+        assertFocus(third, logical: "fixture-live-2", in: app)
+        assertCondition(NSPredicate(format: "value BEGINSWITH %@", "fixture-live-2 "), on: preview, in: app)
         XCUIRemote.shared.press(.left)
         assertCondition(NSPredicate(format: "value == %@", "group-all"), on: logical, in: app)
-        assertPreviewStays(preview, with: "fixture-live-3", on: "the column")
+        assertPreviewStays(preview, with: "fixture-live-2", on: "the column")
+        XCUIRemote.shared.press(.right)
+        assertFocus(third, logical: "fixture-live-2", in: app)
+        let fourth = element("live-channel-fixture-live-3", in: app)
         XCUIRemote.shared.press(.right)
         assertFocus(fourth, logical: "fixture-live-3", in: app)
         XCUIRemote.shared.press(.right)
@@ -170,6 +180,12 @@ final class TVRemoteNavigationTests: XCTestCase {
         XCUIRemote.shared.press(.right)
         assertFocus(element("navigation-live-favorite", in: app), in: app)
         assertPreviewStays(preview, with: "fixture-live-3", on: "Favoris")
+        // At the end of the actions, the key that folds the preview.
+        XCUIRemote.shared.press(.right)
+        assertFocus(element("desk-preview-fold", in: app), in: app)
+        assertPreviewStays(preview, with: "fixture-live-3", on: "the key that folds it")
+        XCUIRemote.shared.press(.left)
+        assertFocus(element("navigation-live-favorite", in: app), in: app)
         XCUIRemote.shared.press(.left)
         assertFocus(element("live-watch", in: app), in: app)
         retainScreenshot("zones-01-actions", in: app)
@@ -185,7 +201,7 @@ final class TVRemoteNavigationTests: XCTestCase {
         XCUIRemote.shared.press(.up)
         assertCondition("hasFocus == false", on: dock[0], in: app)
         XCTAssertFalse(dock.contains(where: { $0.hasFocus }))
-        print("PASS: TV_REMOTE the arrows alone reached the search field, the column, the actions and the dock, and came back; the preview kept its channel in each")
+        print("PASS: TV_REMOTE the arrows alone reached the search field, the column, the table along its rows, the actions and the key that folds the preview, and the dock, and came back; the preview kept its channel in each")
     }
 
     /// "ne pas laisser de fonctionnalité vide": after a pause, a press toward
@@ -228,10 +244,10 @@ final class TVRemoteNavigationTests: XCTestCase {
         afterAPause(.up)
         assertCondition("hasFocus == false", on: television, in: app)
         let watch = element("live-watch", in: app)
-        move(.right, to: watch, maximumPresses: 4, in: app)
+        move(.right, to: watch, maximumPresses: 5, in: app)
         let height = watch.frame.midY
         let leftOf = NSPredicate(format: "value BEGINSWITH 'group-' OR value == 'countries' OR value BEGINSWITH 'live-category-' OR value BEGINSWITH 'live-preset-' OR value == 'live-manage-lists' OR value BEGINSWITH 'fixture-live-'")
-        for _ in 0..<5 where !leftOf.evaluate(with: logical) { afterAPause(.right) }
+        for _ in 0..<6 where !leftOf.evaluate(with: logical) { afterAPause(.right) }
         assertCondition(leftOf, on: logical, in: app)
         XCTAssertFalse(holdsFocus(television), "Right past the right edge went down into the bar.")
         let landed = app.descendants(matching: .any).matching(NSPredicate(format: "hasFocus == true")).firstMatch
@@ -270,6 +286,10 @@ final class TVRemoteNavigationTests: XCTestCase {
         let live = element("navigation-tab-live", in: app)
         let movie = element("navigation-tab-movie", in: app)
         let channel = element("live-channel-fixture-live-0", in: app)
+        // Right along the row of the table passes the second channel
+        // (0.9.12): the television keeps it as the title left, and opens
+        // on it again.
+        let second = element("live-channel-fixture-live-1", in: app)
         let film = element("catalog-card-fixture-movie-0", in: app)
         let dock = Self.dockKeys.map { element($0, in: app) }
         assertFocus(live, logical: "tab-live", in: app)
@@ -282,8 +302,7 @@ final class TVRemoteNavigationTests: XCTestCase {
         retainScreenshot("back-01-television", in: app)
 
         // Television, then films, then television again: three steps.
-        XCUIRemote.shared.press(.right)
-        assertFocus(element("live-watch", in: app), in: app)
+        move(.right, to: element("live-watch", in: app), maximumPresses: 3, in: app)
         XCUIRemote.shared.press(.down)
         assertOneHasFocus(dock, in: app)
         move(.left, to: movie, maximumPresses: 6, in: app)
@@ -293,7 +312,7 @@ final class TVRemoteNavigationTests: XCTestCase {
         assertOneHasFocus(dock, in: app)
         move(.left, to: live, maximumPresses: 6, in: app)
         XCUIRemote.shared.press(.select)
-        assertFocus(channel, logical: "fixture-live-0", in: app)
+        assertFocus(second, logical: "fixture-live-1", in: app)
 
         // Menu from inside the list first gives the remote to Back in the
         // bar, beside the home screen and the dock (David, 26/11); Menu
@@ -311,7 +330,7 @@ final class TVRemoteNavigationTests: XCTestCase {
         XCUIRemote.shared.press(.menu)
         assertFocus(back, logical: "desk-back", in: app)
         XCUIRemote.shared.press(.menu)
-        assertFocus(channel, logical: "fixture-live-0", in: app)
+        assertFocus(second, logical: "fixture-live-1", in: app)
         XCTAssertFalse(home.exists)
         // Then the home screen, where the path started.
         XCUIRemote.shared.press(.menu)
@@ -342,8 +361,9 @@ final class TVRemoteNavigationTests: XCTestCase {
         assertFocus(channel, logical: "fixture-live-0", in: app)
         XCUIRemote.shared.press(.playPause, forDuration: 1.2)
         assertCondition(NSPredicate(format: "value BEGINSWITH 'classic toasts:2'"), on: state, in: app)
-        // Classic again: the remote goes from one channel to the next.
-        XCUIRemote.shared.press(.down)
+        // Classic again: the remote goes from one channel to the next,
+        // beside it in the table.
+        XCUIRemote.shared.press(.right)
         assertFocus(element("live-channel-fixture-live-1", in: app), logical: "fixture-live-1", in: app)
         print("PASS: TV_REMOTE Play/Pause held down went to the mouse and back to the classic remote, each time told by a bubble")
     }
@@ -579,8 +599,9 @@ final class TVRemoteNavigationTests: XCTestCase {
         XCUIRemote.shared.press(.menu)
         assertFocus(watched, logical: "fixture-live-58", in: app)
         assertCondition(NSPredicate(format: "value BEGINSWITH 'active'"), on: state, in: app)
-        // The arrows still move the selection, and the click presses it.
-        XCUIRemote.shared.press(.down)
+        // The arrows still move the selection, and the click presses it:
+        // the sixtieth channel stands beside the fifty-ninth in the table.
+        XCUIRemote.shared.press(.right)
         assertFocus(unplayable, logical: "fixture-live-59", in: app)
         XCUIRemote.shared.press(.select)
         XCTAssertTrue(appears(acknowledge, timeout: 10), "The channel did not raise its message.")
@@ -954,7 +975,8 @@ final class TVRemoteNavigationTests: XCTestCase {
         let watched = element("live-channel-fixture-live-58", in: app)
         let unplayable = element("live-channel-fixture-live-59", in: app)
         assertFocus(watched, logical: "fixture-live-58", in: app)
-        XCUIRemote.shared.press(.down)
+        // Beside it in the table.
+        XCUIRemote.shared.press(.right)
         assertFocus(unplayable, logical: "fixture-live-59", in: app)
         XCUIRemote.shared.press(.select)
         assertFocus(acknowledge, in: app)
@@ -964,7 +986,7 @@ final class TVRemoteNavigationTests: XCTestCase {
 
         // A channel opened from the catalogue shows its picture, bare, under
         // its banner: Down changes channel at once, and OK brings the commands.
-        XCUIRemote.shared.press(.up)
+        XCUIRemote.shared.press(.left)
         assertFocus(watched, logical: "fixture-live-58", in: app)
         XCUIRemote.shared.press(.select)
         let banner = element("player-banner", in: app)
@@ -1020,6 +1042,77 @@ final class TVRemoteNavigationTests: XCTestCase {
         assertOneHasFocus((60..<65).map { element("catalog-card-fixture-movie-\($0)", in: app) }, in: app)
         retainScreenshot("pages-02-second-page", in: app)
         print("PASS: TV_REMOTE the pages of a catalogue of 58 093 films stood on the line of the search, Page suivante and Page précédente kept the remote while they turned, and Down entered the page from its top")
+    }
+
+    /// "la colonne c long a parcourir, faut un tableau et pour l'aperçu faut
+    /// pouvoir le replier du coup, pareil pour liste de gauche", and "quand
+    /// arrive en bas de liste on doit tout remonter jusqu'au debut pour
+    /// pouvoir atteindre les boutons de changement de page" (David, 28/11):
+    /// the channels stand in a table, the preview and the column fold away
+    /// to a strip and come back from it, and Down from the last row of a
+    /// page reaches Page suivante, which shows the next one from its top.
+    @MainActor
+    func testThePanelsFoldAndTheFootOfAPageTurnsIt() {
+        let app = launch("live-many")
+        defer { app.terminate() }
+        let logical = element("flux-catalog-logical-focus", in: app)
+        func channel(_ index: Int) -> XCUIElement { element("live-channel-fixture-live-\(index)", in: app) }
+        let watch = element("live-watch", in: app)
+        let foldPreview = element("desk-preview-fold", in: app)
+        let unfoldPreview = element("desk-preview-unfold", in: app)
+        let foldColumn = element("desk-column-fold", in: app)
+        let unfoldColumn = element("desk-column-unfold", in: app)
+        assertFocus(channel(0), logical: "fixture-live-0", in: app)
+        XCTAssertEqual(channel(1).frame.midY, channel(0).frame.midY, accuracy: 4, "The channels do not stand two a row beside the picture.")
+
+        // Along the row, the actions of the channel, then the key that
+        // folds the preview: the table takes its width, and the channel
+        // left keeps the remote.
+        XCUIRemote.shared.press(.right)
+        assertFocus(channel(1), logical: "fixture-live-1", in: app)
+        move(.right, to: foldPreview, maximumPresses: 4, in: app)
+        XCUIRemote.shared.press(.select)
+        assertCondition("exists == true", on: unfoldPreview, in: app)
+        assertCondition("exists == false", on: watch, in: app)
+        assertFocus(channel(1), logical: "fixture-live-1", in: app)
+        XCTAssertEqual(channel(2).frame.midY, channel(1).frame.midY, accuracy: 4, "The folded preview left its width to nothing.")
+        retainScreenshot("folds-01-preview-folded", in: app)
+        // Right along the wider row reaches its strip, which unfolds it on
+        // the actions of the channel.
+        move(.right, to: unfoldPreview, maximumPresses: 4, in: app)
+        XCUIRemote.shared.press(.select)
+        assertFocus(watch, in: app)
+        assertCondition("exists == false", on: unfoldPreview, in: app)
+
+        // The column: Up from its rows reaches the key at its top, which
+        // folds it; the remote goes on in the table.
+        for _ in 0..<4 where !((logical.value as? String) ?? "").hasPrefix("group-") { XCUIRemote.shared.press(.left) }
+        assertCondition(NSPredicate(format: "value BEGINSWITH %@", "group-"), on: logical, in: app)
+        move(.up, to: foldColumn, maximumPresses: 6, in: app)
+        XCUIRemote.shared.press(.select)
+        assertCondition("exists == true", on: unfoldColumn, in: app)
+        assertCondition("exists == false", on: foldColumn, in: app)
+        assertCondition(NSPredicate(format: "value BEGINSWITH %@", "fixture-live-"), on: logical, in: app)
+        retainScreenshot("folds-02-column-folded", in: app)
+        // Left from the start of a row: the strip of the column, which
+        // unfolds it on the row of what is shown.
+        move(.left, to: unfoldColumn, maximumPresses: 6, in: app)
+        XCUIRemote.shared.press(.select)
+        assertCondition("exists == false", on: unfoldColumn, in: app)
+        assertCondition(NSPredicate(format: "value == %@", "group-all"), on: logical, in: app)
+
+        // Down from the last row of a page: its foot, on Page suivante,
+        // which shows the next page with the remote on its first channel.
+        XCUIRemote.shared.press(.right)
+        assertCondition(NSPredicate(format: "value BEGINSWITH %@", "fixture-live-"), on: logical, in: app)
+        let next = element("navigation-page-next-foot", in: app)
+        move(.down, to: next, maximumPresses: 24, in: app)
+        retainScreenshot("folds-03-foot-of-the-page", in: app)
+        XCUIRemote.shared.press(.select)
+        assertFocus(channel(40), logical: "fixture-live-40", in: app)
+        assertCondition("exists == false", on: channel(0), in: app)
+        retainScreenshot("folds-04-next-page-from-its-top", in: app)
+        print("PASS: TV_REMOTE the channels stood in a table, the preview and the column folded to their strips and came back from them, and Down from the last row of a page reached Page suivante, which showed the next page from its first channel")
     }
 
     /// A page of sixty films keeps the line of the search and the bar many
@@ -1660,18 +1753,18 @@ final class TVRemoteNavigationTests: XCTestCase {
         XCTAssertEqual(rebuilt("bar", before, after), 0)
         app.terminate()
 
-        // Down a list of 24 665 channels: three presses, which bring at
-        // most three new rows on screen.
+        // Down a table of 24 665 channels, two a row (0.9.12): three
+        // presses, which bring at most three new rows of two on screen.
         app = launch("live-many", environment: ["FLUX_UI_PROBE": "1"])
         defer { app.terminate() }
         assertFocus(element("live-channel-fixture-live-0", in: app), logical: "fixture-live-0", in: app)
         before = counters(in: app)
         for _ in 0..<3 { XCUIRemote.shared.press(.down) }
-        assertFocus(element("live-channel-fixture-live-3", in: app), logical: "fixture-live-3", in: app)
+        assertFocus(element("live-channel-fixture-live-6", in: app), logical: "fixture-live-6", in: app)
         after = counters(in: app)
         print("TV_REMOTE rebuilt down a list: \(after.keys.sorted().map { "\($0)=\(rebuilt($0, before, after))" }.joined(separator: " "))")
         XCTAssertLessThanOrEqual(rebuilt("screen", before, after), 2)
-        XCTAssertLessThanOrEqual(rebuilt("channel", before, after), 4)
+        XCTAssertLessThanOrEqual(rebuilt("channel", before, after), 8)
         XCTAssertEqual(rebuilt("band", before, after), 0)
         XCTAssertEqual(rebuilt("bar", before, after), 0)
         retainScreenshot("rebuild-01-down-a-large-list", in: app)

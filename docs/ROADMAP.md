@@ -1,5 +1,12 @@
 # Feuille de route FLUX IPTV
 
+## Intégré dans les sources 0.9.12 — build 53
+
+- **Les chaînes en tableau** (« la colonne c long a parcourir, faut un tableau », 28 novembre) : sur le Mac et sur l’Apple TV, les chaînes de la télévision se rangent en tableau, deux par rangée à côté de l’aperçu sur l’écran d’une Apple TV, trois quand l’aperçu est replié, quatre quand la colonne l’est aussi ; une page en tient une quarantaine. Le nom d’une chaîne tient sur deux lignes dans une case du tableau.
+- **Replier les panneaux** (« pour l'aperçu faut pouvoir le replier du coup, pareil pour liste de gauche, et aussi pour film serie, pouvoir replier les panels ») : l’aperçu se replie par la touche au bout de ses boutons, la colonne de navigation par celle de son en-tête, à la télévision, dans les films et dans les séries. Il reste une bande étroite à leur nom, avec la touche qui les rouvre ; replié, l’aperçu ne démarre plus. Ce qui est replié le reste d’un lancement à l’autre (`fluxiptv.desk.folds.v1`), la colonne écran par écran. L’écran de la recherche et celui des favoris gardent leur colonne.
+- **Le pied de page** (« quand arrive en bas de liste on doit tout remonter jusqu'au debut pour pouvoir atteindre les boutons de changement de page ») : Page précédente et Page suivante se tiennent aussi sous la dernière rangée d’une page, des chaînes comme des films et des séries. Sur l’Apple TV, Bas depuis cette rangée mène à Page suivante, et la page suivante s’ouvre sur son premier titre.
+- **Au simulateur** : la 0.9.12 est vérifiée au simulateur Apple TV et sur le Mac ; rien n’est installé sur les Apple TV du séjour.
+
 ## Intégré dans les sources 0.9.11 — build 52
 
 - **Un thème pour toute l’application** (« theme dock super mais ça serai bien aussi que l'egfet neon soit sur toutes les fenetres aussi, en gros fait theme general pas que dock », 28 novembre) : le thème du dock habille aussi les fenêtres — la colonne, les panneaux de la télévision, le panneau d’un titre, les fiches, les réglages, la feuille d’une source, les messages et le plan des zones. Seize thèmes sur dix-huit y ont leur manière : Néon un tube de lumière aux couleurs de l’écran, Art déco un cadre de cuivre aux angles ciselés, Biseaux et Huit couleurs un relief gris, Couleurs, Tactile, Givre et Verre nocturne un verre habillé. Verre et Sans fond laissent aux fenêtres leur verre.

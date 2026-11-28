@@ -1424,7 +1424,7 @@ struct DeskHeaderButton: View {
     private var side: CGFloat { 28 * FluxDockMetrics.screenUnit }
 
     var body: some View {
-        Button(action: action) { Glyph(symbol: symbol, side: side, lit: hovered || focused, ringed: focused) }
+        Button(action: action) { Glyph(symbol: symbol, side: side, lit: hovered || focused, ringed: focused, identifier: identifier) }
         .buttonStyle(FluxBareButtonStyle())
         #if os(macOS)
         .onHover { hovered = $0 }
@@ -1440,6 +1440,7 @@ struct DeskHeaderButton: View {
         let side: CGFloat
         let lit: Bool
         let ringed: Bool
+        let identifier: String
         @Environment(\.isFocused) private var isFocused
 
         var body: some View {
@@ -1451,6 +1452,46 @@ struct DeskHeaderButton: View {
                 .overlay(Circle().strokeBorder(.white.opacity(ring ? 0.9 : 0), lineWidth: 2).allowsHitTesting(false))
                 .contentShape(Circle())
                 .scaleEffect(ring ? 1.12 : 1)
+                #if os(tvOS)
+                // A key that has just come on screen, as the one of a panel
+                // that folds, is asked for the remote until it says it has it.
+                .onChange(of: isFocused, initial: true) { _, now in FluxFocusLedger.shared.report(identifier, focused: now) }
+                .onDisappear { FluxFocusLedger.shared.report(identifier, focused: false) }
+                #endif
+        }
+    }
+}
+
+/// The name of a panel folded away, along its strip (0.9.12): the strip of
+/// the left edge reads upward, the one of the right edge downward, as the
+/// spines of books on a shelf.
+struct DeskRailCaption: View {
+    let title: String
+    let leading: Bool
+
+    var body: some View {
+        Turned {
+            Text(title)
+                #if os(tvOS)
+                .font(.caption.weight(.semibold))
+                #else
+                .font(.system(size: Desk.tv(25), weight: .semibold))
+                #endif
+                .tracking(1.5).foregroundStyle(.secondary).lineLimit(1).fixedSize()
+                .rotationEffect(.degrees(leading ? -90 : 90))
+        }
+        .accessibilityHidden(true)
+    }
+
+    /// A line turned a quarter round takes as much height as it is long.
+    private struct Turned: Layout {
+        func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+            let size = subviews.first?.sizeThatFits(.unspecified) ?? .zero
+            return CGSize(width: size.height, height: size.width)
+        }
+
+        func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+            subviews.first?.place(at: CGPoint(x: bounds.midX, y: bounds.midY), anchor: .center, proposal: .unspecified)
         }
     }
 }
@@ -1464,6 +1505,8 @@ struct DeskColumnHeader: View {
     var home: (() -> Void)?
     /// A panel above another screen closes; it has no screen to go back to.
     var close: (() -> Void)?
+    /// The column of a section folds away to a strip along the edge (0.9.12).
+    var fold: (() -> Void)?
     /// Identifier selected with the keyboard or a remote, and the native
     /// focus that follows it.
     var focusedID: String?
@@ -1490,6 +1533,11 @@ struct DeskColumnHeader: View {
             if let home {
                 bound(DeskHeaderButton(symbol: "house.fill", title: "Accueil", identifier: DeskZone.homeID,
                                        focused: focusedID == DeskZone.homeID, action: home), id: DeskZone.homeID)
+            }
+            if let fold {
+                let panel = DeskPanel.column
+                bound(DeskHeaderButton(symbol: panel.symbol, title: panel.foldTitle, identifier: panel.foldID,
+                                       focused: focusedID == panel.foldID, action: fold), id: panel.foldID)
             }
             if let close { DeskHeaderButton(symbol: "xmark", title: "Fermer", identifier: "desk-close", action: close) }
         }

@@ -1,4 +1,21 @@
-FLUX IPTV 0.9.11 — BUILD 52 — PROJET APPLE TV
+FLUX IPTV 0.9.12 — BUILD 53 — PROJET APPLE TV
+
+NOUVEAUTÉS DE LA 0.9.12 : les chaînes en tableau, les panneaux qui se
+replient.
+TABLEAU : les chaînes de la télévision ne forment plus une colonne à
+descendre. Elles se rangent en tableau : deux par rangée à côté de
+l'aperçu, trois quand l'aperçu est replié, quatre quand la colonne l'est
+aussi. Une page en tient une quarantaine.
+REPLIER : la touche au bout des boutons de l'aperçu le replie, celle de
+l'en-tête de la colonne replie la colonne, à la télévision comme dans les
+films et les séries. Il ne reste d'eux qu'une bande étroite, à leur nom,
+avec la touche qui les rouvre. Replié, l'aperçu ne démarre plus. Ce qui est
+replié le reste d'un lancement à l'autre ; l'écran de la recherche et
+celui des favoris gardent leur colonne.
+PIED DE PAGE : sous la dernière rangée d'une page, Page précédente et Page
+suivante. Bas depuis cette rangée mène à Page suivante, et la page suivante
+s'ouvre sur son premier titre. En 0.9.11, il fallait remonter toute la
+liste jusqu'à la ligne du haut pour tourner la page.
 
 NOUVEAUTÉS DE LA 0.9.11 : un thème pour toute l'application.
 FENÊTRES : le thème du dock habille aussi les fenêtres — la colonne, les

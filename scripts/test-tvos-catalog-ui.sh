@@ -167,11 +167,11 @@ rm -f "$capture_root/live-restored-ready.json" "$capture_root/live-restored.png"
 # FLUX_TVOS_FLOWS="testA testB" plays only these remote flows, without the
 # captures: a correction is tried again in minutes. A delivery plays everything.
 selected_flows="${FLUX_TVOS_FLOWS:-}"
-# FLUX_TVOS_CAPTURES="settings-graphics-light theme-neon:live" captures only
+# FLUX_TVOS_CAPTURES="settings-graphics-light theme-neon:live folds-preview-live:live-many" captures only
 # these screens, without the remote flows: a drawing is looked at again in
 # minutes. A delivery captures everything.
 selected_captures="${FLUX_TVOS_CAPTURES:-}"
-capture_cases='home movie movies movies-many movies-many-lean lists dock dock-home dock-folder dock-lists series seasons live live-many live-many-light player player-film player-tracks player-settings player-banner player-banner-opening zapping settings settings-graphics settings-graphics-light settings-remote welcome add-source search-empty search-result live-fr live-es country-picker live-restored:1 live-restored:2 live-restored:3 theme-neon:live theme-artDeco:movie'
+capture_cases='home movie movies movies-many movies-many-lean lists dock dock-home dock-folder dock-lists series seasons live live-many live-many-light player player-film player-tracks player-settings player-banner player-banner-opening zapping settings settings-graphics settings-graphics-light settings-remote welcome add-source search-empty search-result live-fr live-es country-picker live-restored:1 live-restored:2 live-restored:3 theme-neon:live theme-artDeco:movie folds-preview-live:live-many folds-column-live+preview-live:live-many folds-column-movie:movies-many'
 if [[ -n "$selected_flows" ]]; then
   capture_cases=''
   printf 'Selected remote flows only, no captures: %s\n' "$selected_flows"
@@ -196,6 +196,16 @@ for capture_case in $capture_cases; do
     scenario="${capture_case#*:}"
     capture_label="$scenario-$theme"
     scenario_root="$capture_root/themes/$theme"
+  fi
+  # "folds-preview-live:live-many": the screen of a scenario with panels
+  # folded away to their strips (0.9.12), "+" between two of them. The
+  # remote must find the same title in the table that takes their width.
+  folds=''
+  if [[ "$scenario" == folds-* ]]; then
+    folds="${scenario#folds-}"
+    scenario="${capture_case#*:}"
+    capture_label="$scenario-folds-$folds"
+    scenario_root="$capture_root/folds/$folds"
   fi
   mkdir -p "$scenario_root"
   scenario_failed=0
@@ -240,6 +250,7 @@ for capture_case in $capture_cases; do
     "$scenario_root/$scenario-stdout.log" "$scenario_root/$scenario-stderr.log"
   # Terminate any surviving fixture process before each launch, including repeats.
   if ! run_bounded 30 env "SIMCTL_CHILD_FLUX_UI_SCENARIO=$scenario" "SIMCTL_CHILD_FLUX_UI_THEME=$theme" \
+    "SIMCTL_CHILD_FLUX_UI_FOLDS=${folds//+/,}" \
     xcrun simctl launch --terminate-running-process \
     "--stdout=$scenario_root/$scenario-stdout.log" "--stderr=$scenario_root/$scenario-stderr.log" \
     "$simulator_id" "$bundle_id" >> "$capture_root/simulator.log" 2>&1; then
@@ -445,7 +456,7 @@ if python3 "$repo_root/scripts/add-tvos-remote-test-target.py" \
   > "$capture_root/remote-target.log" 2>&1 \
   && run_bounded 30 plutil -lint "$smoke_repo/FluxIPTV-AppleTV.xcodeproj/project.pbxproj" \
   >> "$capture_root/remote-target.log" 2>&1; then
-  # Thirty-two flows: twenty minutes on a recent Mac. Hosted Intel runners
+  # Thirty-three flows: twenty minutes on a recent Mac. Hosted Intel runners
   # took forty-nine and sixty-seven, compilation included (6c27b8b, on the
   # branch and on main): ninety minutes leave room for a slower one.
   # TEST_RUNNER_FLUX_UI_PATIENCE, when the caller sets it, reaches the flows
@@ -467,7 +478,7 @@ if python3 "$repo_root/scripts/add-tvos-remote-test-target.py" \
     if [[ -n "$selected_flows" ]]; then
       printf 'PASS: the selected remote flows: %s\n' "$selected_flows"
     else
-      echo 'PASS: XCUIRemote country selection in the column, every zone by the arrows alone, Menu from a list giving the remote to Back in the bar before retracing the screens down to the home screen, film fiche with its lists and description, series fiche by columns, player panels during a stream, zapping by the list and by the commands back to the watched channel, a message taking the remote and returning it, the pages of a large catalogue of films, what a move of the remote rebuilds in catalogues of real size, the dock with its shortcuts to a film, a channel, a series, a season and an episode and its folder opened as a fan, Back held straight to the home screen, restored-channel reentry and failed-source reconnect highlight, Lecture/Pause going round the zones of a page of sixty films as the hands of a clock: the bar, the column, the search and the title that was left, the two rows of the home screen, and a folder of the dock opening the folder it holds, the bar drawn magnified where the remote is, no press toward an edge leading nowhere after a pause and Right past the right edge coming round to the left at the same height, Lecture/Pause held switching between the classic remote and the mouse, the pointer giving the focus to the channels and the icons it crosses and opening the channel under it, the pointer riding the list of the channels as a scroll pointer and leaving it by its side, the pointer pushing the settings down to choose a shape and pressing « Classique » back to the classic remote, and the search as a screen of its own: its field and its column, Menu back to the films, no section keeping a query.'
+      echo 'PASS: XCUIRemote country selection in the column, every zone by the arrows alone, Menu from a list giving the remote to Back in the bar before retracing the screens down to the home screen, film fiche with its lists and description, series fiche by columns, player panels during a stream, zapping by the list and by the commands back to the watched channel, a message taking the remote and returning it, the pages of a large catalogue of films, the channels as a table whose column and preview fold away and come back, with the foot of a page turning it from below its last row, what a move of the remote rebuilds in catalogues of real size, the dock with its shortcuts to a film, a channel, a series, a season and an episode and its folder opened as a fan, Back held straight to the home screen, restored-channel reentry and failed-source reconnect highlight, Lecture/Pause going round the zones of a page of sixty films as the hands of a clock: the bar, the column, the search and the title that was left, the two rows of the home screen, and a folder of the dock opening the folder it holds, the bar drawn magnified where the remote is, no press toward an edge leading nowhere after a pause and Right past the right edge coming round to the left at the same height, Lecture/Pause held switching between the classic remote and the mouse, the pointer giving the focus to the channels and the icons it crosses and opening the channel under it, the pointer riding the list of the channels as a scroll pointer and leaving it by its side, the pointer pushing the settings down to choose a shape and pressing « Classique » back to the classic remote, and the search as a screen of its own: its field and its column, Menu back to the films, no section keeping a query.'
     fi
   else
     failed=1
@@ -512,7 +523,7 @@ if [[ -n "$selected_flows" ]]; then
   printf 'PASS: selected remote flows only; the captures were not run.\n'
   exit 0
 fi
-printf 'PASS: Thirty-six native tvOS screens (thirty-four scenarios, two of them again in a theme of the app) have native focus matching the measured intended control, bounded everywhere but on the bare picture of a channel, whose banner stands alone inside the safe area, and nonempty compositor captures; both production search submissions reject stale activation; France, Spain and the country picker preserve the mixed catalogue; browsing filters survive section changes, preferences recreation and catalogue refresh; the actual UI restores saved filters and native focus without a seeded selection on all three cold launches.\n'
+printf 'PASS: Thirty-nine native tvOS screens (thirty-four scenarios, two of them again in a theme of the app, three with panels folded) have native focus matching the measured intended control, bounded everywhere but on the bare picture of a channel, whose banner stands alone inside the safe area, and nonempty compositor captures; both production search submissions reject stale activation; France, Spain and the country picker preserve the mixed catalogue; browsing filters survive section changes, preferences recreation and catalogue refresh; the actual UI restores saved filters and native focus without a seeded selection on all three cold launches.\n'
 printf 'Review the PNGs in %s for actual glass, readable menus, channel size, clipping, episode restoration and country selection.\n' "$capture_root"
 printf 'XCUIRemote also checks native simulator navigation with retained XCTest screenshots; physical Apple TV hardware rendering and provider playback still need their own verification.
 '
