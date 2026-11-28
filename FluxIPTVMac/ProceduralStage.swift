@@ -236,7 +236,7 @@ struct FluxSpaceStage: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        let shown = Self.resolve(space: space, pointed: pointed, choices: FluxBackdropChoices(stored: stored), trying: trying)
+        let shown = Self.resolve(space: space, pointed: pointed, choices: FluxBackdropChoices.reading(stored), trying: trying)
         ZStack {
             if !reduced, style != .off || trying != nil, shown.plan.mode != .plain {
                 BackdropSlideshow(pictures: pictures(shown.plan, space: shown.space), plan: shown.plan,

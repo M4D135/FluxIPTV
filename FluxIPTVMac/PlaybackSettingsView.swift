@@ -578,9 +578,6 @@ struct PlaybackSettingsView: View {
                     #if !os(macOS)
                     licenceRow("VLCKit", "LGPL 2.1 · lecture des flux", "code.videolan.org/videolan/VLCKit")
                     #endif
-                    #if os(tvOS) && !FLUX_APP_STORE
-                    licenceRow("YouTubeKit", "MIT · bandes-annonces sur l’Apple TV", "github.com/alexeichhorn/YouTubeKit")
-                    #endif
                     Text("Le code de FLUX IPTV est public. VLCKit reste un framework séparé, que sa licence permet de remplacer. Les icônes, les fonds et les thèmes sont dessinés pour l’application.")
                         .font(Desk.font(.caption)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 }

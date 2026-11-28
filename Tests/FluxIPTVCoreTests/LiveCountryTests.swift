@@ -139,9 +139,9 @@ final class LiveCountryTests: XCTestCase {
         XCTAssertTrue(index.liveCountries.isEmpty)
         XCTAssertEqual(index.languages(for: .movie).map(\.code), ["es"])
         XCTAssertEqual(index.languages(for: .series).map(\.code), ["en"])
-        XCTAssertEqual(try index.matching(kind: .movie, search: "", countryCode: "es").all.items, films)
-        XCTAssertEqual(try index.matching(kind: .series, search: "", countryCode: "en").all.items, series)
-        XCTAssertEqual(try index.matching(kind: .movie, search: "").all.items, films)
+        XCTAssertEqual(Array(try index.matching(kind: .movie, search: "", countryCode: "es").all.items), films)
+        XCTAssertEqual(Array(try index.matching(kind: .series, search: "", countryCode: "en").all.items), series)
+        XCTAssertEqual(Array(try index.matching(kind: .movie, search: "").all.items), films)
         // A channel country is not a language of the catalogue: it matches no
         // title, and a remembered one is dropped when the catalogue is known.
         XCTAssertTrue(try index.matching(kind: .movie, search: "", countryCode: "FR").all.items.isEmpty)

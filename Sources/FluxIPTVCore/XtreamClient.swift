@@ -22,27 +22,35 @@ public struct XtreamClient: Sendable {
         }
         guard Self.string(info["auth"]) == "1" else { throw IPTVError.authenticationFailed }
 
-        async let liveData = request(server: server, username: username, password: password, action: "get_live_streams")
-        async let liveCategories = request(server: server, username: username, password: password, action: "get_live_categories")
-        async let movieData = request(server: server, username: username, password: password, action: "get_vod_streams")
-        async let movieCategories = request(server: server, username: username, password: password, action: "get_vod_categories")
-
-        async let seriesData = request(server: server, username: username, password: password, action: "get_series")
-        async let seriesCategories = request(server: server, username: username, password: password, action: "get_series_categories")
-
-        let live = (try? await liveData) ?? []
-        let liveGroups = (try? await liveCategories) ?? []
+        // Each section is read as soon as its answers arrive, beside the
+        // others, and its answers are let go then: the three were kept until
+        // the last had arrived, then read one after the other.
+        async let live = section(server: server, username: username, password: password, streams: "get_live_streams",
+                                 categories: "get_live_categories", sourceID: sourceID, kind: .live)
         // Not all Xtream-compatible services expose a VOD endpoint.
-        let movies = (try? await movieData) ?? []
-        let movieGroups = (try? await movieCategories) ?? []
-        let series = (try? await seriesData) ?? []
-        let seriesGroups = (try? await seriesCategories) ?? []
-        let result = Self.decodeItems(live, categories: liveGroups, sourceID: sourceID, kind: .live)
-            + Self.decodeItems(movies, categories: movieGroups, sourceID: sourceID, kind: .movie)
-            + Self.decodeItems(series, categories: seriesGroups, sourceID: sourceID, kind: .series)
+        async let movies = section(server: server, username: username, password: password, streams: "get_vod_streams",
+                                   categories: "get_vod_categories", sourceID: sourceID, kind: .movie)
+        async let series = section(server: server, username: username, password: password, streams: "get_series",
+                                   categories: "get_series_categories", sourceID: sourceID, kind: .series)
+        let parts = await [live, movies, series]
+        // The catalogue keeps this array: joined with `+`, its capacity grew to
+        // 147 452 titles for 92 000, some 17 MB never used.
+        var result: [IPTVItem] = []
+        result.reserveCapacity(parts.reduce(0) { $0 + $1.count })
+        for part in parts { result += part }
         try Task.checkCancellation()
         if result.isEmpty { throw IPTVError.emptyCatalog }
         return result
+    }
+
+    /// The titles of one section; a section the server does not answer is empty.
+    private func section(server: URL, username: String, password: String, streams: String, categories: String,
+                         sourceID: UUID, kind: IPTVMediaKind) async -> [IPTVItem] {
+        async let list = request(server: server, username: username, password: password, action: streams)
+        async let groups = request(server: server, username: username, password: password, action: categories)
+        let object = (try? await list) ?? []
+        let names = (try? await groups) ?? []
+        return Self.decodeItems(object, categories: names, sourceID: sourceID, kind: kind)
     }
 
     public func fetchSeasons(server: URL, username: String, password: String, series: IPTVItem) async throws -> [IPTVSeason] {
@@ -65,7 +73,9 @@ public struct XtreamClient: Sendable {
     static func details(_ info: [String:Any]) -> IPTVDetails {
         func value(_ keys: String...) -> String? {
             for key in keys {
-                if let text = string(info[key])?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty, text.lowercased() != "null" { return String(text.prefix(4000)) }
+                if let text = string(info[key])?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty, !isNull(text) {
+                    return native(capped(text))
+                }
             }
             return nil
         }
@@ -132,9 +142,10 @@ public struct XtreamClient: Sendable {
         for category in (categories as? [[String: Any]]) ?? [] {
             guard let id = string(category["category_id"]),
                   let title = category["category_name"] as? String else { continue }
-            labels[id] = title
+            labels[id] = native(title)
         }
         var seen = Set<String>()
+        let idPrefix = "\(sourceID.uuidString):\(kind.rawValue):"
         return streams.compactMap { stream in
             guard let streamID = string(stream[kind == .series ? "series_id" : "stream_id"]), !streamID.isEmpty else { return nil }
             let title = (stream["name"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -142,9 +153,9 @@ public struct XtreamClient: Sendable {
             let category = string(stream["category_id"]).flatMap { labels[$0] } ?? "Sans catégorie"
             let fileExtension: String? = kind == .movie ? sanitizedExtension(stream["container_extension"] as? String) : nil
             return IPTVItem(
-                id: "\(sourceID.uuidString):\(kind.rawValue):\(streamID)",
+                id: idPrefix + streamID,
                 sourceID: sourceID,
-                name: title,
+                name: native(title),
                 group: category,
                 logoURL: IPTVURL.remoteImage(stream["stream_icon"] as? String) ?? IPTVURL.remoteImage(stream["cover"] as? String),
                 kind: kind,
@@ -180,6 +191,8 @@ public struct XtreamClient: Sendable {
             }
         }
         var groups: [Int: [(number: Int, item: IPTVItem)]] = [:]
+        // One name per season, shared by its episodes.
+        var seasonNames: [Int: String] = [:]
         var seen = Set<String>()
         for (season, entry) in entries {
             guard let streamID = string(entry["id"]) ?? string(entry["episode_id"]) ?? string(entry["stream_id"]), !streamID.isEmpty else { continue }
@@ -187,11 +200,13 @@ public struct XtreamClient: Sendable {
             guard seen.insert(id).inserted else { continue }
             let number = string(entry["episode_num"]).flatMap(Int.init) ?? 0
             let rawTitle = (entry["title"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-            let title = rawTitle.isEmpty ? (number > 0 ? "Épisode \(number)" : "Épisode") : rawTitle
+            let title = rawTitle.isEmpty ? (number > 0 ? "Épisode \(number)" : "Épisode") : native(rawTitle)
             let name = number > 0 && !rawTitle.isEmpty ? "E\(number) · \(title)" : title
             let info = entry["info"] as? [String: Any]
+            let group = seasonNames[season] ?? series.name + " · Saison \(season)"
+            seasonNames[season] = group
             let item = IPTVItem(id: id, sourceID: series.sourceID, name: name,
-                                group: series.name + " · Saison \(season)",
+                                group: group,
                                 logoURL: IPTVURL.remoteImage(info?["movie_image"] as? String) ?? IPTVURL.remoteImage(entry["movie_image"] as? String) ?? IPTVURL.remoteImage(info?["cover"] as? String),
                                 kind: .series, directURL: mediaURL(entry["direct_source"]) ?? mediaURL(info?["direct_source"]), xtreamStreamID: streamID,
                                 fileExtension: sanitizedExtension(entry["container_extension"] as? String)
@@ -240,11 +255,52 @@ public struct XtreamClient: Sendable {
         return try? IPTVURL.validated(value)
     }
 
+    private static let alphanumerics = CharacterSet.alphanumerics
+
     private static func sanitizedExtension(_ raw: String?) -> String? {
         guard let value = raw?.trimmingCharacters(in: .whitespacesAndNewlines),
               (2...6).contains(value.count),
-              value.unicodeScalars.allSatisfy({ CharacterSet.alphanumerics.contains($0) }) else { return nil }
+              value.unicodeScalars.allSatisfy({ alphanumerics.contains($0) }) else { return nil }
         return value.lowercased()
+    }
+
+    /// "null" in any case: four letters of ASCII, which no other text
+    /// lowercases to. A longer value is never lowercased in full.
+    private static func isNull(_ text: String) -> Bool {
+        text.utf16.count == 4 && text.lowercased() == "null"
+    }
+
+    /// The first 4000 Characters: the whole text when it has no more UTF-16
+    /// units than that, without walking its Characters.
+    private static func capped(_ text: String) -> String {
+        text.utf16.count <= 4000 ? text : String(text.prefix(4000))
+    }
+
+    /// A text as a native string of UTF-8. `JSONSerialization` gives the texts
+    /// that hold more than ASCII in UTF-16: twice the size of an accented
+    /// synopsis, and slow for Swift to read (the index folds every name). One
+    /// copy in bulk is cheaper than reading them later: 0.7 µs for a synopsis
+    /// of 600 accented characters on a Mac, where a copy through Swift took
+    /// 9 µs and the `prefix(4000)` of the 0.9.9 took 32 µs.
+    static func native(_ text: String) -> String {
+        if text.utf8.withContiguousStorageIfAvailable({ _ in true }) == true { return text }
+        #if canImport(Darwin)
+        let bridged = text as NSString
+        let length = bridged.length, size = bridged.lengthOfBytes(using: String.Encoding.utf8.rawValue)
+        if size > 0 {
+            let copy = String(unsafeUninitializedCapacity: size) { buffer in
+                var used = 0
+                let converted = bridged.getBytes(buffer.baseAddress, maxLength: size, usedLength: &used,
+                                                 encoding: String.Encoding.utf8.rawValue, options: [],
+                                                 range: NSRange(location: 0, length: length), remaining: nil)
+                return converted ? used : 0
+            }
+            if copy.utf8.count == size { return copy }
+        }
+        #endif
+        var copy = text
+        copy.makeContiguousUTF8()
+        return copy
     }
 
     private static func string(_ any: Any?) -> String? {

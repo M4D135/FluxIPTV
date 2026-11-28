@@ -129,11 +129,20 @@ final class TVRemoteNavigationTests: XCTestCase {
         let search = app.textFields.matching(identifier: "desk-search").firstMatch
         let logical = element("flux-catalog-logical-focus", in: app)
         let dock = Self.dockKeys.map { element($0, in: app) }
+        // The preview belongs to the channel the remote chose last, and stays
+        // with it wherever the remote goes on the screen: "pourquoi l'apercu
+        // disparait si on va dans la zone" (David, 27/11), "on perd l'aperçu
+        // si on sort de la liste, c pas bon non plus" (28/11). The channels of
+        // the bench have no stream: whatever state their preview is in, a
+        // stopped one belongs to no channel.
+        let preview = element("flux-live-preview-state", in: app)
         assertFocus(channel, logical: "fixture-live-0", in: app)
+        assertCondition(NSPredicate(format: "value BEGINSWITH %@", "fixture-live-0 "), on: preview, in: app)
 
         // Up: the search field, above the list.
         XCUIRemote.shared.press(.up)
         assertCondition("hasFocus == true", on: search, in: app)
+        assertPreviewStays(preview, with: "fixture-live-0", on: "the search field")
         XCUIRemote.shared.press(.down)
         assertFocus(channel, logical: "fixture-live-0", in: app)
         // Left: the navigation column. Right twice: the list, then the
@@ -149,17 +158,12 @@ final class TVRemoteNavigationTests: XCTestCase {
         let fourth = element("live-channel-fixture-live-3", in: app)
         move(.down, to: fourth, maximumPresses: 4, in: app)
         assertFocus(fourth, logical: "fixture-live-3", in: app)
+        assertCondition(NSPredicate(format: "value BEGINSWITH %@", "fixture-live-3 "), on: preview, in: app)
         XCUIRemote.shared.press(.left)
         assertCondition(NSPredicate(format: "value == %@", "group-all"), on: logical, in: app)
+        assertPreviewStays(preview, with: "fixture-live-3", on: "the column")
         XCUIRemote.shared.press(.right)
         assertFocus(fourth, logical: "fixture-live-3", in: app)
-        // The preview belongs to the channel the remote rests on, and stays
-        // with it beside its picture, on Regarder and on Favoris: "pourquoi
-        // l'apercu disparait si on va dans la zone" (David, 27/11). The
-        // channels of the bench have no stream: whatever state their preview
-        // is in, a stopped one belongs to no channel.
-        let preview = element("flux-live-preview-state", in: app)
-        assertCondition(NSPredicate(format: "value BEGINSWITH %@", "fixture-live-3 "), on: preview, in: app)
         XCUIRemote.shared.press(.right)
         assertFocus(element("live-watch", in: app), in: app)
         assertPreviewStays(preview, with: "fixture-live-3", on: "Regarder")
@@ -173,6 +177,7 @@ final class TVRemoteNavigationTests: XCTestCase {
         // down to Back, on its left.
         XCUIRemote.shared.press(.down)
         assertOneHasFocus(dock, in: app)
+        assertPreviewStays(preview, with: "fixture-live-3", on: "the dock")
         retainScreenshot("zones-02-dock", in: app)
         move(.left, to: element("desk-back", in: app), maximumPresses: 8, in: app)
         // Up from the dock: back in the screen.
@@ -180,7 +185,7 @@ final class TVRemoteNavigationTests: XCTestCase {
         XCUIRemote.shared.press(.up)
         assertCondition("hasFocus == false", on: dock[0], in: app)
         XCTAssertFalse(dock.contains(where: { $0.hasFocus }))
-        print("PASS: TV_REMOTE the arrows alone reached the search field, the column, the actions and the dock, and came back")
+        print("PASS: TV_REMOTE the arrows alone reached the search field, the column, the actions and the dock, and came back; the preview kept its channel in each")
     }
 
     /// "ne pas laisser de fonctionnalité vide": after a pause, a press toward
@@ -1643,9 +1648,11 @@ final class TVRemoteNavigationTests: XCTestCase {
         assertFocus(element("catalog-card-fixture-movie-4", in: app), logical: "fixture-movie-4", in: app)
         var after = counters(in: app)
         print("TV_REMOTE rebuilt along a row: \(after.keys.sorted().map { "\($0)=\(rebuilt($0, before, after))" }.joined(separator: " "))")
-        // One update of the screen for a press; twice that is still far
-        // from the five it used to take.
-        XCTAssertLessThanOrEqual(rebuilt("screen", before, after), 6)
+        // A move within the page no longer updates the screen (0.9.10):
+        // the list shows the focus, and only what shows the selection
+        // follows it. Two at most, for what may land while the counters
+        // are read; one for each press would be three.
+        XCTAssertLessThanOrEqual(rebuilt("screen", before, after), 2)
         // No sleeve is drawn again: the two a press concerns show the
         // focus they read themselves.
         XCTAssertEqual(rebuilt("sleeve", before, after), 0)
@@ -1663,11 +1670,36 @@ final class TVRemoteNavigationTests: XCTestCase {
         assertFocus(element("live-channel-fixture-live-3", in: app), logical: "fixture-live-3", in: app)
         after = counters(in: app)
         print("TV_REMOTE rebuilt down a list: \(after.keys.sorted().map { "\($0)=\(rebuilt($0, before, after))" }.joined(separator: " "))")
-        XCTAssertLessThanOrEqual(rebuilt("screen", before, after), 6)
+        XCTAssertLessThanOrEqual(rebuilt("screen", before, after), 2)
         XCTAssertLessThanOrEqual(rebuilt("channel", before, after), 4)
         XCTAssertEqual(rebuilt("band", before, after), 0)
         XCTAssertEqual(rebuilt("bar", before, after), 0)
         retainScreenshot("rebuild-01-down-a-large-list", in: app)
+    }
+
+    /// The time of a film goes on on the screen while it plays. Since the
+    /// 0.9.10 it is told apart from the screen (`PlaybackProgress`), and
+    /// only the band that shows it is drawn again: that band must still
+    /// follow the film.
+    @MainActor
+    func testTheTimeOfAFilmGoesOnWhileItPlays() {
+        let app = launch("player-film", environment: ["FLUX_UI_TICK": "1"])
+        defer { app.terminate() }
+        let progress = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "Progression")).firstMatch
+        XCTAssertTrue(appears(progress), "The band of the time is not shown.")
+        let first = seen(progress)?.value as? String ?? ""
+        XCTAssertTrue(first.hasSuffix(" sur 1:58:00"), "The band does not tell the time of the film: \(first)")
+        // The fixture tells the film every 0.4 second, as the engines do:
+        // its time changes every second.
+        var last = first
+        let deadline = Date().addingTimeInterval(6 * Self.patience)
+        while Date() < deadline, last == first {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.5))
+            last = seen(progress)?.value as? String ?? first
+        }
+        XCTAssertNotEqual(last, first, "The time of the film stood still at \(first).")
+        retainScreenshot("player-time-01-goes-on", in: app)
+        print("PASS: TV_REMOTE the time of a film went on while it played, from \(first) to \(last)")
     }
 
     // MARK: What the remote costs

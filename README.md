@@ -1,6 +1,8 @@
-# FLUX IPTV 0.9.9 — build 50 — Bureau Mac : dock, colonnes et panneaux de verre
+# FLUX IPTV 0.9.10 — build 51 — Bureau Mac : dock, colonnes et panneaux de verre
 
 Application native SwiftUI pour macOS, iOS et tvOS.
+
+**La 0.9.10 allège l’application.** À l’écran, deux choses changent sur l’Apple TV : l’aperçu d’une chaîne continue quand la sélection quitte la liste pour la colonne, la recherche ou le dock, comme sur le Mac, et une fiche apparaît et s’efface d’un seul fondu, sans que son boîtier reste à l’écran. Mesurée au simulateur Apple TV, elle dépense moitié moins de calcul pendant la lecture d’un film (−52 %) et près d’un tiers de moins pour descendre une longue liste de chaînes (−31 %) ; sur l’Apple TV 4K du salon, deux tiers de moins pendant un film (−66 %), et le banc y ouvre désormais la télévision, les listes et la grande grille, où celui de la 0.9.9 débordait la pile du fil principal : un appui qui mène d’un titre à un autre de la page ne redessine plus l’écran entier, et le temps qui passe pendant la lecture ne redessine plus que son bandeau. La mémoire baisse d’un quart sur les écrans des chaînes et des films. Le cœur commun lit une liste M3U de 92 000 entrées en 182 ms au lieu de 2,6 s, charge un catalogue Xtream de 92 000 titres en 0,5 s au lieu de 0,9, cherche dans tout le catalogue en 1 ms au lieu de 72, et son index pèse 7,5 Mo au lieu de 116. L’application de l’Apple TV passe de 89,0 à 61,1 Mo : ses fonds sont livrés à la taille où elle les décode (5,9 Mo au lieu de 14,5), son exécutable sans ses 19 Mo de symboles, et le lecteur des bandes-annonces, inutilisé depuis le build 33, part avec YouTubeKit. Release compile désormais l’application en module entier. Les mesures, les changements et l’audit des sources sont détaillés dans [docs/OPTIMISATION.md](docs/OPTIMISATION.md).
 
 **La 0.9.9 rend la télécommande de l’Apple TV plus cohérente.** Au bout à droite d’un écran, Droite ne descend plus dans le dock : elle repart à gauche, à la même hauteur, comme une ligne de texte — sur la colonne, sinon sur le premier titre de la ligne. En mode souris, le pointeur devient au-dessus d’une liste (chaînes, grille des films et des séries, colonnes) un pointeur de défilement : il garde sa hauteur, le pouce fait défiler la liste sous lui vers le haut et le bas, il longe la ligne vers la gauche et la droite, et il sort de la liste en tirant au-delà d’un côté ; un coup de pouce lance la liste, un toucher l’arrête. Le pointeur offre six formes, six couleurs, six tailles, cinq vitesses et trois accélérations (Réglages › Télécommande › Pointeur), avec un aperçu. Le clic du pointeur sur « Classique », dans les Réglages, rend de nouveau la télécommande classique : en 0.9.8, il ne faisait rien, et seul Lecture/Pause maintenue y revenait. Une bulle dit chaque changement de mode.
 
@@ -202,7 +204,7 @@ Sur Apple TV comme sur le Mac, **Réglages → Graphismes** règle l’affichage
 
 Chaque réglage reste modifiable plus bas : Liquid Glass, Mouvements de la sélection (Apple TV), **Repère du panneau actif** (Aucun, Liseré, ou Liseré et reflet), Afficher les fonds, puis l’aperçu des chaînes et son délai. En changer un quitte Automatique. Quand ils ne suivent plus aucun préréglage, la page l’écrit (« Personnalisé… »).
 
-Sur Apple TV, le verre et les mouvements sont actifs au départ sur tous les modèles. **Liquid Glass** : les panneaux en verre, comme sur le Mac. tvOS réserve son propre verre à l’Apple TV 4K de 2ᵉ génération et aux suivantes ; sur l’Apple TV HD et sur la première Apple TV 4K, les panneaux sont dessinés avec le flou du système, sous une teinte légère et un liseré clair, et ce qui est derrière une fiche est assombri au lieu d’être flouté. Coupé, les panneaux sont des surfaces sombres. **Mouvements de la sélection** : ce qui est sélectionné grandit, et les icônes du dock glissent ; coupés, la sélection s’affiche d’un coup. L’inclinaison qui suit le pouce posé sur la télécommande n’existe que sur l’Apple TV 4K de 2ᵉ génération et les suivantes : sur une Apple TV plus ancienne elle s’affichait par à-coups. Le modèle est lu sur l’appareil. La fluidité sur un appareil physique reste à mesurer.
+Sur Apple TV, le verre et les mouvements sont actifs au départ sur tous les modèles. **Liquid Glass** : les panneaux en verre, comme sur le Mac. tvOS réserve son propre verre à l’Apple TV 4K de 2ᵉ génération et aux suivantes ; sur l’Apple TV HD et sur la première Apple TV 4K, les panneaux sont dessinés avec le flou du système, sous une teinte légère et un liseré clair, et ce qui est derrière une fiche est assombri au lieu d’être flouté. Coupé, les panneaux sont des surfaces sombres. **Mouvements de la sélection** : ce qui est sélectionné grandit, et les icônes du dock glissent ; coupés, la sélection s’affiche d’un coup. L’inclinaison qui suit le pouce posé sur la télécommande n’existe que sur l’Apple TV 4K de 2ᵉ génération et les suivantes : sur une Apple TV plus ancienne elle s’affichait par à-coups. Le modèle est lu sur l’appareil. Depuis la 0.9.10, le calcul de l’application est mesuré sur une Apple TV 4K de 1re génération ; le dessin des couches reste à mesurer sur l’appareil.
 
 Le délai de l’aperçu des chaînes se règle sur 1, 3, 5 ou 10 secondes : une seconde par défaut partout, Apple TV comprise. Les trois secondes que la 0.9.3 enregistrait sur Apple TV deviennent une seconde ; un autre délai choisi reste.
 
@@ -248,7 +250,7 @@ L’archive contient les sources et l’installateur Mac, pas un binaire Apple p
 
 1. Sur Mac, quitter l’ancienne app et arrêter le lancement depuis Xcode.
 2. Décompresser, puis ouvrir **Installer Flux IPTV.command**. L’installateur compile sur ce Mac et vérifie le démarrage ; cette vérification ne remplace pas un essai de lecture.
-3. Vérifier **FLUX 0.9.9 · build 50** en bas de la colonne de Réglages.
+3. Vérifier **FLUX 0.9.10 · build 51** en bas de la colonne de Réglages.
 
 Prérequis de déploiement : macOS 14, iOS 17 ou tvOS 17. Installer Xcode complet pour compiler ; le verre natif demande la version 26 des systèmes, les versions antérieures reçoivent un matériau translucide. Sur iPhone/iPad ou Apple TV, ouvrir `FluxIPTV.xcodeproj`, choisir **FluxIPTViOS** ou **FluxIPTVTV**, puis renseigner l’équipe de signature pour un appareil physique.
 
@@ -262,11 +264,11 @@ Ouvrir **`FluxIPTV-AppleTV.xcodeproj`**, ou lancer **`Ouvrir Flux IPTV Apple TV.
 
 ## Validation
 
-Le périmètre vérifié pour cette version est dans [docs/VALIDATION-0.9.9.md](docs/VALIDATION-0.9.9.md), qui s’ajoute à ceux de la 0.9.8 dans [docs/VALIDATION-0.9.8.md](docs/VALIDATION-0.9.8.md), de la 0.9.7 dans [docs/VALIDATION-0.9.7.md](docs/VALIDATION-0.9.7.md), de la 0.9.6 dans [docs/VALIDATION-0.9.6.md](docs/VALIDATION-0.9.6.md), de la 0.9.5 dans [docs/VALIDATION-0.9.5.md](docs/VALIDATION-0.9.5.md), de la 0.9.4 dans [docs/VALIDATION-0.9.4.md](docs/VALIDATION-0.9.4.md), de la 0.9.3 dans [docs/VALIDATION-0.9.3.md](docs/VALIDATION-0.9.3.md), de la 0.9.2 dans [docs/VALIDATION-0.9.2.md](docs/VALIDATION-0.9.2.md), de la 0.9.1 dans [docs/VALIDATION-0.9.1.md](docs/VALIDATION-0.9.1.md) et de la 0.9.0 dans [docs/VALIDATION-0.9.0.md](docs/VALIDATION-0.9.0.md), avec ce qui ne l’a pas été. Les tests unitaires du cœur ne démontrent ni la compilation des frameworks Apple, ni la fluidité réelle, ni la lecture des flux du fournisseur. Les résultats des versions précédentes ne valident pas la nouvelle interface du Mac.
+Le périmètre vérifié pour cette version est dans [docs/VALIDATION-0.9.10.md](docs/VALIDATION-0.9.10.md), avec les mesures et l’audit des ressources dans [docs/OPTIMISATION.md](docs/OPTIMISATION.md) ; il s’ajoute à ceux de la 0.9.9 dans [docs/VALIDATION-0.9.9.md](docs/VALIDATION-0.9.9.md), de la 0.9.8 dans [docs/VALIDATION-0.9.8.md](docs/VALIDATION-0.9.8.md), de la 0.9.7 dans [docs/VALIDATION-0.9.7.md](docs/VALIDATION-0.9.7.md), de la 0.9.6 dans [docs/VALIDATION-0.9.6.md](docs/VALIDATION-0.9.6.md), de la 0.9.5 dans [docs/VALIDATION-0.9.5.md](docs/VALIDATION-0.9.5.md), de la 0.9.4 dans [docs/VALIDATION-0.9.4.md](docs/VALIDATION-0.9.4.md), de la 0.9.3 dans [docs/VALIDATION-0.9.3.md](docs/VALIDATION-0.9.3.md), de la 0.9.2 dans [docs/VALIDATION-0.9.2.md](docs/VALIDATION-0.9.2.md), de la 0.9.1 dans [docs/VALIDATION-0.9.1.md](docs/VALIDATION-0.9.1.md) et de la 0.9.0 dans [docs/VALIDATION-0.9.0.md](docs/VALIDATION-0.9.0.md), avec ce qui ne l’a pas été. Les tests unitaires du cœur ne démontrent ni la compilation des frameworks Apple, ni la fluidité réelle, ni la lecture des flux du fournisseur. Les résultats des versions précédentes ne valident pas la nouvelle interface du Mac.
 
 ## Publication sur l’App Store
 
-Ce que demandent la revue d’Apple et App Store Connect, ce que la 0.9.4 a corrigé et ce qui reste à faire au moment de publier est dans [docs/APP-STORE.md](docs/APP-STORE.md) : manifeste de confidentialité, déclaration du chiffrement, accès au réseau local expliqué, licences dans Réglages › Diagnostic, et une variante App Store sans YouTubeKit (`FLUX_APP_STORE=1 scripts/generate-xcodeproj.py`). Le brouillon de la politique de confidentialité est dans [docs/CONFIDENTIALITE.md](docs/CONFIDENTIALITE.md).
+Ce que demandent la revue d’Apple et App Store Connect, ce que la 0.9.4 a corrigé et ce qui reste à faire au moment de publier est dans [docs/APP-STORE.md](docs/APP-STORE.md) : manifeste de confidentialité, déclaration du chiffrement, accès au réseau local expliqué, licences dans Réglages › Diagnostic, et la variante App Store (`FLUX_APP_STORE=1 scripts/generate-xcodeproj.py`), qui n’a plus rien à écarter depuis que la 0.9.10 a retiré YouTubeKit de l’application. Le brouillon de la politique de confidentialité est dans [docs/CONFIDENTIALITE.md](docs/CONFIDENTIALITE.md).
 
 ## GitHub Actions et pack complet
 
@@ -281,8 +283,6 @@ swift test
 bash scripts/check-state-declarations.sh
 bash scripts/test-live-preview.sh
 bash scripts/test-tvos-catalog-ui.sh
-bash scripts/test-native-youtube.sh --live
-bash scripts/test-youtube-session.sh
 bash scripts/test-keychain-interaction.sh
 bash scripts/check-keychain-platform.sh tvOS
 bash scripts/check-keychain-platform.sh iOS

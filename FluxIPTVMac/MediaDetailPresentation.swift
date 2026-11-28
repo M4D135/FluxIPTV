@@ -227,7 +227,9 @@ struct MediaDetailPresentation: View {
         // the remote on the first control it found, which is not a move of
         // the user: the sheet opens on its own control all the same.
         .onChange(of: expanded) { _, value in
-            guard value else { return }
+            // Closing, the sheet lets the remote go to the sleeve that takes
+            // it back, and stops claiming it for one of its controls.
+            guard value else { claiming = nil; return }
             focusedID = openingFocus
             claimFocus()
         }
@@ -468,13 +470,8 @@ struct MediaDetailPresentation: View {
         #else
         let pageLength = 520
         #endif
-        var pages: [String] = [], current = ""
-        for word in synopsis.split(whereSeparator: { $0.isWhitespace }) {
-            if current.count + word.count > pageLength && !current.isEmpty { pages.append(current); current = "" }
-            current += (current.isEmpty ? "" : " ") + String(word)
-        }
-        if !current.isEmpty { pages.append(current) }
-        return pages.isEmpty ? [synopsis] : pages
+        // Cut once for each synopsis: the screen reads its pages five times.
+        return SynopsisPages.reading(synopsis, length: pageLength)
     }
     private var descriptionScreen: some View {
         GeometryReader { geometry in
@@ -667,12 +664,16 @@ private struct MediaDetailCaseArtwork: View {
             let ratio = CGFloat(format.halfWidth / format.halfHeight)
             let height = max(1, min(geometry.size.height - (showsFormat ? 42 : 0), (geometry.size.width - sideMargin) / ratio))
             let width = height * ratio
+            // Without a flight (an Apple TV), the case rests at its angle and
+            // fades with its fiche: nothing of it stays once the fiche is gone.
+            let resting = expanded || hero == nil
             VStack(spacing: 14) {
                 MediaDetailCaseBox(item: item, format: format)
-                    .rotation3DEffect(.degrees(expanded ? -8 : 0), axis: (x: 0, y: 1, z: 0), perspective: 0.28)
+                    .rotation3DEffect(.degrees(resting ? -8 : 0), axis: (x: 0, y: 1, z: 0), perspective: 0.28)
                     .modifier(MediaDetailCaseFlourish(expanded: expanded, active: hero != nil && !reduceMotion))
-                    .shadow(color: .black.opacity(0.55), radius: 14, x: expanded ? 12 : 3, y: expanded ? 14 : 4)
+                    .shadow(color: .black.opacity(0.55), radius: 14, x: resting ? 12 : 3, y: resting ? 14 : 4)
                     .modifier(MediaDetailCaseHero(hero: hero, isSource: expanded))
+                    .opacity(hero == nil && !expanded ? 0 : 1)
                     .frame(width: width, height: height)
                     .accessibilityElement(children: .ignore)
                     .accessibilityLabel("Boîtier \(format.title) · \(item.name)")
@@ -979,8 +980,11 @@ extension MediaDetailPresentation {
     }
     private var genres: [String] {
         guard let text = clean(details.genre) else { return [] }
+        // Each genre once: the chips are told apart by their name, and a
+        // provider may give the same genre twice.
+        var seen = Set<String>()
         return text.split(whereSeparator: { $0 == "," || $0 == "/" || $0 == "|" || $0 == "·" })
-            .map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }.prefix(5).map { $0 }
+            .map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty && seen.insert($0).inserted }.prefix(5).map { $0 }
     }
 
     private func chip(_ text: String, symbol: String? = nil, tint: Color = .white) -> some View {

@@ -105,7 +105,7 @@ struct AppearanceStudio: View {
 
     // MARK: What is kept
 
-    private var choices: FluxBackdropChoices { FluxBackdropChoices(stored: storedBackdrops) }
+    private var choices: FluxBackdropChoices { FluxBackdropChoices.reading(storedBackdrops) }
     /// The pictures of the screen chosen, or of all screens.
     private var plan: FluxBackdropPlan { choices.plan(for: scope) }
     private var keptTheme: FluxDockTheme {

@@ -151,7 +151,7 @@ struct FluxFocusLean: ViewModifier {
     var angle: Double = 7
     var shift: CGFloat = 8
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @AppStorage(FluxAppearance.motionKey) private var rich = FluxAppearance.motionDefault
+    @Environment(\.fluxRichMotion) private var rich
     #if os(tvOS)
     @State private var lean: CGSize = .zero
     /// Following the thumb is a new picture for each of its moves: an
@@ -282,8 +282,6 @@ enum FluxAppearance {
         #endif
     }()
     static let artworkKey = "fluxiptv.appearance.artwork"
-    static let wallpaperKey = "fluxiptv.appearance.wallpaper"
-    static let intensityKey = "fluxiptv.appearance.wallpaperIntensity"
     static let densityKey = "fluxiptv.appearance.density"
     /// Liquid Glass exists on the three platforms from version 26. On Apple
     /// TV the same setting returns to the inexpensive dark surfaces.
@@ -295,8 +293,34 @@ enum FluxAppearance {
     }
 }
 
+// The settings that every tile and every panel reads, handed down once by
+// the screen. Read by each of them from the defaults, they were as many
+// readers of the defaults, set up again for each tile that a list builds as
+// it scrolls: two per tile, several hundred over a large catalogue.
+private struct FluxRichGlassKey: EnvironmentKey { static let defaultValue = FluxAppearance.richDefault }
+private struct FluxRichMotionKey: EnvironmentKey { static let defaultValue = FluxAppearance.motionDefault }
+private struct FluxArtworkKey: EnvironmentKey { static let defaultValue = true }
+
+extension EnvironmentValues {
+    /// `FluxAppearance.glassKey`, as the screen reads it.
+    var fluxRichGlass: Bool {
+        get { self[FluxRichGlassKey.self] }
+        set { self[FluxRichGlassKey.self] = newValue }
+    }
+    /// `FluxAppearance.motionKey`, as the screen reads it.
+    var fluxRichMotion: Bool {
+        get { self[FluxRichMotionKey.self] }
+        set { self[FluxRichMotionKey.self] = newValue }
+    }
+    /// `FluxAppearance.artworkKey`, as the screen reads it.
+    var fluxArtwork: Bool {
+        get { self[FluxArtworkKey.self] }
+        set { self[FluxArtworkKey.self] = newValue }
+    }
+}
+
 private struct FluxGlassChrome: ViewModifier {
-    @AppStorage(FluxAppearance.glassKey) private var richGlass = FluxAppearance.richDefault
+    @Environment(\.fluxRichGlass) private var richGlass
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     let radius: CGFloat
 
@@ -317,7 +341,7 @@ private struct FluxGlassChrome: ViewModifier {
 /// local dimming layer keeps the white controls legible even over a bright shot.
 /// The system remains responsible for the refraction and live material.
 private struct FluxMediaGlass: ViewModifier {
-    @AppStorage(FluxAppearance.glassKey) private var richGlass = FluxAppearance.richDefault
+    @Environment(\.fluxRichGlass) private var richGlass
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     let radius: CGFloat
 
@@ -340,7 +364,7 @@ private struct FluxMediaGlass: ViewModifier {
 /// Independent navigation capsules reveal the room between controls. Selected
 /// destinations use a tinted native glass; other destinations stay clear.
 private struct FluxNavigationGlass: ViewModifier {
-    @AppStorage(FluxAppearance.glassKey) private var richGlass = FluxAppearance.richDefault
+    @Environment(\.fluxRichGlass) private var richGlass
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     let selected: Bool
     let tint: Color

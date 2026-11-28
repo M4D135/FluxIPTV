@@ -10,6 +10,14 @@ CORE = sorted((ROOT / 'Sources' / 'FluxIPTVCore').glob('*.swift'))
 MAC = sorted((ROOT / 'FluxIPTVMac').glob('*.swift'))
 COMPAT = sorted((ROOT / 'FluxIPTVMac' / 'Compatibility').glob('*.[ch]'))
 assert CORE and MAC and len(COMPAT) == 2
+# The Apple TV has the pictures behind the screens at the size it decodes
+# them, 1920 pixels (scripts/make-tv-backdrops.swift); the Mac, the iPhone
+# and the iPad keep them in 3840 x 2160.
+BACKDROPS = sorted(p.name for p in (ROOT / 'FluxIPTVMac' / 'Backdrops').glob('*.jpg'))
+TV_BACKDROPS = sorted(p.name for p in (ROOT / 'FluxIPTVMac' / 'BackdropsTV' / 'Backdrops').glob('*.jpg'))
+if not BACKDROPS or BACKDROPS != TV_BACKDROPS:
+    raise SystemExit('FluxIPTVMac/BackdropsTV/Backdrops does not hold the pictures of FluxIPTVMac/Backdrops: '
+                     'run xcrun swift scripts/make-tv-backdrops.swift')
 
 
 def uid(value: str) -> str:
@@ -50,9 +58,11 @@ def bkey(p, file): return k(p, 'build ' + str(file.relative_to(ROOT)))
 
 def ref_list(ids): return ' '.join(uid(i) + ',' for i in ids)
 
-# The build sent to the App Store reads no YouTube stream itself, against
-# the terms of YouTube (rules 5.2.2 and 5.2.3): FLUX_APP_STORE=1 writes it
-# apart, in FluxIPTV-AppStore.xcodeproj. See docs/APP-STORE.md.
+# The build sent to the App Store: FLUX_APP_STORE=1 writes it apart, in
+# FluxIPTV-AppStore.xcodeproj, compiled with FLUX_APP_STORE. It left out
+# YouTubeKit, against the terms of YouTube (rules 5.2.2 and 5.2.3); since the
+# 0.9.10 no build holds it, and the condition leaves nothing out. See
+# docs/APP-STORE.md.
 APP_STORE = os.environ.get('FLUX_APP_STORE') == '1'
 
 def conditions(config):
@@ -71,8 +81,15 @@ def generate(platforms, project_name):
         objects.append(item('compat', 'PBXGroup', 'children = (' + ' '.join(f'{fref(p)},' for p in compat) + '); path = Compatibility; sourceTree = "<group>"'))
     for name in META:
         objects.append(f'\t\t{uid("meta " + name)} /* {name} */ = {{isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = {name}; sourceTree = "<group>"; }};')
-    # The pictures drawn for the screens, chosen in the studio of the appearance.
-    objects.append(item('backdrop-resources', 'PBXFileReference', 'lastKnownFileType = folder; path = Backdrops; sourceTree = "<group>"'))
+    # The pictures drawn for the screens, chosen in the studio of the appearance;
+    # those of the Apple TV are smaller, under the same name in its bundle.
+    backdrops = []
+    if any(p['suffix'] != 'tv' for p in platforms):
+        objects.append(item('backdrop-resources', 'PBXFileReference', 'lastKnownFileType = folder; path = Backdrops; sourceTree = "<group>"'))
+        backdrops.append('backdrop-resources')
+    if any(p['suffix'] == 'tv' for p in platforms):
+        objects.append(item('backdrop-tv-resources', 'PBXFileReference', 'lastKnownFileType = folder; name = Backdrops; path = BackdropsTV/Backdrops; sourceTree = "<group>"'))
+        backdrops.append('backdrop-tv-resources')
     objects.append(item('dockpack-resources', 'PBXFileReference', 'lastKnownFileType = folder; path = DockPacks; sourceTree = "<group>"'))
     # What the applications and VLCKit read of the device, for the App Store.
     objects.append(item('privacy-resource', 'PBXFileReference', 'lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"'))
@@ -84,13 +101,10 @@ def generate(platforms, project_name):
     objects.append(item('root', 'PBXGroup', f'children = ({uid("core-parent")}, {uid("mac-parent")}, {uid("products")},); sourceTree = "<group>"'))
     objects.append(item('core-parent', 'PBXGroup', f'children = ({uid("core")},); path = Sources; sourceTree = "<group>"'))
     objects.append(item('core', 'PBXGroup', 'children = (' + ' '.join(f'{fref(p)},' for p in CORE) + '); path = FluxIPTVCore; sourceTree = "<group>"'))
-    objects.append(item('mac-parent', 'PBXGroup', 'children = (' + ' '.join(f'{fref(p)},' for p in MAC) + ' ' + ref_list(['meta '+s for s in META] + ['backdrop-resources', 'dockpack-resources', 'privacy-resource'] + catalogs + (['compat'] if compat else [])) + '); path = FluxIPTVMac; name = FluxIPTVShared; sourceTree = "<group>"'))
+    objects.append(item('mac-parent', 'PBXGroup', 'children = (' + ' '.join(f'{fref(p)},' for p in MAC) + ' ' + ref_list(['meta '+s for s in META] + backdrops + ['dockpack-resources', 'privacy-resource'] + catalogs + (['compat'] if compat else [])) + '); path = FluxIPTVMac; name = FluxIPTVShared; sourceTree = "<group>"'))
     objects.append(item('products', 'PBXGroup', f'children = ({ref_list([k(p, "product") for p in platforms])}); name = Products; sourceTree = "<group>"'))
     objects.append(item('vlc-package', 'XCRemoteSwiftPackageReference', 'repositoryURL = "https://github.com/videolan/vlckit.git"; requirement = {kind = revision; revision = 7f98c70f9f0c11fbdf828220890bd6280361ae99; }'))
     package_keys = ['vlc-package']
-    if any(p['suffix'] == 'tv' for p in platforms) and not APP_STORE:
-        objects.append(item('youtube-package', 'XCLocalSwiftPackageReference', 'relativePath = Vendor/YouTubeKit'))
-        package_keys.append('youtube-package')
 
     for p in platforms:
         n=p['name']; u=lambda key:uid(k(p,key))
@@ -105,13 +119,8 @@ def generate(platforms, project_name):
             objects.append(item(k(p,'vlc-build'), 'PBXBuildFile', f'productRef = {u("vlc-product")}'))
         framework_keys = [k(p, 'vlc-build')] if use_vlc else []
         product_keys = [k(p, 'vlc-product')] if use_vlc else []
-        if p['suffix'] == 'tv' and not APP_STORE:
-            objects.append(item(k(p,'youtube-product'), 'XCSwiftPackageProductDependency', f'package = {uid("youtube-package")}; productName = YouTubeKit'))
-            objects.append(item(k(p,'youtube-build'), 'PBXBuildFile', f'productRef = {u("youtube-product")}'))
-            framework_keys.append(k(p, 'youtube-build'))
-            product_keys.append(k(p, 'youtube-product'))
         objects.append(item(k(p,'frameworks-phase'), 'PBXFrameworksBuildPhase', f'buildActionMask = 2147483647; files = ({ref_list(framework_keys)}); runOnlyForDeploymentPostprocessing = 0'))
-        objects.append(item(k(p,'backdrop-build'), 'PBXBuildFile', f'fileRef = {uid("backdrop-resources")}'))
+        objects.append(item(k(p,'backdrop-build'), 'PBXBuildFile', f'fileRef = {uid("backdrop-tv-resources" if p["suffix"] == "tv" else "backdrop-resources")}'))
         objects.append(item(k(p,'dockpack-build'), 'PBXBuildFile', f'fileRef = {uid("dockpack-resources")}'))
         objects.append(item(k(p,'privacy-build'), 'PBXBuildFile', f'fileRef = {uid("privacy-resource")}'))
         catalog, icon = ASSETS[p['suffix']]
@@ -122,7 +131,7 @@ def generate(platforms, project_name):
             settings = f"""
             ASSETCATALOG_COMPILER_APPICON_NAME = {icon};
             CODE_SIGN_STYLE = Automatic;
-            CURRENT_PROJECT_VERSION = 50;
+            CURRENT_PROJECT_VERSION = 51;
             GENERATE_INFOPLIST_FILE = NO;
             INFOPLIST_FILE = FluxIPTVMac/{p['plist']};
             SDKROOT = {p['sdk']};
@@ -131,7 +140,7 @@ def generate(platforms, project_name):
             {p['extra']}
             LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/{'../Frameworks' if p['suffix'] == 'mac' else 'Frameworks'}";
             {'ENABLE_DEBUG_DYLIB = NO;' if p['suffix'] == 'mac' else ''}
-            MARKETING_VERSION = 0.9.9;
+            MARKETING_VERSION = 0.9.10;
             PRODUCT_BUNDLE_IDENTIFIER = {p['bundle']};
             PRODUCT_NAME = "$(TARGET_NAME)";
             SWIFT_VERSION = 5.0;
@@ -147,7 +156,15 @@ def generate(platforms, project_name):
     objects.append(item('project', 'PBXProject', f'attributes = {{BuildIndependentTargetsInParallel = 1; LastUpgradeCheck = 1600; TargetAttributes = {{{attrs}}}; }}; buildConfigurationList = {uid("project-configs")}; compatibilityVersion = "Xcode 14.0"; developmentRegion = fr; hasScannedForEncodings = 0; knownRegions = (fr, en, Base,); mainGroup = {uid("root")}; productRefGroup = {uid("products")}; projectDirPath = ""; projectRoot = ""; packageReferences = ({ref_list(package_keys)}); targets = ({ref_list([k(p,"target") for p in platforms])})'))
     for config in ['Debug','Release']:
         opt = '"-Onone"' if config == 'Debug' else '"-O"'
-        objects.append(item(f'project-{config}', 'XCBuildConfiguration', f'buildSettings = {{ALWAYS_SEARCH_USER_PATHS = NO; CLANG_ENABLE_MODULES = YES; CLANG_ENABLE_OBJC_ARC = YES; SWIFT_OPTIMIZATION_LEVEL = {opt}; }}; name = {config}'))
+        # Release compiles the module whole, as SwiftPM does: a generic of one
+        # file is then specialized where another file calls it. File by file,
+        # the twelve titles of the dock took 69 to 94 µs instead of 11 to 21
+        # on a Mac (bench of the 0.9.10). Release also strips the executable,
+        # as an archive does: 19 MB of names that only a debugger reads, which
+        # the dSYM beside the application keeps. Debug stays incremental and
+        # keeps its symbols.
+        release = ' SWIFT_COMPILATION_MODE = wholemodule; DEPLOYMENT_POSTPROCESSING = YES;' if config == 'Release' else ''
+        objects.append(item(f'project-{config}', 'XCBuildConfiguration', f'buildSettings = {{ALWAYS_SEARCH_USER_PATHS = NO; CLANG_ENABLE_MODULES = YES; CLANG_ENABLE_OBJC_ARC = YES; SWIFT_OPTIMIZATION_LEVEL = {opt};{release} }}; name = {config}'))
     objects.append(item('project-configs','XCConfigurationList', f'buildConfigurations = ({uid("project-Debug")}, {uid("project-Release")},); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release'))
     text = '// !$*UTF8*$!\n{\n    archiveVersion = 1;\n    classes = {};\n    objectVersion = 56;\n    objects = {\n' + '\n'.join(objects) + f'\n    }};\n    rootObject = {uid("project")};\n}}\n'
     project = ROOT / project_name

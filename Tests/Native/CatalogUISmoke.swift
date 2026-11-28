@@ -147,8 +147,10 @@ private enum CatalogUIFailure: Error, CustomStringConvertible {
         }
         Task { @MainActor in
             // A hosted runner may take twice the time of a Mac at home: the
-            // run of 0.9.2 on its branch went past 150 s, the same on main not.
-            try? await Task.sleep(nanoseconds: CatalogCaptureOptions.gallery ? 480_000_000_000 : 240_000_000_000)
+            // run of 0.9.2 on its branch went past 150 s, the same on main not,
+            // and that of 0.9.9 on main went past 240 s, the same on its
+            // branch not. The deadline catches a screen that never comes.
+            try? await Task.sleep(nanoseconds: CatalogCaptureOptions.gallery ? 600_000_000_000 : 420_000_000_000)
             fputs("FAIL: catalogue UI smoke exceeded its rendering deadline.\n", stderr)
             exit(1)
         }
@@ -163,7 +165,6 @@ private enum CatalogUIFailure: Error, CustomStringConvertible {
         let base: [String: Any] = [
             FluxAppearance.glassKey: true,
             FluxAppearance.artworkKey: true,
-            FluxAppearance.wallpaperKey: false,
             FluxAppearance.densityKey: "cinema",
             MediaThemePreferences.tvKey: VideoClubTheme.neo90.rawValue,
             MediaThemePreferences.cinemaKey: VideoClubTheme.neo90.rawValue,

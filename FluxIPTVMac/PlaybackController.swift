@@ -20,6 +20,17 @@ struct PlaybackTrack: Identifiable, Hashable {
     let selected: Bool
 }
 
+/// Where the media is, told several times a second. Apart from the
+/// controller: only what shows it is drawn again, not every screen that
+/// observes the controller, as the whole desk did 2.5 times a second while
+/// a film played.
+@MainActor
+final class PlaybackProgress: ObservableObject {
+    @Published fileprivate(set) var position = 0.0
+    @Published fileprivate(set) var elapsed = "0:00"
+    @Published fileprivate(set) var duration = "–:––"
+}
+
 @MainActor
 final class PlaybackController: ObservableObject {
     let player = AVPlayer()
@@ -40,7 +51,8 @@ final class PlaybackController: ObservableObject {
     @Published private(set) var opening = false
     @Published private(set) var isPlaying = false
     @Published private(set) var seekable = false
-    @Published private(set) var position = 0.0
+    let progress = PlaybackProgress()
+    var position: Double { progress.position }
     @Published private(set) var localVolume = 1.0
     @Published private(set) var muted = false
     private var durationSeconds = 0.0
@@ -59,8 +71,8 @@ final class PlaybackController: ObservableObject {
         history.record(id: item.id, seconds: currentSeconds, duration: durationSeconds)
         persistHistory(); lastHistoryWrite = Date()
     }
-    @Published private(set) var elapsed = "0:00"
-    @Published private(set) var duration = "–:––"
+    var elapsed: String { progress.elapsed }
+    var duration: String { progress.duration }
     @Published private(set) var attemptLabel = ""
     @Published private(set) var playbackError: String?
     @Published var preferredEngine: PlaybackEngine? = nil
@@ -180,8 +192,8 @@ final class PlaybackController: ObservableObject {
     func showFixture(_ item: IPTVItem, playing: Bool, opening: Bool = false, fraction: Double = 0, elapsed: String = "0:00",
                      duration: String = "–:––", audio: [PlaybackTrack] = [], subtitles: [PlaybackTrack] = []) {
         playingItem = item; self.opening = opening; isPlaying = playing; playbackError = nil
-        seekable = item.kind != .live; position = fraction
-        self.elapsed = elapsed; self.duration = duration
+        seekable = item.kind != .live; progress.position = fraction
+        progress.elapsed = elapsed; progress.duration = duration
         fixtureTracks = true; audioTracks = audio; subtitleTracks = subtitles
         attemptLabel = "Maquette"
     }
@@ -361,6 +373,8 @@ final class PlaybackController: ObservableObject {
         engine = attempt.engine
         opening = true
         attemptLabel = "\(attempt.engine.title) · essai \(index + 1)/\(attempts.count)"
+        // A channel left within the pause no longer waits for nothing.
+        transition?.cancel()
         transition = Task { @MainActor [weak self] in
             // Release the previous connection before starting another one.
             try? await Task.sleep(nanoseconds: 450_000_000)
@@ -447,6 +461,8 @@ final class PlaybackController: ObservableObject {
             let startedAt = Date()
             var started = false
             var lastPlaying = startedAt
+            // Rounds of the monitor, and those during which the media played.
+            var round = 0, playedRounds = 0
             while !Task.isCancelled {
                 guard let self, self.generation == token else { return }
                 #if os(macOS)
@@ -476,8 +492,14 @@ final class PlaybackController: ObservableObject {
                 }
                 #endif
                 if self.isPlaying != playing { self.isPlaying = playing }
-                self.refreshTracks()
+                // The tracks show as the stream opens and in its first
+                // seconds; afterwards they hardly change, and reading them
+                // walks the lists of the engine: every two seconds then. A
+                // choice of the user reads them again at once.
+                if !started || playedRounds < 20 || round % 5 == 0 { self.refreshTracks() }
+                round &+= 1
                 if playing {
+                    playedRounds &+= 1
                     lastPlaying = Date()
                     // VLC's audio output can be absent while the media is opening.
                     if !started { self.applyVolume() }
@@ -509,13 +531,13 @@ final class PlaybackController: ObservableObject {
         let newSeekable = playingItem?.kind != .live && canSeek && total.isFinite && total > 0
         if seekable != newSeekable { seekable = newSeekable }
         let newPosition = seekable && current.isFinite ? min(1, max(0, current / total)) : 0
-        if abs(position - newPosition) >= 0.0001 || newPosition == 0 && position != 0 { position = newPosition }
+        if abs(position - newPosition) >= 0.0001 || newPosition == 0 && position != 0 { progress.position = newPosition }
         let newElapsed = Self.timeLabel(current), newDuration = Self.timeLabel(total)
         // Live streams do not display a timeline. Avoid invalidating the
         // entire view tree for live-only elapsed time changes.
         if playingItem?.kind != .live {
-            if elapsed != newElapsed { elapsed = newElapsed }
-            if duration != newDuration { duration = newDuration }
+            if elapsed != newElapsed { progress.elapsed = newElapsed }
+            if duration != newDuration { progress.duration = newDuration }
         }
     }
 
@@ -607,8 +629,8 @@ final class PlaybackController: ObservableObject {
             if !recoveryMode { UserDefaults.standard.removeObject(forKey: Self.recoveryKey) }
         } else { vlcPlayer?.drawable = nil }
         #endif
-        opening = false; isPlaying = false; seekable = false; position = 0
-        elapsed = "0:00"; duration = "–:––"; durationSeconds = 0; currentSeconds = 0; hasPlayed = false
+        opening = false; isPlaying = false; seekable = false; progress.position = 0
+        progress.elapsed = "0:00"; progress.duration = "–:––"; durationSeconds = 0; currentSeconds = 0; hasPlayed = false
         if !audioTracks.isEmpty { audioTracks = [] }
         if !subtitleTracks.isEmpty { subtitleTracks = [] }
     }

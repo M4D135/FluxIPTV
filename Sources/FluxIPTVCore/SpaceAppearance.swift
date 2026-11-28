@@ -107,8 +107,9 @@ public struct FluxBackdropArt: Equatable, Sendable {
 }
 
 public enum FluxBackdropLibrary {
-    /// Pictures shipped in `Backdrops/` in 3840 × 2160: those drawn for the
-    /// screens, and three for the boutique. The entrance hall of the films
+    /// Pictures shipped in `Backdrops/` in 3840 × 2160, and in 1920 × 1080
+    /// to the Apple TV, the size it decodes them at (`BackdropsTV`): those
+    /// drawn for the screens, and three for the boutique. The entrance hall of the films
     /// and the video store of the series are gone (David, 26/11: a room with
     /// seats and a big screen, and better than a video store).
     public static let art: [FluxBackdropArt] = [
@@ -323,6 +324,17 @@ public struct FluxBackdropChoices: Equatable, Codable, Sendable {
             self = .defaults
         }
     }
+    /// What is saved, decoded once for each text kept. The pictures behind
+    /// each screen, and the home screen, read the choices at each evaluation:
+    /// on the home screen up to seven times a press, and a decoding took
+    /// 14 µs on a Mac (bench of the 0.9.10).
+    @MainActor public static func reading(_ stored: String) -> FluxBackdropChoices {
+        if let last = lastRead, last.stored == stored { return last.choices }
+        let choices = FluxBackdropChoices(stored: stored)
+        lastRead = (stored, choices)
+        return choices
+    }
+    @MainActor private static var lastRead: (stored: String, choices: FluxBackdropChoices)?
     /// The pictures of a new install: those David chose on his Apple TV,
     /// one for each screen ("garde mes preset d'images de fond pour le par
     /// defaut", 27/11). All the screens together stay on their own pictures.

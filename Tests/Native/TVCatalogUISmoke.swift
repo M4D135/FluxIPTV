@@ -704,7 +704,6 @@ private struct TVProbeReadout: View {
             FluxAppearance.glassKey: Self.fullEffects,
             FluxAppearance.motionKey: Self.fullEffects,
             FluxAppearance.artworkKey: true,
-            FluxAppearance.wallpaperKey: false,
             FluxAppearance.densityKey: "cinema",
             MediaThemePreferences.tvKey: VideoClubTheme.neo90.rawValue,
             MediaThemePreferences.cinemaKey: VideoClubTheme.neo90.rawValue,

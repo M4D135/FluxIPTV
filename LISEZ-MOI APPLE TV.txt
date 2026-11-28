@@ -1,4 +1,29 @@
-FLUX IPTV 0.9.9 — BUILD 50 — PROJET APPLE TV
+FLUX IPTV 0.9.10 — BUILD 51 — PROJET APPLE TV
+
+NOUVEAUTÉS DE LA 0.9.10 : l'application plus légère, l'aperçu gardé, la fiche
+en un fondu.
+APERÇU : l'aperçu d'une chaîne continue quand la sélection quitte la liste
+pour la colonne, la recherche ou le dock, comme sur le Mac ; choisir une
+catégorie, une liste, un pays ou taper une recherche l'arrête.
+FICHE : une fiche apparaît et s'efface d'un seul fondu (0,22 s puis 0,18 s),
+boîtier compris : il ne reste plus à l'écran après elle. À la fermeture, la
+pochette reprend la sélection dès le début du fondu, sans passer par la
+colonne ; de même pour la jaquette d'une série quand on quitte ses saisons.
+LÉGÈRETÉ : un appui qui mène d'un titre à un autre de la page ne redessine
+plus l'écran entier : seules les vues qui montrent la sélection (aperçu,
+fiche) se redessinent. Pendant la lecture, seul le bandeau du temps se
+redessine, et la roue d'ouverture d'un flux est tournée par Core Animation.
+Au simulateur Apple TV 4K : −52 % de calcul pendant un film, −31 % pour
+descendre une liste de 24 665 chaînes, −13 % dans une grille de 58 093
+films, et un quart de mémoire en moins sur les écrans des chaînes et des
+films. Sur l'Apple TV 4K du salon : −66 % de calcul pendant un film. Une
+liste M3U se lit environ quatorze fois plus vite ; l'index du
+catalogue pèse 7,5 Mo au lieu de 116. Les fonds d'écran sont livrés à la
+taille où l'Apple TV les décode, 1920 × 1080 (5,9 Mo au lieu de 14,5),
+l'exécutable sans ses 19 Mo de symboles (le dSYM les garde), et le lecteur
+des bandes-annonces, inutilisé depuis le build 33, part avec YouTubeKit :
+l'application passe de 89,0 à 61,1 Mo. Release la compile en module
+entier. Détails : docs/OPTIMISATION.md.
 
 NOUVEAUTÉS DE LA 0.9.9 : la télécommande plus cohérente.
 BORD DROIT : au bout à droite d'un écran, Droite ne descend plus dans le
@@ -188,7 +213,7 @@ revient à Retour. Bas depuis la barre remonte à la recherche. Une rafale
 d'appuis s'arrête au bord ; l'appui suivant, après une courte pause, le
 franchit.
 La dépendance VLCKit est fixée à une révision précise ; Xcode la résout au
-premier lancement. Le sous-ensemble YouTubeKit est fourni dans Vendor/.
+premier lancement. Depuis la 0.9.10, l'application ne contient plus YouTubeKit.
 Conservez tout ce dossier avec le projet, sans déplacer le .xcodeproj seul.
 
 Au démarrage sans source, « Charger une liste » permet de saisir un compte

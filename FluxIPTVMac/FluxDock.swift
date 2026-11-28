@@ -455,7 +455,7 @@ struct FluxDock: View {
                                   if let zoneRing {
                                       RoundedRectangle(cornerRadius: metrics.radius, style: .continuous)
                                           .strokeBorder(zoneRing ? accent : Color.white.opacity(0.28), lineWidth: zoneRing ? 3 : 1)
-                                          .shadow(color: zoneRing ? accent.opacity(0.7) : .clear, radius: 10)
+                                          .shadow(color: zoneRing ? accent.opacity(0.7) : .clear, radius: zoneRing ? 10 : 0)
                                           .allowsHitTesting(false)
                                   }
                               }
@@ -1046,7 +1046,9 @@ private struct FluxDockStrip<Plate: View, Cell: View, Above: View>: View, Animat
                 cell(tile, Self.cellsDrawTheirScale ? scale : 1)
                     .frame(width: size.width, height: size.height)
                     .scaleEffect(Self.cellsDrawTheirScale ? 1 : scale, anchor: anchor)
-                    .shadow(color: .black.opacity(lifted ? 0.45 : 0), radius: 10, y: 6)
+                    // No blur at all for the icons left in place: an
+                    // invisible shadow is still drawn.
+                    .shadow(color: .black.opacity(lifted ? 0.45 : 0), radius: lifted ? 10 : 0, y: lifted ? 6 : 0)
                     .offset(x: pad + (vertical ? 0 : shift), y: pad + (vertical ? shift : 0))
                     .zIndex(lifted ? 10 : layout.scales[index])
                     .animation(lifted || reduceMotion ? nil : .spring(response: 0.3, dampingFraction: 0.82), value: index)
@@ -1211,7 +1213,7 @@ struct FluxDockCell: View {
                         .frame(width: Desk.tv(position.isVertical ? 3.5 : metrics.compact ? 12 : 16),
                                height: Desk.tv(position.isVertical ? 16 : metrics.compact ? 3 : 3.5))
                         .offset(x: Desk.tv(indicatorOffset.width), y: Desk.tv(indicatorOffset.height))
-                        .shadow(color: tint.opacity(theme == .neon ? 0.9 : 0), radius: 5)
+                        .shadow(color: tint.opacity(theme == .neon ? 0.9 : 0), radius: theme == .neon ? 5 : 0)
                 }
             }
         }

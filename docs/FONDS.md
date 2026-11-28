@@ -32,10 +32,11 @@ Deux sont retirées le soir même, à la demande de David devant son téléviseu
 ## Ajouter une image ou une collection
 
 1. Le fichier : JPEG 16:9 en 3840 × 2160, dans `FluxIPTVMac/Backdrops/`, sous un nom court et stable (`tv-4.jpg`).
-2. Son entrée dans `FluxBackdropLibrary.art`, avec son titre et l’écran pour lequel elle a été dessinée (aucun pour la boutique).
-3. `swift test` vérifie que chaque image nommée est livrée, et que le dossier n’en contient pas d’autres.
+2. Sa version pour l’Apple TV : `xcrun swift scripts/make-tv-backdrops.swift`, depuis la racine, refait `FluxIPTVMac/BackdropsTV/Backdrops/`. L’Apple TV décode ces images à 1920 points au plus ; elle les reçoit à cette taille, en JPEG de qualité 0,9. Depuis la 0.9.10, les seize pèsent 5,9 Mo au lieu de 14,5 dans l’application de l’Apple TV. Décodées comme l’Apple TV les décode, les deux versions diffèrent de 42,7 dB de PSNR en moyenne, 39,2 au pire : l’écart est dans la couleur, aux bords nets. Le Mac, l’iPhone et l’iPad gardent le 3840 × 2160.
+3. Son entrée dans `FluxBackdropLibrary.art`, avec son titre et l’écran pour lequel elle a été dessinée (aucun pour la boutique).
+4. `swift test` vérifie que chaque image nommée est livrée, que le dossier n’en contient pas d’autres, et que l’Apple TV a les mêmes en 1920 × 1080.
 
-Les projets Xcode prennent le dossier entier : il n’y a pas à les régénérer pour une image de plus.
+Les projets Xcode prennent les dossiers entiers : il n’y a pas à les régénérer pour une image de plus. `scripts/generate-xcodeproj.py` s’arrête tant que les deux dossiers n’ont pas les mêmes images.
 
 Le studio range les images par collection : « Fonds dessinés · TV », « Fonds dessinés · Boutique », « Docks · Rétro »… Une collection pourra porter un prix quand l’app sera publiée, et s’essayer gratuitement comme aujourd’hui.
 

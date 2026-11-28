@@ -1,4 +1,10 @@
 import SwiftUI
+import QuartzCore
+#if os(macOS)
+import AppKit
+#else
+import UIKit
+#endif
 
 // MARK: - What is drawn over the picture during playback
 
@@ -32,7 +38,9 @@ struct PlayerActionLabel: View {
                 .frame(width: side, height: side)
                 .background(highlighted ? Color.white : Color.white.opacity(prominent ? 0.24 : 0.10), in: Circle())
                 .overlay(Circle().strokeBorder(.white.opacity(highlighted ? 0 : 0.18), lineWidth: 1))
-                .shadow(color: .black.opacity(highlighted ? 0.4 : 0), radius: 10, y: 5)
+                // Over the picture, an invisible shadow would still be
+                // drawn with every image of the video.
+                .shadow(color: .black.opacity(highlighted ? 0.4 : 0), radius: highlighted ? 10 : 0, y: highlighted ? 5 : 0)
                 .scaleEffect(highlighted && !reduceMotion ? 1.12 : 1)
                 .frame(width: room, height: room)
             if !compact {
@@ -63,6 +71,55 @@ struct PlayerProgressTrack: View {
             }
         }
         .frame(height: Desk.pt(6))
+    }
+}
+
+/// The time of a film or an episode on both sides of its position. It is the
+/// one view that reads the progress, told 2.5 times a second while a film
+/// plays: it is drawn again alone, and the desk around it stays as it is.
+struct PlayerTimeline: View {
+    @ObservedObject var progress: PlaybackProgress
+    /// The slider of a Mac is held: the position the stream tells waits.
+    @Binding var scrubbing: Bool
+    let seek: (Double) -> Void
+    let reveal: () -> Void
+    #if !os(tvOS)
+    @State private var scrubPosition: Double
+    #endif
+
+    init(progress: PlaybackProgress, scrubbing: Binding<Bool>,
+         seek: @escaping (Double) -> Void, reveal: @escaping () -> Void) {
+        self.progress = progress
+        _scrubbing = scrubbing
+        self.seek = seek
+        self.reveal = reveal
+        #if !os(tvOS)
+        // The bar comes back in the middle of a film: its slider starts
+        // where the film is, not at the beginning.
+        _scrubPosition = State(initialValue: progress.position)
+        #endif
+    }
+
+    var body: some View {
+        HStack(spacing: Desk.pt(12)) {
+            Text(progress.elapsed).font(Desk.font(.caption).monospacedDigit())
+            #if os(tvOS)
+            PlayerProgressTrack(fraction: progress.position)
+                .accessibilityElement()
+                .accessibilityLabel("Progression")
+                .accessibilityValue(progress.elapsed + " sur " + progress.duration)
+            #else
+            Slider(value: $scrubPosition, in: 0...1, onEditingChanged: { editing in
+                scrubbing = editing
+                if !editing { seek(scrubPosition) }
+                reveal()
+            }).labelsHidden().tint(.white)
+                .accessibilityLabel("Position de lecture")
+                .onChange(of: progress.position) { _, position in if !scrubbing { scrubPosition = position } }
+            #endif
+            Text(progress.duration).font(Desk.font(.caption).monospacedDigit())
+        }
+        .foregroundStyle(.white)
     }
 }
 
@@ -215,18 +272,111 @@ struct PlayerChannelBanner: View {
 }
 
 /// A small turning arc: the wheel of the system is too large on a television
-/// to stand in a line of text.
+/// to stand in a line of text. Core Animation turns it by itself: drawn
+/// again by the app thirty times a second, it took the time of the channel
+/// that was opening, on the television that had least of it.
 struct DeskSpinner: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 30, paused: reduceMotion)) { context in
-            let turn = context.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 0.9) / 0.9
-            Circle().trim(from: 0.08, to: 0.78)
-                .stroke(.white, style: StrokeStyle(lineWidth: Desk.pt(2.2), lineCap: .round))
-                .rotationEffect(.degrees(reduceMotion ? 0 : turn * 360))
-        }
-        .accessibilityHidden(true)
+        DeskSpinnerArc(turns: !reduceMotion, lineWidth: Desk.pt(2.2))
+            .accessibilityHidden(true)
+    }
+}
+
+#if os(macOS)
+private struct DeskSpinnerArc: NSViewRepresentable {
+    let turns: Bool
+    let lineWidth: CGFloat
+    func makeNSView(context: Context) -> DeskSpinnerView { DeskSpinnerView() }
+    func updateNSView(_ view: DeskSpinnerView, context: Context) { view.configure(turns: turns, lineWidth: lineWidth) }
+}
+#else
+private struct DeskSpinnerArc: UIViewRepresentable {
+    let turns: Bool
+    let lineWidth: CGFloat
+    func makeUIView(context: Context) -> DeskSpinnerView { DeskSpinnerView() }
+    func updateUIView(_ view: DeskSpinnerView, context: Context) { view.configure(turns: turns, lineWidth: lineWidth) }
+}
+#endif
+
+#if os(macOS)
+private typealias DeskPlatformView = NSView
+#else
+private typealias DeskPlatformView = UIView
+#endif
+
+/// The arc of `DeskSpinner`, turned by the render server.
+private final class DeskSpinnerView: DeskPlatformView {
+    private let arc = CAShapeLayer()
+    private var turns = true
+    private var lineWidth: CGFloat = 2
+    private static let turnKey = "turn"
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        #if os(macOS)
+        wantsLayer = true
+        layer?.addSublayer(arc)
+        #else
+        isUserInteractionEnabled = false
+        backgroundColor = .clear
+        layer.addSublayer(arc)
+        #endif
+        arc.fillColor = nil
+        arc.strokeColor = CGColor(gray: 1, alpha: 1)
+        arc.lineCap = .round
+        arc.strokeStart = 0.08
+        arc.strokeEnd = 0.78
+    }
+
+    @available(*, unavailable) required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
+
+    func configure(turns: Bool, lineWidth: CGFloat) {
+        let reshape = lineWidth != self.lineWidth
+        self.turns = turns
+        self.lineWidth = lineWidth
+        if reshape { place() }
+        spin()
+    }
+
+    #if os(macOS)
+    override func layout() { super.layout(); place() }
+    override func viewDidMoveToWindow() { super.viewDidMoveToWindow(); spin() }
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+    #else
+    override func layoutSubviews() { super.layoutSubviews(); place() }
+    override func didMoveToWindow() { super.didMoveToWindow(); spin() }
+    #endif
+
+    private func place() {
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        let side = min(bounds.width, bounds.height)
+        arc.bounds = CGRect(x: 0, y: 0, width: side, height: side)
+        arc.position = CGPoint(x: bounds.midX, y: bounds.midY)
+        arc.lineWidth = lineWidth
+        let inset = lineWidth / 2
+        arc.path = side > lineWidth ? CGPath(ellipseIn: arc.bounds.insetBy(dx: inset, dy: inset), transform: nil) : nil
+        CATransaction.commit()
+    }
+
+    /// Turns while it is in a window, and stands still when motion is reduced.
+    private func spin() {
+        guard turns, window != nil else { arc.removeAnimation(forKey: Self.turnKey); return }
+        guard arc.animation(forKey: Self.turnKey) == nil else { return }
+        let turn = CABasicAnimation(keyPath: "transform.rotation.z")
+        turn.fromValue = 0
+        // Clockwise, as it turned: the layers of a Mac have their y upwards.
+        #if os(macOS)
+        turn.toValue = -2 * Double.pi
+        #else
+        turn.toValue = 2 * Double.pi
+        #endif
+        turn.duration = 0.9
+        turn.repeatCount = .infinity
+        turn.isRemovedOnCompletion = false
+        arc.add(turn, forKey: Self.turnKey)
     }
 }
 

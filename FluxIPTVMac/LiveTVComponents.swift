@@ -66,7 +66,7 @@ struct LiveTVChannelLabel: View {
         .contentShape(RoundedRectangle(cornerRadius: 19))
         .scaleEffect(highlighted && !reduceMotion ? 1.018 : 1)
         .offset(y: highlighted && !reduceMotion ? -2 : 0)
-        .shadow(color: .black.opacity(highlighted ? 0.32 : 0), radius: 12, x: 0, y: 9)
+        .shadow(color: .black.opacity(highlighted ? 0.32 : 0), radius: highlighted ? 12 : 0, x: 0, y: highlighted ? 9 : 0)
         #endif
     }
 
@@ -210,7 +210,8 @@ struct LiveTVChannelRow: View {
         }
         .contentShape(shape)
         .scaleEffect(highlighted && !reduceMotion ? 1.045 : 1)
-        .shadow(color: .black.opacity(highlighted ? 0.38 : 0), radius: 12, x: 0, y: 8)
+        // The rows left alone draw no blur: a list shows dozens of them.
+        .shadow(color: .black.opacity(highlighted ? 0.38 : 0), radius: highlighted ? 12 : 0, x: 0, y: highlighted ? 8 : 0)
         #endif
     }
 }

@@ -126,10 +126,6 @@ mkdir -p "$smoke_repo"
 # In a git worktree .git is a file, not a directory: leave both out.
 rsync -a --exclude='.git' --exclude='build/' --exclude='.build/' --exclude='DerivedData/' \
   "$repo_root/" "$smoke_repo/"
-if [[ ! -f "$smoke_repo/Vendor/YouTubeKit/Package.swift" ]]; then
-  echo 'The local Vendor/YouTubeKit package is missing. Restore the repository vendor files before running this test.' >&2
-  exit 1
-fi
 # Only this copy's normal @main file is replaced. All views, styles, project
 # settings and bundled resources are the production ones under review.
 cp "$repo_root/Tests/Native/TVCatalogUISmoke.swift" "$smoke_repo/FluxIPTVMac/FluxIPTVApp.swift"

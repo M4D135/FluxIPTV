@@ -1,4 +1,7 @@
 import XCTest
+#if canImport(ImageIO)
+import ImageIO
+#endif
 @testable import FluxIPTVCore
 
 final class SpaceAppearanceTests: XCTestCase {
@@ -74,6 +77,25 @@ final class SpaceAppearanceTests: XCTestCase {
         }
         let shipped = try FileManager.default.contentsOfDirectory(atPath: folder.path).filter { $0.hasSuffix(".jpg") }
         XCTAssertEqual(Set(shipped), Set(FluxBackdropLibrary.art.map { $0.name + ".jpg" }), "a picture of the folder that no screen offers")
+    }
+
+    /// The Apple TV has the same pictures at the size it decodes them,
+    /// 1920 × 1080 (0.9.10, scripts/make-tv-backdrops.swift).
+    func testTheAppleTVHasEachPictureAtTheSizeItShowsIt() throws {
+        let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        let mac = root.appendingPathComponent("FluxIPTVMac/Backdrops")
+        let tv = root.appendingPathComponent("FluxIPTVMac/BackdropsTV/Backdrops")
+        let names = try FileManager.default.contentsOfDirectory(atPath: mac.path).filter { $0.hasSuffix(".jpg") }.sorted()
+        XCTAssertFalse(names.isEmpty)
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: tv.path).filter { $0.hasSuffix(".jpg") }.sorted(), names)
+        #if canImport(ImageIO)
+        for name in names {
+            let source = try XCTUnwrap(CGImageSourceCreateWithURL(tv.appendingPathComponent(name) as CFURL, nil), name)
+            let properties = try XCTUnwrap(CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any], name)
+            XCTAssertEqual(properties[kCGImagePropertyPixelWidth] as? Int, 1920, name)
+            XCTAssertEqual(properties[kCGImagePropertyPixelHeight] as? Int, 1080, name)
+        }
+        #endif
     }
 
     func testPicturesAreChosenAndPutInOrder() {
@@ -169,6 +191,20 @@ final class SpaceAppearanceTests: XCTestCase {
         XCTAssertEqual(read.plan(for: .home).interval, .minutes5)
         XCTAssertEqual(read.plan(for: .home).transition, .fade)
         XCTAssertEqual(read.plan(for: .home).order, .listed)
+    }
+
+    /// The choices are decoded once for each text kept (0.9.10): read again,
+    /// after another text or the same one, they are those of their text.
+    @MainActor
+    func testTheChoicesReadAgainAreThoseOfTheirText() {
+        var choices = FluxBackdropChoices()
+        choices.set(FluxBackdropPlan(mode: .pictures, pictures: ["art:films-1"], interval: .seconds15, order: .shuffled, transition: .cut), for: .movie)
+        let saved = choices.stored
+        let older = #"{"all":{"mode":"plain"}}"#
+        for stored in [saved, saved, "", "{broken", FluxBackdropChoices.defaults.stored, older, saved, "", older] {
+            XCTAssertEqual(FluxBackdropChoices.reading(stored), FluxBackdropChoices(stored: stored), stored)
+        }
+        XCTAssertEqual(FluxBackdropChoices.reading(saved), choices)
     }
 
     /// "garde mes preset d'images de fond pour le par defaut" (David, 27/11):

@@ -290,4 +290,29 @@ final class DockModelTests: XCTestCase {
             XCTAssertEqual(position.isVertical, position.inward == .left || position.inward == .right)
         }
     }
+
+    /// The first titles of a list by name, read once, are those that a sort
+    /// of the whole list gives, equal names in the order of the list.
+    func testTheFirstTitlesByNameAreThoseOfAWholeSort() {
+        var state: UInt64 = 5
+        func next(_ bound: Int) -> Int {
+            state = state &* 6364136223846793005 &+ 1442695040888963407
+            return Int(state >> 33) % bound
+        }
+        let words = ["Été", "été", "Ete", "Château", "chateau", "Zoë", "Film 2", "Film 10", "film 1", "Œuvre", "", "A", "a", "東京"]
+        typealias Title = (name: String, index: Int)
+        let byName: (Title, Title) -> Bool = { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+        for size in [0, 1, 2, 3, 7, 40, 300] {
+            let titles: [Title] = (0..<size).map { index in
+                (name: words[next(words.count)] + (next(3) == 0 ? "" : " \(next(20))"), index: index)
+            }
+            for count in [0, 1, 3, 8, 500] {
+                XCTAssertEqual(titles.sortedPrefix(count, by: byName).map { $0.index },
+                               titles.sorted(by: byName).prefix(count).map { $0.index }, "\(size) titles, \(count) kept")
+            }
+        }
+        // Read lazily, as the dock reads the titles of a list.
+        let lazy = (0..<50).lazy.map { "Titre \(49 - $0)" }
+        XCTAssertEqual(lazy.sortedPrefix(3) { $0.localizedStandardCompare($1) == .orderedAscending }, ["Titre 0", "Titre 1", "Titre 2"])
+    }
 }

@@ -66,6 +66,48 @@ enum FluxFixturePatience {
 }
 #endif
 
+/// The selection of the screen: the control the remote or the keys rest
+/// on, and the title shown beside the list. It is kept out of the state of
+/// the screen so that a move of the remote from one title to another on a
+/// television rebuilds only the views that show it: the list shows the focus
+/// itself. Any other change of the selection rebuilds the screen, as before.
+@MainActor private final class FluxBrowseSelection: ObservableObject {
+    var focusID: String?
+    var previewID: String?
+    var previewItem: IPTVItem?
+    /// The focus that the handlers of a move have last seen.
+    var handledFocusID: String?
+    /// How many moves did not rebuild the screen: read with the focus by
+    /// the handlers of a move, which would otherwise miss a return to the
+    /// control they saw last.
+    private(set) var quietMoves = 0
+
+    init(focusID: String?, previewID: String? = nil, previewItem: IPTVItem? = nil) {
+        self.focusID = focusID
+        self.previewID = previewID
+        self.previewItem = previewItem
+        handledFocusID = focusID
+    }
+
+    func movedQuietly() { quietMoves &+= 1 }
+    /// Tells the views that show the selection.
+    func changed() { objectWillChange.send() }
+}
+
+/// A view that shows the selection, rebuilt when it changes.
+private struct FluxBrowseReader<Content: View>: View {
+    @ObservedObject var selection: FluxBrowseSelection
+    @ViewBuilder let content: () -> Content
+
+    var body: some View { content() }
+}
+
+/// What the handlers of a move of the focus watch.
+private struct FluxFocusChange: Equatable {
+    let id: String?
+    let quietMoves: Int
+}
+
 /// One living-room UI for Mac, iPhone, iPad and Apple TV. All actual tvOS navigation
 /// uses the OS focus engine; the Mac simulator and gamepad use the shared focus grid.
 ///
@@ -121,6 +163,7 @@ struct FluxScreen: View, Equatable {
     @AppStorage("fluxiptv.remoteAppearance") private var remoteAppearance: RemoteAppearance = .black
     @AppStorage(FluxAppearance.glassKey) private var richGlass = FluxAppearance.richDefault
     @AppStorage(FluxAppearance.motionKey) private var focusMotion = FluxAppearance.motionDefault
+    @AppStorage(FluxAppearance.artworkKey) private var artworkEnabled = true
     @AppStorage(FluxAppearance.densityKey) private var density = "cinema"
     @AppStorage(ClubInterfaceProfile.storageKey) private var clubProfile: ClubInterfaceProfile = .neoVideoClub
     @State private var remoteNavigationActive = false
@@ -153,12 +196,53 @@ struct FluxScreen: View, Equatable {
     @State private var seriesTask: Task<Void, Never>?
     @State private var columns = 5
     @State private var compactChrome = false
-    @State private var focusID: String? = "tab-live"
-    @State private var previewID: String?
-    @State private var previewItem: IPTVItem?
+    /// Held, not observed: see `FluxBrowseSelection`.
+    @State private var browse = FluxBrowseSelection(focusID: "tab-live")
+    /// Read by the body: a change of the selection rebuilds the screen,
+    /// unless it is a quiet move (`moveQuietly`).
+    @State private var selectionEpoch = 0
+    private var focusID: String? {
+        get { browse.focusID }
+        nonmutating set {
+            guard browse.focusID != newValue else { return }
+            browse.focusID = newValue
+            selectionChanged()
+        }
+    }
+    private var previewID: String? {
+        get { browse.previewID }
+        nonmutating set {
+            guard browse.previewID != newValue else { return }
+            browse.previewID = newValue
+            selectionChanged()
+        }
+    }
+    private var previewItem: IPTVItem? {
+        get { browse.previewItem }
+        nonmutating set {
+            guard browse.previewItem != newValue else { return }
+            browse.previewItem = newValue
+            selectionChanged()
+        }
+    }
+    private func selectionChanged() {
+        selectionEpoch &+= 1
+        browse.changed()
+    }
+    private var focusChange: FluxFocusChange { FluxFocusChange(id: focusID, quietMoves: browse.quietMoves) }
     @State private var heldItem: IPTVItem?
     @State private var heldDetails = IPTVDetails()
     @State private var caseExpanded = false
+    /// An Apple TV gives the remote back to the sleeve as soon as its fiche
+    /// starts to fade, while the fiche is still there (see `putCaseBack`).
+    @State private var caseReleasing = false
+    #if os(tvOS)
+    /// The title that the remote returns to when the page over it went
+    /// away (the seasons of a series, a channel that played): the system,
+    /// which places the remote itself then, is pointed at it until the
+    /// remote rests somewhere.
+    @State private var deskReturnTarget: String?
+    #endif
     @State private var caseToken = UUID()
     @State private var caseRemoteEvent: MediaDetailRemoteEvent?
     @State private var heldSeasonNumber: Int?
@@ -197,6 +281,8 @@ struct FluxScreen: View, Equatable {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @FocusState private var searchFocus: Bool
     @State private var pendingCatalogFocus: CatalogFocusRequest?
+    /// Times the handoff to the catalogue has been asked again (`askCatalogFocusAgain`).
+    @State private var catalogFocusRetries = 0
     @State private var cinema = false
     @State private var cinemaControls = true
     @State private var playerControlsTask: Task<Void, Never>?
@@ -206,7 +292,6 @@ struct FluxScreen: View, Equatable {
     /// Languages of the media on screen, shown in place of the bar.
     @State private var playerTracks = false
     @State private var playerWidth: CGFloat = 900
-    @State private var scrubPosition = 0.0
     @State private var scrubbing = false
     @Environment(\.accessibilityVoiceOverEnabled) private var voiceOverEnabled
     @State private var wasFullscreen = false
@@ -389,8 +474,6 @@ struct FluxScreen: View, Equatable {
         #else
         _showingCountries = State(initialValue: fixtureOpenCountries)
         #endif
-        _previewID = State(initialValue: fixtureSelection?.id)
-        _previewItem = State(initialValue: fixtureSelection)
         if fixtureBanner {
             // The bare picture just after a change of channel: its banner alone.
             fixturePictureStandIn = true
@@ -399,7 +482,7 @@ struct FluxScreen: View, Equatable {
             _zapSurfing = State(initialValue: true)
             _zapBanner = State(initialValue: true)
         }
-        _focusID = State(initialValue: fixtureBanner ? "cinema-controls" : fixturePlayer ? "playpause" : fixtureSelection?.id ?? "tab-live")
+        var focus: String? = fixtureBanner ? "cinema-controls" : fixturePlayer ? "playpause" : fixtureSelection?.id ?? "tab-live"
         if let fixtureSelection, !fixtureSelection.isSeriesCollection, fixtureOpenItem {
             _heldItem = State(initialValue: fixtureSelection)
             _heldDetails = State(initialValue: fixtureSelection.details)
@@ -410,7 +493,7 @@ struct FluxScreen: View, Equatable {
             _series=State(initialValue:fixtureSelection)
             _seasons=State(initialValue:fixtureSeasons)
             _seasonNumber=State(initialValue:fixtureOpenSeason ?? first.number)
-            _focusID=State(initialValue:"season-\(fixtureOpenSeason ?? first.number)")
+            focus = "season-\(fixtureOpenSeason ?? first.number)"
             if let fixtureOpenSeason {
                 _heldItem=State(initialValue:fixtureSelection)
                 _heldDetails=State(initialValue:fixtureSelection.details)
@@ -419,6 +502,7 @@ struct FluxScreen: View, Equatable {
                 _caseExpanded=State(initialValue:true)
             }
         }
+        _browse = State(initialValue: FluxBrowseSelection(focusID: focus, previewID: fixtureSelection?.id, previewItem: fixtureSelection))
     }
     #else
     init(nativeFocus: FocusState<String?>.Binding, focusRelay: FluxFocusRelay) {
@@ -442,31 +526,25 @@ struct FluxScreen: View, Equatable {
                             presetID: library.selectedPresetID, resumeOnly: continueOnly,
                             countryCode: library.countryCode)
     }
-    private var visible: [IPTVItem] { visibleSlice.items }
+    private var visible: CatalogItems { visibleSlice.items }
     private var groups: [String] { library.catalogResults.groups }
     private var catalogPageSize: Int {
         if usesDesk && library.contentKind == .live { return max(1, columns) * 40 }
         return max(library.contentKind == .live ? 1 : 2,columns)*12
     }
     private var catalogPageCount: Int { visibleSlice.pageCount(size:catalogPageSize) }
-    private var displayedItems: ArraySlice<IPTVItem> { visibleSlice.window(page:catalogPage,size:catalogPageSize) }
+    private var displayedItems: CatalogItems { visibleSlice.window(page:catalogPage,size:catalogPageSize) }
+    /// The preview stays with the channel chosen last wherever the remote
+    /// goes on the screen, as on a Mac: the list, the actions beside the
+    /// picture, the column, the search field, the dock. "pourquoi l'apercu
+    /// disparait si on va dans la zone" (David, 27/11), "on perd l'aperçu si
+    /// on sort de la liste, c pas bon non plus" (28/11). Choosing a category,
+    /// a list or a country, or typing a search, lets the channel go, and its
+    /// preview with it.
     private var livePreviewAllowed: Bool {
-        let browsing = page == .catalogue && library.contentKind == .live && heldItem == nil && entranceItem == nil
+        page == .catalogue && library.contentKind == .live && heldItem == nil && entranceItem == nil
             && !modalOpen && scenePhase == .active
-        #if os(tvOS)
-        // The remote previews the channel it rests on, and the preview goes on
-        // in the zone of its picture: Regarder, Favoris and the sound belong to
-        // it. "pourquoi l'apercu disparait si on va dans la zone" (David, 27/11).
-        let resting = focusID == previewItem?.id || focusID.map(Self.livePreviewActionIDs.contains) == true
-        return browsing && resting && !searchFocus
-        #else
-        return browsing
-        #endif
     }
-    #if os(tvOS)
-    /// The buttons beside the picture of a channel.
-    private static let livePreviewActionIDs: Set<String> = ["live-watch", "live-favorite", "live-preview-mute"]
-    #endif
     private var livePreviewKey: String {
         "\(livePreviewAllowed)|\(previewItem?.id ?? "")|\(automaticLivePreview)|\(livePreviewDelay.rawValue)|\(library.selectedSourceID?.uuidString ?? "")"
     }
@@ -518,9 +596,6 @@ struct FluxScreen: View, Equatable {
         return Desk.tv(density == "compact" ? 210 : 240)
         #endif
     }
-    private var currentClubItem: IPTVItem? {
-        visibleSlice.item(id:previewID) ?? visibleSlice.item(id:focusID) ?? visible.first
-    }
     private var showingAllCatalog: Bool {
         CatalogScope.isAll(group:group,search:library.search,presetID:library.selectedPresetID,resumeOnly:continueOnly,
                            countryCode: library.countryCode)
@@ -549,9 +624,15 @@ struct FluxScreen: View, Equatable {
 
     var body: some View {
         let _ = FluxProbe.hit("screen")
+        // The selection is drawn from here, except after a quiet move.
+        let _ = selectionEpoch
         // The actions of this screen read its state when they run.
         let _ = (focusRelay.moved = { id in nativeFocusMoved(to: id) })
         activeCatalogue
+            // Read here once for every tile and every panel of the screens.
+            .environment(\.fluxRichGlass, richGlass)
+            .environment(\.fluxRichMotion, focusMotion)
+            .environment(\.fluxArtwork, artworkEnabled)
     }
 
     // Opaque subview boundaries keep each SwiftUI expression small enough for
@@ -621,11 +702,16 @@ struct FluxScreen: View, Equatable {
                 sendRemote(to: target, reader: reader) { heldItem == nil && page != .player && !searchFocus }
             }
         }
-        .onChange(of: focusID) { previous, id in
+        .onChange(of: focusChange) { _, change in
+            // A quiet move has done all this already, and the focus it left
+            // is the one this move comes from.
+            let previous = browse.handledFocusID
+            browse.handledFocusID = change.id
+            guard change.id != previous else { return }
             #if FLUX_CATALOG_UI_TESTING
             reportSearchFocusFixture()
             #endif
-            guard let id, heldItem == nil else { return }
+            guard let id = change.id, heldItem == nil else { return }
             // Native focus may move while a saved source is still loading.
             // Highlight that control without replacing the saved page/item;
             // restoration reveals and previews its own destination below.
@@ -683,6 +769,7 @@ struct FluxScreen: View, Equatable {
     /// is not rebuilt for the move itself, only for what it changes here.
     private func nativeFocusMoved(to id: String?) {
         #if os(tvOS)
+        if id != nil, deskReturnTarget != nil { deskReturnTarget = nil }
         // The remote found a strip at an edge: nothing else lay that way.
         if let id, let side = DeskEdges.Side(id: id) { crossEdge(side); return }
         deskEdges.moved(to: id)
@@ -714,7 +801,7 @@ struct FluxScreen: View, Equatable {
         // Not under the pointer: it presses what it rests on.
         if let id, columnEntryRequest == nil, !pendingBrowseRestore, page == .catalogue, heldItem == nil, !modalOpen,
            !FluxPointerState.shared.active,
-           deskSidebarIDs.contains(id), id != deskScopeID, visibleSlice.item(id: focusID) != nil {
+           isDeskSidebarID(id), id != deskScopeID, visibleSlice.item(id: focusID) != nil {
             enterColumn()
             return
         }
@@ -722,7 +809,7 @@ struct FluxScreen: View, Equatable {
         // was left there, not on the one that faces the row of the column.
         if let id, columnEntryRequest == nil, !pendingBrowseRestore, page == .catalogue, heldItem == nil, !modalOpen,
            !FluxPointerState.shared.active,
-           let from = focusID, deskSidebarIDs.contains(from), visibleSlice.item(id: id) != nil,
+           let from = focusID, isDeskSidebarID(from), visibleSlice.item(id: id) != nil,
            let kept = library.browseItemID ?? previewID, kept != id, visibleSlice.item(id: kept) != nil {
             library.browseItemID = kept
             restoreBrowsingContext()
@@ -749,7 +836,12 @@ struct FluxScreen: View, Equatable {
            !library.isFiltering, page == .catalogue, heldItem == nil,
            !modalOpen, !searchFocus, !liveGroupSearchFocus {
             let target = visible.first?.id ?? emptyCatalogFocus
-            guard id == target else { return }
+            guard id == target else {
+                // Resting on a header or nowhere, not on another title:
+                // the destination was not drawn yet, and is asked again.
+                if id.map({ visibleSlice.item(id: $0) == nil }) ?? true { askCatalogFocusAgain(request, target: target) }
+                return
+            }
             pendingCatalogFocus = nil
             #if FLUX_CATALOG_UI_TESTING
             reportSearchFocusFixture()
@@ -760,23 +852,73 @@ struct FluxScreen: View, Equatable {
             // A move of the remote is one update of the screen: what follows
             // the selection is set with it, not after it.
             if page == .catalogue, !pendingBrowseRestore, let item = visibleSlice.item(id: id) {
-                revealCatalogItem(id); setPreview(item)
-            }
-            #endif
+                if movesQuietly(to: id) { moveQuietly(to: item) }
+                else { revealCatalogItem(id); setPreview(item); focusID = id }
+            } else { focusID = id }
+            #else
             focusID = id
+            #endif
         }
         #if FLUX_CATALOG_UI_TESTING
         reportSearchFocusFixture()
         #endif
     }
     #if os(tvOS)
+    /// The list follows a quiet move at once. Followed once the move was
+    /// drawn, as the other moves are, it cost a quarter more down a list of
+    /// channels, and the screen was drawn again at each row of a grid
+    /// (bench of the 0.9.10, tvOS simulator).
+    private func followQuietMove(from: String?, to id: String, reader: ScrollViewProxy) {
+        // A move along a row of sleeves leaves the list where it is.
+        if library.contentKind != .live, let start = visibleSlice.index(of: from), let end = visibleSlice.index(of: id),
+           start / max(1, columns) == end / max(1, columns) { return }
+        reader.scrollTo(id, anchor: .center)
+    }
+
+    /// Whether a move of the remote to this title can leave the screen as
+    /// it is: it comes from another title of the page shown, on that page,
+    /// and the handlers of a move have seen where it comes from.
+    private func movesQuietly(to id: String) -> Bool {
+        guard let from = focusID, from == browse.handledFocusID, visibleSlice.item(id: from) != nil,
+              let shown = visibleSlice.page(for: id, size: catalogPageSize) else { return false }
+        return shown == catalogPage
+    }
+
+    /// A move of the remote from one title to another of the page shown.
+    /// The screen is not rebuilt for it: the list shows the focus itself, and
+    /// the views that show the selection read it (`FluxBrowseReader`). What
+    /// the handlers of a move do (`focusedBrowserPane`, `deskPane`) is done
+    /// here, and the list follows at once. Down through a long list cost the
+    /// whole screen at every row: two fifths of the work of a press, measured.
+    private func moveQuietly(to item: IPTVItem) {
+        let id = item.id
+        let previous = focusID
+        if !library.isLoading && !library.isFiltering, library.browseItemID != id { library.browseItemID = id }
+        if browse.previewID != id {
+            if item.kind == .live { livePreview.stop() }
+            browse.previewID = id
+            browse.previewItem = item
+        }
+        browse.focusID = id
+        browse.handledFocusID = id
+        browse.movedQuietly()
+        browse.changed()
+        if let pane = scrolls.pane { followQuietMove(from: previous, to: id, reader: pane) }
+        if systemFocus != id { systemFocus = id }
+        let part = deskZone(of: id)
+        if litPart != part { litPart = part }
+        FluxPointerTargets.shared.focusedID = id
+        #if FLUX_CATALOG_UI_TESTING
+        FluxPointerState.shared.benchFocus = id
+        #endif
+    }
     /// Gives the remote to the row of the column that stands for what is
     /// shown. That row may be far down a list that builds its rows as they
     /// come on screen: the column is brought to it, and it is asked again
     /// until it says it has the remote.
     private func enterColumn(on wanted: String? = nil) {
         let id = wanted ?? deskScopeID
-        guard deskSidebarIDs.contains(id) else { return }
+        guard isDeskSidebarID(id) else { return }
         columnEntryRequest = id
         focusID = id
         Task { @MainActor in
@@ -824,7 +966,7 @@ struct FluxScreen: View, Equatable {
         // The next crossing waits for another pause.
         deskEdges.moved(to: previous)
         let action = side.action
-        let bar = dockVisible ? barLeadIDs + dockPlan().ids : []
+        let bar = dockVisible ? barLeadIDs + dockEntryIDs() : []
         // From the bar away from the screen, the settings take the remote on
         // the row of their page, as the keys of a Mac enter them.
         if page == .settings, let previous, bar.contains(previous), action == dockPosition.outward {
@@ -859,13 +1001,13 @@ struct FluxScreen: View, Equatable {
     /// screen. Whether there was one.
     private func wrapAround() -> Bool {
         guard let from = FluxPointerState.shared.lastFocusFrame, let pointerLayer else { return false }
-        let bar = Set(barLeadIDs + dockPlan().ids)
+        let bar = Set(barLeadIDs + dockEntryIDs())
         let places = FluxPointerTargets.shared.targets(in: pointerLayer).filter {
             !bar.contains($0.id) && !$0.id.hasPrefix(DockEntry.fanPrefix) && DeskEdges.Side(id: $0.id) == nil
         }
         guard let id = DeskWrap.leftmost(atHeightOf: from, among: places.map { ($0.id, $0.frame) }),
               let place = places.first(where: { $0.id == id }) else { return false }
-        if page == .catalogue, deskSidebarIDs.contains(id) {
+        if page == .catalogue, isDeskSidebarID(id) {
             enterColumn(on: id)
         } else if visibleSlice.item(id: id) != nil || focusRows.contains(where: { $0.contains(id) }) {
             handEdge(to: id)
@@ -881,7 +1023,7 @@ struct FluxScreen: View, Equatable {
             liveGroupSearchFocus = false; focusID = target; searchFocus = true
             return
         }
-        if page == .catalogue, deskSidebarIDs.contains(target) { enterColumn(); return }
+        if page == .catalogue, isDeskSidebarID(target) { enterColumn(); return }
         focusID = target
         let shown = page
         sendRemote(to: target, reader: visibleSlice.item(id: target) != nil ? scrolls.pane : nil) {
@@ -1068,7 +1210,7 @@ struct FluxScreen: View, Equatable {
             if page == .player { restorePlayerFocus(); return }
             // An icon that the lists have just taken out of the dock is
             // no longer there to take the remote back.
-            if let held = focusID, DockEntry.isShelfID(held), !dockPlan(hero: showsHome).ids.contains(held) { focusID = currentDockID }
+            if let held = focusID, DockEntry.isShelfID(held), !dockEntryIDs(hero: showsHome).contains(held) { focusID = currentDockID }
             let id = focusID
             Task { @MainActor in
                 await Task.yield()
@@ -1249,13 +1391,19 @@ struct FluxScreen: View, Equatable {
 
     private var activeCatalogue: some View {
         resultsObservedCatalogue
-        .task(id: livePreviewKey) {
-            guard !Task.isCancelled else { return }
-            guard livePreviewAllowed, let item = previewItem, item.kind == .live else { livePreview.stop(); return }
-            do {
-                let urls = automaticLivePreview ? try library.playbackURLs(for: item) : []
-                livePreview.schedule(id: item.id, urls: urls, delay: livePreviewDelay, enabled: automaticLivePreview)
-            } catch { livePreview.markUnavailable(id: item.id) }
+        // The preview follows the selection, quiet moves included.
+        .background {
+            FluxBrowseReader(selection: browse) {
+                Color.clear.allowsHitTesting(false).accessibilityHidden(true)
+                    .task(id: livePreviewKey) {
+                        guard !Task.isCancelled else { return }
+                        guard livePreviewAllowed, let item = previewItem, item.kind == .live else { livePreview.stop(); return }
+                        do {
+                            let urls = automaticLivePreview ? try library.playbackURLs(for: item) : []
+                            livePreview.schedule(id: item.id, urls: urls, delay: livePreviewDelay, enabled: automaticLivePreview)
+                        } catch { livePreview.markUnavailable(id: item.id) }
+                    }
+            }
         }
         .onChange(of: scenePhase) { _, phase in
             if phase != .active { library.flushBrowsingPreferences() }
@@ -1415,13 +1563,42 @@ struct FluxScreen: View, Equatable {
         let token=UUID(); caseToken=token
         searchFocus=false
         heldSeasonNumber=season;heldEpisodeID=episodeID
-        heldDetails=item.details;caseExpanded=false;caseRemoteEvent=nil;heldItem=item
+        heldDetails=item.details;caseExpanded=false;caseReleasing=false;caseRemoteEvent=nil;heldItem=item
         caseTransitionTask = Task { @MainActor in
             await Task.yield()
             guard !Task.isCancelled,caseToken==token else {return}
-            withAnimation(reduceMotion ? nil : usesDesk ? .spring(response: 0.5, dampingFraction: 0.84) : .easeOut(duration:0.20)) {caseExpanded=true}
+            withAnimation(caseOpening) {caseExpanded=true}
         }
         requestCaseDetails(item,token:token)
+    }
+    /// On a Mac the case of a fiche flies from its sleeve and back. The
+    /// sleeves of an Apple TV lean under the remote and fly nowhere: there the
+    /// whole fiche, its case included, fades in and out, quickly. "quand on
+    /// sort de la fiche film ou autre la pochette reste collée une demi
+    /// seconde, pas beau" (David, 28/11).
+    private var caseOpening: Animation? {
+        if reduceMotion { return nil }
+        #if os(tvOS)
+        return .easeOut(duration: 0.22)
+        #else
+        return usesDesk ? .spring(response: 0.5, dampingFraction: 0.84) : .easeOut(duration: 0.20)
+        #endif
+    }
+    private var caseClosing: Animation? {
+        if reduceMotion { return nil }
+        #if os(tvOS)
+        return .easeOut(duration: 0.18)
+        #else
+        return usesDesk ? .spring(response: 0.38, dampingFraction: 0.9) : .easeOut(duration: 0.16)
+        #endif
+    }
+    /// How long the fiche stays while it closes.
+    private var caseClosingNanoseconds: UInt64 {
+        #if os(tvOS)
+        180_000_000
+        #else
+        usesDesk ? 380_000_000 : 180_000_000
+        #endif
     }
     private func putCaseBack(reader:ScrollViewProxy?=nil) {
         guard let item=heldItem else{return}
@@ -1430,18 +1607,38 @@ struct FluxScreen: View, Equatable {
         let destination=heldSeasonNumber.map{"season-\($0)"} ?? visibleSlice.item(id:item.id)?.id ?? visible.first?.id ?? "group-all"
         if heldSeasonNumber == nil {revealCatalogItem(destination)}
         caseTransitionTask=Task { @MainActor in
-            withAnimation(reduceMotion ? nil : usesDesk ? .spring(response: 0.38, dampingFraction: 0.9) : .easeOut(duration:0.16)) {caseExpanded=false}
-            if !reduceMotion {try? await Task.sleep(nanoseconds: usesDesk ? 380_000_000 : 180_000_000)}
+            #if os(tvOS)
+            // The sleeve takes the remote back as the fiche begins to fade:
+            // the screen under the fiche answers again, and being uncovered it
+            // sends the remote to `focusID` (`onChange(of: deskCovered)`).
+            // Left until the fiche was gone, the remote rested a moment on the
+            // first control of the screen, the filter of the column, which lit
+            // up, then on the first row of the column (video of the bench, 28/11).
+            focusID=destination;caseReleasing=true
+            #endif
+            withAnimation(caseClosing) {caseExpanded=false}
+            if !reduceMotion {try? await Task.sleep(nanoseconds: caseClosingNanoseconds)}
+            #if os(tvOS)
+            // Without the fade, the fiche waits a few frames for its sleeve.
+            if reduceMotion {
+                for _ in 0..<6 where FluxFocusLedger.shared.real != destination { try? await Task.sleep(nanoseconds: 16_000_000) }
+            }
+            // A title that the remote reached while the fiche faded is kept.
+            let reached = FluxFocusLedger.shared.real.flatMap { visibleSlice.item(id: $0) == nil ? nil : $0 }
+            #endif
             guard !Task.isCancelled,caseToken==token else{return}
-            focusID=destination;heldItem=nil;heldSeasonNumber=nil;heldEpisodeID=nil
+            focusID=destination;heldItem=nil;heldSeasonNumber=nil;heldEpisodeID=nil;caseReleasing=false
             // Recreate only the catalogue being returned to, then restore its
             // selected poster. No hidden grid or neighboring cases stay mounted.
             await Task.yield()
             guard !Task.isCancelled,caseToken==token,heldItem == nil else{return}
+            #if os(tvOS)
+            if let reached, reached != destination { nativeFocusMoved(to: reached); return }
+            #endif
             sendRemote(to: destination, reader: reader) { heldItem == nil && page != .player }
         }
     }
-    private func dismissCaseImmediately() {caseDetailTask?.cancel();caseTransitionTask?.cancel();caseToken=UUID();heldItem=nil;heldSeasonNumber=nil;heldEpisodeID=nil;caseExpanded=false}
+    private func dismissCaseImmediately() {caseDetailTask?.cancel();caseTransitionTask?.cancel();caseToken=UUID();heldItem=nil;heldSeasonNumber=nil;heldEpisodeID=nil;caseExpanded=false;caseReleasing=false}
     private func playHeld() {
         guard let item=heldItem else{return}
         guard !item.isSeriesCollection else {return}
@@ -1470,7 +1667,16 @@ struct FluxScreen: View, Equatable {
         season.map { "sleeve-\(item.id)::season::\($0)" } ?? "sleeve-\(item.id)"
     }
     private func caseHero(_ item: IPTVItem) -> MediaDetailHero? {
-        usesDesk ? MediaDetailHero(namespace: caseNamespace, id: sleeveID(item, season: heldSeasonNumber)) : nil
+        caseFlies ? MediaDetailHero(namespace: caseNamespace, id: sleeveID(item, season: heldSeasonNumber)) : nil
+    }
+    /// The case flies between a sleeve and its fiche on a Mac only (see
+    /// `caseOpening`).
+    private var caseFlies: Bool {
+        #if os(tvOS)
+        false
+        #else
+        usesDesk
+        #endif
     }
     /// The sleeve leaves its shelf while its fiche is open.
     private func sleeveHeld(_ item: IPTVItem) -> Bool {
@@ -2592,7 +2798,7 @@ struct FluxScreen: View, Equatable {
                 SeriesSeasonShelf(series: series, seasons: seasons, columns: shelfColumns,
                                   focusedID: focusID, systemFocus: nativeFocus,
                                   focus: focusSeason, open: {showSeason($0)},
-                                  heroNamespace: usesDesk ? caseNamespace : nil,
+                                  heroNamespace: caseFlies ? caseNamespace : nil,
                                   heldSeason: heldItem?.id == series.id ? heldSeasonNumber : nil,
                                   heroExpanded: caseExpanded)
                 Text("Choisissez une saison pour voir ses épisodes · Retour : catalogue des séries")
@@ -2704,9 +2910,8 @@ struct FluxScreen: View, Equatable {
             revealPlayerControls()
         }
         .onChange(of: playback.playbackError) { _, _ in revealPlayerControls() }
-        .onChange(of: playback.position) { _, position in if !scrubbing { scrubPosition = position } }
         .onChange(of: playback.playingItem?.id) { _, _ in
-            scrubbing = false; scrubPosition = 0; revealPlayerControls()
+            scrubbing = false; revealPlayerControls()
         }
         .onChange(of: modalOpen) { _, _ in if page == .player { revealPlayerControls() } }
         .onChange(of: voiceOverEnabled) { _, _ in if page == .player { revealPlayerControls() } }
@@ -3213,24 +3418,8 @@ struct FluxScreen: View, Equatable {
     }
 
     private var playerTimeline: some View {
-        HStack(spacing: Desk.pt(12)) {
-            Text(playback.elapsed).font(Desk.font(.caption).monospacedDigit())
-            #if os(tvOS)
-            PlayerProgressTrack(fraction: playback.position)
-                .accessibilityElement()
-                .accessibilityLabel("Progression")
-                .accessibilityValue(playback.elapsed + " sur " + playback.duration)
-            #else
-            Slider(value: $scrubPosition, in: 0...1, onEditingChanged: { editing in
-                scrubbing = editing
-                if !editing { playback.seek(scrubPosition) }
-                revealPlayerControls()
-            }).labelsHidden().tint(.white)
-                .accessibilityLabel("Position de lecture")
-            #endif
-            Text(playback.duration).font(Desk.font(.caption).monospacedDigit())
-        }
-        .foregroundStyle(.white)
+        PlayerTimeline(progress: playback.progress, scrubbing: $scrubbing,
+                       seek: { playback.seek($0) }, reveal: { revealPlayerControls() })
     }
 
     private var playerTracksPanel: some View {
@@ -3675,6 +3864,7 @@ struct FluxScreen: View, Equatable {
     /// the cell of the title it remembers: this title becomes that one, be
     /// it a channel reached by zapping, which the catalogue never selected.
     private func focusWhenBackOnScreen(_ id: String) {
+        deskReturnTarget = id
         library.browseItemID = id
         // The cell that was on screen before left with its page.
         mountedBrowseFocusTargets.remove(id)
@@ -3713,7 +3903,24 @@ struct FluxScreen: View, Equatable {
         guard page == .catalogue, heldItem == nil, !modalOpen, !searchFocus, !liveGroupSearchFocus else { return }
         cancelBrowsingRestore()
         pendingCatalogFocus = catalogFocusContext
+        catalogFocusRetries = 0
         resolveCatalogFocus()
+    }
+    /// Asks the system again for the destination of a handoff that it left
+    /// on a header: a slow television draws the result after the system has
+    /// chosen where to rest, and the remote stayed on the kind of the search
+    /// (CI of the 0.9.8, on a hosted Mac). Six times at most, a moment apart.
+    private func askCatalogFocusAgain(_ request: CatalogFocusRequest, target: String) {
+        guard catalogFocusRetries < 6 else { return }
+        catalogFocusRetries += 1
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 150_000_000)
+            guard pendingCatalogFocus == request, request == catalogFocusContext, page == .catalogue, heldItem == nil,
+                  !library.isFiltering, !modalOpen, !searchFocus, !liveGroupSearchFocus,
+                  (visible.first?.id ?? emptyCatalogFocus) == target, systemFocus != target else { return }
+            focusID = target
+            systemFocus = target
+        }
     }
     /// Where the remote goes when a catalogue shows nothing: the icon of the
     /// section in the bar. A search that finds nothing leaves it in its
@@ -4419,7 +4626,7 @@ extension FluxScreen {
     /// A fiche, the lists of a title or a message stand above the screen. A
     /// pointer cannot reach what is under them; on a television nothing under
     /// them takes the focus of the remote either.
-    private var deskCovered: Bool { heldItem != nil || itemOptions != nil || library.alertMessage != nil }
+    private var deskCovered: Bool { (heldItem != nil && !caseReleasing) || itemOptions != nil || library.alertMessage != nil }
     private var dockAlignment: Alignment {
         switch dockPosition {
         case .bottom: .bottom
@@ -4485,6 +4692,12 @@ extension FluxScreen {
                     #if os(tvOS)
                     // An open folder of the dock keeps the remote, as a panel does.
                     .disabled(deskCovered || dockFan != nil)
+                    // When the system itself places the remote, because the
+                    // page under it went away (the seasons of a series), it
+                    // goes to the title that the remote returns to, and not
+                    // through the filter at the top of the column. Anywhere
+                    // else the system chooses as it always did.
+                    .defaultFocus(nativeFocus, deskReturnTarget)
                     #endif
                     .opacity(entranceItem == nil ? 1 : 0)
                     .transition(.opacity)
@@ -4533,10 +4746,12 @@ extension FluxScreen {
             #if os(tvOS) && FLUX_CATALOG_UI_TESTING
             // Read the drawn selection independently from UIKit focus
             // without adding a focusable control to the fixture.
-            Color.clear.frame(width: 1, height: 1).allowsHitTesting(false)
-                .accessibilityElement().accessibilityLabel("Flux IPTV")
-                .accessibilityIdentifier("flux-catalog-logical-focus")
-                .accessibilityValue(focusID ?? "none")
+            FluxBrowseReader(selection: browse) {
+                Color.clear.frame(width: 1, height: 1).allowsHitTesting(false)
+                    .accessibilityElement().accessibilityLabel("Flux IPTV")
+                    .accessibilityIdentifier("flux-catalog-logical-focus")
+                    .accessibilityValue(focusID ?? "none")
+            }
             #endif
             if let item = itemOptions {
                 deskItemPanel(item)
@@ -4561,7 +4776,8 @@ extension FluxScreen {
         .animation(reduceMotion ? nil : .easeOut(duration: 0.14), value: zoneFocus)
         // From the first value: a part lit only at the first press would
         // rebuild the bar for that press.
-        .onChange(of: focusID, initial: true) { _, id in
+        .onChange(of: focusChange, initial: true) { _, change in
+            let id = change.id
             let part = deskZone(of: id)
             if litPart != part { litPart = part }
             #if os(tvOS)
@@ -4936,8 +5152,12 @@ extension FluxScreen {
     /// before the dock kept recents is found in the catalogue.
     private func dockResume(_ shelf: DockShelf) -> DockShortcut? {
         let source = library.selectedSourceID
-        let unfinished = playback.history.entries.values.filter(\.resumable).sorted { $0.updated > $1.updated }
-        for entry in unfinished.prefix(12) {
+        // The twelve latest, in one reading of the history: it keeps up to
+        // 1,000 titles, and sorting them all took 0.12 to 0.47 ms on a Mac
+        // at each move of the remote; kept in one reading, 11 to 21 µs,
+        // compiled as a whole module (bench of the 0.9.10).
+        let unfinished = playback.history.entries.values.lazy.filter(\.resumable).sortedPrefix(12) { $0.updated > $1.updated }
+        for entry in unfinished {
             if let recent = shelf.recent(played: entry.id, sourceID: source) { return recent }
             if let item = library.catalogItem(id: entry.id), item.kind == .movie, item.sourceID == source { return DockShortcut(item: item) }
         }
@@ -4947,11 +5167,48 @@ extension FluxScreen {
     /// `hero`: the bar of the home screen, which is laid out as a bar at
     /// the bottom whatever edge the other screens give it.
     func dockPlan(hero: Bool = false) -> DockPlan {
+        let layout = dockLayout(hero: hero)
+        guard !layout.compact else { return DockPlan(arrangement: layout.arrangement) }
+        let shelf = library.dockShelf, arrangement = layout.arrangement, room = layout.room, resume = layout.resume
+        let stacks = arrangement.entries.compactMap { entry -> String? in
+            switch entry {
+            case .stack(let id):
+                guard let list = library.presets.list(id: id) else { return nil }
+                return "\(id)|\(list.name)|\(list.itemIDs.count)|\(list.itemIDs.hashValue)"
+            case .folder(let id):
+                guard let folder = shelf.section(id: id) else { return nil }
+                let titles = shelf.titles(under: id, sourceID: library.selectedSourceID)
+                return "\(id)|\(folder.name)|\(folder.symbol ?? "")|\(titles.map(\.id).hashValue)|\(shelf.descendants(of: id).map(\.name).hashValue)"
+            default: return nil
+            }
+        }
+        let progress = resume?.playedID.flatMap { playback.history.entries[$0] }.map { Int(($0.fraction * 50).rounded()) }
+        return DockPlan(arrangement: arrangement,
+                        shrink: hero ? 1 : FluxDockMetrics.shrink(layout.position, count: arrangement.entries.count, breaks: arrangement.breaks.count, room: room),
+                        stacks: stacks, progress: progress, catalogue: library.browsingRevision, ready: library.browsingCatalogReady)
+    }
+
+    /// What the remote walks along the bar: its icons, in order. A move
+    /// needs nothing else of the plan, whose signs of what the folders hold
+    /// read each list whole.
+    func dockEntryIDs(hero: Bool = false) -> [String] { dockLayout(hero: hero).arrangement.entries.map(\.id) }
+
+    /// What the bar holds, fitted to the room of its edge.
+    private struct DockLayout {
+        var arrangement: DockArrangement
+        var position: FluxDockPosition = .bottom
+        var room: CGFloat = 0
+        var resume: DockShortcut? = nil
+        /// The compact bar under the column, which holds its destinations.
+        var compact = false
+    }
+
+    private func dockLayout(hero: Bool) -> DockLayout {
         let destinations = FluxDockItem.order(from: dockOrder)
         let position: FluxDockPosition = hero ? .bottom : dockPosition
         // The compact bar under the column has the room of its destinations.
         guard !position.isCompact, !library.sources.isEmpty else {
-            return DockPlan(arrangement: DockArrangement(groups: [destinations.map(DockEntry.destination)]))
+            return DockLayout(arrangement: DockArrangement(groups: [destinations.map(DockEntry.destination)]), compact: true)
         }
         let shelf = library.dockShelf
         let resume = dockRecents ? dockResume(shelf) : nil
@@ -4971,22 +5228,7 @@ extension FluxScreen {
             let capacity = FluxDockMetrics.capacity(position, room: room, breaks: arrangement.breaks.count)
             if arrangement.entries.count > capacity { arrangement = arrangement.fitted(to: max(capacity, destinations.count + 1)) }
         }
-        let stacks = arrangement.entries.compactMap { entry -> String? in
-            switch entry {
-            case .stack(let id):
-                guard let list = library.presets.list(id: id) else { return nil }
-                return "\(id)|\(list.name)|\(list.itemIDs.count)|\(list.itemIDs.hashValue)"
-            case .folder(let id):
-                guard let folder = shelf.section(id: id) else { return nil }
-                let titles = shelf.titles(under: id, sourceID: library.selectedSourceID)
-                return "\(id)|\(folder.name)|\(folder.symbol ?? "")|\(titles.map(\.id).hashValue)|\(shelf.descendants(of: id).map(\.name).hashValue)"
-            default: return nil
-            }
-        }
-        let progress = resume?.playedID.flatMap { playback.history.entries[$0] }.map { Int(($0.fraction * 50).rounded()) }
-        return DockPlan(arrangement: arrangement,
-                        shrink: hero ? 1 : FluxDockMetrics.shrink(position, count: arrangement.entries.count, breaks: arrangement.breaks.count, room: room),
-                        stacks: stacks, progress: progress, catalogue: library.browsingRevision, ready: library.browsingCatalogReady)
+        return DockLayout(arrangement: arrangement, position: position, room: room, resume: resume)
     }
 
     /// What the bar of the home screen holds at nine tenths of its size.
@@ -4994,12 +5236,13 @@ extension FluxScreen {
     /// The bar of the home screen: one row, whose surplus is in Autres.
     func heroRows(_ plan: DockPlan) -> [DockArrangement] { [plan.arrangement] }
 
-    /// The titles of a list, in the order of their names: a list keeps
-    /// them in none.
+    /// The first titles of a list, in the order of their names: a list
+    /// keeps them in none. Only those shown are ordered (`sortedPrefix`):
+    /// the covers of a list are asked at each move along the bar.
     private func dockListItems(_ listID: String, limit: Int) -> [IPTVItem] {
         guard let list = library.presets.list(id: listID) else { return [] }
-        let items = list.itemIDs.compactMap { library.catalogItem(id: $0) }
-        return Array(items.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }.prefix(limit))
+        return list.itemIDs.lazy.compactMap { library.catalogItem(id: $0) }
+            .sortedPrefix(limit) { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
     }
 
     private func dockItem(_ shortcut: DockShortcut) -> IPTVItem? {
@@ -5450,7 +5693,7 @@ extension FluxScreen {
     private func deskZone(of id: String?) -> DeskZone? {
         guard let id else { return nil }
         if FluxDockItem(focusID: id) != nil || DockEntry.isShelfID(id) || barLeadIDs.contains(id) { return .dock }
-        if deskSidebarIDs.contains(id) { return .column }
+        if isDeskSidebarID(id) { return .column }
         if deskTrailingIDs.contains(id) { return .actions }
         if focusRows.contains(where: { $0.contains(id) }) { return .top }
         return visibleSlice.item(id: id) == nil ? nil : .content
@@ -5572,7 +5815,7 @@ extension FluxScreen {
             // so does a fresh press away from it: the top of these pages.
             let entering = action == dockPosition.inward || (fresh && action == dockPosition.outward)
             guard entering, dockVisible, dockFan == nil,
-                  let id = focusID, (barLeadIDs + dockPlan().ids).contains(id) else { return false }
+                  let id = focusID, (barLeadIDs + dockEntryIDs()).contains(id) else { return false }
             keys.enterPages()
             guard keys.focus != nil else { return false }
             focusID = nil
@@ -5586,7 +5829,7 @@ extension FluxScreen {
             // when it leads left, and to the dock any other way.
             else if fresh, dockVisible,
                     let target = FluxDockNavigation.beyond(nil, action: action, position: dockPosition,
-                                                           dockIDs: barLeadIDs + dockPlan().ids,
+                                                           dockIDs: barLeadIDs + dockEntryIDs(),
                                                            preferredDockID: FluxDockItem.settings.focusID,
                                                            backID: DeskZone.backID, topID: nil) {
                 keys.leave(); focusID = target
@@ -5631,7 +5874,7 @@ extension FluxScreen {
             let shape = RoundedRectangle(cornerRadius: radius + outset, style: .continuous)
             shape.strokeBorder(active ? themeAccent : Color.white.opacity(0.30), lineWidth: active ? 3 : 1)
                 .background(themeAccent.opacity(active ? 0.10 : 0), in: shape)
-                .shadow(color: active ? themeAccent.opacity(0.7) : .clear, radius: Desk.pt(10))
+                .shadow(color: active ? themeAccent.opacity(0.7) : .clear, radius: active ? Desk.pt(10) : 0)
                 .overlay(alignment: .topTrailing) {
                     if active && labelled {
                         Text(zone.title.uppercased()).font(Desk.font(.caption2, .heavy)).tracking(1.2)
@@ -5880,6 +6123,33 @@ extension FluxScreen {
             + (library.contentKind == .movie ? ["continue-only"] : [])
             + ["live-manage-lists"] + liveGroups.map { "live-category-\($0)" }
     }
+    /// Whether `id` is a row of the navigation column, as `deskSidebarIDs`
+    /// would say, without naming every row: a press of the remote asked it
+    /// several times, and the column names every category of a subscription.
+    private func isDeskSidebarID(_ id: String) -> Bool {
+        guard page == .catalogue, !library.sources.isEmpty else { return false }
+        if library.searchScreen || favoritesMode { return deskSidebarIDs.contains(id) }
+        if sidebarCountries && facetAvailable {
+            if id == "countries-back" || id == "country-all" { return true }
+            guard id.hasPrefix("country-") else { return false }
+            let code = id.dropFirst("country-".count)
+            return facetEntries.contains { $0.code == code }
+        }
+        switch id {
+        case "countries": return facetAvailable
+        case "group-all", "live-manage-lists": return true
+        case "continue-only": return library.contentKind == .movie
+        default: break
+        }
+        if id.hasPrefix("live-preset-") {
+            let preset = id.dropFirst("live-preset-".count)
+            return library.currentPresets.contains { $0.id == preset }
+        }
+        guard id.hasPrefix("live-category-") else { return false }
+        let name = id.dropFirst("live-category-".count)
+        let term = groupSearch.trimmingCharacters(in: .whitespacesAndNewlines)
+        return groups.contains { $0 == name } && (term.isEmpty || String(name).localizedStandardContains(term))
+    }
     /// Row of the navigation column that stands for the current selection.
     private var deskScopeID: String {
         if library.searchScreen { return Self.searchKindID(library.contentKind) }
@@ -5960,7 +6230,7 @@ extension FluxScreen {
         if showsHome {
             // The home screen is its bar: Left and Right walk it, and Up
             // and Down its rows when it has several.
-            let plan = dockPlan(hero: true)
+            let plan = DockPlan(arrangement: dockLayout(hero: true).arrangement)
             let ids = plan.ids
             guard let focusID, ids.contains(focusID) else { return currentDockID }
             let rows = heroRows(plan).map { $0.entries.map(\.id) }
@@ -5977,10 +6247,10 @@ extension FluxScreen {
             return FluxDockNavigation.move(from: focusID, action: action, position: .bottom, dockIDs: ids,
                                            preferredDockID: currentDockID, entryID: nil, fresh: fresh) { current, _ in current }
         }
-        let dockIDs = dockVisible ? barLeadIDs + dockPlan().ids : []
+        let dockIDs = dockVisible ? barLeadIDs + dockEntryIDs() : []
         let wasInDock = focusID.map(dockIDs.contains) ?? false
         let remembered = dockReturnFocus.flatMap { id -> String? in
-            if visibleSlice.item(id: id) != nil || deskSidebarIDs.contains(id) || deskTrailingIDs.contains(id) { return id }
+            if visibleSlice.item(id: id) != nil || isDeskSidebarID(id) || deskTrailingIDs.contains(id) { return id }
             return focusRows.contains(where: { $0.contains(id) }) ? id : nil
         }
         // "ne pas laisser de fonctionnalité vide": at an edge of the screen a
@@ -6100,7 +6370,7 @@ extension FluxScreen {
     /// The home screen shows pictures of its own, or none, instead of
     /// those of the screen its selected icon opens.
     private var homeKeepsItsOwn: Bool {
-        FluxBackdropChoices(stored: backdropChoices).plan(for: .home).mode != .automatic
+        FluxBackdropChoices.reading(backdropChoices).plan(for: .home).mode != .automatic
     }
     /// The screens whose pictures stay mounted behind the window, decoded:
     /// those of the three kinds, and on the home screen those that its icons
@@ -6418,8 +6688,8 @@ extension FluxScreen {
                     }
                 }.padding(.vertical, Desk.pt(3)).fluxPointerList()
             }
-            .onChange(of: focusID) { _, id in
-                if let id, remoteNavigationActive, deskSidebarIDs.contains(id) { reader.scrollTo(id, anchor: .center) }
+            .onChange(of: focusChange) { _, change in
+                if let id = change.id, remoteNavigationActive, isDeskSidebarID(id) { reader.scrollTo(id, anchor: .center) }
             }
         }
     }
@@ -6485,8 +6755,8 @@ extension FluxScreen {
                 }.padding(.vertical, Desk.pt(3)).fluxPointerList()
             }
             .onAppear { reader.scrollTo(library.countryCode.map { "country-\($0)" } ?? "country-all", anchor: .center) }
-            .onChange(of: focusID) { _, id in
-                if let id, remoteNavigationActive, deskSidebarIDs.contains(id) { reader.scrollTo(id, anchor: .center) }
+            .onChange(of: focusChange) { _, change in
+                if let id = change.id, remoteNavigationActive, isDeskSidebarID(id) { reader.scrollTo(id, anchor: .center) }
             }
         }
     }
@@ -6573,8 +6843,8 @@ extension FluxScreen {
                     }
                 }.padding(.vertical, Desk.pt(3)).fluxPointerList()
             }
-            .onChange(of: focusID) { _, id in
-                if let id, remoteNavigationActive, deskSidebarIDs.contains(id) { reader.scrollTo(id, anchor: .center) }
+            .onChange(of: focusChange) { _, change in
+                if let id = change.id, remoteNavigationActive, isDeskSidebarID(id) { reader.scrollTo(id, anchor: .center) }
             }
         }
     }
@@ -6609,8 +6879,8 @@ extension FluxScreen {
                     }
                 }.padding(.vertical, Desk.pt(3)).fluxPointerList()
             }
-            .onChange(of: focusID) { _, id in
-                if let id, remoteNavigationActive, deskSidebarIDs.contains(id) { reader.scrollTo(id, anchor: .center) }
+            .onChange(of: focusChange) { _, change in
+                if let id = change.id, remoteNavigationActive, isDeskSidebarID(id) { reader.scrollTo(id, anchor: .center) }
             }
         }
     }
@@ -7115,7 +7385,30 @@ extension FluxScreen {
     #endif
 
     private var liveDeskPreviewPanel: some View {
-        return VStack(alignment: .leading, spacing: Desk.pt(14)) {
+        // The panel follows the selection by itself: a move of the remote
+        // down the list does not rebuild the screen around it.
+        FluxBrowseReader(selection: browse) { liveDeskPreviewContent }
+        #if os(tvOS) && FLUX_CATALOG_UI_TESTING
+        // The channel the preview belongs to and its state, for a flow: the
+        // picture itself is hidden from accessibility.
+        .overlay(alignment: .topLeading) {
+            LiveTVPreviewObserver(preview: livePreview) { preview in
+                Color.clear.frame(width: 1, height: 1).allowsHitTesting(false)
+                    .accessibilityElement().accessibilityLabel("État de l’aperçu")
+                    .accessibilityIdentifier("flux-live-preview-state")
+                    .accessibilityValue("\(preview.previewedItemID ?? "none") \(String(describing: preview.phase))")
+            }
+        }
+        #endif
+        .padding(Desk.pt(14))
+        .frame(maxHeight: .infinity, alignment: .top)
+        .overlay { zoneFrame(.actions, radius: Desk.pt(27)) }
+        .fluxGlass(radius: Desk.pt(27))
+        .accessibilityElement(children: .contain)
+    }
+
+    private var liveDeskPreviewContent: some View {
+        VStack(alignment: .leading, spacing: Desk.pt(14)) {
             if let item = previewItem, item.kind == .live, visibleSlice.index(of: item.id) != nil {
                 #if os(tvOS)
                 // A remote has Regarder just under the picture: a picture that
@@ -7152,23 +7445,6 @@ extension FluxScreen {
             }
             Spacer(minLength: 0)
         }
-        #if os(tvOS) && FLUX_CATALOG_UI_TESTING
-        // The channel the preview belongs to and its state, for a flow: the
-        // picture itself is hidden from accessibility.
-        .overlay(alignment: .topLeading) {
-            LiveTVPreviewObserver(preview: livePreview) { preview in
-                Color.clear.frame(width: 1, height: 1).allowsHitTesting(false)
-                    .accessibilityElement().accessibilityLabel("État de l’aperçu")
-                    .accessibilityIdentifier("flux-live-preview-state")
-                    .accessibilityValue("\(preview.previewedItemID ?? "none") \(String(describing: preview.phase))")
-            }
-        }
-        #endif
-        .padding(Desk.pt(14))
-        .frame(maxHeight: .infinity, alignment: .top)
-        .overlay { zoneFrame(.actions, radius: Desk.pt(27)) }
-        .fluxGlass(radius: Desk.pt(27))
-        .accessibilityElement(children: .contain)
     }
 
     private func liveDeskDetails(_ item: IPTVItem) -> some View {

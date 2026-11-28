@@ -25,18 +25,26 @@ public struct IPTVItem: Identifiable, Hashable, Sendable {
     public let sourceID: UUID
     public let name: String
     public let group: String
-    public let logoURL: URL?
-    /// Optional wide artwork supplied by the provider.
-    public let backdropURL: URL?
-    public let kind: IPTVMediaKind
-    public let directURL: URL?
+    // The addresses are kept as their text: a URL weighs about 400 bytes in
+    // memory, its text about 100, and a catalogue keeps one or two per title
+    // (92 000 entries of a list: 74 MB of URLs). The URL is built again when it
+    // is read, by the few tiles on screen; the artwork cache keys on the text.
+    private let logo: String?
+    private let backdrop: String?
+    private let direct: String?
     public let xtreamStreamID: String?
     public let fileExtension: String?
-    /// True for a series catalogue entry; false for a playable episode.
-    public let isSeriesCollection: Bool
     public let details: IPTVDetails
     public let seasonNumber: Int?
     public let episodeNumber: Int?
+    public let kind: IPTVMediaKind
+    /// True for a series catalogue entry; false for a playable episode.
+    public let isSeriesCollection: Bool
+
+    public var logoURL: URL? { Self.url(logo) }
+    /// Optional wide artwork supplied by the provider.
+    public var backdropURL: URL? { Self.url(backdrop) }
+    public var directURL: URL? { Self.url(direct) }
 
     public init(
         id: String, sourceID: UUID, name: String, group: String,
@@ -47,16 +55,21 @@ public struct IPTVItem: Identifiable, Hashable, Sendable {
         self.sourceID = sourceID
         self.name = name
         self.group = group
-        self.logoURL = logoURL
-        self.backdropURL = backdropURL
+        self.logo = logoURL?.absoluteString
+        self.backdrop = backdropURL?.absoluteString
         self.kind = kind
-        self.directURL = directURL
+        self.direct = directURL?.absoluteString
         self.xtreamStreamID = xtreamStreamID
         self.fileExtension = fileExtension
         self.isSeriesCollection = isSeriesCollection
         self.details = details
         self.seasonNumber = seasonNumber
         self.episodeNumber = episodeNumber
+    }
+
+    private static func url(_ text: String?) -> URL? {
+        guard let text else { return nil }
+        return URL(string: text)
     }
 }
 
@@ -68,12 +81,19 @@ public struct IPTVDetails: Hashable, Sendable {
     public var genre: String?
     public var cast: String?
     public var director: String?
-    public var trailerURL: URL?
+    /// Kept as its text, as the addresses of a title are.
+    private var trailer: String?
+    public var trailerURL: URL? {
+        get { trailer.flatMap { URL(string: $0) } }
+        set { trailer = newValue?.absoluteString }
+    }
     public init(synopsis: String? = nil, year: String? = nil, duration: String? = nil, rating: String? = nil, genre: String? = nil, cast: String? = nil, director: String? = nil, trailerURL: URL? = nil) {
-        self.synopsis = synopsis; self.year = year; self.duration = duration; self.rating = rating; self.genre = genre; self.cast = cast; self.director = director; self.trailerURL = trailerURL
+        self.synopsis = synopsis; self.year = year; self.duration = duration; self.rating = rating; self.genre = genre; self.cast = cast; self.director = director; self.trailer = trailerURL?.absoluteString
     }
     public func fillingMissing(from fallback: IPTVDetails) -> IPTVDetails {
-        IPTVDetails(synopsis: synopsis ?? fallback.synopsis, year: year ?? fallback.year, duration: duration ?? fallback.duration, rating: rating ?? fallback.rating, genre: genre ?? fallback.genre, cast: cast ?? fallback.cast, director: director ?? fallback.director, trailerURL: trailerURL ?? fallback.trailerURL)
+        var filled = IPTVDetails(synopsis: synopsis ?? fallback.synopsis, year: year ?? fallback.year, duration: duration ?? fallback.duration, rating: rating ?? fallback.rating, genre: genre ?? fallback.genre, cast: cast ?? fallback.cast, director: director ?? fallback.director)
+        filled.trailer = trailer ?? fallback.trailer
+        return filled
     }
 }
 

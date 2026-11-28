@@ -104,14 +104,6 @@ jobs:
         if: ${{ !cancelled() && matrix.platform == 'macOS' && steps.apple_build.outcome == 'success' }}
         timeout-minutes: 5
         run: bash scripts/test-keychain-interaction.sh 2>&1 | tee build/logs/keychain-interaction-native.log
-      - name: Exercise the native YouTube session with a local fixture
-        if: ${{ !cancelled() && matrix.platform == 'macOS' && steps.apple_build.outcome == 'success' }}
-        timeout-minutes: 5
-        run: bash scripts/test-youtube-session.sh 2>&1 | tee build/logs/youtube-native-session.log
-      - name: Verify the Apple TV native trailer resolver and probe public media
-        if: ${{ !cancelled() && matrix.platform == 'macOS' && steps.apple_build.outcome == 'success' }}
-        timeout-minutes: 8
-        run: bash scripts/test-native-youtube.sh --live 2>&1 | tee build/logs/youtube-native-resolver.log
       - name: Exercise the TV preview with a local native video
         if: ${{ !cancelled() && matrix.platform == 'macOS' && steps.apple_build.outcome == 'success' }}
         timeout-minutes: 5

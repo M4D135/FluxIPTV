@@ -80,7 +80,7 @@ struct ArtworkView<Placeholder: View>: View {
     let url: URL?
     let fit: Bool
     let placeholder: Placeholder
-    @AppStorage(FluxAppearance.artworkKey) private var artworkEnabled = true
+    @Environment(\.fluxArtwork) private var artworkEnabled
     @State private var bitmap: FluxBitmap?
     init(url: URL?, fit: Bool, @ViewBuilder placeholder: () -> Placeholder) {
         self.url = url
@@ -101,47 +101,6 @@ struct ArtworkView<Placeholder: View>: View {
                 let loaded = await ArtworkLoader.load(url)
                 guard !Task.isCancelled else { return }
                 bitmap = loaded
-            }
-        }
-    }
-}
-
-/// One static wallpaper at a time. Debounce focus movement, cancel stale loads,
-/// reuse small artwork on network failures and never run behind video.
-struct CatalogueWallpaper: View {
-    let url: URL?
-    @AppStorage(FluxAppearance.wallpaperKey) private var enabled = true
-    @AppStorage(FluxAppearance.artworkKey) private var artworkEnabled = true
-    @AppStorage(FluxAppearance.intensityKey) private var intensity = "cinema"
-    @State private var bitmap: FluxBitmap?
-    @State private var displayedURL: URL?
-    private var requested: URL? { enabled && artworkEnabled ? url : nil }
-    private var opacity: Double { switch intensity { case "soft": 0.32; case "vivid": 0.83; default: 0.64 } }
-    var body: some View {
-        GeometryReader { geometry in
-            ZStack {
-                if let bitmap, displayedURL == requested, requested != nil {
-                    Image(decorative: bitmap.image, scale: 1, orientation: .up)
-                        .resizable().scaledToFill()
-                        .frame(width: geometry.size.width, height: geometry.size.height)
-                        .clipped().opacity(opacity)
-                }
-                if requested != nil, bitmap != nil {
-                    LinearGradient(colors: [.black.opacity(0.68), .black.opacity(0.22), .black.opacity(0.08)], startPoint: .leading, endPoint: .trailing)
-                    LinearGradient(stops: [.init(color: .black.opacity(0.12), location: 0), .init(color: .black.opacity(0.12), location: 0.40), .init(color: .black.opacity(0.74), location: 1)], startPoint: .top, endPoint: .bottom)
-                }
-            }.clipped()
-        }
-        .ignoresSafeArea().allowsHitTesting(false).accessibilityHidden(true)
-        .task(id: requested) {
-            guard let requested else { bitmap = nil; displayedURL = nil; return }
-            bitmap = ArtworkLoader.cached(requested, wallpaper: true) ?? ArtworkLoader.cached(requested)
-            displayedURL = requested
-            // A held direction on the Siri Remote must not start dozens of HTTP requests.
-            try? await Task.sleep(nanoseconds: 240_000_000)
-            guard !Task.isCancelled else { return }
-            if let image = await ArtworkLoader.load(requested, wallpaper: true), !Task.isCancelled {
-                bitmap = image; displayedURL = requested
             }
         }
     }

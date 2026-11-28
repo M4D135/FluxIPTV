@@ -81,7 +81,10 @@ final class IPTVLibrary: ObservableObject {
     @Published var catalogPage = 0 {
         didSet { if oldValue != catalogPage { rememberBrowsingChange() } }
     }
-    @Published var browseItemID: String? {
+    /// The title the remote rests on, kept for the next visit. Not
+    /// published: no view draws it, and it changes with every press of the
+    /// remote, which rebuilt every view of the library.
+    var browseItemID: String? {
         didSet { if oldValue != browseItemID { rememberBrowsingChange() } }
     }
     @Published private(set) var browsingRevision = UUID()
@@ -124,6 +127,9 @@ final class IPTVLibrary: ObservableObject {
     private var browsingSaveTask: Task<Void, Never>?
     private var browsingDirty = false
     private var seriesCache: [String: [IPTVSeason]] = [:]
+    /// The series whose seasons are kept, oldest first. Each holds all its
+    /// episodes: an evening through series kept every one of them.
+    private var seriesOrder: [String] = []
     private var loadID = UUID()
     // Keep successful reads in RAM only. Never prompt while changing media.
     private var sessionCredentials = SessionCredentialCache<IPTVSecret>()
@@ -216,7 +222,7 @@ final class IPTVLibrary: ObservableObject {
     func cacheFixtureSeasons(_ seasons: [IPTVSeason], for series: IPTVItem) {
         precondition(series.sourceID == selectedSourceID && series.isSeriesCollection
                      && seasons.allSatisfy { $0.episodes.allSatisfy { $0.directURL == nil && $0.xtreamStreamID == nil } })
-        seriesCache[series.id] = seasons
+        keepSeasons(seasons, for: series.id)
     }
     #endif
 
@@ -486,11 +492,13 @@ final class IPTVLibrary: ObservableObject {
         countTask = Task { @MainActor [weak self] in
             try? await Task.sleep(nanoseconds: 300_000_000)
             guard !Task.isCancelled else { return }
+            // Counted without gathering what is found: the three kinds were
+            // filtered in full, their categories built, to be counted.
             let worker = Task.detached(priority: .utility) { () -> [IPTVMediaKind: Int]? in
                 var counts: [IPTVMediaKind: Int] = [:]
                 for kind in IPTVMediaKind.allCases {
-                    guard let found = try? index.matching(kind: kind, search: term) else { return nil }
-                    counts[kind] = found.all.items.count
+                    guard let found = try? index.count(kind: kind, search: term) else { return nil }
+                    counts[kind] = found
                 }
                 return counts
             }
@@ -598,7 +606,7 @@ final class IPTVLibrary: ObservableObject {
         loadID = UUID()
         if selectedSourceID != source.id { prepareBrowsingSource(source.id) }
         selectedItemID = nil
-        seriesCache.removeAll()
+        forgetSeasons()
         isLoading = false
         installCatalog(loaded)
         flushBrowsingPreferences()
@@ -620,7 +628,7 @@ final class IPTVLibrary: ObservableObject {
         if !refreshing {
             prepareBrowsingSource(id)
             selectedItemID = nil
-            seriesCache.removeAll()
+            forgetSeasons()
         } else { flushBrowsingPreferences() }
         isLoading = true
         credentialIssue = nil
@@ -630,7 +638,7 @@ final class IPTVLibrary: ObservableObject {
             let secret = source.kind == .m3uFile ? nil : try unlockSource(id)
             let loaded = try await Self.indexedLoad(source: source, secret: secret)
             guard loadID == token else { return }
-            seriesCache.removeAll()
+            forgetSeasons()
             installCatalog(loaded)
         } catch {
             guard loadID == token else { return }
@@ -671,27 +679,34 @@ final class IPTVLibrary: ObservableObject {
             let config = URLSessionConfiguration.ephemeral
             config.timeoutIntervalForRequest = 30
             let session = URLSession(configuration: config)
+            // A session is kept, with its connections, until it is
+            // invalidated: one was left behind at every reload of a list.
+            defer { session.finishTasksAndInvalidate() }
             var request = URLRequest(url: url)
             request.cachePolicy = .reloadIgnoringLocalCacheData
-            let (bytes, response) = try await session.data(for: request)
-            if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
-                throw IPTVError.serverError(http.statusCode)
+            // The bytes received are let go once read as text, before the
+            // titles are built: some 26 MB for a list of 92 000 entries.
+            let text: String
+            do {
+                let (bytes, response) = try await session.data(for: request)
+                if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
+                    throw IPTVError.serverError(http.statusCode)
+                }
+                text = playlistText(bytes)
             }
-            let text = String(data: bytes, encoding: .utf8)
-                ?? String(data: bytes, encoding: .isoLatin1)
-                ?? ""
             let items = M3UParser().parse(text, sourceID: source.id)
             guard !items.isEmpty else { throw IPTVError.invalidPlaylist }
             return items
         case .m3uFile:
-            let bytes = try Data(contentsOf: LocalPlaylistFiles.destination(for: source.id))
-            let text = String(data: bytes, encoding: .utf8)
-                ?? String(data: bytes, encoding: .isoLatin1)
-                ?? ""
+            let text = playlistText(try Data(contentsOf: LocalPlaylistFiles.destination(for: source.id)))
             let items = M3UParser().parse(text, sourceID: source.id)
             guard !items.isEmpty else { throw IPTVError.invalidPlaylist }
             return items
         }
+    }
+
+    nonisolated private static func playlistText(_ bytes: Data) -> String {
+        String(data: bytes, encoding: .utf8) ?? String(data: bytes, encoding: .isoLatin1) ?? ""
     }
 
     func playbackURLs(for item: IPTVItem) throws -> [URL] {
@@ -727,8 +742,20 @@ final class IPTVLibrary: ObservableObject {
                                                            password: secret.password, series: series)
         try Task.checkCancellation()
         guard token == loadID else { throw CancellationError() }
-        seriesCache[series.id] = seasons
+        keepSeasons(seasons, for: series.id)
         return seasons
+    }
+
+    /// The seasons of the last 24 series opened stay at hand.
+    private func keepSeasons(_ seasons: [IPTVSeason], for id: String) {
+        if seriesCache[id] == nil { seriesOrder.append(id) }
+        seriesCache[id] = seasons
+        if seriesOrder.count > 24 { seriesCache.removeValue(forKey: seriesOrder.removeFirst()) }
+    }
+
+    private func forgetSeasons() {
+        seriesCache.removeAll()
+        seriesOrder.removeAll()
     }
 
     func isFavorite(_ item: IPTVItem, in id: String? = nil) -> Bool {
@@ -880,7 +907,7 @@ final class IPTVLibrary: ObservableObject {
         if dockShelf.removeSource(source.id) { persistDock() }
         persistSources()
         if selectedSourceID == source.id {
-            seriesCache.removeAll()
+            forgetSeasons()
             restoringBrowsing = true
             selectedSourceID = nil
             selectedPresetIDs = [:]

@@ -55,7 +55,7 @@ public struct CatalogBrowsingState: Codable, Equatable, Sendable {
                     && (result.countryCode == nil || (kind == .live
                         ? (LiveCountry.detectCode(in: $0.group) ?? LiveCountry.unknownCode)
                         : index.language(of: $0)) == result.countryCode)
-                    && (term.isEmpty || $0.name.localizedStandardContains(term) || $0.group.localizedStandardContains(term))
+                    && (term.isEmpty || CatalogSearch.matches($0.name, term: term) || CatalogSearch.matches($0.group, term: term))
                     && (result.presetID.flatMap { presets.list(id: $0) }?.itemIDs.contains($0.id) ?? true)
             } ?? false
             if !matches { result.browseItemID = nil; result.catalogPage = 0 }
